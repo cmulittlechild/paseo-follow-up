@@ -63,6 +63,19 @@ serves the last directory snapshot (only a first list, with none yet, waits up t
 loading), the usage meters serve their last reading, and a Summary's open waits up to 300 ms for its inputs, then says
 pending and the client asks again after 500 ms, backing off to 3 s. Both caches are primed when the worker starts. `tests/rpc-cached.test.ts` hangs each slow side.
 
+**An ack never waits on the disk** (`an-ack-never-waits-on-the-disk`). No client RPC's reply waits on an fsync, and no
+read queues behind a write in flight. The settings files the developer saves (`reviewers.json`, `agents.json`,
+`pr-workflow.json`) and `inbox.json` keep their value in memory, validated and authoritative (a validation error still
+rejects before the reply), and save through `WriteBehind` (`server/write-behind.ts`): outside the store's mutation
+queue, as `Store.flush` writes `state.json`, one write at a time of the newest value, temp file, fsync, rename. A
+failed write keeps the value, logs, and retries with backoff (1 s doubling to 30 s); from the third failed attempt
+`WriteHealth` puts it on the worker's error line (`follow.list`, `follow.get`, the workspaces feed) until it lands.
+The worker's stop flushes them before the lock goes (`stopWorker`'s `files`). A crash before a write lands loses that
+save, as it does for `state.json` and `inbox.json`. 2026-11-13/14 CI: `follow.inbox-list` waited 664 ms behind an
+`inbox.json` write and `follow.save-reviewers` 1458 ms on `reviewers.json`'s fsync, with the event loop idle; a local
+disk answers in 3–4 ms, which hid both. `tests/rpc-ack.test.ts` runs with every fsync 2 s slow (main fails with
+exactly those two), and `tests/ack-disk.test.ts` covers the stores, the retry and the stop.
+
 **Slow RPCs name themselves.** `server/rpc-timing.ts` wraps every handler: one slower than the 500 ms ack budget (`RPC_SLOW_MS`) logs
 `[follow-up] slow rpc <method> <ms> ms (event loop since last: p99 …, max …)` to the plugin's output (daemon.log).
 A long call with a small event-loop delay awaited something; a large delay means synchronous work blocked the worker.
@@ -128,7 +141,8 @@ and at most `TURN_READ_CAP` entries, and the engine's and the inbox's handlers s
     connection; only stop, a drop or the max age replace it; `sharedDaemon` has no timer).
   - `InboxStore` keeps what `inbox.json` holds after the first read; it's the file's only writer. Its mutations copy
     only the entries they touch (`a-mutation-copies-only-what-it-changes`, below), and the worker writes the file at
-    most once per `INBOX_WRITE_MS` (2 s, `the-inbox-writes-at-most-once-per-window`, below).
+    most once per `INBOX_WRITE_MS` (2 s, `the-inbox-writes-at-most-once-per-window`, below), outside its mutation
+    queue (`an-ack-never-waits-on-the-disk`, above).
   - Guarded by `tests/observe-io.test.ts`.
 - `server/store.ts`: `state.json` stays in memory once loaded. `mutate()` serializes changes. Writes are batched (at
   most one a second) and skipped when nothing changed. `onChanged` writes `scopes.json` for the hooks and the

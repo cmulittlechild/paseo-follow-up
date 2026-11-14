@@ -135,13 +135,13 @@ test("the setting: on by default, saved as enable_wait in agents.json next to th
   assert.equal(await store.waitEnabled(), true);
   await store.save("about", { model: "sonnet" });
   await store.setWait(false);
-  const saved = JSON.parse(await readFile(join(root, "agents.json"), "utf8"));
+  await store.flush(); const saved = JSON.parse(await readFile(join(root, "agents.json"), "utf8"));
   assert.equal(saved.enable_wait, false); assert.equal(saved.roles.about.model, "sonnet", "roles kept");
-  assert.equal(await new AgentSettingsStore(root).waitEnabled(), false, "survives a restart");
+  await store.flush(); assert.equal(await new AgentSettingsStore(root).waitEnabled(), false, "survives a restart");
   await store.save("about", null);
-  assert.equal(JSON.parse(await readFile(join(root, "agents.json"), "utf8")).enable_wait, false, "a role change keeps it");
+  await store.flush(); assert.equal(JSON.parse(await readFile(join(root, "agents.json"), "utf8")).enable_wait, false, "a role change keeps it");
   await store.setWait(true);
-  assert.equal(JSON.parse(await readFile(join(root, "agents.json"), "utf8")).enable_wait, undefined, "on is the default, so it isn't stored");
+  await store.flush(); assert.equal(JSON.parse(await readFile(join(root, "agents.json"), "utf8")).enable_wait, undefined, "on is the default, so it isn't stored");
   assert.equal(parseAgentSettings({ roles: {}, enable_wait: "no" }).file.enable_wait, undefined, "an invalid value means on");
 });
 

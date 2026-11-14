@@ -133,7 +133,7 @@ test("review-fix seed: an install with a /fix-pr command keeps it, a fresh one g
     // Runs once: the developer's later choice is never overwritten.
     await seeded.store.mutate(c => { c.reviewFix = { kind: "builtin" }; });
     assert.deepEqual((await seeded.store.migrate(async () => true)).reviewFix, { kind: "builtin" });
-    assert.equal(JSON.parse(await readFile(join(seeded.dir, "pr-workflow.json"), "utf8")).reviewFix.kind, "builtin");
+    await seeded.store.flush(); assert.equal(JSON.parse(await readFile(join(seeded.dir, "pr-workflow.json"), "utf8")).reviewFix.kind, "builtin");
   } finally { await seeded.close(); await fresh.close(); }
 });
 

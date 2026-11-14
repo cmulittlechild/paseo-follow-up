@@ -1,19 +1,24 @@
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { WriteBehind } from "./write-behind";
 import type { State } from "../shared/model";
 import { githubApi, type GithubApi } from "./github-api";
 import { cleanList, emptyReviewerConfig, isTeam, repoKey, reviewerConfigSchema, setReviewerConfig, type ReviewerConfig, type ReviewerEntry } from "../shared/reviewers";
 
 /**
- * The developer's reviewer lists, in their own small file next to state.json (`reviewers.json`). Writes are serialized,
+ * The developer's reviewer lists, in their own small file next to state.json (`reviewers.json`). Mutations are
+ * serialized and validated, then saved behind the reply (an-ack-never-waits-on-the-disk, server/write-behind.ts):
  * atomic and owner-only. Every load and save also updates the process-wide config shared code reads.
  */
 export class ReviewerConfigStore {
   private tail: Promise<unknown> = Promise.resolve();
   private cached: ReviewerConfig | null = null;
-  constructor(readonly directory: string) {}
+  /** reviewers.json, written behind the reply. */
+  readonly persist: WriteBehind<ReviewerConfig>;
+  constructor(readonly directory: string) { this.persist = new WriteBehind({ path: this.path, encode: config => JSON.stringify(config, null, 2) }); }
   private get path() { return join(this.directory, "reviewers.json"); }
+  /** Waits for the mutations in flight, then writes what is pending; the worker's stop calls it. */
+  async flush(): Promise<void> { await this.tail; await this.persist.flush(); }
 
   async read(): Promise<ReviewerConfig> {
     if (this.cached) return this.cached;
@@ -34,8 +39,8 @@ export class ReviewerConfigStore {
       for (const [key, list] of Object.entries(config.repos)) { const clean = cleanList(list); if (clean.length) config.repos[key] = clean; else delete config.repos[key]; }
       config.defaults = cleanList(config.defaults);
       const parsed = reviewerConfigSchema.parse(config);
-      await this.write(parsed);
       this.cached = parsed; setReviewerConfig(parsed);
+      this.persist.set(parsed);
       return parsed;
     });
     this.tail = next.catch(() => undefined);
@@ -59,16 +64,6 @@ export class ReviewerConfigStore {
     });
   }
 
-  private async write(config: ReviewerConfig): Promise<void> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const temporary = join(this.directory, `reviewers.${randomUUID()}.tmp`);
-    try {
-      const file = await open(temporary, "wx", 0o600);
-      try { await file.writeFile(JSON.stringify(config, null, 2)); await file.sync(); }
-      finally { await file.close(); }
-      await rename(temporary, this.path);
-    } finally { await unlink(temporary).catch(() => undefined); }
-  }
 }
 
 /**

@@ -1,8 +1,9 @@
 import { prLink } from "../shared/presentation";
 import { DEVELOPER, ledgerBy, onBehalfLine, type Actor } from "../shared/actor";
-import { mkdir, open, readFile, rename, unlink, type FileHandle } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { WriteBehind } from "./write-behind";
 import { realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { BackgroundAgents } from "./background-agents";
 import { deepFreeze } from "./store";
@@ -50,10 +51,19 @@ export class InboxStore {
   private saved: InboxState | null = null;
   /** Writes to inbox.json, for tests. */
   writes = 0;
-  /** The pending window's write (the-inbox-writes-at-most-once-per-window). */
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * inbox.json's writer (the-inbox-writes-at-most-once-per-window): one write per window of the newest state, outside
+   * the mutation queue (an-ack-never-waits-on-the-disk, server/write-behind.ts), so a read or a mutation never waits
+   * on a write's fsync. 2026-11-13 (CI): follow.inbox-list waited 664 ms for one, queued behind it.
+   */
+  readonly persist: WriteBehind<InboxState>;
   /** `writeMs` 0 writes each real change through at once (tools, tests); the worker passes INBOX_WRITE_MS. */
-  constructor(readonly directory: string, private now: () => number = Date.now, private writeMs = 0) {}
+  constructor(readonly directory: string, private now: () => number = Date.now, private writeMs = 0) {
+    this.persist = new WriteBehind({
+      path: this.path, delayMs: writeMs, encode: inboxJsonParts,
+      onWritten: state => { this.written = { at: this.now() }; this.saved = state; if (this.unsaved === state) this.unsaved = null; this.writes++; },
+    });
+  }
   private get path() { return join(this.directory, "inbox.json"); }
   /** A private, mutable copy of the whole inbox. Nothing in the worker needs one; mutate() hands out a draft instead. */
   async read(): Promise<InboxState> { return structuredClone(await this.load()); }
@@ -110,19 +120,9 @@ export class InboxStore {
   }
   /** Writes a held change or lastSeen now; the worker's stop calls it. */
   async flush(): Promise<void> {
-    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     await this.tail;
-    const pending = this.unsaved;
-    if (pending) await this.write(pending);
-  }
-  /** One write for everything the window changed, queued behind the mutations in flight. */
-  private schedule(): void {
-    this.timer ??= setTimeout(() => {
-      this.timer = null;
-      const next = this.tail.then(async () => { const pending = this.unsaved; if (pending) await this.write(pending); });
-      this.tail = next.catch(() => this.schedule()); // a failed write keeps the change and tries again next window
-    }, this.writeMs);
-    (this.timer as { unref?: () => void }).unref?.();
+    if (this.unsaved) this.persist.set(this.unsaved);
+    await this.persist.flush();
   }
   /**
    * Validates what changed (each changed entry, each changed top-level field, and of briefOrigins only the items it
@@ -140,19 +140,10 @@ export class InboxStore {
     for (const f of top) deepFreeze((next as Record<string, unknown>)[f]);
     Object.freeze(entries); Object.freeze(next);
     const lastSeenOnly = top.length === 1 && top[0] === "lastSeen" && !changes.fields.has("entries");
-    if (lastSeenOnly && this.written && this.now() - this.written.at < LAST_SEEN_WRITE_MS) { this.unsaved = next; return; }
-    if (this.writeMs > 0) { this.unsaved = next; this.schedule(); return; }
-    await this.write(next);
-  }
-  private async write(state: InboxState): Promise<void> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const temporary = join(this.directory, `inbox.${randomUUID()}.tmp`);
-    try {
-      const file = await open(temporary, "wx", 0o600);
-      try { await writeParts(file, inboxJsonParts(state)); await file.sync(); } finally { await file.close(); }
-      await rename(temporary, this.path);
-      this.written = { at: this.now() }; this.unsaved = null; this.saved = deepFreeze(state); this.writes++;
-    } finally { await unlink(temporary).catch(() => undefined); }
+    // A lastSeen-only change rides a write that is already waiting, else waits for LAST_SEEN_WRITE_MS.
+    if (lastSeenOnly && !this.persist.queued && this.written && this.now() - this.written.at < LAST_SEEN_WRITE_MS) { this.unsaved = next; return; }
+    this.unsaved = next; this.persist.set(next);
+    if (this.writeMs <= 0) await this.persist.flush();
   }
 }
 /**
@@ -204,18 +195,6 @@ export function inboxJsonParts(state: InboxState): Buffer[] {
   // Agent ids come and go: keep the key cache to the keys this inbox has.
   if (keyBytes.size > 4 * (Object.keys(state.entries).length + 32)) keyBytes.clear();
   return out;
-}
-/** Writes every part, however the OS splits a vectored write. */
-async function writeParts(file: FileHandle, parts: Buffer[]): Promise<void> {
-  let rest = parts;
-  while (rest.length) {
-    const { bytesWritten } = await file.writev(rest.length > 512 ? rest.slice(0, 512) : rest);
-    let n = bytesWritten, i = 0;
-    while (i < rest.length && n >= rest[i]!.length) n -= rest[i++]!.length;
-    rest = rest.slice(i);
-    if (n > 0) rest = [rest[0]!.subarray(n), ...rest.slice(1)];
-    if (bytesWritten === 0 && rest.length) throw new Error("inbox.json: the write made no progress");
-  }
 }
 /**
  * a-mutation-costs-what-it-changes: entries draft per entry; briefOrigins, read whole and replaced whole, drafts as the

@@ -118,7 +118,7 @@ test("set_pr_workflow review: none saves, team clears back to the default, and e
   assert.match(repoShippingSummary(view.repos[0]), /No review/);
   await store.mutate(c => { c.repos["example/app"].review = "team"; });
   assert.equal(repoReview("example/app"), "team");
-  assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos, {}, "team is the default: nothing is stored");
+  await store.flush(); assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos, {}, "team is the default: nothing is stored");
   assert.ok(setPrWorkflowInputSchema.safeParse({ repo: "example/app", review: "none" }).success);
   assert.ok(setPrWorkflowInputSchema.safeParse({ repo: "example/app", review: null }).success);
   assert.ok(!setPrWorkflowInputSchema.safeParse({ repo: "example/app", review: "solo" }).success);
@@ -234,9 +234,9 @@ test("public-code-carries-no-host-identifiers: set_pr_workflow deploy saves, cle
   assert.equal((await store.view(["acme/acme-poc"])).repos[0].deploy, null, "empty install: no deploy check");
   await store.mutate(c => { c.repos["acme/acme-poc"] = { deploy: ACME_DEPLOY }; });
   assert.deepEqual((await store.view(["acme/acme-poc"])).repos[0].deploy, ACME_DEPLOY, "pr_workflow returns the whole config");
-  assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos["acme/acme-poc"].deploy, ACME_DEPLOY, "stored in host settings");
+  await store.flush(); assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos["acme/acme-poc"].deploy, ACME_DEPLOY, "stored in host settings");
   await store.mutate(c => { delete c.repos["acme/acme-poc"].deploy; });
-  assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos, {}, "cleared: nothing left");
+  await store.flush(); assert.deepEqual(JSON.parse(await readFile(join(dir, "pr-workflow.json"), "utf8")).repos, {}, "cleared: nothing left");
   assert.ok(setPrWorkflowInputSchema.safeParse({ repo: "acme/acme-poc", deploy: ACME_DEPLOY }).success);
   assert.ok(setPrWorkflowInputSchema.safeParse({ repo: "acme/acme-poc", deploy: null }).success);
   for (const bad of [{ ...ACME_DEPLOY, gcpProject: "Bad Project" }, { ...ACME_DEPLOY, serviceLabel: "no-equals" }, { ...ACME_DEPLOY, roles: [] }, { ...ACME_DEPLOY, extra: 1 }])
