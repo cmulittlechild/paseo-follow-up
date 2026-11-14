@@ -1,4 +1,5 @@
 import { stopWorker } from "./server/teardown";
+import { WriteHealth } from "./server/write-behind";
 import { actorBy, actorOf, type Actor } from "./shared/actor";
 import { TICK_MS } from "./shared/poll";
 import { PluginMove } from "./server/plugin-move";
@@ -201,6 +202,9 @@ export default function contribute(server: PluginServerContext) {
   prWorkflow.onChanged = () => { void store.snapshot().then(state => store.onChanged(state)).catch(() => undefined); };
   const browser = new BrowserBridge();
   const reviewerStore = new ReviewerConfigStore(directory);
+  // an-ack-never-waits-on-the-disk (server/write-behind.ts): these files save behind the reply; one still failing after
+  // SURFACE_AFTER attempts shows as the worker's error line until it lands.
+  const writeHealth = new WriteHealth();
   const reviewerSuggestions = new ReviewerSuggestions();
   const actions = new PrActions(store, github, graphite, browser);
   actions.savedMethod = repo => prWorkflow.current().repos[repoKey(repo)]?.mergeMethod ?? null;
@@ -414,6 +418,7 @@ export default function contribute(server: PluginServerContext) {
     // Brief answers recorded before a reload that Paseo never confirmed go out again, under the same messageId.
     await inbox.resumeAnswers(sendTo).catch(() => undefined);
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
+  for (const file of [reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
   const requireReady = async () => { await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
   // 1.4.0-beta.2: Follow-up's tools per agent: natively through Paseo's MCP when the host serves plugin tools,
   // otherwise the stdio bridge for this launch only. FOLLOW_UP_TOOLS tells the hooks which names the agent has.
@@ -545,8 +550,8 @@ export default function contribute(server: PluginServerContext) {
     const view = browserWorkspaces(entries);
     return { tracked: true, ...view, workspaces: view.workspaces.map(w => ({ ...w, title: w.title.slice(0, 200), agentStatus: w.agentStatus.slice(0, 40), state: w.state.slice(0, 200) })) };
   });
-  handle(rpc.listRpc, async ({ since }) => { await ready; return { ...listCache.answer(await store.snapshot(), since), error: loadError ?? hookError ?? engine.error }; });
-  handle(rpc.getRpc, async ({ workspaceId }) => { await ready; return { workspace: (await store.snapshot()).workspaces.find(w => w.id === workspaceId && w.enable_tracking) ?? null, error: loadError ?? hookError ?? engine.error }; });
+  handle(rpc.listRpc, async ({ since }) => { await ready; return { ...listCache.answer(await store.snapshot(), since), error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
+  handle(rpc.getRpc, async ({ workspaceId }) => { await ready; return { workspace: (await store.snapshot()).workspaces.find(w => w.id === workspaceId && w.enable_tracking) ?? null, error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
   handle(rpc.syncWorkspaceRpc, async ({ agentId, summary }, { paseo }) => {
     await requireReady();
     const workspaceId = await callerWorkspaceId(agentId, paseo, false);
@@ -1207,7 +1212,7 @@ export default function contribute(server: PluginServerContext) {
   // Subscriptions (Paseo 0.16): every open client used to poll these reads (about 17 a minute for an idle Home); now
   // the worker pushes from state it already holds, one shared serve per topic (server/feeds.ts, invariant
   // idle-client-makes-at-most-one-rpc-a-minute). A 0.15 host serves no subscriptions, and its clients keep polling.
-  const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => loadError ?? hookError ?? engine.error);
+  const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => loadError ?? hookError ?? writeHealth.message() ?? engine.error);
   const inboxFeed = new ValueFeed({ read: async () => { await requireReady(); return inboxAnswer({ ...await inbox.list(), error: inboxError }, undefined); }, key: v => v.etag ?? JSON.stringify(v) });
   let usageWatch: { close(): void } | null = null;
   const homeFeed = new ValueFeed({
@@ -1475,6 +1480,6 @@ export default function contribute(server: PluginServerContext) {
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [reviewerStore, agentSettings, prWorkflow], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   };
 }

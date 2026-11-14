@@ -79,6 +79,7 @@ const EXEMPT: Record<string, string> = {
   "server/trust-bypass.ts": "a JSONL audit line per decision",
   "server/updates.ts": "update records, on an install",
   "server/wait-jobs.ts": "one Wait job's record, per job",
+  "server/write-behind.ts": "the write-behind writer agents.json, pr-workflow.json, reviewers.json and inbox.json save through (no JSON of its own)",
   "server/write-through.ts": "the user-config writer the files above call (no JSON of its own)",
 };
 

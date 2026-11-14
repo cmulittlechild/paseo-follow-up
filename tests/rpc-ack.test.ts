@@ -5,11 +5,15 @@ import { timeAck } from "./support/ack-ratchet";
 import { clientRpcs } from "./support/client-rpcs";
 import { FIXTURE, sample } from "./support/sample-input";
 import { seed } from "./support/seed";
+import { slowFsync } from "./support/slow-disk";
 
 /**
  * Invariant (2026-11-11, "Your answer wasn't sent. Plugin RPC timed out: follow-up.invoke"): every RPC the client
  * calls replies within ACK_MS even when everything slow hangs: the Paseo API never answers, the daemon socket accepts
- * and stays silent, and gh, gt, mcpproxy, claude and codex never exit. Paseo gives a plugin RPC 30 s and then shows the
+ * and stays silent, gh, gt, mcpproxy, claude and codex never exit, and every fsync takes SLOW_FSYNC_MS
+ * (an-ack-never-waits-on-the-disk: 2026-11-13/14 CI, follow.inbox-list waited 664 ms behind an inbox.json write and
+ * follow.save-reviewers 1458 ms on reviewers.json's fsync, with the event loop idle; files save behind the reply,
+ * server/write-behind.ts). Paseo gives a plugin RPC 30 s and then shows the
  * developer an error, whatever the handler later does; an answer that arrived 88 s later still read "wasn't sent".
  *
  * Slow side effects (sending to an agent, GitHub, the daemon) run after the reply, or are queued durably; a handler
@@ -23,6 +27,8 @@ import { seed } from "./support/seed";
  * Nothing here may lose the developer's input: none of them carries words the developer typed.
  */
 const ACK_MS = 500;
+/** Longer than ACK_MS by far, so any reply that waits on an fsync is late every run, not on a loaded runner only. */
+const SLOW_FSYNC_MS = 2_000;
 
 /** Inputs a schema can't spell out: which decision a card answers, the answer's id. Everything else is sample(). */
 const INPUT: Record<string, unknown> = {
@@ -69,6 +75,8 @@ const EXEMPT: Record<string, string> = {
 };
 
 test("rpc ack: every RPC the client calls replies within ACK_MS while Paseo, the daemon and GitHub hang", { timeout: 180_000 }, async t => {
+  const disk = await slowFsync(SLOW_FSYNC_MS);
+  t.after(() => disk.undo());
   const host = await hangingHost();
   t.after(() => host.close());
   await seed(host.directory);

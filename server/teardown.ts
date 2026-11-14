@@ -45,6 +45,8 @@ export interface WorkerParts {
   store: { close(work: Deadline, save: Deadline): Promise<void> };
   /** The inbox's held lastSeen (store-writes-only-real-changes), written with the store before the lock goes. */
   inbox?: { flush(): Promise<void> };
+  /** Files saved behind the reply (an-ack-never-waits-on-the-disk): what is pending is written before the lock goes. */
+  files?: { flush(): Promise<void> }[];
   unlock?: (() => Promise<unknown>) | null;
 }
 /**
@@ -64,5 +66,6 @@ export async function stopWorker(parts: WorkerParts, ms = STOP_WAIT_MS): Promise
   await settleWithin(parts.ready, work);
   await step(() => parts.store.close(work, save), save);
   if (parts.inbox) await step(() => parts.inbox!.flush(), save);
+  if (parts.files?.length) await step(() => Promise.allSettled(parts.files!.map(f => f.flush())), save);
   if (parts.unlock) await step(parts.unlock, save);
 }

@@ -74,7 +74,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 
 | Subsystem | Files | Doc |
 | --- | --- | --- |
-| Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
+| Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts` | [needs-you](docs/needs-you.md) |
@@ -177,6 +177,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      for up to 1.5 s, then uses what is there. 2026-11-14 (main 8c54f00, live mix): the 15 s inbox tick rebuilt it
      from the whole Home model, 2.7 MB at 139 workspaces, ~55 of the worker's ~480 MB per 5 min, for a file nothing
      else reads. Guarded by `tests/overseer.test.ts` (`a-derived-view-is-built-when-read`).
+   - **An ack never waits on the disk** (`an-ack-never-waits-on-the-disk`): no client RPC's reply waits on an fsync,
+     and no read queues behind a write in flight. `reviewers.json`, `agents.json`, `pr-workflow.json` and `inbox.json`
+     keep their value in memory (validated before the reply) and save through `WriteBehind` (`server/write-behind.ts`),
+     outside the mutation queue like `Store.flush`: ordered, coalesced, temp + fsync + rename. A failed write logs and
+     retries with backoff, and from the third attempt shows on the worker's error line until it lands; stop flushes
+     them. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
+     `follow.inbox-list` waited 664 ms behind an `inbox.json` write, `follow.save-reviewers` 1458 ms on an fsync.
+     Guarded by `tests/rpc-ack.test.ts` (every fsync 2 s slow) and `tests/ack-disk.test.ts`.
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`
      (`server/list-cache.ts`) skips a workspace whose frozen object is the one it last serialised, so a state change
      stringifies only the workspaces it touched, never every tracked one. 2026-11-13 (run W, live copy under live

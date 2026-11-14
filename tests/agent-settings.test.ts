@@ -43,15 +43,15 @@ test("store: agents.json is its own file, written only on change, reset removes 
   assert.equal((await store.role("about")).model, "haiku");
   assert.deepEqual(await readdir(dir), [], "reading never writes");
   await store.save("about", { provider: "codex", model: "gpt-6-luna", thinking: "low", mode: "full-access", dailyCap: 20 });
-  const saved = JSON.parse(await readFile(join(dir, "agents.json"), "utf8"));
+  await store.flush(); const saved = JSON.parse(await readFile(join(dir, "agents.json"), "utf8"));
   assert.deepEqual(saved.roles.about, { provider: "codex", model: "gpt-6-luna", thinking: "low", dailyCap: 20 }, "a job role stores no mode");
   assert.deepEqual(await readdir(dir), ["agents.json"]);
   await assert.rejects(store.save("about", { provider: "has spaces" }), /isn't valid/);
   await store.save("about", null);
-  assert.deepEqual(JSON.parse(await readFile(join(dir, "agents.json"), "utf8")).roles, {});
-  assert.equal((await new AgentSettingsStore(dir).role("about")).isDefault, true);
+  await store.flush(); assert.deepEqual(JSON.parse(await readFile(join(dir, "agents.json"), "utf8")).roles, {});
+  await store.flush(); assert.equal((await new AgentSettingsStore(dir).role("about")).isDefault, true);
   await writeFile(join(dir, "agents.json"), "{not json");
-  assert.equal((await new AgentSettingsStore(dir).role("overseer")).provider, "claude", "an unreadable file means defaults");
+  await store.flush(); assert.equal((await new AgentSettingsStore(dir).role("overseer")).provider, "claude", "an unreadable file means defaults");
 });
 
 test("ai-jobs: the role's provider picks the CLI; claude and codex arguments; unknown providers fail cleanly", async () => {

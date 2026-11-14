@@ -87,9 +87,9 @@ test("the picker's Remember saves a repository list in reviewers.json (owner-onl
   const w = workspace({ prs: [pr({ snapshot: snapshot({ reviewers: open() }) })] });
   assert.equal(needsYou(w).some(i => i.kind === "reviewers"), false, "nothing configured: no Needs-you row");
   await reviewers.save("Example/App", [{ login: "ana", name: "Ana" }, { login: "ana", name: "dup" }, { login: "acme/platform", name: null }]);
-  const saved = JSON.parse(await readFile(join(dir, "reviewers.json"), "utf8"));
+  await reviewers.flush(); const saved = JSON.parse(await readFile(join(dir, "reviewers.json"), "utf8"));
   assert.deepEqual(saved.repos, { "example/app": [{ login: "ana", name: "Ana" }, { login: "acme/platform", name: null }] }, "one entry per login, keyed by lower-case repo");
-  assert.equal((await stat(join(dir, "reviewers.json"))).mode & 0o777, 0o600);
+  await reviewers.flush(); assert.equal((await stat(join(dir, "reviewers.json"))).mode & 0o777, 0o600);
   assert.deepEqual(configuredReviewers("example/app").map(r => r.login), ["ana", "acme/platform"]);
   assert.equal(needsYou(w).some(i => i.kind === "reviewers"), true);
   await reviewers.save("example/app", []);
@@ -97,7 +97,7 @@ test("the picker's Remember saves a repository list in reviewers.json (owner-onl
   await reviewers.save(null, people("lead"));
   assert.deepEqual(configuredReviewers("other/repo").map(r => r.login), ["lead"]);
   // A second store over the same folder reads what was written.
-  assert.deepEqual((await new ReviewerConfigStore(dir).read()).defaults.map(r => r.login), ["lead"]);
+  await reviewers.flush(); assert.deepEqual((await new ReviewerConfigStore(dir).read()).defaults.map(r => r.login), ["lead"]);
   setReviewerConfig(emptyReviewerConfig());
 });
 

@@ -1,7 +1,7 @@
-import { access, constants, mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { access, constants, readFile, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { WriteBehind } from "./write-behind";
 import { repoKey } from "../shared/reviewers";
 import {
   commandName, detect, emptyPrWorkflowConfig, prWorkflowConfigSchema, repoSetting, resolveWorkflow, reviewFixFor,
@@ -80,8 +80,14 @@ export class PrWorkflowStore {
   }
   /** Called after every save, so derived files (scopes.json) can be rewritten. */
   onChanged: () => void = () => undefined;
-  constructor(readonly directory: string, private probe: Probe = fsProbe(), private now = Date.now, private ttl = 600_000) {}
+  /** pr-workflow.json, written behind the reply (an-ack-never-waits-on-the-disk, server/write-behind.ts). */
+  readonly persist: WriteBehind<PrWorkflowConfig>;
+  constructor(readonly directory: string, private probe: Probe = fsProbe(), private now = Date.now, private ttl = 600_000) {
+    this.persist = new WriteBehind({ path: this.path, encode: config => JSON.stringify(config, null, 2) });
+  }
   private get path() { return join(this.directory, "pr-workflow.json"); }
+  /** Waits for the mutations in flight, then writes what is pending; the worker's stop calls it. */
+  async flush(): Promise<void> { await this.tail; await this.persist.flush(); }
 
   async read(): Promise<PrWorkflowConfig> {
     if (this.cached) return this.cached;
@@ -104,8 +110,8 @@ export class PrWorkflowStore {
       work(config);
       for (const [key, value] of Object.entries(config.repos)) { if (value.review === "team") delete value.review; if (!value.workflow && !value.mergeMethod && !value.reviewFix && !value.review && !value.deploy) delete config.repos[key]; }
       const parsed = prWorkflowConfigSchema.parse(config);
-      await this.write(parsed);
       this.cached = parsed; setNoReviewRepos(noReviewRepos(parsed));
+      this.persist.set(parsed);
       this.onChanged();
       return parsed;
     });
@@ -195,14 +201,4 @@ export class PrWorkflowStore {
     return { gt: { installed: machine.gtInstalled, signedIn: machine.signedIn }, default: config.default, reviewFix: config.reviewFix, repos: rows };
   }
 
-  private async write(config: PrWorkflowConfig): Promise<void> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const temporary = join(this.directory, `pr-workflow.${randomUUID()}.tmp`);
-    try {
-      const file = await open(temporary, "wx", 0o600);
-      try { await file.writeFile(JSON.stringify(config, null, 2)); await file.sync(); }
-      finally { await file.close(); }
-      await rename(temporary, this.path);
-    } finally { await unlink(temporary).catch(() => undefined); }
-  }
 }

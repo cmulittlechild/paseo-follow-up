@@ -1,20 +1,25 @@
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { WriteBehind } from "./write-behind";
 import {
   AGENT_ROLES, EMPTY_AGENT_SETTINGS, isJobRole, parseAgentSettings, resolveAll, resolveRole,
   type AgentRole, type AgentSettingsFile, type Catalog, type CatalogProvider, type RoleConfig, type SavedRole,
 } from "../shared/agent-settings";
 
 /**
- * The role settings file (`agents.json`), its own small file next to state.json. Read once and cached; writes are
- * serialized, atomic and owner-only, and only happen when the developer changes something.
+ * The role settings file (`agents.json`), its own small file next to state.json. Read once and cached; changes are
+ * serialized and validated, then saved behind the reply (an-ack-never-waits-on-the-disk, server/write-behind.ts),
+ * atomic and owner-only, and only when the developer changes something.
  */
 export class AgentSettingsStore {
   private tail: Promise<unknown> = Promise.resolve();
   private cached: { file: AgentSettingsFile; invalid: AgentRole[] } | null = null;
-  constructor(readonly directory: string) {}
+  /** agents.json, written behind the reply. */
+  readonly persist: WriteBehind<AgentSettingsFile>;
+  constructor(readonly directory: string) { this.persist = new WriteBehind({ path: this.path, encode: file => JSON.stringify(file, null, 2) }); }
   private get path() { return join(this.directory, "agents.json"); }
+  /** Waits for the changes in flight, then writes what is pending; the worker's stop calls it. */
+  async flush(): Promise<void> { await this.tail; await this.persist.flush(); }
 
   async load(): Promise<{ file: AgentSettingsFile; invalid: AgentRole[] }> {
     if (this.cached) return this.cached;
@@ -38,8 +43,8 @@ export class AgentSettingsStore {
         copy.roles[role] = clean(role, parsed.file.roles[role] ?? {});
         if (!Object.keys(copy.roles[role]!).length) delete copy.roles[role];
       }
-      await this.write(copy);
       this.cached = { file: copy, invalid: (this.cached?.invalid ?? []).filter(r => r !== role) };
+      this.persist.set(copy);
       return copy;
     });
     this.tail = next.catch(() => undefined);
@@ -53,23 +58,14 @@ export class AgentSettingsStore {
       const { file, invalid } = await this.load();
       const copy: AgentSettingsFile = { ...structuredClone(file), enable_wait: enabled };
       if (enabled) delete copy.enable_wait;
-      await this.write(copy);
       this.cached = { file: copy, invalid };
+      this.persist.set(copy);
       return copy;
     });
     this.tail = next.catch(() => undefined);
     return next;
   }
 
-  private async write(file: AgentSettingsFile): Promise<void> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const temporary = join(this.directory, `agents.${randomUUID()}.tmp`);
-    try {
-      const handle = await open(temporary, "wx", 0o600);
-      try { await handle.writeFile(JSON.stringify(file, null, 2)); await handle.sync(); } finally { await handle.close(); }
-      await rename(temporary, this.path);
-    } finally { await unlink(temporary).catch(() => undefined); }
-  }
 }
 
 /** Fields a role doesn't use aren't stored. */
