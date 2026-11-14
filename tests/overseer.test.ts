@@ -481,3 +481,69 @@ test("omnibox: Enter never sends a one-word miss to the Overseer; a sentence or 
   assert.equal(defaultActive(rows("scim")), 0, "a match: Enter opens it");
   assert.equal(defaultActive(null), 0);
 });
+
+// a-derived-view-is-built-when-read: the 15 s inbox tick rebuilt the Overseer's digest from the whole Home model (2.7 MB at
+// 139 workspaces, ~55 of the worker's ~480 MB per 5 min on 2026-11-14) for a file only the Overseer's prompt hook reads.
+// It is now built when the Overseer's turn starts, at start(), and by a 10-min backstop.
+async function builtWhenRead(t: any) {
+  let now = NOW;
+  const box = { rows: [row("a1", { workspaceId: "w1" })] };
+  const dir = await mkdtemp(join(tmpdir(), "overseer-read-")); t.after(() => rm(dir, { recursive: true, force: true }));
+  const state: State = { version: 1, workspaces: [workspace({ id: "w1", title: "SCIM", mainAgentId: "a1" })] };
+  const overseer = new Overseer({ directory: dir, store: { snapshot: async () => state }, inbox: { async list() { return { rows: box.rows }; }, async brief() { return null; }, async noteDelivery() {} },
+    priorities: { read: async () => [] }, enabled: async () => true, now: () => now, tight: async () => false,
+    workspaces: async () => [{ id: "w1", name: "SCIM", project: "acme-app", projectId: "p", activityAt: at(5), branch: "dev/scim" }] });
+  await writeFile(join(dir, "overseer.json"), JSON.stringify({ version: 1, agentId: "ov", workspaceId: "w-ov", startedAt: at(60), generation: 1, error: null }));
+  const file = async () => JSON.parse(await readFile(join(dir, "overseer-digest.json"), "utf8"));
+  return { overseer, box, file, advance: (ms: number) => { now += ms; } };
+}
+
+test("a-derived-view-is-built-when-read: inbox ticks build nothing; the Overseer's turn builds, another agent's doesn't", async t => {
+  const f = await builtWhenRead(t);
+  assert.equal(await f.overseer.backstopDigest(), "written", "the first tick after a start builds (the backstop is due)");
+  for (let i = 0; i < 39; i++) { f.advance(15_000); assert.equal(await f.overseer.backstopDigest(), "later"); }
+  assert.equal(f.overseer.digestBuilds, 1, "40 ticks over 10 min, one build (main: 40)");
+  f.advance(15_000);
+  assert.equal(await f.overseer.backstopDigest(), "same", "10 min after the last build, the backstop builds; same content, no rewrite");
+  assert.equal(f.overseer.digestBuilds, 2);
+  assert.equal(await f.overseer.turnStarted("a1"), "skipped", "another agent's turn builds nothing");
+  assert.equal(f.overseer.digestBuilds, 2);
+  const before = await f.file();
+  f.advance(30_000);
+  assert.equal(await f.overseer.turnStarted("ov"), "same", "the Overseer's turn builds");
+  const after = await f.file();
+  assert.equal(f.overseer.digestBuilds, 3);
+  assert.equal(after.builtAt, new Date(NOW + 40 * 15_000 + 30_000).toISOString(), "and always writes, so builtAt marks it fresh");
+  assert.equal(after.at, before.at, "at stays the last content change");
+  assert.equal(after.hash, before.hash);
+  f.box.rows = [...f.box.rows, row("a2", { workspaceId: "w2", status: "running" })];
+  f.advance(5_000);
+  assert.equal(await f.overseer.turnStarted("ov"), "written");
+  assert.equal((await f.file()).at, new Date(NOW + 40 * 15_000 + 35_000).toISOString(), "a content change moves at");
+});
+
+test("a-derived-view-is-built-when-read: the hook takes a build that landed first, waits for one that lands, and falls back", async () => {
+  const { freshDigest } = await hook() as unknown as { freshDigest: (read: () => Promise<unknown>, seen: unknown, o: object) => Promise<{ file: { builtAt?: string } | null; fresh: boolean; waited: number }> };
+  let clock = NOW;
+  const opts = { now: () => clock, sleep: async (ms: number) => { clock += ms; } };
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const seen = { builtAt: iso(NOW - 120_000) };
+  // The worker built on turn_started before the hook ran: no wait.
+  const landed = await freshDigest(async () => ({ builtAt: iso(NOW - 300) }), seen, opts);
+  assert.deepEqual([landed.fresh, landed.waited], [true, 0]);
+  // The build lands while the hook polls: picked up on the next read.
+  clock = NOW; let reads = 0;
+  const during = await freshDigest(async () => (++reads < 4 ? { builtAt: iso(NOW - 120_000) } : { builtAt: iso(clock) }), seen, opts);
+  assert.deepEqual([during.fresh, during.waited, during.file!.builtAt], [true, 300, iso(NOW + 300)]);
+  // No build (memory tight, or the worker is down): the last file after 1.5 s.
+  clock = NOW;
+  const none = await freshDigest(async () => ({ builtAt: iso(NOW - 120_000) }), seen, opts);
+  assert.deepEqual([none.fresh, none.waited, none.file!.builtAt], [false, 1500, iso(NOW - 120_000)]);
+  // A backstop build minutes old is newer than what the Overseer saw but not for this turn: it still waits.
+  clock = NOW;
+  const backstop = await freshDigest(async () => ({ builtAt: iso(NOW - 240_000 + 180_000) }), { builtAt: iso(NOW - 240_000) }, opts);
+  assert.deepEqual([backstop.fresh, backstop.waited], [false, 1500]);
+  // An older worker writes no builtAt: taken as is, no wait.
+  clock = NOW;
+  assert.deepEqual((await freshDigest(async () => ({ hash: "x" }), seen, opts)).waited, 0);
+});
