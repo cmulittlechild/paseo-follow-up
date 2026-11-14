@@ -311,8 +311,8 @@ export default function contribute(server: PluginServerContext) {
     if (!governor.allowsExtras()) { if (!stopped) inboxTimer = setTimeout(() => void inboxLoop(), 15_000); return; }
     try { await writeBriefState().catch(() => undefined); await inbox.tick(); await inbox.reconcilePermissions(); await inbox.observeGuard(); await inbox.observeFollowUp(await store.snapshot()); inboxError = null; }
     catch (error) { inboxError = error instanceof Error ? error.message : "The Needs-you inbox couldn't update."; }
-    // The Overseer's digest for its next turn, and its recreation if it was archived. Never blocks the inbox.
-    if (overseer) { await overseer.writeDigest().catch(() => undefined); if (api) await overseer.ensure(api as unknown as OverseerPaseo, { periodic: true }).catch(() => undefined); }
+    // The Overseer's digest backstop (it is built when its turn starts: agent.turn_started below) and its recreation if it was archived. Never blocks the inbox.
+    if (overseer) { await overseer.backstopDigest().catch(() => undefined); if (api) await overseer.ensure(api as unknown as OverseerPaseo, { periodic: true }).catch(() => undefined); }
     // The ranker's scheduled run (window, cadence, cap and the governor are its own checks). Never awaited: it can take minutes.
     if (ranker) void ranker.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
@@ -1373,6 +1373,8 @@ export default function contribute(server: PluginServerContext) {
     server.on("agent.turn_started", async () => updater.activity()),
     server.on("agent.turn_ended", async () => { updater.activity(); void evaluateMove(); }),
     server.on("agent.turn_started", async (event, { paseo }) => { seen(paseo); inboxHook(() => inbox.turnStarted(event.agent, event.turnId)); }),
+    // a-derived-view-is-built-when-read: the Overseer's digest, built for the turn its prompt hook is about to read.
+    server.on("agent.turn_started", async event => { await ready; if (stopped || loadError || !overseer) return; await overseer.turnStarted(event.agent.id).catch(() => undefined); }),
     // A newer main-agent turn supersedes the failed turn's automatic hold (shared/status.ts holdSuperseded).
     // A turn writes only the workspace it is about (server/turn-events.ts, a-send-never-clones-the-whole-state): a
     // superseded hold lifts, the owned workspace's Done ends, and a dormant workspace becomes active again.

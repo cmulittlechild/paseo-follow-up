@@ -183,8 +183,10 @@ export function pageRows(rows: WorkstreamRow[], opts: { page?: number; size?: nu
 /** What the daemon writes for the hook: one line per workstream and a hash per line, so the hook can diff turns. */
 export type DigestFile = {
   version: 1; agentId: string;
-  /** When the content last changed. The daemon rewrites the file only when `hash` moves. */
+  /** When the content last changed. The daemon rewrites the file only when `hash` moves, or for an Overseer turn. */
   at: string; total: number; needs: number;
+  /** When the worker built it (a-derived-view-is-built-when-read): the hook waits briefly for one built for its turn. */
+  builtAt?: string;
   /** Over the agent id and every row hash: equal hashes mean an identical digest. */
   hash: string;
   /** Resting rows carry `resting` and a title-only line; the hook lists them in one compact line. */

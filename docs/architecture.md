@@ -188,6 +188,17 @@ and at most `TURN_READ_CAP` entries, and the engine's and the inbox's handlers s
   harness-sized JS heap. Guarded by `tests/inbox-copies.test.ts`, `tests/store-copies.test.ts` (it walks every JSON
   writer in `server/`: a new store must use the draft or carry an exemption with its reason) and `test:scale`'s busy
   window.
+- **A derived view is built when it is read** (`a-derived-view-is-built-when-read`). A view with one reader is built
+  for that read, never on a timer in case it is read. The Overseer's digest (`overseer-digest.json`) is read only by
+  the Overseer's UserPromptSubmit hook, and a change triggers nothing, so the worker builds it on `agent.turn_started`
+  for the Overseer (and at start() and recreation). That build always writes, with `builtAt`; `at` stays the last
+  content change, and other builds rewrite only when the hash moves. The hook (`freshDigest`) can't ask the worker
+  for a build, so it takes the file when its `builtAt` is newer than the one it last consumed (kept in
+  `hook-state/overseer-seen-<agent>.json`) and under 5 s old; otherwise it polls every 100 ms for up to 1.5 s and
+  then uses what is there. A 10-min backstop (`DIGEST_BACKSTOP_MS`) bounds how old that fallback can be; a backstop
+  build is fresh for a turn only inside the 5 s window. The tight-memory skip still applies. 2026-11-14 (main
+  8c54f00, live mix): the 15 s inbox tick rebuilt it from the whole Home model, 2.7 MB at 139 workspaces: ~55 of the
+  worker's ~480 MB per 5 min, the "Home/overseer views" category.
 - **A mutation costs what it changes** (`a-mutation-costs-what-it-changes`). Copying only what changes isn't enough
   when the bookkeeping walks the whole store: `finish()` reads only the ids the draft wrote, copied or deleted (the
   collection proxy records them) and copies a record once, only when one of them changed; `plain()` allocates a copy

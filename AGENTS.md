@@ -169,6 +169,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      `JSON.stringify(state)`. 2.0.2-beta.1 live mix: the whole-inbox stringify was 26.5 of the inbox's 76 MB per 5 min;
      a one-entry change and its write now allocate 93 KB (main 181). Guarded by the same test (byte-identical after a
      mix of changes; ≤ 130 KB a write).
+   - **A derived view is built when it is read** (`a-derived-view-is-built-when-read`): a view only one reader uses is
+     built for that read, never on a timer in case it is read. The Overseer's digest (`Overseer.writeDigest`) is built
+     when the Overseer's turn starts (`agent.turn_started`), at start() and recreation, and by a 10-min backstop
+     (`DIGEST_BACKSTOP_MS`) that bounds how old the hook's fallback can be. Its prompt hook (`freshDigest`,
+     `server/agent-hook.mjs`) takes a build newer than the last one it consumed and under 5 s old, else polls 100 ms
+     for up to 1.5 s, then uses what is there. 2026-11-14 (main 8c54f00, live mix): the 15 s inbox tick rebuilt it
+     from the whole Home model, 2.7 MB at 139 workspaces, ~55 of the worker's ~480 MB per 5 min, for a file nothing
+     else reads. Guarded by `tests/overseer.test.ts` (`a-derived-view-is-built-when-read`).
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`
      (`server/list-cache.ts`) skips a workspace whose frozen object is the one it last serialised, so a state change
      stringifies only the workspaces it touched, never every tracked one. 2026-11-13 (run W, live copy under live

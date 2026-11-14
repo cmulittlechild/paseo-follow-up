@@ -83,6 +83,25 @@ export function overseerDigest(file, seen, now = Date.now(), { needsMax = 20, ch
   return { text: text.trimEnd(), seen: { at: now, rows: Object.fromEntries(all.map(r => [r.id, r.hash])) } };
 }
 /**
+ * a-derived-view-is-built-when-read: the worker builds overseer-digest.json when the Overseer's turn starts, usually before
+ * this hook runs. The file is fresh for this turn when its builtAt is newer than the one the Overseer last saw and
+ * within windowMs of now; otherwise poll every stepMs for up to waitMs, then use what is there (the last build, at most
+ * the worker's 10-min backstop old). A worker that writes no builtAt is taken as is. Pure apart from read and sleep.
+ */
+export async function freshDigest(read, seen, { now = Date.now, sleep = ms => new Promise(r => setTimeout(r, ms)), waitMs = 1500, stepMs = 100, windowMs = 5000 } = {}) {
+  const fresh = file => {
+    if (!file?.builtAt) return true;
+    const built = Date.parse(file.builtAt);
+    const last = Date.parse(seen?.builtAt ?? "");
+    return (!Number.isFinite(last) || built > last) && now() - built <= windowMs;
+  };
+  let file = await read();
+  const until = now() + waitMs;
+  let waited = 0;
+  while (!fresh(file) && now() < until) { await sleep(stepMs); waited += stepMs; file = (await read()) ?? file; }
+  return { file, fresh: fresh(file), waited };
+}
+/**
  * How batches are worked, for this workspace's PR workflow (from scopes.json). Graphite with /fix-pr, and agents of an
  * older worker that wrote no workflow, keep the original text; plain GitHub never mentions Graphite, gt or /fix-pr.
  */
@@ -196,11 +215,12 @@ async function main() {
       return;
     }
     if (event.hook_event_name !== "UserPromptSubmit") return;
-    const file = await json(join(directory, "overseer-digest.json")).catch(() => null);
-    if (!file || file.agentId !== agentId) return;
     const seenPath = join(directory, "hook-state", `overseer-seen-${agentId}.json`);
-    const digest = overseerDigest(file, await json(seenPath).catch(() => null));
-    await save(seenPath, digest.seen);
+    const seen = await json(seenPath).catch(() => null);
+    const { file } = await freshDigest(() => json(join(directory, "overseer-digest.json")).catch(() => null), seen);
+    if (!file || file.agentId !== agentId) return;
+    const digest = overseerDigest(file, seen);
+    await save(seenPath, { ...digest.seen, ...(file.builtAt ? { builtAt: file.builtAt } : {}) });
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: digest.text } }) + "\n");
     return;
   }

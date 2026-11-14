@@ -12,7 +12,7 @@ import { isOpen as questionOpen } from "../shared/questions";
 import { classify, latestPrompt, ledgerSender, type Sources } from "./inbox-classifier";
 import {
   EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvesNewWorkspace, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
-  overseerStateSchema, pageRows, routeDecision, scoreCandidates, workspaceTitleFor, workstreams, type OverseerState, type WorkstreamRow,
+  overseerStateSchema, pageRows, type DigestFile, routeDecision, scoreCandidates, workspaceTitleFor, workstreams, type OverseerState, type WorkstreamRow,
 } from "../shared/overseer";
 import { overseerPrompt } from "./overseer-prompt-source";
 import { isLoaded, type LoadSignals } from "../shared/agent-load";
@@ -37,6 +37,9 @@ export type OverseerPaseo = {
   projects?: { list(): Promise<unknown> };
   providers?: { listModels(provider: string): Promise<unknown> };
 };
+
+/** The backstop: while an Overseer exists, its digest is built at least this often, so the hook's fallback is bounded. */
+export const DIGEST_BACKSTOP_MS = 10 * 60_000;
 
 export type OverseerDeps = {
   directory: string;
@@ -86,6 +89,10 @@ export class Overseer {
   private plans = new Map<string, { expiresAt: number; run: () => Promise<unknown> }>();
   private starting: Promise<OverseerState> | null = null;
   private written: string | null = null;
+  private writtenAt: string | null = null;
+  private builtAt = -Infinity;
+  /** Digest builds since start, for tests and the scale check. */
+  digestBuilds = 0;
   private checkedAt = 0;
   constructor(private d: OverseerDeps) {}
   private now() { return this.d.now?.() ?? Date.now(); }
@@ -225,18 +232,40 @@ export class Overseer {
 
   /**
    * The file the agent hook reads at the start of every Overseer turn, from metadata and Follow-up's state only.
-   * Checked on the inbox tick, rewritten only when its content hash moves, and skipped while the resource governor pauses background work.
+   * a-derived-view-is-built-when-read: built when the Overseer's turn starts (turnStarted), at start() and recreation,
+   * and by a backstop every DIGEST_BACKSTOP_MS while an Overseer exists, never on the 15 s inbox tick. 2026-11-14 (main
+   * 8c54f00, live mix): the tick rebuilt it from the whole Home model, 2.7 MB at 139 workspaces, ~55 of the worker's
+   * ~480 MB per 5 min, for a file only the Overseer's prompt hook reads. A turn's build always writes, so `builtAt` tells
+   * the hook it is fresh; other builds rewrite only when the content hash moves. `at` stays the last content change.
+   * Skipped while the resource governor pauses background work.
    */
-  async writeDigest(): Promise<"written" | "same" | "skipped"> {
+  async writeDigest(options: { turn?: boolean } = {}): Promise<"written" | "same" | "skipped"> {
     const s = await this.state();
     if (!s.agentId || !await this.d.enabled()) return "skipped";
     if (await this.d.tight?.()) return "skipped";
-    if (this.written === null) this.written = await readFile(this.digestPath, "utf8").then(t => JSON.parse(t)?.hash ?? "", () => "");
-    const file = digestFile(s.agentId, await this.workstreams(), this.now());
-    if (file.hash === this.written) return "same";
-    await atomic(this.digestPath, file);
-    this.written = file.hash;
-    return "written";
+    if (this.written === null) {
+      const prior = await readFile(this.digestPath, "utf8").then(t => JSON.parse(t) as Partial<DigestFile>, () => null);
+      this.written = prior?.hash ?? ""; this.writtenAt = prior?.at ?? null;
+    }
+    const now = this.now();
+    const file = digestFile(s.agentId, await this.workstreams(), now);
+    this.builtAt = now; this.digestBuilds++;
+    const same = file.hash === this.written;
+    if (same && !options.turn) return "same";
+    const at = same ? this.writtenAt ?? file.at : file.at;
+    await atomic(this.digestPath, { ...file, at, builtAt: new Date(now).toISOString() });
+    this.written = file.hash; this.writtenAt = at;
+    return same ? "same" : "written";
+  }
+  /** Builds the digest for the Overseer's turn that just started; any other agent's turn builds nothing. */
+  async turnStarted(agentId: string): Promise<"written" | "same" | "skipped"> {
+    if ((await this.state()).agentId !== agentId) return "skipped";
+    return this.writeDigest({ turn: true });
+  }
+  /** The inbox tick's call: a build only once DIGEST_BACKSTOP_MS passed since the last, so a fallback is never older. */
+  async backstopDigest(): Promise<"written" | "same" | "skipped" | "later"> {
+    if (this.now() - this.builtAt < DIGEST_BACKSTOP_MS) return "later";
+    return this.writeDigest();
   }
 
   /** One Overseer tool call. The caller must be the current Overseer agent. */
