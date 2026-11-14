@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stateSchema, workspaceSchema, type State, type Workspace } from "../shared/model";
 import { sameJson, deepFreeze, copyOnAccess, detach } from "./cow";
+import { retryBackoff, SURFACE_AFTER, type WriteHealth } from "./write-behind";
 export { sameJson, deepFreeze } from "./cow";
 
 /**
@@ -47,6 +48,17 @@ export class Store {
   private holds = 0;
   private held: { volatile: boolean } | null = null;
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * an-ack-never-waits-on-the-disk, for state.json's own write: a batched write that fails keeps the state in memory,
+   * logs, and retries with backoff (it waited for the next change before, and said nothing). From SURFACE_AFTER failed
+   * attempts it reports to `health`, the worker's error line, until a write lands.
+   */
+  health: WriteHealth | undefined;
+  retryMs: (attempt: number) => number = retryBackoff;
+  log: (line: string) => void = line => console.warn(line);
+  /** Consecutive failed state.json writes; 0 once one lands. */
+  attempts = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** Writes to state.json, for tests and the resource check. */
   writes = 0;
   /** `writeMs` 0 writes through inside each mutation (tools, tests); the worker batches with 1000. */
@@ -151,9 +163,24 @@ export class Store {
     while (this.flushing) await this.flushing;
     const current = this.state;
     if (!current) return;
-    this.flushing = this.write(current).then(saved => { if (this.state === current) this.state = saved; }).finally(() => { this.flushing = null; });
+    this.flushing = this.write(current).then(saved => { if (this.state === current) this.state = saved; this.landed(); }, error => { this.failed(error); throw error; }).finally(() => { this.flushing = null; });
     await this.flushing;
   }
+  private landed(): void {
+    if (!this.attempts) return;
+    this.log(`[follow-up] saved state.json after ${this.attempts} failed attempt${this.attempts === 1 ? "" : "s"}`);
+    this.attempts = 0; this.health?.clear(this.path);
+  }
+  private failed(error: unknown): void {
+    this.attempts++;
+    const message = error instanceof Error ? error.message : String(error);
+    this.log(`[follow-up] couldn't save state.json (attempt ${this.attempts}): ${message}; kept in memory, retrying`);
+    if (this.attempts >= SURFACE_AFTER) this.health?.fail(this.path, this.attempts, message);
+    if (this.closing || this.retryTimer) return;
+    this.retryTimer = setTimeout(() => { this.retryTimer = null; void this.flush().catch(() => undefined); }, this.retryMs(this.attempts));
+    (this.retryTimer as { unref?: () => void }).unref?.();
+  }
+  private get path(): string { return join(this.directory, "state.json"); }
   /**
    * The worker's last word on its state. Refuses new mutations at once; mutations already accepted commit if they
    * finish by `work`, and anything finishing later is dropped. Then it writes what is pending, by `save` (the end of
@@ -188,6 +215,7 @@ export class Store {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     if (this.volatileTimer) { clearTimeout(this.volatileTimer); this.volatileTimer = null; }
     if (this.holdTimer) { clearTimeout(this.holdTimer); this.holdTimer = null; }
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
   }
   /** Validates (applying schema defaults), writes when changed and returns the saved state, frozen. */
   private async write(state: State): Promise<State> {

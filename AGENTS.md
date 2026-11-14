@@ -182,7 +182,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      keep their value in memory (validated before the reply) and save through `WriteBehind` (`server/write-behind.ts`),
      outside the mutation queue like `Store.flush`: ordered, coalesced, temp + fsync + rename. A failed write logs and
      retries with backoff, and from the third attempt shows on the worker's error line until it lands; stop flushes
-     them. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
+     them. `state.json`'s batched write (`Store.flush`) retries and reports the same way. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
      `follow.inbox-list` waited 664 ms behind an `inbox.json` write, `follow.save-reviewers` 1458 ms on an fsync.
      Guarded by `tests/rpc-ack.test.ts` (every fsync 2 s slow) and `tests/ack-disk.test.ts`.
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`

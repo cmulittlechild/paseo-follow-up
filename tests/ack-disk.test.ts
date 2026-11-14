@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InboxStore } from "../server/inbox";
+import { Store } from "../server/store";
 import { ReviewerConfigStore } from "../server/reviewer-config";
 import { AgentSettingsStore } from "../server/agent-settings";
 import { stopWorker } from "../server/teardown";
@@ -118,6 +119,29 @@ test("an-ack-never-waits-on-the-disk: a failing write logs, retries with backoff
 test("an-ack-never-waits-on-the-disk: the worker shows a save that keeps failing as its error line", async () => {
   const source = await readFile("index.server.ts", "utf8");
   assert.equal(source.match(/loadError \?\? hookError \?\? writeHealth\.message\(\) \?\? engine\.error/g)?.length, 3, "follow.list, follow.get and the workspaces feed carry it");
-  assert.match(source, /for \(const file of \[reviewerStore\.persist, agentSettings\.persist, prWorkflow\.persist, inbox\.store\.persist\]\) file\.health = writeHealth;/);
+  assert.match(source, /for \(const file of \[store, reviewerStore\.persist, agentSettings\.persist, prWorkflow\.persist, inbox\.store\.persist\]\) file\.health = writeHealth;/);
   assert.match(source, /stopWorker\(\{ files: \[reviewerStore, agentSettings, prWorkflow\]/);
+});
+
+test("an-ack-never-waits-on-the-disk: a failing state.json write retries, surfaces after SURFACE_AFTER attempts, and clears once it lands", async t => {
+  const d = await dir(t);
+  const store = new Store(d, 10);
+  const health = new WriteHealth(); const logs: string[] = [];
+  store.health = health; store.retryMs = () => 20; store.log = line => logs.push(line);
+  await store.mutate(s => { s.projectDefaults = { acme: true }; });
+  await store.flush();
+  assert.deepEqual(JSON.parse(await readFile(join(d, "state.json"), "utf8")).projectDefaults, { acme: true });
+  // Every write fails while a directory sits where state.json goes (the rename can't replace it).
+  await rm(join(d, "state.json")); await mkdir(join(d, "state.json", "blocker"), { recursive: true });
+  await store.mutate(s => { s.projectDefaults = { acme: false }; });
+  await until(() => store.attempts >= SURFACE_AFTER);
+  assert.deepEqual((await store.snapshot()).projectDefaults, { acme: false }, "memory stays authoritative while the file can't be written");
+  assert.match(health.message() ?? "", /couldn't save state\.json \(\d+ attempts: .*\)\. Your change is kept and saving keeps retrying/, "the worker's error line names it");
+  assert.ok(logs.length >= SURFACE_AFTER && logs.every(l => /^\[follow-up\] couldn't save state\.json \(attempt \d+\): .*; kept in memory, retrying$/.test(l)), logs.join("\n"));
+  await rm(join(d, "state.json"), { recursive: true }); // the disk recovers; no new change is needed for the retry
+  await until(() => store.attempts === 0);
+  assert.deepEqual(JSON.parse(await readFile(join(d, "state.json"), "utf8")).projectDefaults, { acme: false }, "the retry wrote the held state");
+  assert.equal(health.message(), null, "the error line clears once it lands");
+  assert.match(logs.at(-1)!, /^\[follow-up\] saved state\.json after \d+ failed attempts$/);
+  await store.close();
 });
