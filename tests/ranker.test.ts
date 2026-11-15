@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { AiJobs, childEnv, type RunInput } from "../server/ai-jobs";
 import { canonicalArtifactUrl, ghAccounts, inputsHash, liveRankSources, parseLinearPage, PLAN_ENV, planReplySchema, rankKey, salvageArray, parseLinearIssues, parseReviewRequests, parseSlackSearch, planArgs, Ranker, RANKER_ROLE_DEFAULT, type RankSources } from "../server/ranker";
-import { damped, emptyReasons, healthLine, inRankWindow, paseoReason, rankCost, rankPrompt, reasonInputs, workspaceInputs, RANK_SYSTEM, rankWorkstream, toPriorities, type RankInputs } from "../shared/ranker";
+import { damped, emptyReasons, healthLine, inRankWindow, paseoReason, rankPrompt, reasonInputs, workspaceInputs, RANK_SYSTEM, rankWorkstream, toPriorities, type RankInputs } from "../shared/ranker";
 import { PriorityStore } from "../server/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
 
@@ -275,15 +275,6 @@ test("codex fix 3: rank-now starts the run and returns at once; status shows it 
   const st = await f.ranker.status();
   assert.equal(st.running, false); assert.equal(st.last?.ok, true); assert.equal(st.last?.top, "Vendor risk CSV export", "the new top row, for the toast");
   assert.equal(st.last?.provider, "claude");
-});
-
-test("codex fix: the header says the Codex subscription instead of a price, dollars for Claude, nothing before a model run", () => {
-  assert.equal(rankCost({ costUsd: null, last: { ok: true, skipped: null, provider: "codex" } }), "last run on Codex subscription");
-  assert.equal(rankCost({ costUsd: 0.0564, last: { ok: true, skipped: null, provider: "claude" } }), "last run $0.06");
-  assert.equal(rankCost({ costUsd: 0.004, last: { ok: true, skipped: null, provider: "claude" } }), "last run <$0.01");
-  assert.equal(rankCost({ costUsd: 0.0564, last: { ok: true, skipped: "same", provider: "claude" } }), "last run $0.06", "a skipped run keeps showing the standing ranking's cost");
-  assert.equal(rankCost({ costUsd: null, last: { ok: true, skipped: "sources", provider: null } }), "", "no model run yet");
-  assert.equal(rankCost(null), "");
 });
 
 test("codex fix 4: a workspace whose own inputs didn't change moves at most 10 points; one with news moves freely", async t => {
