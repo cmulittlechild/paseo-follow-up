@@ -1,0 +1,1 @@
+- Release tooling waits for delayed registry updates after npm accepts a version, rather than treating the version as failed.

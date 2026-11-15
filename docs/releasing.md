@@ -64,8 +64,16 @@ stop.
      only when that run did those checks, the verification sentence. Preview a body
      with `node scripts/release-body.mjs <tag>`. This is the GitHub page only: What's new in the app stays
      major-only. `tests/release-body.test.ts` covers the format and that the workflow uses the renderer.
-5. Wait for registry integrity verification before saying the version is on npm. To retry a failed publish, run the
-   workflow with `workflow_dispatch` and the existing tag. If a fix is needed, ship it as the next version rather
+5. `scripts/publish-npm.mjs` waits up to 45 minutes for matching registry integrity **and** the expected dist-tag.
+   Every probe uses cache revalidation headers and a fresh query key so cached 404s cannot end verification early.
+   The publish job allows 90 minutes, leaving the full verification window after its checks. An npm acceptance
+   receipt stays accepted even if registry visibility is delayed. A timeout reports `NPM_ACCEPTED_NOT_VISIBLE`,
+   explicitly keeps the existing tag immutable and does not create release notes. Real npm rejection, different
+   contents at the same version, or a prerelease on `latest` still fail. `tests/npm-publication.test.ts` covers delayed
+   metadata and tags, transient errors, acceptance receipts, immutable contents and release-note gating.
+   Wait for registry integrity verification before saying the version is on npm. To retry a failed publish, run the
+   workflow with `workflow_dispatch` and the existing tag. The verifier is loaded from the running workflow’s
+   commit so tags that predate that script can still be retried; the package contents stay at the release tag. If a fix is needed, ship it as the next version rather
    than moving the tag.
 
 ## Backfilling old release pages
