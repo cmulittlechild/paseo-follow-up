@@ -5,8 +5,8 @@ import { Icon, useToast } from "@getpaseo/plugin/client/ui";
 import { homeCounts, type HomeGroupId, type HomeModel } from "../shared/home";
 import { filterHome, homeSearchDocs, indexDocs, defaultActive, omniboxResults, overseerProvider, workspaceProvider, type OmniboxItem, type OmniboxProvider } from "../shared/search";
 import { DEFAULT_SORT, SORT_HINT, SORT_LABEL, SORT_MODES, type SortMode } from "../shared/sort";
-import { priorityNote, PRIORITY_SOURCE_LABEL } from "../shared/priorities";
-import { rankCost } from "../shared/ranker";
+import { PRIORITY_SOURCE_LABEL } from "../shared/priorities";
+import { rankFooter } from "../shared/ranker";
 import { meters, meterText, type Meter } from "../shared/usage";
 import { resourceMeter, type Resources } from "../shared/resources";
 import type { HomeSources } from "./home-data";
@@ -159,9 +159,9 @@ export function FilterField({ theme, filter, dense }: { theme: Theme; filter: Li
 export type RankState = { enabled: boolean; running: boolean; healthLine: string; error: string | null; costUsd?: number | null; last?: { ok: boolean; skipped: string | null; provider: string | null } | null } | null;
 
 
-export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, onRerank, compact = touch, shared = false }: { theme: Theme; mode: SortMode; onChange: (m: SortMode) => void; rankedAt: string | null; touch: boolean; rank?: RankState; onRerank?: () => Promise<{ ok: boolean; skipped: string | null; error: string | null; top?: { title: string }[] }>;
+export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, onRerank, compact = touch }: { theme: Theme; mode: SortMode; onChange: (m: SortMode) => void; rankedAt: string | null; touch: boolean; rank?: RankState; onRerank?: () => Promise<{ ok: boolean; skipped: string | null; error: string | null; top?: { title: string }[] }>;
   /** An icon without the mode's name (phones, and the sidebar view's narrow column). */ compact?: boolean;
-  /** Shown away from Home (the sidebar view): the menu says the order is Home's too. */ shared?: boolean }) {
+  }) {
   const c = theme.colors;
   const [open, setOpen] = useState(false);
   const now = useMinute();
@@ -177,9 +177,8 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
       else toast.show(r.skipped === "same" ? "Nothing new in Linear, Slack, GitHub or the plan since the last ranking" : r.top?.[0] ? `Re-ranked · ${r.top[0].title} first` : "Re-ranked", { variant: "success" });
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
   };
-  // "Ranked 12m ago · Slack unavailable": the age, then any source the last run couldn't read.
-  // The footer keeps the standing ranking's age and cost while a new one runs; the menu item says "Ranking…".
-  const note = [priorityNote(rankedAt, now), rankedAt && rank?.enabled ? rankCost(rank) : "", rank?.enabled ? rank.healthLine : ""].filter(Boolean).join(" · ");
+  // "Ranked 12m ago": only when the ranking last ran (and a failed run's reason); never its cost.
+  const note = rankFooter({ rankedAt, now, rank });
   return <View style={{ position: "relative", zIndex: 20 }}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Sort: ${SORT_LABEL[mode]}${running ? ", ranking" : ""}`} aria-expanded={open} accessibilityState={{ expanded: open }} onPress={() => setOpen(o => !o)}
       style={state => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, height: touch ? 44 : compact ? 32 : 30, minWidth: touch ? 44 : compact ? 32 : undefined, paddingHorizontal: compact ? 0 : 8, borderRadius: touch ? 8 : 6, backgroundColor: open || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
@@ -201,10 +200,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
           style={state => ({ ...menuItemRow(touch), minHeight: touch ? 48 : 34, paddingHorizontal: touch ? 12 : 10, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
           <MenuItemContent theme={theme} touch={touch} glyph={running ? <Spinner color={c.foregroundMuted} size={menuGlyph(touch).size - 2} label="Ranking" /> : "RefreshCw"} label={running ? "Ranking…" : "Re-rank now"} muted={running} />
         </Pressable>}
-        {/* Phones: before anything is ranked, "Priority: By urgency" only repeats the checked row's hint. */}
-        {!(touch && !rankedAt) && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 10, paddingTop: 4, paddingBottom: shared ? 0 : 4 }}>Priority: {note}</Text>}
-        {/* One order, saved as the Display setting home_sort: changing it here reorders Home as well. */}
-        {shared && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 10, paddingTop: 2, paddingBottom: 6 }}>Home uses this order too.</Text>}
+        {note && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: touch ? 12 : 10, paddingTop: 4, paddingBottom: 6 }}>{note}</Text>}
       </View>
     </View>}
   </View>;

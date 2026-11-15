@@ -94,7 +94,7 @@ export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => v
         // sort menu above the list on web, where every View is its own stacking context.
         top={<View style={{ zIndex: 10, flexDirection: "row", alignItems: "center", gap: touch ? 8 : 4, paddingHorizontal: touch ? 12 : 8, paddingVertical: touch ? 8 : 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
           <FilterField theme={view.theme} filter={filter} dense={touch} />
-          <SortMenu theme={view.theme} mode={full.sort} onChange={sources.extras.setSort} rankedAt={full.rankedAt} touch={touch} compact shared rank={rank} onRerank={sources.extras.rankNow} />
+          <SortMenu theme={view.theme} mode={full.sort} onChange={sources.extras.setSort} rankedAt={full.rankedAt} touch={touch} compact rank={rank} onRerank={sources.extras.rankNow} />
         </View>}
         footer={filter.hits && !touch ? <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 32 }}>Filtering this list · Esc clears</Text> : undefined} />
       <View style={{ position: "absolute", left: 8, right: 8, bottom: 8 }}><UndoBar store={sources.inbox} theme={view.theme} touch={touch} /></View>
