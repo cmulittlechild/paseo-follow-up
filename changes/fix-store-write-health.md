@@ -1,0 +1,1 @@
+- If Follow-up can't save your tracked work, it now says so and keeps retrying instead of failing silently.

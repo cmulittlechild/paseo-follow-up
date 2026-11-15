@@ -70,7 +70,7 @@ rejects before the reply), and save through `WriteBehind` (`server/write-behind.
 queue, as `Store.flush` writes `state.json`, one write at a time of the newest value, temp file, fsync, rename. A
 failed write keeps the value, logs, and retries with backoff (1 s doubling to 30 s); from the third failed attempt
 `WriteHealth` puts it on the worker's error line (`follow.list`, `follow.get`, the workspaces feed) until it lands.
-The worker's stop flushes them before the lock goes (`stopWorker`'s `files`). A crash before a write lands loses that
+The worker's stop flushes them before the lock goes (`stopWorker`'s `files`). `state.json`'s own batched write (`Store.flush`) reports the same way: a failed write keeps the state in memory, logs, retries with the same backoff, and from `SURFACE_AFTER` (3) attempts shows on the same line until it lands; it used to wait silently for the next change. A crash before a write lands loses that
 save, as it does for `state.json` and `inbox.json`. 2026-11-13/14 CI: `follow.inbox-list` waited 664 ms behind an
 `inbox.json` write and `follow.save-reviewers` 1458 ms on `reviewers.json`'s fsync, with the event loop idle; a local
 disk answers in 3–4 ms, which hid both. `tests/rpc-ack.test.ts` runs with every fsync 2 s slow (main fails with

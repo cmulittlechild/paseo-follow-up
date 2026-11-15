@@ -418,7 +418,7 @@ export default function contribute(server: PluginServerContext) {
     // Brief answers recorded before a reload that Paseo never confirmed go out again, under the same messageId.
     await inbox.resumeAnswers(sendTo).catch(() => undefined);
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
-  for (const file of [reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
+  for (const file of [store, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
   const requireReady = async () => { await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
   // 1.4.0-beta.2: Follow-up's tools per agent: natively through Paseo's MCP when the host serves plugin tools,
   // otherwise the stdio bridge for this launch only. FOLLOW_UP_TOOLS tells the hooks which names the agent has.
