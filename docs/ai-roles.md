@@ -37,7 +37,8 @@
 - **Claude:** `claude -p` with no tools, MCP servers, settings or saved session.
 - **Codex:** `codex exec --ephemeral` with no user config, no shell and a read-only sandbox in an empty temp folder.
 - **Limits:** one turn, a 90 s timeout (the whole process group is killed), and one job at a time.
-- **Log:** each call's duration and cost goes to `ai-jobs.jsonl`.
+- **Log:** each call’s duration and cost goes to `ai-jobs.jsonl`. A caller may attach a privacy-safe
+  `validationReason` rule code through `diagnose`; never a reply, prompt, name or issue key.
 - **Any other provider** (`server/job-agent.ts`, `jobAgentRunner`): when neither a CLI runner applies, `AiJobs`
   falls back to `opts.generic`, a short-lived Paseo agent. Paseo refuses hidden internal agents from plugins, so jobs
   run in one background workspace ("Follow-up jobs", home `jobs-home/`, id cached in `jobs-workspace.json` and
@@ -73,7 +74,8 @@ User-facing copy calls it **Summary** (the Settings → Agents role is "Summarie
 ## Rename title with AI
 
 A short workspace name from what Follow-up already stored, on Summaries' agent (Settings → Agents → Summaries, Claude
-Haiku by default). About $0.001 and 3 s a suggestion.
+Haiku by default). About $0.001 and 3 s a suggestion. This one-line Haiku subprocess explicitly disables
+thinking with job-only environment settings; it does not change Summaries or saved CLI preferences.
 
 - **Files.** `shared/rename.ts` has the name rules (`checkName`), the prompt and the Undo rules; `server/rename.ts`
   has `RenameService`, `RenameStore` (`rename.json`) and `renameDaemon`; `client/rename.tsx` the dialog.
@@ -85,13 +87,21 @@ Haiku by default). About $0.001 and 3 s a suggestion.
 - **The name.** One rule, `NAME_RULE` ("Start with a verb. Up to 8 words."), stated word for word under the
   dialog's field and in the prompt, and enforced by `checkName`: sentence case, at most 60 characters, no quotes or
   branch shapes. A linked Linear key may go inline after the verb (`Verify ABC-123 vendor mismatch`, not counted as a
-  word), never first and never alone; an unlinked key is refused. The prompt carries four real-shaped examples. A reply that breaks a rule gets one retry with the reason, then an error; never more effort. The
-  developer's edits pass the same `checkName`.
-- **Limits.** 30 suggestions a day (each model run counts), separate from Summaries' cap. Refused while the governor
-  reports the VM critical.
+  word), never first and never alone; an unlinked key is refused. The prompt carries two short examples. Before `checkName`, `normalizeSuggestion` removes quotes and trailing punctuation,
+  drops unlinked keys, moves a leading linked key after the verb, and cuts to eight words or 60 characters on a word
+  boundary. Only empty, unchanged or branch-like content needs one retry. If it is still unusable, the best candidate
+  stays in the editable field with the rule hint. The developer's edits still pass the strict `checkName`; no invalid
+  name is applied. `checkName` returns privacy-safe rule IDs for the job log, never the rejected name text.
+- **Limits.** 30 suggestions a day (each model run counts), separate from Summaries' cap. A developer's rename
+  click may wait 250 ms for room but is never refused as busy.
+  The daily cap leaves an editable field with a limit notice, rather than a suggestion-failure error.
 - **Renaming** sets Paseo's own workspace title (`set_workspace_title`) and records the old title in `rename.json`.
   The toast after it has Undo for 10 s; for 24 h the dialog's Undo last rename and `ai_rename undo=true` restore it,
   but only while the workspace still has the name the rename gave it (invariant `rename-is-always-undoable`).
+- **RPC boundary.** `renameIssueKeys` selects only Linear-style issue keys before the 20-key wire limit. Artifact
+  and document URLs can be much longer than the 40-character issue-key field and must never enter it. Otherwise a
+  successful model answer can still fail output validation. A fictional long-artifact fixture guards this path.
+- **Errors.** Provider failures and timeouts show “Couldn't suggest”; repairable or still-editable replies do not.
 - **Entry points:** the row menu (Home, Follow-up's sidebar view, the panel's More button), ⌘K "Follow-up: Rename
   title with AI", and the agent tool `ai_rename` (planned). Tests: `tests/rename.test.ts`.
 

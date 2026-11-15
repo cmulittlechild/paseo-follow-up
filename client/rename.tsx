@@ -55,6 +55,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
   const [info, setInfo] = useState<RenameStatus | null>(null);
   const [phase, setPhase] = useState<Phase>("suggesting");
   const [error, setError] = useState<string | null>(null);
+  const [jobFailed, setJobFailed] = useState(false);
   const [name, setName] = useState("");
   const [edited, setEdited] = useState(false);
   const [details, setDetails] = useState(false);
@@ -65,7 +66,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
 
   const suggest = useCallback(async () => {
     const mine = ++run.current;
-    setPhase("suggesting"); setError(null); setDetails(false); typed.current = false; setEdited(false); setName("");
+    setPhase("suggesting"); setError(null); setJobFailed(false); setDetails(false); typed.current = false; setEdited(false); setName("");
     // The quick read first (the name now, the Undo link), so the dialog is never blank while the model runs.
     status({ workspaceId: request.workspaceId }).then(s => { if (mine === run.current) setInfo(prev => prev ?? s); }).catch(() => undefined);
     try {
@@ -74,6 +75,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
       setInfo(s); if (!typed.current) setName(s.suggestion ?? ""); setPhase("ready");
     } catch (e) {
       if (mine !== run.current) return;
+      setJobFailed(/Couldn't suggest a name:/i.test(errorText(e)));
       setError(errorText(e).replace(/^Couldn't suggest a (usable )?name[:.]?\s*/i, "").replace(/\s*Try again, or type one\.?$/i, "") || null); setPhase("error");
       setTimeout(() => input.current?.focus(), 0);
     }
@@ -82,6 +84,8 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
 
   const now = info?.current ?? request.title ?? "";
   const check = checkName(name, { keys: info?.keys ?? [], current: now || null });
+  const invalidHint = (edited || phase === "ready") && !check.ok && !!name.trim();
+  const hintColor = edited ? c.statusDanger : c.statusWarning;
   const canRename = check.ok && (phase !== "suggesting" || edited);
   const refresh = () => { void cache.invalidateQueries({ queryKey: overviewKey }); void cache.invalidateQueries({ queryKey: ["follow-up"] }); };
 
@@ -101,7 +105,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
   };
 
   const field = { minHeight: compact ? 44 : 34, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, color: c.foreground, backgroundColor: c.surface1, fontSize: compact ? 16 : 14,
-    borderColor: edited && !check.ok ? c.statusDanger : c.border };
+    borderColor: invalidHint ? hintColor : c.border };
   const counter = name.trim().length;
   // Only near the limit: the reason text covers the rest (words, keys, branch names).
   const showCounter = counter > NAME_MAX_CHARS - 15;
@@ -130,17 +134,18 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
           {phase === "error" && !edited && <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 6 }}>
             <View style={{ paddingTop: 2 }}><Icon name="TriangleAlert" size={13} color={c.statusWarning} /></View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[t.meta, { color: c.statusWarning }]}>Couldn't suggest a name. Type one, or try again.</Text>
-              {!!error && (details
+              <Text style={[t.meta, { color: c.statusWarning }]}>{jobFailed ? "Couldn't suggest a name. Type one, or try again." : error || "Couldn't load this workspace. Type a name, or try again."}</Text>
+              {jobFailed && !!error && (details
                 ? <Text selectable style={t.small}>{error}</Text>
                 : <Pressable accessibilityRole="button" onPress={() => setDetails(true)} style={{ alignSelf: "flex-start" }}><Text style={[t.small, { textDecorationLine: "underline" }]}>Details</Text></Pressable>)}
             </View>
           </View>}
-          {edited && !check.ok && !!name.trim() && <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", gap: 6 }}>
-            <View style={{ paddingTop: 1 }}><Icon name="CircleAlert" size={13} color={c.statusDanger} /></View>
-            <Text style={[t.small, { flex: 1, color: c.statusDanger }]}>{check.reason}</Text>
+          {invalidHint && !check.ok && <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", gap: 6 }}>
+            <View style={{ paddingTop: 1 }}><Icon name="CircleAlert" size={13} color={hintColor} /></View>
+            <Text style={[t.small, { flex: 1, color: hintColor }]}>{check.reason}</Text>
           </View>}
-          {(!edited || !name.trim()) && phase !== "error" && <Text style={t.small}>{NAME_RULE}</Text>}
+          {(!edited || !name.trim()) && !invalidHint && phase !== "error" && <Text style={t.small}>{NAME_RULE}</Text>}
+          {phase === "ready" && !edited && !!info?.notice && <Text accessibilityLiveRegion="polite" style={[t.small, { color: c.statusWarning }]}>{info.notice}</Text>}
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {/* After a failed suggestion with nothing typed, Try again is the likely next step, so it leads. */}

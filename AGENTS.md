@@ -301,6 +301,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    and `set_workspace_title`. **An id lookup never trusts an ignored filter**
    (`an-id-lookup-never-trusts-an-ignored-filter`): use the client’s `findWorkspace` or page workspace lists until
    the exact id is found or the list ends, including background workspaces when the client reports support. Guarded by `tests/rename.test.ts` ([docs/ai-roles.md](docs/ai-roles.md#rename-title-with-ai)).
+   **A rename suggestion is always editable** (`a-rename-suggestion-is-always-editable`): repair quotes, punctuation,
+   unlinked keys, key placement and length before validation; retry only unusable content and keep the best candidate
+   with its rule hint. Only issue keys enter the RPC's bounded keys field, never artifact URLs. A developer's click
+   is never refused as busy. Haiku runs without thinking; rejected replies log only rule codes, never name text.
+   Guarded by `tests/rename.test.ts`.
 13. **Every list row has the row menu** (`every-list-row-has-the-row-menu`). `menu` is required on `HomeList` and its
    rows' opener is required, so right-click, long-press and Shift+F10 open Follow-up's row menu on every list (Home,
    search results, the sidebar view), never the platform's Copy/Paste menu. Items a surface can't serve are left
