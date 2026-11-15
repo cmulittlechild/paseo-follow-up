@@ -23,7 +23,7 @@ jobs:
   publish:
     name: Publish package
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,55 +78,14 @@ jobs:
       - run: npm run test:install
       - run: npm pack --dry-run
       - name: Publish or verify the existing package
+        timeout-minutes: 50
+        env:
+          PUBLISH_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        # Old tags can predate the verifier. Keep package files at the release tag, but use this workflow's helper.
+        # Publish once, then wait for registry integrity and dist-tag verification before release notes.
         run: |
-          node --input-type=module <<'JS'
-          import { spawnSync } from "node:child_process";
-          import { readFileSync } from "node:fs";
-          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-          const spec = `${pkg.name}@${pkg.version}`;
-          // A prerelease (any version with "-", such as 1.1.0-beta.0) goes to the beta dist-tag only,
-          // so it never reaches users or scheduled updates that follow latest.
-          const distTag = pkg.version.includes("-") ? "beta" : "latest";
-          console.log(`Publishing ${spec} under the ${distTag} dist-tag.`);
-          const run = args => spawnSync("npm", args, { encoding: "utf8" });
-          const packed = run(["pack", "--dry-run", "--json"]);
-          if (packed.status !== 0) { process.stderr.write(packed.stderr); process.exit(1); }
-          const integrity = JSON.parse(packed.stdout)[0].integrity;
-          const existing = run(["view", spec, "dist.integrity", "--json", "--prefer-online", "--registry", "https://registry.npmjs.org"]);
-          if (existing.status === 0) {
-            if (JSON.parse(existing.stdout) !== integrity) {
-              console.error(`::error::${spec} already exists with different contents. Release a new version; do not rewrite the tag.`);
-              process.exit(1);
-            }
-            console.log(`${spec} is already published with matching contents; continuing the release.`);
-          } else {
-            let error;
-            try { error = JSON.parse(existing.stdout).error; } catch {}
-            if (error?.code !== "E404") { process.stderr.write(existing.stderr); process.exit(1); }
-            const result = spawnSync("npm", ["publish", "--access", "public", "--tag", distTag, "--registry", "https://registry.npmjs.org"], { stdio: "inherit" });
-            if (result.status !== 0) {
-              console.error("::error::npm publication failed. Check this package's GitHub trusted publisher repository, workflow filename, permissions, and environment in npm Settings.");
-              process.exit(result.status || 1);
-            }
-            let verified = false;
-            for (let attempt = 0; attempt < 180; attempt++) {
-              const remote = run(["view", spec, "dist.integrity", "--json", "--prefer-online", "--registry", "https://registry.npmjs.org"]);
-              if (remote.status === 0 && JSON.parse(remote.stdout) === integrity) { verified = true; break; }
-              await new Promise(resolve => setTimeout(resolve, 5000));
-            }
-            if (!verified) { console.error(`::error::Registry verification failed for ${spec}.`); process.exit(1); }
-          }
-          // Both tags: the dist-tag must point at this version, and a prerelease must never be latest.
-          let tags = null;
-          for (let attempt = 0; attempt < 60; attempt++) {
-            const view = run(["view", pkg.name, "dist-tags", "--json", "--prefer-online", "--registry", "https://registry.npmjs.org"]);
-            if (view.status === 0) { tags = JSON.parse(view.stdout); if (tags[distTag] === pkg.version) break; }
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          }
-          if (tags?.[distTag] !== pkg.version) { console.error(`::error::The ${distTag} dist-tag does not point at ${pkg.version} (${JSON.stringify(tags)}).`); process.exit(1); }
-          if (distTag === "beta" && tags.latest === pkg.version) { console.error(`::error::Prerelease ${pkg.version} is tagged latest. Move latest back to the last stable release.`); process.exit(1); }
-          console.log(`Registry verified: ${spec} has matching integrity and dist-tag ${distTag}.`);
-          JS
+          git show "$PUBLISH_WORKFLOW_SHA:scripts/publish-npm.mjs" > "$RUNNER_TEMP/publish-npm.mjs"
+          node "$RUNNER_TEMP/publish-npm.mjs"
 
   release:
     name: Create GitHub release

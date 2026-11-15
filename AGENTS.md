@@ -93,7 +93,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
 | Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
-| Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
+| Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/publish-npm.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
 
 ## Invariants
 
@@ -468,6 +468,10 @@ See [docs/releasing.md](docs/releasing.md). In short:
   check:notes refuses until it's rewritten). A major's rc (`2.0.0-rc.0`) carries the major's section, `## 2.0.0`.
 - Every GitHub release has notes in one format (`scripts/release-body.mjs`): a beta's page renders the fragments
   added since the previous tag, a stable's or an rc's its curated section. In-app What's new stays major-only.
+- **An accepted publication waits for registry visibility** (`accepted-publish-waits-for-registry`): verify integrity
+  and the dist-tag with cache-bypassed reads for up to 45 minutes after npm accepts a version. A visibility timeout
+  is pending publication, never permission to rewrite its tag or cut a replacement version. Release notes wait for
+  verification. Guarded by `tests/npm-publication.test.ts` and `scripts/publish-npm.mjs`.
 - Don't bump the version in a feature PR.
 
 ### Versioning
