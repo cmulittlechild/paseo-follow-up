@@ -175,7 +175,7 @@ export function nextVersion(changelog, names) {
 /**
  * Features ship in a minor (AGENTS.md, "Versioning"): a patch (x.y.Z, Z > 0) may carry fixes and speed-ups only.
  * Fragments are named after their branch, so a pending `feat-*.md` means a feature. 2026-11-14: 2.0.1 shipped
- * Rename title with AI, Report a bug and No review as a patch.
+ * Rename with AI, Report a bug and No review as a patch.
  */
 export function featuresInPatch(version, names) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);

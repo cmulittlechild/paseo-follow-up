@@ -29,6 +29,7 @@ export type WorkspaceTitles = {
  */
 type WorkspaceTitleRow = { id: string; name: string; title?: string | null };
 type TitleDaemon = {
+  supportsBackgroundWorkspaces?(): boolean;
   findWorkspace?(workspaceId: string): Promise<WorkspaceTitleRow | null>;
   fetchWorkspaces(options?: unknown): Promise<{ entries: WorkspaceTitleRow[]; pageInfo: { hasMore: boolean; nextCursor: string | null } }>;
   setWorkspaceTitle(workspaceId: string, title: string | null): Promise<unknown>;
@@ -40,9 +41,10 @@ export function renameDaemon(connect: <T>(work: (client: TitleDaemon) => Promise
       let row: WorkspaceTitleRow | null = null;
       if (typeof client.findWorkspace === "function") row = await client.findWorkspace(id);
       else {
+        const filter = client.supportsBackgroundWorkspaces?.() === true ? { includeBackground: true } : {};
         let cursor: string | undefined;
         do {
-          const page = await client.fetchWorkspaces({ filter: { includeBackground: true }, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+          const page = await client.fetchWorkspaces({ filter, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
           row = page.entries.find(e => e.id === id) ?? null;
           if (row) break;
           cursor = page.pageInfo.nextCursor ?? undefined;

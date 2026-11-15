@@ -158,7 +158,7 @@ test("invariant rename-never-wakes-an-agent: renameDaemon reaches only the works
   const rows = [{ id: "w1", name: "dev-retry-backoff", title: null as string | null }, { id: "w10", name: "other", title: "Other" }];
   const client = new Proxy({}, { get: (_t, prop: string) => {
     if (prop === "then") return undefined;
-    if (prop === "findWorkspace") return undefined; // older client exercises the list fallback
+    if (prop === "findWorkspace" || prop === "supportsBackgroundWorkspaces") return undefined; // older client exercises the list fallback
     if (prop === "fetchWorkspaces") return async (o: Parameters<ReturnType<typeof workspaceList>>[0]) => { calls.push("fetchWorkspaces"); return workspaceList(rows)(o); };
     if (prop === "setWorkspaceTitle") return async (id: string, title: string | null) => { calls.push(`setWorkspaceTitle:${id}`); rows.find(r => r.id === id)!.title = title; return { title }; };
     throw new Error(`rename called daemon.${prop}, which can wake an agent`);
@@ -216,6 +216,7 @@ test("invariant an-id-lookup-never-trusts-an-ignored-filter: status and rename f
   assert.equal((await fetchWorkspaces({ filter: { idPrefix: "workspace-404" }, page: { limit: 5 } })).entries[0].id, "workspace-0");
   const requests: unknown[] = [];
   const titles = renameDaemon(async work => work({
+    supportsBackgroundWorkspaces: () => true,
     fetchWorkspaces: async options => { requests.push(options); return fetchWorkspaces(options as never); },
     setWorkspaceTitle: async (id, title) => { rows.find(row => row.id === id)!.title = title; },
   }));
@@ -246,9 +247,30 @@ test("renameDaemon fallback finds background workspaces and stops at the matchin
   const rows = Array.from({ length: 205 }, (_, i) => ({ id: `w${i}`, name: `Workspace ${i}`, background: true }));
   let calls = 0;
   const titles = renameDaemon(async work => work({
+    supportsBackgroundWorkspaces: () => true,
     fetchWorkspaces: async options => { calls++; return workspaceList(rows)(options as never); },
     setWorkspaceTitle: async () => undefined,
   }));
   assert.deepEqual(await titles.get("w200"), { name: "Workspace 200", title: null });
   assert.equal(calls, 2);
+});
+
+test("renameDaemon fallback omits background options when support is absent or false", async t => {
+  for (const support of [undefined, () => false]) await t.test(support ? "unsupported host" : "older client", async () => {
+    const rows = Array.from({ length: 205 }, (_, i) => ({ id: `w${i}`, name: `Workspace ${i}` }));
+    const requests: unknown[] = [];
+    const titles = renameDaemon(async work => work({
+      supportsBackgroundWorkspaces: support,
+      fetchWorkspaces: async options => {
+        requests.push(options);
+        const request = options as Parameters<ReturnType<typeof workspaceList>>[0];
+        assert.equal(request?.filter?.includeBackground, undefined, "unsupported background options make the real client throw");
+        assert.equal(request?.includeBackground, undefined);
+        return workspaceList(rows)(request);
+      },
+      setWorkspaceTitle: async () => undefined,
+    }));
+    assert.deepEqual(await titles.get("w200"), { name: "Workspace 200", title: null });
+    assert.deepEqual(requests, [undefined, "200"].map(cursor => ({ filter: {}, page: { limit: 200, ...(cursor ? { cursor } : {}) } })));
+  });
 });

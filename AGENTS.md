@@ -300,7 +300,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    renamed again since. Its suggestion reads stored data only, and its daemon calls are paged `fetch_workspaces` reads
    and `set_workspace_title`. **An id lookup never trusts an ignored filter**
    (`an-id-lookup-never-trusts-an-ignored-filter`): use the client’s `findWorkspace` or page workspace lists until
-   the exact id is found or the list ends, including background workspaces. Guarded by `tests/rename.test.ts` ([docs/ai-roles.md](docs/ai-roles.md#rename-title-with-ai)).
+   the exact id is found or the list ends, including background workspaces when the client reports support. Guarded by `tests/rename.test.ts` ([docs/ai-roles.md](docs/ai-roles.md#rename-title-with-ai)).
 13. **Every list row has the row menu** (`every-list-row-has-the-row-menu`). `menu` is required on `HomeList` and its
    rows' opener is required, so right-click, long-press and Shift+F10 open Follow-up's row menu on every list (Home,
    search results, the sidebar view), never the platform's Copy/Paste menu. Items a surface can't serve are left

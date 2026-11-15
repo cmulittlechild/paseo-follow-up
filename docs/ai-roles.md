@@ -80,8 +80,8 @@ Haiku by default). About $0.001 and 3 s a suggestion.
 - **Inputs, stored data only:** the name now, the branch, the goal, the Summary sentence, the spec name, PR titles,
   linked items and the titles of the workspace's agents from the cached directory. Never a timeline, a transcript or a
   `fetch_agent` (invariant `rename-never-wakes-an-agent`).
-- **Workspace lookup.** `findWorkspace(id)` on newer clients, otherwise 200-row cursor pages, including background
-  workspaces. Never use `idPrefix`: the server accepts but ignores it. No agent or timeline reads.
+- **Workspace lookup.** `findWorkspace(id)` on newer clients, otherwise 200-row cursor pages. Include background workspaces only when the client reports
+  `supportsBackgroundWorkspaces() === true`; omit that option on older clients or unsupported hosts. Never use `idPrefix`: the server accepts but ignores it. No agent or timeline reads.
 - **The name.** One rule, `NAME_RULE` ("Start with a verb. Up to 8 words."), stated word for word under the
   dialog's field and in the prompt, and enforced by `checkName`: sentence case, at most 60 characters, no quotes or
   branch shapes. A linked Linear key may go inline after the verb (`Verify ABC-123 vendor mismatch`, not counted as a

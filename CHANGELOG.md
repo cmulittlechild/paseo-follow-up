@@ -9,7 +9,7 @@ Fixes are easier to follow, merging takes one click, and Follow-up runs much lig
 - **Tasks:** what Follow-up finds on your PRs (conflicts, review comments, failing checks) is now a task with one clear state, and Tasks shows what goes to the agent next and when.
 - **One-click merge,** and a No review setting per repository that lets agents merge their own PRs.
 - **Answers:** add a note to your pick on a decision card, or put your answer straight into the agent's message box.
-- **New:** Rename title with AI, Report a bug from Settings or any error, and a card in the chat for each agent or workspace an agent creates.
+- **New:** Rename with AI, Report a bug from Settings or any error, and a card in the chat for each agent or workspace an agent creates.
 - **Lighter:** about half the CPU and much less memory, and on Paseo 0.16 changes show up live instead of by polling.
 - Plus many smaller fixes.
 
@@ -17,7 +17,7 @@ Fixes are easier to follow, merging takes one click, and Follow-up runs much lig
 
 ### Home and Needs you
 
-- Rename title with AI: pick it from a workspace's menu (Home, sidebar, panel More) or ⌘K, and Follow-up suggests a short name from the Summary, PRs and linked items. Edit it or accept it; Undo puts the old name back.
+- Rename with AI: pick it from a workspace's menu (Home, the sidebar view, the panel's new More button) or ⌘K, and Follow-up suggests a short name from the Summary, PRs and linked items. Edit it or accept it; Undo puts the old name back.
 - What Follow-up finds on your PRs (conflicts, review feedback, failing checks, restacks) are now ordinary tasks in the workspace's Tasks, each with its PR and one plain state: Queued, Sent, Needs you or Done.
 - Needs you, Home and the chat pill say "tasks" everywhere, and the Send in Needs you names the agent and doesn't repeat the task list.
 - Home remembers which groups you folded. Needs you always opens, so nothing waiting on you hides behind a fold.
