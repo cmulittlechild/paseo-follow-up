@@ -153,14 +153,14 @@ export function PrLinkButton({ link, theme, compact = false }: { link: { url: st
   </PressScale></View>;
 }
 
-export function IconButton({ icon, label, onPress, theme, compact = false, disabled = false, spinning = false, color, tooltip = false }: { icon: string; label: string; onPress: () => void; theme: Theme; compact?: boolean; disabled?: boolean; spinning?: boolean; color?: string; tooltip?: boolean }) {
+export function IconButton({ icon, label, onPress, theme, compact = false, disabled = false, spinning = false, color, tooltip = false, nativeID }: { icon: string; label: string; onPress: () => void; theme: Theme; compact?: boolean; disabled?: boolean; spinning?: boolean; color?: string; tooltip?: boolean; nativeID?: string }) {
   const c = theme.colors;
   const size = compact ? 44 : 28;
   // tooltip: the label as the desktop hover title. React Native Web drops `title` on a Pressable, so it goes on a
   // wrapper's DOM node (the client/linked.tsx pattern).
   const tip = useRef<View | null>(null);
   useEffect(() => { if (tooltip && Platform.OS === "web") (tip.current as unknown as { setAttribute?: (k: string, v: string) => void } | null)?.setAttribute?.("title", label); }, [tooltip, label]);
-  const button = <PressScale accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} hitSlop={compact ? 0 : 6}
+  const button = <PressScale nativeID={nativeID} accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} hitSlop={compact ? 0 : 6}
     style={({ pressed, hovered }) => ({ width: size, height: size, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? c.surface2 : hovered ? c.surface1 : "transparent", opacity: disabled && !spinning ? 0.45 : 1 })}>
     {spinning ? <Spinner color={color ?? c.foregroundMuted} size={14} label={label} /> : <Icon name={icon} size={compact ? 18 : 15} color={color ?? c.foregroundMuted} />}
   </PressScale>;
@@ -168,9 +168,12 @@ export function IconButton({ icon, label, onPress, theme, compact = false, disab
 }
 
 export type CardTone = "plain" | "attention" | "success";
-/** A raised container with an icon title. Attention cards trade the ring for a warning border. */
-export function Card({ theme, icon, title, tone = "plain", count, right, children, compact = false, style }: {
-  theme: Theme; icon: string; title: string; tone?: CardTone; count?: string | number; right?: ReactNode; children: ReactNode; compact?: boolean; style?: StyleProp<ViewStyle>;
+/**
+ * A raised container with an icon title. Attention cards trade the ring for a warning border. `search`: the section
+ * is being searched (client/section-search.tsx), and its field takes the title's place in the header.
+ */
+export function Card({ theme, icon, title, tone = "plain", count, right, children, compact = false, style, search }: {
+  theme: Theme; icon: string; title: string; tone?: CardTone; count?: string | number; right?: ReactNode; children: ReactNode; compact?: boolean; style?: StyleProp<ViewStyle>; search?: ReactNode;
 }) {
   const c = theme.colors;
   const accent = tone === "attention" ? c.statusWarning : tone === "success" ? c.statusSuccess : null;
@@ -178,10 +181,12 @@ export function Card({ theme, icon, title, tone = "plain", count, right, childre
     accent ? { borderWidth: 1, borderColor: withAlpha(accent, 0.7) } : raised(c), style]}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? 8 : 7, paddingHorizontal: compact ? 14 : 12, paddingTop: 10, paddingBottom: 8, minHeight: compact ? 44 : undefined }}>
       <Icon name={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} />
-      <Text accessibilityRole="header" style={{ color: accent ?? c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, fontWeight: "600" }}>{title}</Text>
-      {count !== undefined && count !== "" && <Chip theme={theme} color={accent ?? c.foregroundMuted} label={String(count)} />}
-      <View style={{ flex: 1 }} />
-      {right}
+      {search ?? <>
+        <Text accessibilityRole="header" style={{ color: accent ?? c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, fontWeight: "600" }}>{title}</Text>
+        {count !== undefined && count !== "" && <Chip theme={theme} color={accent ?? c.foregroundMuted} label={String(count)} />}
+        <View style={{ flex: 1 }} />
+        {right}
+      </>}
     </View>
     {children}
   </View>;

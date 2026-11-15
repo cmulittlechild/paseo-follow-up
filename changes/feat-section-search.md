@@ -1,0 +1,1 @@
+- Search inside a workspace's Pull requests, Tasks and Activity: the search icon in each section's header finds a PR by number, title, branch or failing check, a task by its title or evidence, and anything in Activity, including folded items.

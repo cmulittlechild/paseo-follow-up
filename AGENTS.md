@@ -417,8 +417,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    first (a whole word or word start above a match inside a word), then linked items, branch and PR, then the rest of
    the row. Search breaks a tie by score; the filter keeps its groups and, inside each, the list's own order for a
    tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
-   (`overseerMatches`). No surface ranks workspace matches its own way. Guarded by `tests/filter-rank.test.ts` and
-   `tests/home-beta2.test.ts`.
+   (`overseerMatches`). No surface ranks workspace matches its own way. One matcher everywhere (`tokenMatch`): the
+   workspace panel's section search (Pull requests, Tasks, Activity; `client/section-search.tsx`) filters with it
+   through `filterItems`, and item lists keep their own order, since a section list is a filter, not a ranking.
+   Guarded by `tests/filter-rank.test.ts`, `tests/home-beta2.test.ts` and `tests/section-search.test.ts`.
 
 ## Bugs
 

@@ -18,6 +18,7 @@ test("invariant search-row-is-the-list-row: search results render Row; no second
   for (const f of (await readdir(dir)).filter(f => f.endsWith(".tsx"))) {
     const source = await readFile(join(dir, f), "utf8");
     assert.doesNotMatch(source, /function (ResultRow|GroupChip|Highlighted)\b/, `${f}: a second way to draw a search result`);
-    if (f !== "home-list.tsx") assert.doesNotMatch(source, /highlightRuns\(/, `${f}: hits are highlighted only by the list Row`);
+    // One highlighter (`marked`, client/rich-text.tsx): Home's Row through `marks`, section search through RichText.
+    if (f !== "rich-text.tsx") assert.doesNotMatch(source, /highlightRuns\(/, `${f}: hits are highlighted only by rich-text.tsx's marked`);
   }
 });

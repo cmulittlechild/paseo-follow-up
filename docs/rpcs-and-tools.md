@@ -110,6 +110,9 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `workspace_status` | `follow.created-items` | read. The chat's created-agent / created-workspace cards: live states from the engine's cached directory rows and Follow-up's line for the workspace ([client.md](client.md#created-agent-and-workspace-cards)). |
 | `trust_bypass_status` | `follow.trust-bypass` | read |
 
+Features that change only one person's view (no RPC) are listed in `VIEW_PARITY` with the tools that read the
+same data: section search in the panel reads what `workspace_status` and `list_prs` return.
+
 Exempt in `PARITY`, with the reason recorded there:
 
 - `follow.check-pr-action`: the PR sheet's progress poll.

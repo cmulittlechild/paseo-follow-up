@@ -3,11 +3,12 @@ import { FlatList, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import { type Badge, type HomeGroupId, type HomeModel, type Workstream } from "../shared/home";
-import { ASK_KEY, excerpt, FIELD_LABEL, highlightRuns, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
+import { ASK_KEY, excerpt, FIELD_LABEL, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
 import { age, wakeLabel, wakeShort } from "../shared/inbox";
 import { headlineColor, mergedColor, readable, runningColor, tint, toneColor, withAlpha, type Colors } from "./theme";
 import { useMinute } from "./home-data";
+import { marked } from "./rich-text";
 import { Spinner } from "./motion";
 import { Button, focusRing, rowDomId, type Theme } from "./kit";
 import { useListKeys } from "./list-keys";
@@ -293,7 +294,7 @@ export function Age({ iso, c, size = 12 }: { iso: string | null; c: Colors; size
 /** Matched words, highlighted inside a line of text: the hit colour, semibold, on a light warning tint. */
 export function marks(text: string, ranges: Range[] | null | undefined, c: Colors): ReactNode {
   if (!ranges?.length) return text;
-  return highlightRuns(text, ranges).map((r, i) => r.hit ? <Text key={i} style={{ color: c.foreground, fontWeight: "600", backgroundColor: withAlpha(c.statusWarning, 0.22), borderRadius: 2 }}>{r.text}</Text> : r.text);
+  return marked(text, 0, ranges, c);
 }
 
 

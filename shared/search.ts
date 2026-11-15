@@ -190,9 +190,10 @@ export function highlightRuns(text: string, ranges: Range[]): { text: string; hi
 }
 
 /** A long field (an ask, a PR title list) cut around its first match so the highlight stays visible. */
-export function excerpt(text: string, ranges: Range[], max = 80): { text: string; ranges: Range[] } {
+export function excerpt(text: string, ranges: Range[], max = 80, lead = 20): { text: string; ranges: Range[] } {
   if (text.length <= max || !ranges.length) return { text: text.length <= max ? text : `${text.slice(0, max - 1)}…`, ranges: ranges.filter(r => r[1] <= max - 1) };
-  let start = Math.max(0, Math.min(ranges[0][0] - 20, text.length - max));
+  // `lead`: the words kept before the match; a narrow row (a panel section) keeps fewer so the match stays on screen.
+  let start = Math.max(0, Math.min(ranges[0][0] - lead, text.length - max));
   // Never cut into an id ("#143", "APP-139"): from the start when the match already fits, else at a word boundary.
   // (A one-line row shows roughly the first 60% of `max` beside its badges, so "fits" means it ends inside that.)
   if (ranges[0][1] <= Math.floor(max * 0.6)) start = 0;
@@ -286,6 +287,50 @@ export function homeSearchDocs(input: { model: HomeModel; paseo: PaseoWorkspaceL
     docs.push({ key: `ws:${w.id}`, title: w.title, group: "archived", at: w.updatedAt, fields: [{ field: "name", text: w.title }, ...workspaceFields(w.id, w)] });
   }
   return docs;
+}
+
+// ---------- item lists inside a workspace (section search) ----------
+
+/**
+ * One searchable field of a list item. `shown`: the row already draws this text, so a match there is highlighted in
+ * place; a match only in a hidden field (a task's evidence, a PR's branch or check) becomes line 2, "<label> · excerpt".
+ */
+export type ItemField = { label: string; text: string; shown: boolean };
+export type ItemHit = {
+  /** Matched words per field, in the order `fields` gave them (empty when that field didn't match). */
+  ranges: Range[][];
+  /** The hidden field to show as line 2 when the shown fields don't explain the match. */
+  via: { label: string; text: string; ranges: Range[] } | null;
+};
+/**
+ * The workspace panel's section search: the same matcher as every workspace search (`tokenMatch`, invariant
+ * one-ranking-for-every-workspace-search), applied as a filter. Every query token must match a word of some field.
+ * It never re-ranks: an item list keeps its own order. An empty query returns null (not searching).
+ */
+export function filterItems<T>(items: readonly T[], fieldsOf: (item: T) => readonly ItemField[], query: string): { item: T; hit: ItemHit }[] | null {
+  const qs = queryTokens(query);
+  if (!qs.length) return null;
+  const out: { item: T; hit: ItemHit }[] = [];
+  for (const item of items) {
+    const fields = fieldsOf(item);
+    const parts = fields.map(f => ({ f, tokens: tokenize(f.text) }));
+    const ranges: Range[][] = parts.map(() => []);
+    // Per query token, the fields it matched in.
+    const where: Set<number>[] = [];
+    let ok = true;
+    for (const q of qs) {
+      const at = new Set<number>();
+      parts.forEach((p, i) => { for (const token of p.tokens) if (tokenMatch(q, token.t)) { at.add(i); if (token.end > token.start) ranges[i].push([token.start, token.end]); } });
+      if (!at.size) { ok = false; break; }
+      where.push(at);
+    }
+    if (!ok) continue;
+    const merged = ranges.map(merge);
+    const coveredByShown = where.every(at => [...at].some(i => fields[i].shown));
+    const hidden = coveredByShown ? -1 : fields.findIndex((f, i) => !f.shown && merged[i].length > 0);
+    out.push({ item, hit: { ranges: merged, via: hidden >= 0 ? { label: fields[hidden].label, text: fields[hidden].text, ranges: merged[hidden] } : null } });
+  }
+  return out;
 }
 
 // ---------- hits on list rows ----------

@@ -72,6 +72,7 @@ Nothing polls while the app is hidden.
 | `client/large.tsx` | The panel as a two-column screen. |
 | `client/header.tsx` | The stack bar and the header status. |
 | `client/stacks.tsx` | Stacks drawn top to base. |
+| `client/section-search.tsx`, `shared/section-search.ts` | Section search in the panel's Pull requests, Tasks and Activity. See [Section search](#section-search). |
 | `client/pr-sheet.tsx`, `client/pr-controls.tsx` | One PR's sheet, with merge and reviewer controls. |
 | `client/reviewers.tsx` | Reviewer lists and the picker. |
 | `client/needs-you.tsx` | The workspace's one Needs you block: the asks (question cards, the brief), then the decision rows (Send repairs, Merge, Resume, Retry, Check). |
@@ -178,6 +179,27 @@ Rules:
 - **Not here yet.** There's no archive or merge (those stay deliberate), and no manual priority, because
   `set_priorities` only takes ranker scores. The workspace panel's navigator and the sidebar view don't have the menu
   yet.
+
+## Section search
+
+The panel's Pull requests, Tasks and Activity cards each have a search icon at the right of their header, always shown
+(`useSectionSearch`, `client/section-search.tsx`). Pressing it turns the header into the shared `QueryField`
+("Search pull requests", "Search tasks", "Search activity") with focus in it, "n of N" inside the field and ✕ beside
+it. Esc or ✕ closes it, and focus returns to the icon. There's no key binding, so Ctrl/Cmd+F stays the browser's find.
+
+- **What each section searches** (`shared/section-search.ts`): Pull requests, the number and title (shown) and the
+  branch and failed check names (hidden); Tasks, the title (shown) and the evidence (hidden), plus repair rows' title
+  and PR chip; Activity, both tabs at once: a timeline entry's line and detail, a question's "Qn · title" and its
+  status line. A match only in a hidden field replaces line 2 with "<Key> · excerpt", as on Home's rows.
+- **A filter, not a ranking.** `filterItems` (`shared/search.ts`) uses the matcher every workspace search uses
+  (invariant 28) and keeps the list's own order. Matched words take the sidebar filter's hit style (`marks`).
+- **Folds are ignored while a query is typed**: done tasks, merged PRs, settled stacks and Activity's "Show all" show
+  their matches in place, done ones muted as usual. The next-message strip, held merges and in-flight lines step
+  aside. Activity's tab chips move under the field and count their matches, so a hit in the other tab is never hidden.
+- Nothing matches: "No tasks match ‘x’" (or pull requests, activity).
+- **View state only.** The query lives in the card, per section, and belongs to the workspace it was typed in:
+  another workspace opens with it closed (`queryFor`). Agents read the same lists whole through `workspace_status`
+  and `list_prs` (`VIEW_PARITY`, `server/agent-parity.ts`).
 
 ## Chat rows and Paseo's grouping
 
