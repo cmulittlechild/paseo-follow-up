@@ -160,7 +160,7 @@ full data-access statement.
 ## Memory on Linux
 
 On Linux (glibc), a Follow-up that stays up for hours can slowly grow in memory: the allocator keeps memory Follow-up
-already freed. macOS isn't affected. Three allocator settings in the Paseo daemon's environment stop the growth. Every
+already freed. macOS isn't affected. Three allocator settings in the Paseo daemon's environment stop most of the idle growth. Every
 process Paseo starts inherits them.
 
 If a systemd unit runs Paseo, add them to it (the unit name is your own; `paseo` here):
@@ -183,7 +183,9 @@ MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072 MALLOC_TRIM_THRESHOLD_=131072 p
 ```
 
 In our test harness (140 workspaces, 45 idle minutes) Follow-up grew about 20 MB without them and 3 to 6 MB with them,
-at no measurable CPU cost. To undo it, remove the settings and restart Paseo.
+at no measurable CPU cost. On a busy real setup they kept Follow-up flat while idle, but memory still stepped up during
+bursts of activity and stayed there: after about 4.7 hours it used 363 MB with them and 375 MB without. To undo it,
+remove the settings and restart Paseo.
 
 ## Docs
 
