@@ -66,7 +66,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -554,7 +554,8 @@ function makeShooter({ browser, port, out, scheme: forced, optimiser, results, c
       const clip = await drive(page);
       await page.mouse.move(1, viewport.height - 1);
       // A focused field draws a focus ring only some of the time (it depends on how the last key event landed).
-      await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+      // The keyboard walk's shots keep it: their focus ring is the point (page.keepFocus, set by the drive).
+      if (!page.keepFocus) await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
       await settle(page);
       await noRealHost(page);
       // Spinners and other endless animations stop at their first frame, and the caret is hidden.
@@ -1066,6 +1067,57 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   // the way a developer gets them. Start is the fixture's own (on, never started); asks is the started Overseer asking a
   // decision (its fixture script calls needs_you); error is a restart that failed (overseer.json's error, as
   // server/overseer.ts saves it). Dense desktop, touch, and a filter that keeps the row and marks its match.
+  // The keyboard walk (--keys-review, Paseo 0.16): real key presses. Home's selection follows ↑/↓ with the focus ring on
+  // it; in the sidebar view the ring moves alone and Enter opens the chat, which then wears the selected row.
+  if (argv.includes("--keys-review")) {
+    const keysView = async page => {
+      await page.goto(`${ORIGIN}/settings/sidebar`);
+      await page.getByText("Default view", { exact: true }).first().click();
+      await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+      await openHome(page);
+      const view = page.getByTestId("plugin-sidebar-view");
+      await view.getByRole("button", { name: /^Contact import/ }).first().waitFor({ timeout: 60000 });
+      page.keepFocus = true;
+      return view;
+    };
+    // The focused row, by name and surface (Home and the sidebar view draw the same rows side by side).
+    const ringOn = async (page, name, where) => page.waitForFunction(([n, w]) => { const a = document.activeElement; return !!a && a.matches(":focus-visible") && (a.getAttribute("aria-label") ?? "").startsWith(n)
+      && !!a.closest('[data-testid="plugin-sidebar-view"]') === (w === "sidebar"); }, [name, where], { timeout: 15000 });
+    for (const scheme of ["light", "dark"]) {
+      // Home, nothing focused: ↓ three times walks brief → Overseer → Search filters → Contact import; its detail follows.
+      await shoot(`keys-home-${scheme}`, SIDEBAR, scheme, async page => {
+        await keysView(page);
+        await page.evaluate(() => (document.activeElement)?.blur?.());
+        for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowDown");
+        await ringOn(page, "Contact import", "home");
+      });
+      // The sidebar view: ↓ from the filter enters the list, Enter opens Contact import's chat, then j moves the ring on.
+      await shoot(`keys-sidebar-${scheme}`, SIDEBAR, scheme, async page => {
+        const view = await keysView(page);
+        await view.getByPlaceholder("Filter workspaces").click();
+        for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowDown");
+        await ringOn(page, "Contact import", "sidebar");
+        await page.keyboard.press("Enter");
+        await page.getByText("WEB-38: import contacts", { exact: false }).first().waitFor();
+        await page.waitForTimeout(2500);
+        // Where Paseo leaves focus after opening a chat from a plugin sidebar row (the PR text reports this line).
+        const after = await page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? "body" : `${a.tagName.toLowerCase()} ${a.getAttribute("aria-label") ?? a.getAttribute("placeholder") ?? ""}${a.closest('[data-testid="plugin-sidebar-view"]') ? " (sidebar view)" : ""}`; });
+        log(`keys: focus after Enter opened the chat: ${after}`);
+        // On the row: j walks on. Elsewhere (the composer keeps it): ↓ from the filter re-enters the list at its top.
+        if (after.endsWith("(sidebar view)")) await page.keyboard.press("j");
+        else { await view.getByPlaceholder("Filter workspaces").click(); for (const key of ["ArrowDown", "j", "j", "j"]) await page.keyboard.press(key); }
+        await ringOn(page, "Billing retries", "sidebar");
+      });
+    }
+    // With the filter on, ↓ enters at the first match.
+    await shoot("keys-sidebar-filter-dark", SIDEBAR, "dark", async page => {
+      const view = await keysView(page);
+      await view.getByPlaceholder("Filter workspaces").fill("retries");
+      await view.getByRole("button", { name: /^Billing retries/ }).first().waitFor();
+      await page.keyboard.press("ArrowDown");
+      await ringOn(page, "Billing retries", "sidebar");
+    });
+  }
   if (argv.includes("--overseer-review")) {
     const sidebarView = async (page, line, touch) => {
       await page.goto(`${ORIGIN}/settings/sidebar`);

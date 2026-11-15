@@ -16,7 +16,7 @@ import { errorText, mootNote } from "../shared/errors";
 import { OTHER, OTHER_LABEL, briefAnswerStatus, isOther, type Question } from "../shared/questions";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { useDetailGate, useWorkspace } from "./workspace-data";
-import { SubmitScope, submitHint, text, useNow } from "./kit";
+import { SubmitScope, focusRing, submitHint, text, useNow } from "./kit";
 import { PrLinksProvider, RichText } from "./rich-text";
 import { useMergeButtons } from "./merge-button";
 import { prLinksByNumber } from "../shared/presentation";
@@ -50,10 +50,8 @@ const kindTone = (kind: Brief["kind"], c: Colors) => kind === "error" ? c.status
 const factTone = (tone: string, c: Colors) => tone === "ok" ? c.statusSuccess : tone === "warn" ? c.statusWarning : tone === "bad" ? c.statusDanger : c.foregroundMuted;
 /** The time in the device's own format (12- or 24-hour), like the chat's timestamps. */
 const clock = (iso: string | null) => { if (!iso) return ""; const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
-/** Whether the focused element got focus from the keyboard (a tap or click doesn't draw the ring). */
-const keyboardFocus = () => { try { return !!(globalThis as { document?: { activeElement?: { matches?(q: string): boolean } | null } }).document?.activeElement?.matches?.(":focus-visible"); } catch { return true; } };
 /** Web keyboard focus: a visible ring, since sending an answer is one-shot. Not after a tap, where it read as a state. */
-const ring = (focused: boolean | undefined, c: Colors) => focused && Platform.OS === "web" && keyboardFocus() ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: withAlpha(c.accent, 0.6), outlineOffset: 2 } as object) : {};
+const ring = (focused: boolean | undefined, c: Colors) => focusRing(focused, c);
 const letters = (d: BriefDecision) => { const l = d.options.map(o => o.letter); return l.length > 1 ? `${l.slice(0, -1).join(", ")} or ${l.at(-1)}` : l[0] ?? ""; };
 
 function Btn({ label, icon, primary, onPress, c, compact, disabled, shortcut = false, hint }: { label: string; icon?: string; primary?: boolean; onPress: () => void; c: Colors; compact: boolean; disabled?: boolean; shortcut?: boolean; hint?: string }) {

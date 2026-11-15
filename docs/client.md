@@ -60,8 +60,9 @@ Nothing polls while the app is hidden.
 | --- | --- |
 | `client/home.tsx` | Home: the list and the detail pane, the Overseer card, the setup flow's place. |
 | `client/feeds.ts` | `openFeed`, `hasFeeds`: the stores subscribe to the worker's feeds on Paseo 0.16 (resubscribing after a worker restart) and poll on 0.15. See [Feeds](#feeds). |
-| `client/home-list.tsx` | The one virtualised list, used by Home and the sidebar view. |
+| `client/home-list.tsx`, `shared/list-entries.ts` | The one virtualised list, used by Home and the sidebar view; `listEntries` builds what it draws, in order. |
 | `client/home-chrome.tsx` | Omnibox, sort menu, status strip, provider and memory meters. |
+| `client/list-keys.ts`, `shared/list-keys.ts` | The keyboard walk through a list's rows, for Home and the sidebar view. See [Keyboard walk](#keyboard-walk). |
 | `client/row-menu.tsx`, `client/menu-item.tsx`, `client/row-actions.ts`, `shared/row-menu.ts`, `client/panel-menu.tsx`, `client/rename.tsx` | The row menu: right-click, long-press or the menu key (Shift+F10) on a Home row or search result. See [Row menu](#row-menu). |
 | `client/home-view.ts` | Home's derived model: sort choice, priorities, titles for search, limits. |
 | `client/home-data.ts` | Paseo's own workspace list, for untracked rows (Quiet) and header buttons. |
@@ -135,6 +136,25 @@ on the first line, its state line under it on up to two lines, the amber or red 
 failed restart open Follow-up Home with the Overseer selected (`openScreen` with `item: "overseer"` and an `at` token,
 which an already-open Home also follows), where those controls live. "Filter workspaces" keeps the row only when the
 query is in "Overseer" or its line, and marks the match the way rows mark theirs.
+
+### Keyboard walk
+
+On desktop and web, Home and the sidebar view walk their rows with the same keys, through one hook (`useListKeys`,
+`client/list-keys.ts`, called once in `HomeList`; invariant `one-keyboard-walk-for-every-list`). ↑/↓ and j/k step one
+row, Home/End jump to the first or last, Enter opens. The order is the list as drawn: the Morning brief, the Overseer,
+then every row of an open group (a collapsed group and a closed Quiet fold are skipped; a filter walks only the
+matches). The focus moves with the keys, so the row shows the keyboard focus ring (`focusRing`, `client/kit.tsx`;
+never after a click) and the browser keeps it in view. On Home the selection follows the keys and the detail pane
+with it, and Enter opens the row's chat (Open full). In the sidebar view only the focus moves and Enter opens the chat,
+since each open loads a chat and moves the main pane. If opening leaves focus nowhere, it goes back to the row so ↓ ↓
+Enter keeps walking; if Paseo puts it in the composer, it stays there. The open chat's row wears Paseo's own
+selected-item fill (`sidebarSelected`, `client/theme.ts`: Paseo's `surfaceSidebarSelected`, which the plugin theme
+doesn't carry), so it reads like a selected native item in both themes. The keys count only while
+focus is inside the surface (Home also takes them with nothing focused, but only while it's on screen: a Home kept
+mounted behind another tab or chat leaves them to what's in front, `surfaceVisible`) and never while typing, except the arrows in
+the sidebar's filter and Home's empty search, which step into the list. Modified keys stay Paseo's: ⌘[ ⌘] and ⌘1…9
+(Ctrl, or Alt on the web) walk Paseo's own sidebar, which a plugin view can't feed. Escape and Space are left to Paseo
+too. Phones have no hardware-key walk.
 
 Rules:
 
