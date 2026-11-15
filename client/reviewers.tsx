@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { TextInput, View } from "react-native";
+import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, SettingsAction, SettingsCard, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, SettingsAction, SettingsCard, useToast, TextInput } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { reviewerSettingsRpc, reviewerSuggestionsRpc, saveReviewersRpc } from "../shared/contracts";
 import { MAX_REVIEWERS, TEAM_SLUG, USER_LOGIN, isTeam, resolveReviewers, reviewerConfig, reviewerLabel, sameLogin, setReviewerConfig, type ReviewerEntry } from "../shared/reviewers";
