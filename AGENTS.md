@@ -93,7 +93,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
 | Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `server/report-send.ts`, `shared/report-send.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
-| Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
+| Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/publish-npm.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
 
 ## Invariants
 
@@ -302,6 +302,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    and `set_workspace_title`. **An id lookup never trusts an ignored filter**
    (`an-id-lookup-never-trusts-an-ignored-filter`): use the client’s `findWorkspace` or page workspace lists until
    the exact id is found or the list ends, including background workspaces when the client reports support. Guarded by `tests/rename.test.ts` ([docs/ai-roles.md](docs/ai-roles.md#rename-title-with-ai)).
+   **A rename suggestion is always editable** (`a-rename-suggestion-is-always-editable`): repair quotes, punctuation,
+   unlinked keys, key placement and length before validation; retry only unusable content and keep the best candidate
+   with its rule hint. Only issue keys enter the RPC's bounded keys field, never artifact URLs. A developer's click
+   is never refused as busy. Haiku runs without thinking; rejected replies log only rule codes, never name text.
+   Guarded by `tests/rename.test.ts`.
 13. **Every list row has the row menu** (`every-list-row-has-the-row-menu`). `menu` is required on `HomeList` and its
    rows' opener is required, so right-click, long-press and Shift+F10 open Follow-up's row menu on every list (Home,
    search results, the sidebar view), never the platform's Copy/Paste menu. Items a surface can't serve are left
@@ -477,6 +482,10 @@ See [docs/releasing.md](docs/releasing.md). In short:
   check:notes refuses until it's rewritten). A major's rc (`2.0.0-rc.0`) carries the major's section, `## 2.0.0`.
 - Every GitHub release has notes in one format (`scripts/release-body.mjs`): a beta's page renders the fragments
   added since the previous tag, a stable's or an rc's its curated section. In-app What's new stays major-only.
+- **An accepted publication waits for registry visibility** (`accepted-publish-waits-for-registry`): verify integrity
+  and the dist-tag with cache-bypassed reads for up to 45 minutes after npm accepts a version. A visibility timeout
+  is pending publication, never permission to rewrite its tag or cut a replacement version. Release notes wait for
+  verification. Guarded by `tests/npm-publication.test.ts` and `scripts/publish-npm.mjs`.
 - Don't bump the version in a feature PR.
 
 ### Versioning

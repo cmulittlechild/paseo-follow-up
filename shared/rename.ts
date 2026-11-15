@@ -25,7 +25,8 @@ const QUOTES = /["`“”„«»]|^'|'$|‘|’(?=\s|$)|^’/;
 /** "feat/x", "fix: x", "chore(x): x": the shapes of a branch or a commit subject, not a name. */
 const BRANCH_PREFIX = /^(feat|fix|chore|refactor|docs|test|tests|ci|build|perf|style|wip|hotfix|release)(\([^)]*\))?[:/!]/i;
 
-export type NameCheck = { ok: true; name: string } | { ok: false; reason: string };
+export type NameRule = "empty" | "characters" | "quotes" | "plain-words" | "leading-key" | "unlinked-key" | "branch-like" | "verb" | "words" | "unchanged";
+export type NameCheck = { ok: true; name: string } | { ok: false; reason: string; rule: NameRule };
 
 /** Collapses whitespace and drops one trailing period: a name, not a sentence. */
 export function normalizeName(raw: string): string {
@@ -40,22 +41,22 @@ export function normalizeName(raw: string): string {
  */
 export function checkName(raw: string, opts: { keys?: readonly string[]; current?: string | null } = {}): NameCheck {
   const name = normalizeName(raw);
-  if (!name) return { ok: false, reason: "Give it a name." };
-  if (name.length > NAME_MAX_CHARS) return { ok: false, reason: `Keep it to ${NAME_MAX_CHARS} characters (now ${name.length}).` };
-  if (QUOTES.test(name)) return { ok: false, reason: "Leave out quotes and backticks." };
-  if (/[\n\r\t<>{}[\]|\\]/.test(name)) return { ok: false, reason: "Use plain words." };
+  if (!name) return { ok: false, rule: "empty", reason: "Give it a name." };
+  if (name.length > NAME_MAX_CHARS) return { ok: false, rule: "characters", reason: `Keep it to ${NAME_MAX_CHARS} characters (now ${name.length}).` };
+  if (QUOTES.test(name)) return { ok: false, rule: "quotes", reason: "Leave out quotes and backticks." };
+  if (/[\n\r\t<>{}[\]|\\]/.test(name)) return { ok: false, rule: "plain-words", reason: "Use plain words." };
   const tokens = name.split(" ");
   const lead = keyOf(tokens[0]);
-  if (lead) return { ok: false, reason: tokens.length > 1 ? `Start with a verb, not the issue key; put ${lead} after it.` : `Start with a verb, then ${lead} and what the work does.` };
+  if (lead) return { ok: false, rule: "leading-key", reason: tokens.length > 1 ? `Start with a verb, not the issue key; put ${lead} after it.` : `Start with a verb, then ${lead} and what the work does.` };
   for (const t of tokens) {
     const key = keyOf(t);
-    if (key && !(opts.keys ?? []).includes(key)) return { ok: false, reason: `${key} isn't linked to this workspace, so leave it out.` };
+    if (key && !(opts.keys ?? []).includes(key)) return { ok: false, rule: "unlinked-key", reason: `${key} isn't linked to this workspace, so leave it out.` };
   }
-  if (BRANCH_PREFIX.test(name) || /\//.test(name) || /^[\w.-]+$/.test(name) && /[-_]/.test(name)) return { ok: false, reason: "Use words, not a branch name." };
-  if (!/^\p{L}/u.test(name)) return { ok: false, reason: "Start with a verb." };
+  if (BRANCH_PREFIX.test(name) || /\//.test(name) || /^[\w.-]+$/.test(name) && /[-_]/.test(name)) return { ok: false, rule: "branch-like", reason: "Use words, not a branch name." };
+  if (!/^\p{L}/u.test(name)) return { ok: false, rule: "verb", reason: "Start with a verb." };
   const words = tokens.filter(t => t && !keyOf(t));
-  if (words.length > NAME_MAX_WORDS) return { ok: false, reason: `Keep it to ${NAME_MAX_WORDS} words (now ${words.length}).` };
-  if (opts.current && opts.current.trim().toLowerCase() === name.toLowerCase()) return { ok: false, reason: "That's the name it has now." };
+  if (words.length > NAME_MAX_WORDS) return { ok: false, rule: "words", reason: `Keep it to ${NAME_MAX_WORDS} words (now ${words.length}).` };
+  if (opts.current && opts.current.trim().toLowerCase() === name.toLowerCase()) return { ok: false, rule: "unchanged", reason: "That's the name it has now." };
   return { ok: true, name };
 }
 
@@ -71,24 +72,47 @@ export type RenameInputs = {
   agents: string[];
 };
 
+/** Only Linear-style issue keys belong in the name rules and the RPC's bounded keys field, never artifact URLs. */
+export const renameIssueKeys = (links: readonly { key: string }[]) => [...new Set(links.map(l => l.key).filter(key => ISSUE_KEY.test(key)))];
+
+/** Repair mechanical model mistakes without spending a second job. Human edits still use checkName unchanged. */
+export function normalizeSuggestion(raw: string, keys: readonly string[] = []): string {
+  let name = raw.replace(/["`“”„«»]/g, "").replace(/[‘’]/g, "'").replace(/[<>{}\[\]|\\]/g, " ").replace(/\s+/g, " ").trim().replace(/^'+|'+$/g, "");
+  name = name.replace(/[.,;:!?…'*)\]}]+$/u, "").trim();
+  const allowed = new Set(keys);
+  const tokens = name.split(" ").filter(Boolean).flatMap(token => {
+    const key = keyOf(token.toUpperCase());
+    return key ? allowed.has(key) ? [key] : [] : [token];
+  });
+  const leading: string[] = [];
+  while (tokens.length && keyOf(tokens[0])) leading.push(tokens.shift()!);
+  if (tokens.length && leading.length) tokens.splice(1, 0, ...leading);
+  if (tokens.length) tokens[0] = tokens[0].replace(/^[^\p{L}]+/u, "");
+  const kept: string[] = []; let words = 0;
+  for (const token of tokens.filter(Boolean)) {
+    if (!keyOf(token) && ++words > NAME_MAX_WORDS) break;
+    if ([...kept, token].join(" ").length > NAME_MAX_CHARS) break;
+    kept.push(token);
+  }
+  return kept.join(" ").replace(/[.,;:!?…'*)\]}]+$/u, "").trim();
+}
+
 export const RENAME_SYSTEM = "You name software workspaces. Reply with one JSON object only, no prose and no code fence. Use only facts in the material.";
 
 /** Real-shaped examples (anonymised) of how the developer's workspaces read. */
 export const NAME_EXAMPLES = [
-  "Verify ABC-1234 vendor mismatch, check migrations",
-  "Plan admin page for schema migrations",
-  "Fix retry backoff in the billing worker",
-  "Add CSV export to the audit log",
+  "Fix retry backoff in billing",
+  "Add ABC-1234 CSV export",
 ];
 
 const clip = (s: string, n: number) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
 /** The prompt, bounded (~3 k chars at most). `rejected`: the last reply and why, for the one retry. */
 export function renamePrompt(i: RenameInputs, rejected?: { name: string; reason: string } | null): string {
-  const keys = i.linked.map(l => l.key).filter(k => ISSUE_KEY.test(k));
+  const keys = renameIssueKeys(i.linked);
   const lines = [
     "Write a short name for this workspace: what the work does, so the developer can tell it apart in a list.",
-    `Rule: ${NAME_RULE} Also: sentence case, specific, at most ${NAME_MAX_CHARS} characters, no quotes, no branch names, no trailing period.`,
+    `Rule: ${NAME_RULE} At most ${NAME_MAX_CHARS} characters. Sentence case. No quotes, backticks, branch names or trailing punctuation. Return a different name from the current name.`,
     keys.length ? `A linked issue key (${keys.slice(0, 3).join(", ")}) may go inline after the verb when it helps tell the work apart; never first.` : "Don't add an issue key.",
     `Examples of good names:\n${NAME_EXAMPLES.map(e => `- ${e}`).join("\n")}`,
     "",
@@ -106,7 +130,7 @@ export function renamePrompt(i: RenameInputs, rejected?: { name: string; reason:
   ];
   return lines.filter(l => typeof l === "string").join("\n");
 }
-export const renameReplySchema = z.object({ name: z.string().max(300) });
+export const renameReplySchema = z.object({ name: z.string() });
 
 /** One applied rename. `from: null`: the workspace had no title of its own (Paseo's default name), and Undo clears it. */
 export const renameEntrySchema = z.object({ workspaceId: z.string().max(200), from: z.string().max(300).nullable(), to: z.string().max(300), at: z.string(), by: z.string().max(200) });
@@ -141,8 +165,10 @@ export const renameStatusSchema = z.object({
   current: z.string().max(300),
   /** The model's suggestion, when one was asked for. */
   suggestion: z.string().max(300).nullable(),
-  /** Linked Linear keys: the dialog's own check allows these as a prefix. */
+  /** Linked Linear keys only: allowed inline after the verb. */
   keys: z.array(z.string().max(40)).max(20),
+  /** A non-error limit or empty-reply hint; the field remains editable. */
+  notice: z.string().max(300).optional(),
   /** The newest undoable rename: the dialog's "Undo last rename" link. */
   last: z.object({ from: z.string().max(300), to: z.string().max(300), at: z.string() }).nullable(),
 });
