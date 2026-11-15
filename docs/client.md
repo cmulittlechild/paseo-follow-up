@@ -128,7 +128,9 @@ The sidebar view's top row is "Filter workspaces" and Home's sort as an icon (in
 and a 44px icon, nothing else). The filter narrows the list in place with Home search's matcher and rank (`useListFilter`,
 `FilterField` in `client/home-chrome.tsx`): inside each group a title match comes first, then linked items, branch
 and PR, then the second line and the rest, and a tie keeps the list's order; it never says "Search" or takes a shortcut, because Paseo's own sidebar
-Search opens the Command Center (⌘K). The sort menu there adds "Home uses this order too."
+Search opens the Command Center (⌘K). The sort menu (the same `SortMenu` as Home's) ends with one footer line,
+`rankFooter` in `shared/ranker.ts`: when the ranking last ran ("Ranked 1h ago"), "Not ranked yet", "Ranking now" before
+the first run, or a failed run's short reason. It never shows a run's cost (agents read it from `rank_status`).
 In the sidebar view there is no omnibox, so Ask the Overseer is left out (not shown disabled), and Open and Answer
 open the agent's chat.
 The sidebar view pins Home's Overseer row under the filter, from the same state (`listOverseerRow`,

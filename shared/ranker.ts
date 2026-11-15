@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRIORITY_SOURCES, prioritySourceSchema, type Priority } from "./priorities";
+import { PRIORITY_SOURCES, priorityNote, prioritySourceSchema, type Priority } from "./priorities";
 import type { WorkstreamRow } from "./overseer";
 
 /**
@@ -195,14 +195,23 @@ export function healthLine(health: Partial<Record<RankSource, SourceHealth>>): s
   return RANK_SOURCES.filter(s => health[s] && health[s] !== "ok").map(s => `${RANK_SOURCE_LABEL[s]} ${health[s] === "off" ? "off" : "unavailable"}`).join(" · ");
 }
 
-/** What the last model run cost: dollars when the CLI says; Codex is billed to the subscription, so no price. */
-export function rankCost(rank: { costUsd?: number | null; last?: { ok: boolean; skipped: string | null; provider: string | null } | null } | null): string {
-  const last = rank?.last;
-  // The standing ranking's cost: shown after a skipped run too; nothing before the first model run.
-  if (!last?.provider) return "";
-  if (last.provider === "codex") return "last run on Codex subscription";
-  const c = rank?.costUsd;
-  return c == null ? "" : c < 0.01 ? "last run <$0.01" : `last run $${c.toFixed(2)}`;
+/** The longest footer a failed run's reason may take. */
+const FOOTER_MAX = 80;
+
+/**
+ * The sort menu's footer (Home and the sidebar view): only when the ranking last ran, "Ranked 1h ago". It never says
+ * what a run cost; agents read that from `rank_status`. Never ran: "Not ranked yet" (nothing when the ranker is off, the
+ * Priority row's hint already says "By urgency"). A run in flight keeps the standing ranking's age (the menu item says
+ * "Ranking…"), or "Ranking now" before the first one. A failed last run adds its short reason, which the developer can
+ * act on. Null: no footer.
+ */
+export function rankFooter(input: { rankedAt: string | null; now: number; rank: { enabled: boolean; running: boolean; error: string | null } | null }): string | null {
+  const { rankedAt, now, rank } = input;
+  const age = rankedAt ? priorityNote(rankedAt, now) : null;
+  if (!rank?.enabled) return age;
+  const reason = rank.error?.trim().replace(/\.$/, "");
+  const parts = [age ?? (rank.running ? "Ranking now" : reason ? null : "Not ranked yet"), !rank.running && reason ? `Last run failed: ${reason}` : null].filter(Boolean).join(" · ");
+  return parts.length > FOOTER_MAX ? `${parts.slice(0, FOOTER_MAX - 1).trimEnd()}…` : parts;
 }
 
 // ---------- stability ----------
