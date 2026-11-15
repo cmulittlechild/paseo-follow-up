@@ -220,7 +220,10 @@ every `sending` entry.
   - `shared/search.ts`: the client-side omnibox index. `rowHit` turns a hit into what the list Row shows (in-place
     highlights, or line 2 as "<Field> · excerpt" for a field the row hides); search results are that Row
     (`search-row-is-the-list-row`). `filterHome` is the sidebar view's "Filter workspaces": the same matcher, applied
-    in place to the grouped list (groups and order kept, empty groups dropped, archived left out).
+    in place to the grouped list (groups kept, empty groups dropped, archived left out). Both order by one rank
+    (`byRank`, invariant `one-ranking-for-every-workspace-search`): a title match first (a whole word or word start
+    above a match inside a word), then linked items, branch and PR, then the rest of the row. Search breaks a tie by
+    score; the filter keeps the list's own order for a tie, inside each group.
   - `shared/sort.ts`: Priority, Recent, Oldest waiting, Name, By project. Sorting applies within each group. The
     chosen order is the Display setting `home_sort` (`shared/display.ts`), one for Home and the sidebar view on every
     device; `homeSortSync` reads it, and the first client to load moves its old per-device choice there once.
