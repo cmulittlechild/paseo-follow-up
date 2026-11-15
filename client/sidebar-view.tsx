@@ -3,13 +3,14 @@ import type { PluginClientContext, PluginHostProps } from "@getpaseo/plugin/clie
 import { useCallback, useMemo, useSyncExternalStore, type ComponentType } from "react";
 import { View } from "react-native";
 import { Text } from "./text";
-import { UndoBar, useSidebarViewMounted } from "./inbox";
-import { HomeList } from "./home-list";
+import { UndoBar, useInbox, useSidebarViewMounted } from "./inbox";
+import { HomeList, OVERSEER_KEY, type OverseerRowState } from "./home-list";
 import { FilterField, SortMenu, useListFilter } from "./home-chrome";
 import { useHomeModel, type HomeSources } from "./home-data";
 import { useRowMenu } from "./row-actions";
 import { RenameHost } from "./rename";
 import type { Workstream } from "../shared/home";
+import { listOverseerRow, overseerRowTarget } from "../shared/overseer";
 
 /**
  * Phase 2: Home's list as Paseo's sidebar (the same HomeList component Home uses). `addSidebarView` and the ref queries exist on Paseo main
@@ -38,7 +39,8 @@ export function sidebarViewHost(client: PluginClientContext): SidebarViewHost | 
   return typeof candidate.addSidebarView === "function" && typeof hooks.useAgents === "function" && typeof hooks.useWorkspaces === "function" ? candidate as SidebarViewHost : null;
 }
 
-export function inboxSidebarView(sources: HomeSources) {
+/** `openOverseerHome`: Follow-up Home with the Overseer selected, where Start and Restart live. */
+export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => void) {
   return function NeedsYouSidebar(view: SidebarViewProps) {
     const refs = sdk as unknown as RefSdk;
     useSidebarViewMounted();
@@ -51,26 +53,38 @@ export function inboxSidebarView(sources: HomeSources) {
     const workspaces = refs.useWorkspaces({});
     const agentRef = useMemo(() => new Map(agents.map(r => [r.id, r])), [agents]);
     const workspaceRef = useMemo(() => new Map(workspaces.map(r => [r.id, r])), [workspaces]);
+    // Home's pinned Overseer row, the same state (one-row-everywhere); a filter keeps it only when it's about it.
+    const overseerStatus = useSyncExternalStore(sources.extras.subscribe, sources.extras.overseer, sources.extras.overseer);
+    const overseerInbox = useInbox(sources.inbox, () => sources.inbox.overseer());
+    const overseer: OverseerRowState | null = listOverseerRow(overseerStatus, overseerInbox, filter.query);
+    const overseerAgent = overseerStatus?.agentId ?? null;
     const touch = view.layout.compact;
     const c = view.theme.colors;
     const activeAgent = view.active.agent?.id ?? null;
     const activeWorkspace = view.active.workspace?.id ?? null;
     const selectedKey = useMemo(() => {
+      if (overseer && activeAgent && activeAgent === overseerAgent) return OVERSEER_KEY;
       const all = [...full.byKey.values()];
       return all.find(s => activeAgent && s.agentId === activeAgent)?.key ?? all.find(s => activeWorkspace && s.workspaceId === activeWorkspace)?.key ?? null;
-    }, [full, activeAgent, activeWorkspace]);
+    }, [full, activeAgent, activeWorkspace, overseer, overseerAgent]);
     const onSelect = useCallback((key: string) => {
+      if (key === OVERSEER_KEY) {
+        // A live Overseer opens its chat like any row; Start and a failed restart need Home's Overseer pane.
+        const ref = overseerAgent ? agentRef.get(overseerAgent) : undefined;
+        if (overseer && overseerRowTarget(overseer.state) === "chat" && ref) view.navigation.openAgent(ref); else openOverseerHome();
+        return;
+      }
       const s = full.byKey.get(key);
       const agent = s?.agentId ? agentRef.get(s.agentId) : undefined;
       const workspace = s?.workspaceId ? workspaceRef.get(s.workspaceId) : undefined;
       if (agent) view.navigation.openAgent(agent); else if (workspace) view.navigation.openWorkspace(workspace);
-    }, [full, agentRef, workspaceRef, view.navigation]);
+    }, [full, agentRef, workspaceRef, view.navigation, overseer, overseerAgent]);
     // The row menu, as on Home (rename among it). No omnibox here, so no Ask; Open and Answer go to the chat.
     const openKey = (s: Workstream) => onSelect(s.key);
     const menu = useRowMenu({ sources, openFull: openKey, openQuestion: openKey, overseerOn: false });
     if (!sources.inbox.enabled()) return <View style={{ padding: 12 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>The Needs-you inbox is off. Turn it on in Follow-up's display settings.</Text></View>;
     return <View style={{ flex: 1 }}>
-      <HomeList model={model} hits={filter.hits} theme={view.theme} dense touch={touch} selectedKey={selectedKey} onSelect={onSelect} menu={menu}
+      <HomeList model={model} hits={filter.hits} theme={view.theme} dense touch={touch} selectedKey={selectedKey} onSelect={onSelect} menu={menu} overseer={overseer} stackOverseer
         // One row, nothing else (invariant 8): the filter takes the width, the sort is an icon. zIndex keeps the
         // sort menu above the list on web, where every View is its own stacking context.
         top={<View style={{ zIndex: 10, flexDirection: "row", alignItems: "center", gap: touch ? 8 : 4, paddingHorizontal: touch ? 12 : 8, paddingVertical: touch ? 8 : 6, borderBottomWidth: 1, borderBottomColor: c.border }}>

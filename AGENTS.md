@@ -399,6 +399,12 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`TRACK_RETRY_MS`, `server/daemon.ts`) before "This workspace has no available main agent". The tick's list
    predates an agent created after it, and Paseo can list a just-created agent late. Guarded by
    `tests/track-new-agent.test.ts`.
+26. **Every list Home's list feeds pins the Overseer** (`every-home-list-pins-the-overseer`). Paseo's sidebar view is
+   Home's list, so it shows Home's Overseer row whenever Home would, from the same state (`listOverseerRow` over
+   `overseerRowState`, `shared/overseer.ts`), stacked like its other rows (`HomeList` `stackOverseer`). Selecting it
+   opens the Overseer's chat, or Home's Overseer pane for Start and a failed restart (`overseerRowTarget`). A list
+   filter keeps it only when the query is about it (`overseerMatches`) and marks the match. Guarded by
+   `tests/sidebar-overseer.test.ts`.
 
 ## Bugs
 

@@ -128,6 +128,13 @@ and a 44px icon, nothing else). The filter narrows the list in place with Home s
 Search opens the Command Center (⌘K). The sort menu there adds "Home uses this order too."
 In the sidebar view there is no omnibox, so Ask the Overseer is left out (not shown disabled), and Open and Answer
 open the agent's chat.
+The sidebar view pins Home's Overseer row under the filter, from the same state (`listOverseerRow`,
+`shared/overseer.ts`; invariant `every-home-list-pins-the-overseer`). It stacks like the sidebar's other rows: "Overseer"
+on the first line, its state line under it on up to two lines, the amber or red edge kept, no chevron on touch
+(`HomeList` `stackOverseer`). Selecting it opens the Overseer's chat while it's idle, working or asking; Start and a
+failed restart open Follow-up Home with the Overseer selected (`openScreen` with `item: "overseer"` and an `at` token,
+which an already-open Home also follows), where those controls live. "Filter workspaces" keeps the row only when the
+query is in "Overseer" or its line, and marks the match the way rows mark theirs.
 
 Rules:
 
