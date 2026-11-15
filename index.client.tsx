@@ -104,7 +104,7 @@ export default function contribute(host: PluginClientContext) {
       // Without a link yet, open the panel, where the spec link can be added.
       if (url) void openExternalUrl(url).catch(() => undefined); else openPanel(PANEL, { location: location() });
     } }),
-    client.addCommandCenterItem({ id: "follow-up-rename", title: "Follow-up: Rename this workspace with AI", icon: "Sparkles", keywords: ["rename", "name", "title", "AI", "suggest"], context: "workspace", onSelect({ workspace, openPanel }) {
+    client.addCommandCenterItem({ id: "follow-up-rename", title: "Follow-up: Rename title with AI", icon: "Sparkles", keywords: ["rename", "name", "title", "AI", "suggest"], context: "workspace", onSelect({ workspace, openPanel }) {
       // The dialog lives in Follow-up's surfaces: open the panel, which mounts a host, then ask.
       openPanel(PANEL, { location: location() }); setTimeout(() => openRename({ workspaceId: workspace.id }), 0); } }),
     client.addCommandCenterItem({ id: "follow-up-overview", title: "Follow-up: Home", icon: "House", keywords: ["home", "workspaces", "needs you", "inbox", "attention", "brief", "overview"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); } }),

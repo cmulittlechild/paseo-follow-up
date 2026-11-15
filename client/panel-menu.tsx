@@ -8,7 +8,7 @@ import { useRowMenu } from "./row-actions";
 import type { HomeSources } from "./home-data";
 
 /**
- * The panel header's More button: the same row menu Home and the sidebar show for this workspace (Rename with AI
+ * The panel header's More button: the same row menu Home and the sidebar show for this workspace (Rename title with AI
  * among it), so there is one menu everywhere. A popover under the button on desktop, the sheet on phones.
  */
 export function PanelMore({ w, sources, theme, compact, openAgent, openQuestion, showMenu }: {

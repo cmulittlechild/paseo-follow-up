@@ -70,7 +70,7 @@ User-facing copy calls it **Summary** (the Settings → Agents role is "Summarie
 - **Agent tool:** `workspace_about`.
 - **UI:** `client/about.tsx`. Placement tests: `tests/about-placement.test.ts`.
 
-## Rename with AI
+## Rename title with AI
 
 A short workspace name from what Follow-up already stored, on Summaries' agent (Settings → Agents → Summaries, Claude
 Haiku by default). About $0.001 and 3 s a suggestion.
@@ -80,6 +80,8 @@ Haiku by default). About $0.001 and 3 s a suggestion.
 - **Inputs, stored data only:** the name now, the branch, the goal, the Summary sentence, the spec name, PR titles,
   linked items and the titles of the workspace's agents from the cached directory. Never a timeline, a transcript or a
   `fetch_agent` (invariant `rename-never-wakes-an-agent`).
+- **Workspace lookup.** `findWorkspace(id)` on newer clients, otherwise 200-row cursor pages, including background
+  workspaces. Never use `idPrefix`: the server accepts but ignores it. No agent or timeline reads.
 - **The name.** One rule, `NAME_RULE` ("Start with a verb. Up to 8 words."), stated word for word under the
   dialog's field and in the prompt, and enforced by `checkName`: sentence case, at most 60 characters, no quotes or
   branch shapes. A linked Linear key may go inline after the verb (`Verify ABC-123 vendor mismatch`, not counted as a
@@ -91,7 +93,19 @@ Haiku by default). About $0.001 and 3 s a suggestion.
   The toast after it has Undo for 10 s; for 24 h the dialog's Undo last rename and `ai_rename undo=true` restore it,
   but only while the workspace still has the name the rename gave it (invariant `rename-is-always-undoable`).
 - **Entry points:** the row menu (Home, Follow-up's sidebar view, the panel's More button), ⌘K "Follow-up: Rename
-  this workspace with AI", and the agent tool `ai_rename` (planned). Tests: `tests/rename.test.ts`.
+  title with AI", and the agent tool `ai_rename` (planned). Tests: `tests/rename.test.ts`.
+
+### Daemon list audit
+
+Production list requests in `server/` were audited for ignored filters and options:
+`server/rename.ts` was the only caller sending `idPrefix`, which the server ignores. It now uses an exact id lookup
+across pages. `server/directory.ts` lists agents and workspaces with supported `page.limit` and `page.cursor` only,
+then matches locally; its agent refresh uses the same paging. `server/daemon.ts` declares those list methods but
+sends no additional list options. The `filter` in `server/data-move.ts` belongs to filesystem copying.
+No other ignored daemon filter or option was found. `tests/support/workspace-list.ts` deliberately ignores
+wire-only `idPrefix` and `includeInternal`, applies background visibility and pagination, and rejects unmodelled
+filters rather than inventing server behaviour. Rename tests share it.
+
 
 ## The Overseer (beta)
 

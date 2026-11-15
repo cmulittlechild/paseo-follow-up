@@ -116,12 +116,12 @@ row) for quick moves without opening it. `rowMenu()` in `shared/row-menu.ts` lis
 2. Answer Q<n> for up to two open questions.
 3. Resume follow-up, Send N repairs and Retry repairs, each shown only when it applies.
 4. Open chat, and Ask the Overseer about this (it pre-fills the omnibox and doesn't send).
-5. Copy branch name, Copy PR link(s), Rename with AI…, Rewrite summary, Make <agent> the main agent, and Stop
+5. Copy branch name, Copy PR link(s), Rename title with AI…, Rewrite summary, Make <agent> the main agent, and Stop
    following… (which asks first).
 
 The same menu opens from the workspace panel header's More button (`client/panel-menu.tsx`, the workspace's own
 `ws:<id>` row) and from the rows of Follow-up's sidebar view (`client/sidebar-view.tsx`), so there is one menu
-everywhere. Rename with AI… opens the rename dialog (`client/rename.tsx`, [ai-roles](ai-roles.md#rename-with-ai)).
+everywhere. Rename title with AI… opens the rename dialog (`client/rename.tsx`, [ai-roles](ai-roles.md#rename-title-with-ai)).
 The sidebar view's top row is "Filter workspaces" and Home's sort as an icon (invariant 8 on phones: a 44px field
 and a 44px icon, nothing else). The filter narrows the list in place with Home search's matcher (`useListFilter`,
 `FilterField` in `client/home-chrome.tsx`); it never says "Search" or takes a shortcut, because Paseo's own sidebar

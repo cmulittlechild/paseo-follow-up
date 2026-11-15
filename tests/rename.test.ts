@@ -1,4 +1,5 @@
 import test from "node:test";
+import { workspaceList } from "./support/workspace-list";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -150,14 +151,15 @@ test("invariant rename-is-always-undoable: never overwrites a later rename, expi
   await a.done();
 });
 
-// Invariant rename-never-wakes-an-agent: the only daemon calls a rename makes are fetch_workspaces narrowed to one id
+// Invariant rename-never-wakes-an-agent: the only daemon calls a rename makes are workspace list reads
 // and set_workspace_title. A fetch_agent or a timeline read throws here.
 test("invariant rename-never-wakes-an-agent: renameDaemon reaches only the workspace title", async () => {
   const calls: string[] = [];
   const rows = [{ id: "w1", name: "dev-retry-backoff", title: null as string | null }, { id: "w10", name: "other", title: "Other" }];
   const client = new Proxy({}, { get: (_t, prop: string) => {
     if (prop === "then") return undefined;
-    if (prop === "fetchWorkspaces") return async (o: { filter?: { idPrefix?: string } }) => { calls.push(`fetchWorkspaces:${o.filter?.idPrefix}`); return { entries: rows.filter(r => r.id.startsWith(o.filter?.idPrefix ?? "")) }; };
+    if (prop === "findWorkspace") return undefined; // older client exercises the list fallback
+    if (prop === "fetchWorkspaces") return async (o: Parameters<ReturnType<typeof workspaceList>>[0]) => { calls.push("fetchWorkspaces"); return workspaceList(rows)(o); };
     if (prop === "setWorkspaceTitle") return async (id: string, title: string | null) => { calls.push(`setWorkspaceTitle:${id}`); rows.find(r => r.id === id)!.title = title; return { title }; };
     throw new Error(`rename called daemon.${prop}, which can wake an agent`);
   } });
@@ -170,7 +172,7 @@ test("invariant rename-never-wakes-an-agent: renameDaemon reaches only the works
   const s = await service.status("w1", true);
   await service.rename("w1", { title: s.suggestion! }, "developer");
   await service.rename("w1", { undo: true }, "developer");
-  assert.ok(calls.every(c => /^(fetchWorkspaces|setWorkspaceTitle):w1$/.test(c)), calls.join(", "));
+  assert.ok(calls.every(c => /^(fetchWorkspaces|setWorkspaceTitle:w1)$/.test(c)), calls.join(", "));
   assert.equal(dirty, 2, "the directory re-reads after each title change");
   await rm(dir, { recursive: true, force: true });
 });
@@ -200,9 +202,53 @@ test("ai_rename: dry run shows from and to, confirm renames as the agent; undo p
   assert.equal(undo.to, "dev-retry-backoff");
 });
 
-test("row menu: Rename with AI on every row with a workspace, through ai_rename", () => {
+test("row menu: Rename title with AI on every row with a workspace, through ai_rename", () => {
   const items = (s: Parameters<typeof rowMenu>[0]["s"]) => rowMenu({ s, flagged: false }).flatMap(x => x.items).map(i => i.key);
   assert.ok(items({ key: "ws:w1", agentId: null, workspaceId: "w1", title: "W", agent: null }).includes("rename_ai"));
   assert.ok(!items({ key: "agent:a1", agentId: "a1", workspaceId: null, title: "A", agent: null }).includes("rename_ai"));
   assert.deepEqual(ROW_ACTIONS.rename_ai, { tool: "ai_rename" });
+});
+
+// The real daemon ignores idPrefix. Exercise both dialog/tool service paths beyond two page boundaries.
+test("invariant an-id-lookup-never-trusts-an-ignored-filter: status and rename find a workspace past page one", async t => {
+  const rows = Array.from({ length: 405 }, (_, i) => ({ id: `workspace-${i}`, name: `Workspace ${i}`, title: null as string | null }));
+  const fetchWorkspaces = workspaceList(rows);
+  assert.equal((await fetchWorkspaces({ filter: { idPrefix: "workspace-404" }, page: { limit: 5 } })).entries[0].id, "workspace-0");
+  const requests: unknown[] = [];
+  const titles = renameDaemon(async work => work({
+    fetchWorkspaces: async options => { requests.push(options); return fetchWorkspaces(options as never); },
+    setWorkspaceTitle: async (id, title) => { rows.find(row => row.id === id)!.title = title; },
+  }));
+  const a = await setup([]);
+  t.after(a.done);
+  const service = new RenameService({ store: a.store, jobs: new AiJobs({ runner: async () => { throw new Error("no model needed"); } }), role: async () => resolveRole(null, "about"), titles, inputs: async (_id, current) => inputs({ current }), room: async () => null });
+  await t.test("status", async () => { assert.equal((await service.status("workspace-404", false)).current, "Workspace 404"); });
+  await t.test("rename", async () => { assert.equal((await service.rename("workspace-404", { title: "Fix retry backoff" }, "developer")).previous, "Workspace 404"); });
+  assert.equal(rows[404].title, "Fix retry backoff");
+  assert.deepEqual(requests.slice(0, 3), [undefined, "200", "400"].map(cursor => ({ filter: { includeBackground: true }, page: { limit: 200, ...(cursor ? { cursor } : {}) } })));
+  assert.equal(await titles.get("missing"), null);
+  assert.deepEqual(await titles.get("workspace-40"), { title: null, name: "Workspace 40" });
+});
+
+test("renameDaemon prefers findWorkspace, preserving client background lookup and method binding", async () => {
+  const client = {
+    row: { id: "hidden", name: "Background workspace", title: "  " },
+    findWorkspace: async function (id: string) { assert.equal(this, client); return id === this.row.id ? this.row : null; },
+    fetchWorkspaces: async () => { throw new Error("use the client's id lookup"); },
+    setWorkspaceTitle: async () => undefined,
+  };
+  const titles = renameDaemon(async work => work(client));
+  assert.deepEqual(await titles.get("hidden"), { title: null, name: "Background workspace" });
+  assert.equal(await titles.get("missing"), null);
+});
+
+test("renameDaemon fallback finds background workspaces and stops at the matching page", async () => {
+  const rows = Array.from({ length: 205 }, (_, i) => ({ id: `w${i}`, name: `Workspace ${i}`, background: true }));
+  let calls = 0;
+  const titles = renameDaemon(async work => work({
+    fetchWorkspaces: async options => { calls++; return workspaceList(rows)(options as never); },
+    setWorkspaceTitle: async () => undefined,
+  }));
+  assert.deepEqual(await titles.get("w200"), { name: "Workspace 200", title: null });
+  assert.equal(calls, 2);
 });

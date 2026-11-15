@@ -227,7 +227,7 @@ test("release notes script: a minor or patch's notes stay short, and a patch nev
   await mkdir(join(dir, "scripts")); await mkdir(join(dir, "changes"));
   await cp("scripts/release-notes.mjs", join(dir, "scripts/release-notes.mjs"));
   await writeFile(join(dir, "CHANGELOG.md"), "# Release notes\n\n## 1.0.0 (2026-01-01)\n\n- Old.\n");
-  await writeFile(join(dir, "changes/feat-rename.md"), "- Rename with AI.\n");
+  await writeFile(join(dir, "changes/feat-rename.md"), "- Rename title with AI.\n");
   const run = (...a: string[]) => exec("node", [join(dir, "scripts/release-notes.mjs"), ...a]);
   await assert.rejects(run("1.0.1", "--date", "2026-11-14"), /1\.0\.1 is a patch, but 1 pending note\(s\) are features/);
   assert.deepEqual(await readdir(join(dir, "changes")), ["feat-rename.md"], "a refused patch consumes nothing");
