@@ -66,7 +66,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -455,8 +455,7 @@ async function seed({ call, home }) {
   // AI priority off: the ranker would call a real model (and Home would show its spinner). Through the agent tool,
   // planned then confirmed, like any agent would.
   const caller = workspaces.find(w => w.key === "audit").agentId;
-  const plan = await call("follow.agent-act", { agentId: caller, tool: "set_display", args: { values: { enable_ranker: false } } });
-  if (plan.planId) await call("follow.agent-act", { agentId: caller, tool: "set_display", args: { values: { enable_ranker: false }, confirm: true, planId: plan.planId } });
+  await actPlanned(call, caller, "set_display", { values: { enable_ranker: false } });
   // PR snapshots from the fake gh, then Done for the shipped workspace.
   let missing = [];
   await until(() => `PR snapshots (missing ${missing.join(", ")})`, async () => {
@@ -658,11 +657,7 @@ async function checkFeeds({ seeded, call, cli, home }) {
   };
   await writeUsage(30);
   const caller = ws("audit").agentId;
-  const agentAct = async (tool, args) => {
-    const plan = await call("follow.agent-act", { agentId: caller, tool, args });
-    if (plan.planId) return call("follow.agent-act", { agentId: caller, tool, args: { ...args, confirm: true, planId: plan.planId } });
-    return plan;
-  };
+  const agentAct = (tool, args) => actPlanned(call, caller, tool, args);
   /** An agent's next turn ends with `ask`: Needs you flags it when the turn ends (agent.turn_ended), not on a tick. */
   const ask = async (key, text) => {
     const scripts = JSON.parse(await fs.readFile(join(home, "fixture-scripts.json"), "utf8"));
@@ -1066,6 +1061,54 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await menuOpen(page);
       });
     }
+  }
+  // Review evidence for the Overseer row in the sidebar view (Paseo 0.16+, HARNESS_PASEO=0.16): real states, set up
+  // the way a developer gets them. Start is the fixture's own (on, never started); asks is the started Overseer asking a
+  // decision (its fixture script calls needs_you); error is a restart that failed (overseer.json's error, as
+  // server/overseer.ts saves it). Dense desktop, touch, and a filter that keeps the row and marks its match.
+  if (argv.includes("--overseer-review")) {
+    const sidebarView = async (page, line, touch) => {
+      await page.goto(`${ORIGIN}/settings/sidebar`);
+      await page.getByText("Default view", { exact: true }).first().click();
+      await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+      await openHome(page);
+      if (touch) {
+        await page.setViewportSize(PHONE);
+        // Paseo's phone layout: back to its start screen, whose menu button (same corner) opens the sidebar drawer.
+        const back = page.getByRole("button", { name: /^(back|go back|open (menu|sidebar|navigation)|menu)$/i }).first();
+        if (await back.count()) await back.click(); else await page.mouse.click(34, 36);
+        await page.waitForTimeout(500);
+        await page.mouse.click(34, 36);
+      }
+      const view = page.getByTestId("plugin-sidebar-view");
+      await view.getByRole("button", { name: new RegExp(`^Overseer\\. ${line}`) }).first().waitFor({ timeout: 60000 });
+      return view;
+    };
+    await shoot("sidebar-overseer-start-light", SIDEBAR, "light", async page => { await sidebarView(page, "Ask about any workspace or agent\\. Start it once", false); });
+    const started = await call("follow.overseer-start", {});
+    const scripts = JSON.parse(await fs.readFile(join(home, "fixture-scripts.json"), "utf8"));
+    const ask = "Ship the billing retries before the invoice PDFs?";
+    scripts[`agent:${started.agentId}`] = [{ rpc: "follow.needs-you", input: { kind: "decision", ask,
+      decisions: [{ question: ask, options: [{ label: "Billing retries first" }, { label: "Invoice PDFs first" }], recommend: 0 }] } }];
+    await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(scripts));
+    await call("follow.overseer-ask", { text: "Which ships first, billing retries or the invoice PDFs?" });
+    // The ask lands in the Overseer's inbox entry when its turn ends. Then step the crawling clock past the inbox list's
+    // freshness window (LIST_FRESH_MS, 3 s), so the list re-reads Paseo's agents and carries the new Overseer agent.
+    const inboxFile = join(home, "plugin-data", "follow-up", "inbox.json");
+    for (let i = 0; !(await fs.readFile(inboxFile, "utf8").catch(() => "")).includes(ask); i++) { if (i > 120) throw new Error("the Overseer's ask never reached the inbox"); await new Promise(r => setTimeout(r, 250)); }
+    await setDaemonClock(BASE + VIEW + 10_000);
+    for (const scheme of ["light", "dark"]) await shoot(`sidebar-overseer-asks-${scheme}`, SIDEBAR, scheme, async page => { await sidebarView(page, "Asks you", false); });
+    await shoot("sidebar-overseer-asks-touch-light", DESKTOP, "light", async page => { await sidebarView(page, "Asks you", true); });
+    // "billing" is in the Overseer's ask: the row stays, its match marked like Billing retries' title.
+    await shoot("sidebar-overseer-filter-kept-dark", SIDEBAR, "dark", async page => {
+      const view = await sidebarView(page, "Asks you", false);
+      await view.getByPlaceholder("Filter workspaces").fill("billing");
+      await view.getByRole("button", { name: /^Billing retries/ }).first().waitFor();
+      await view.getByRole("button", { name: /^Overseer\. / }).first().waitFor();
+    });
+    const file = join(home, "plugin-data", "follow-up", "overseer.json");
+    await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, "utf8")), error: "the agent was archived" }));
+    await shoot("sidebar-overseer-error-dark", SIDEBAR, "dark", async page => { await sidebarView(page, "Couldn't bring it back", false); });
   }
   for (const name of SHOTS) {
     if (!only.includes(name) || name === "setup") continue;
@@ -1626,6 +1669,18 @@ const root = await fs.mkdtemp(join(tmpdir(), "follow-shots-"));
 const home = join(root, "home"); const plugin = join(root, "plugin"); const fixture = join(root, "fixture"); const bin = join(root, "bin");
 const clockFile = join(root, "clock-offset");
 /**
+ * An agent tool, planned then confirmed. The worker reads a moved clock up to a beat late under load, so a plan made on
+ * the old time can already read as expired on the new one: plan again (a fresh dry run), at most three times.
+ */
+async function actPlanned(call, agentId, tool, args) {
+  for (let attempt = 1; ; attempt++) {
+    const plan = await call("follow.agent-act", { agentId, tool, args });
+    if (!plan.planId) return plan;
+    try { return await call("follow.agent-act", { agentId, tool, args: { ...args, confirm: true, planId: plan.planId } }); }
+    catch (error) { if (attempt >= 3 || !/plan expired/i.test(String(error?.message))) throw error; await new Promise(r => setTimeout(r, 500)); }
+  }
+}
+/**
  * Moves the daemon's clock to `fakeMs` and waits until the worker has read it. From then on it crawls (1 ms per real
  * second, `rate`), so everything a phase creates or updates gets the same time to the second, however long it takes.
  */
@@ -1690,7 +1745,7 @@ try {
   // sending only: a fake cgroup at 10% of memory.high from the start (the governor finds its cgroup once), raised later.
   if (only.includes("sending")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
 
-  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
+  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 22 })).stdout);
   const daemonLog = openSync(join(root, "daemon.log"), "a");
   crashed = async () => daemonCrashes(await fs.readFile(join(root, "daemon.log"), "utf8").catch(() => ""))[0] ?? null;

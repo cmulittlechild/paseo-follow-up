@@ -1,0 +1,1 @@
+- Follow-up's sidebar view now shows the Overseer, with its state, like Home does. Tap it to open the Overseer's chat, or to start it.

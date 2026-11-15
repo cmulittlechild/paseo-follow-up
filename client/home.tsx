@@ -93,6 +93,9 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   } : undefined, [navigation, compact, deps]);
   useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay);
   useEffect(() => { if (params.select) setSelected(`agent:${params.select}`); }, [params.select]);
+  // An already-open Home asked to show an item (the sidebar view's Overseer row: Start and Restart live here). `at` makes
+  // the same item twice a second request.
+  useEffect(() => { if (params.item && params.at) setSelected(params.item); }, [params.item, params.at]);
   // Phones show one thing at a time. A row opens its own screen (pushed by the host) instead of swapping in place, so the
   // host's ← is the only back control and it lands on the list. Desktop selects in place beside the list.
   const route = compact && deps.openItem ? deps.openItem : null;

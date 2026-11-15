@@ -18,6 +18,7 @@ import { createInboxStore } from "./client/inbox-store";
 import { contributeInboxCommands } from "./client/inbox";
 import type { BriefDeps } from "./client/brief";
 import { inboxSidebarView, sidebarViewHost } from "./client/sidebar-view";
+import { OVERSEER_KEY } from "./client/home-list";
 import { contributeBrief } from "./client/brief";
 import { clientTimeZoneRpc, setOnboardingRpc } from "./shared/contracts";
 import { isCategory, writeCategory } from "./shared/settings-nav";
@@ -139,7 +140,7 @@ export default function contribute(host: PluginClientContext) {
   removers.push(extras.subscribe(syncAsk), () => removeAsk?.());
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);
-  if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources) }));
+  if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
 
   return async () => {
     setReportFallback(null); setReportError(null);

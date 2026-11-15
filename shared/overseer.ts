@@ -310,3 +310,35 @@ export function overseerRowState(status: { enabled: boolean; agentId: string | n
   if (row?.brief?.state === "open" && row.brief.kind === "decision" && row.needs && !row.snooze) return { state: "asks", line: `Asks you · ${row.brief.ask}` };
   return { state: "idle", line: "Ask about any workspace or agent" };
 }
+
+/**
+ * The pinned Overseer row on a surface with a list filter (Paseo's sidebar view; invariant one-row-everywhere): the
+ * same row Home pins, from overseerRowState. While "Filter workspaces" holds a query, the row stays only when the
+ * query is about it ("over", "asks", words of its line), the way Home's search keeps the Overseer reachable through
+ * its Ask row; anything else hides it, so a filtered list shows only what matches.
+ */
+export function listOverseerRow(status: Parameters<typeof overseerRowState>[0], row: Parameters<typeof overseerRowState>[1], query: string): (NonNullable<ReturnType<typeof overseerRowState>> & { ranges?: [number, number][] }) | null {
+  const o = overseerRowState(status, row);
+  if (!o || !overseerMatches(o, query)) return null;
+  const ranges = overseerLineRanges(o.line, query);
+  return ranges.length ? { ...o, ranges } : o;
+}
+/** Where the query sits in the row's line, for the filter's highlight (the same marks rows get). */
+export function overseerLineRanges(line: string, query: string): [number, number][] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: [number, number][] = [];
+  const text = line.toLowerCase();
+  for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) out.push([i, i + q.length]);
+  return out;
+}
+/** An empty query, or one found in "Overseer" plus the row's line. */
+export function overseerMatches(o: { line: string }, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || `overseer ${o.line}`.toLowerCase().includes(q);
+}
+/** What selecting the pinned row does where the list opens chats: a live Overseer opens its chat; Start and a
+ * failed restart open Home's Overseer pane, where those controls live. */
+export function overseerRowTarget(state: NonNullable<ReturnType<typeof overseerRowState>>["state"]): "chat" | "home" {
+  return state === "start" || state === "error" ? "home" : "chat";
+}
