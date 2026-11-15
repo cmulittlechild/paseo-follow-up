@@ -179,7 +179,7 @@ console.log(JSON.stringify({ data: { repository } }));
 }
 
 /**
- * A fake `claude` for Rename with AI's review shots (--rename-review): it answers only the rename prompt, as
+ * A fake `claude` for Rename title with AI's review shots (--rename-review): it answers only the rename prompt, as
  * `claude -p --output-format json` does, and the mode file picks the state: ready, slow (still suggesting) or fail.
  */
 function fakeClaude(modeFile) {
@@ -956,7 +956,7 @@ async function putInChatShots({ shoot, seeded, call, billing }) {
 async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("feeds")) return checkFeeds({ seeded, call, cli, home });
   const billing = WORKSPACES.find(w => w.key === "billing");
-  // Review evidence for Rename with AI (not README images): the row menu item, the panel's More button and menu, the
+  // Review evidence for Rename title with AI (not README images): the row menu item, the panel's More button and menu, the
   // dialog suggesting, ready, edited and failed, the toast with Undo and the Undo link; desktop and phone, dark and light.
   if (argv.includes("--rename-review")) {
     const mode = m => fs.writeFile(join(home, "claude-mode"), m);
@@ -974,11 +974,11 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await openHome(page);
       await (await homeRow(page, "Billing retries")).click({ button: "right", position: { x: 160, y: 18 } });
       const menu = page.getByRole("menu", { name: "Actions for Billing retries" });
-      await menu.getByRole("menuitem", { name: "Rename with AI…" }).waitFor();
+      await menu.getByRole("menuitem", { name: "Rename title with AI…" }).waitFor();
       return menu;
     };
     const dialog = (vp, wait) => async page => {
-      await (await rowMenuAt(page)).getByRole("menuitem", { name: "Rename with AI…" }).click();
+      await (await rowMenuAt(page)).getByRole("menuitem", { name: "Rename title with AI…" }).click();
       if (vp !== DESKTOP) await page.setViewportSize(vp);
       await wait(page);
     };
@@ -993,7 +993,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     await bounded("rename-panel-more", DESKTOP, "dark", async page => {
       await panelOpen(page);
       await page.getByRole("button", { name: "More actions for this workspace" }).first().click();
-      await page.getByRole("menuitem", { name: "Rename with AI…" }).waitFor();
+      await page.getByRole("menuitem", { name: "Rename title with AI…" }).waitFor();
     });
     await mode("slow");
     for (const [n, vp, sc] of [["rename-suggesting", DESKTOP, "dark"], ["rename-suggesting-phone-light", PHONE, "light"]])
@@ -1022,7 +1022,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     await bounded("rename-undo-link", DESKTOP, "light", async page => {
       await openHome(page);
       await (await homeRow(page, "Add APP-142 backoff for soft card declines")).click({ button: "right", position: { x: 160, y: 18 } });
-      await page.getByRole("menuitem", { name: "Rename with AI…" }).click();
+      await page.getByRole("menuitem", { name: "Rename title with AI…" }).click();
       await page.getByRole("button", { name: "Undo last rename" }).last().waitFor();
       await page.getByText("Suggesting a name…").last().waitFor({ state: "detached" });
     });
@@ -1042,7 +1042,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await row.waitFor();
       return { view, row };
     };
-    const menuOpen = page => page.getByRole("menu", { name: "Actions for Billing retries" }).getByRole("menuitem", { name: "Rename with AI…" }).waitFor();
+    const menuOpen = page => page.getByRole("menu", { name: "Actions for Billing retries" }).getByRole("menuitem", { name: "Rename title with AI…" }).waitFor();
     // --rename-only also picks among these (sidebar-menu-click-dark, sidebar-menu-key-light, …).
     const pick = arg("--rename-only")?.split(",").map(x => x.trim());
     const pickShot = (name, ...rest) => !pick || pick.includes(name) ? shoot(name, ...rest) : undefined;

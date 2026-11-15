@@ -436,7 +436,7 @@ export class AgentActions {
 
   /** Later and Bring back now on a workspace-only Needs-you row, planned like snooze. Same mutator as the row menu. */
   /**
-   * Rename with AI (server/rename.ts): the dry run asks for a suggestion (or takes `title`, or plans Undo) and shows the
+   * Rename title with AI (server/rename.ts): the dry run asks for a suggestion (or takes `title`, or plans Undo) and shows the
    * name now and the name after; confirm runs the dialog's Rename with that exact name.
    */
   private async planRename(caller: string, args: { workspaceId?: string; title?: string; undo?: boolean }) {

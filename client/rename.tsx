@@ -14,7 +14,7 @@ import { Spinner } from "./motion";
 import { hasToastHost, pushToast, runAction } from "./toast-store";
 
 /**
- * Rename with AI (docs/ai-roles.md#rename-with-ai): one dialog for every entry point (row menus, the panel's More
+ * Rename title with AI (docs/ai-roles.md#rename-title-with-ai): one dialog for every entry point (row menus, the panel's More
  * menu, ⌘K). It asks for a suggestion as it opens, shows it in an editable field, and renames only on Rename. The
  * toast after it carries Undo; for 24 hours the dialog also offers Undo last rename.
  */
@@ -106,7 +106,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
   // Only near the limit: the reason text covers the rest (words, keys, branch names).
   const showCounter = counter > NAME_MAX_CHARS - 15;
   const waiting = phase === "suggesting" && !name;
-  return <Modal title="Rename with AI" icon={<Icon name="Sparkles" size={18} color={c.foregroundMuted} />} open onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title="Rename title with AI" icon={<Icon name="Sparkles" size={18} color={c.foregroundMuted} />} open onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
       <SubmitScope enabled={canRename} onSubmit={apply} style={{ gap: compact ? 16 : 14, maxWidth: 520 }}>
         <View style={{ gap: 2 }}>

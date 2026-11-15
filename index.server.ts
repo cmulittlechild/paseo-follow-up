@@ -1061,7 +1061,7 @@ export default function contribute(server: PluginServerContext) {
     firstMessage: async agentId => { await historyCache.load(); return historyCache.get(agentId)?.history.goal ?? null; }, roomForBackground: async () => governor.allowsBackground(), roomOnDemand: async () => governor.allowsExtras(),
   });
   handle(rpc.workspaceAboutRpc, async ({ workspaceId, open, refresh }, { paseo }) => { await requireReady(); seen(paseo); return about.view(workspaceId, { open, refresh }); });
-  // Rename with AI (server/rename.ts): stored data only, Summaries' model, Paseo's own workspace title.
+  // Rename title with AI (server/rename.ts): stored data only, Summaries' model, Paseo's own workspace title.
   const renamer = new RenameService({
     store: new RenameStore(directory), jobs: aiJobs, role: () => agentSettings.role("about"),
     titles: renameDaemon(withDaemon as never, () => gateway.directory.markDirty()),
