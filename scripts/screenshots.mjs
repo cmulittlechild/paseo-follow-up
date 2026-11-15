@@ -66,7 +66,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -1028,6 +1028,62 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await page.getByText("Suggesting a name…").last().waitFor({ state: "detached" });
     });
     await call("follow.rename-workspace", { workspaceId: billingId, undo: true }).catch(error => log(`undo after review: ${error.message}`));
+  }
+  // The sort menu's footer (--sortfoot-review, Paseo 0.16): only when the ranking last ran. The ranker is turned on so
+  // the menu has Re-rank now, with ranker.json's last run in the future so the schedule never calls a real model.
+  // Never ran first (no priorities: "Not ranked yet"), then priorities set through the agent tool ("Ranked …"), on
+  // the sidebar view's menu and on Home's. Everything is put back after.
+  if (argv.includes("--sortfoot-review")) {
+    const rankerFile = join(home, "plugin-data", "follow-up", "ranker.json");
+    await fs.writeFile(rankerFile, JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null, planning: null, prev: {}, model: null }));
+    const caller = seeded.workspaces.find(w => w.key === "audit").agentId;
+    await actPlanned(call, caller, "set_display", { values: { enable_ranker: true } });
+    const sidebarMenu = async page => {
+      await page.goto(`${ORIGIN}/settings/sidebar`);
+      await page.getByText("Default view", { exact: true }).first().click();
+      await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+      await openHome(page);
+      const view = page.getByTestId("plugin-sidebar-view");
+      await view.getByRole("button", { name: /^Sort: / }).first().click();
+      await view.getByRole("menuitem", { name: /Re-rank now/ }).first().waitFor({ timeout: 60000 });
+      return view;
+    };
+    const footer = async (scope, text) => { await scope.getByText(text).first().waitFor({ timeout: 30000 }); log(`sortfoot: footer reads "${await scope.getByText(text).first().textContent()}"`); };
+    await shoot("sortfoot-never-ran-dark", SIDEBAR, "dark", async page => { await footer(await sidebarMenu(page), "Not ranked yet"); });
+    await actPlanned(call, caller, "set_priorities", { priorities: [{ workspace: seeded.workspaces.find(w => w.key === "billing").workspaceId, score: 90, reason: "Declines are piling up" }, { workspace: seeded.workspaces.find(w => w.key === "csv").workspaceId, score: 70, reason: "Waiting on one answer" }], replace: true });
+    await shoot("sortfoot-sidebar-light", SIDEBAR, "light", async page => { await footer(await sidebarMenu(page), /^Ranked /); });
+    await shoot("sortfoot-home-dark", SIDEBAR, "dark", async page => {
+      await openHome(page);
+      // Home's own sort button, not the sidebar view's beside it.
+      for (const b of await page.getByRole("button", { name: /^Sort: / }).all()) if (!await b.evaluate(e => !!e.closest('[data-testid="plugin-sidebar-view"]'))) { await b.click(); break; }
+      await page.getByRole("menuitem", { name: /Re-rank now/ }).first().waitFor({ timeout: 30000 });
+      await footer(page, /^Ranked /);
+    });
+    await actPlanned(call, caller, "set_display", { values: { enable_ranker: false } });
+    await fs.rm(rankerFile, { force: true });
+  }
+  // The filter's ranking (--rank-review, Paseo 0.16): two workspaces renamed so "staging" is in their titles, while it
+  // stays in other rows' second lines (Search filters' permission, SSO login's next step). Inside each group the title
+  // matches come first, in the list's order; the second-line matches follow. Renames are undone after.
+  if (argv.includes("--rank-review")) {
+    const renamed = [["webhooks", "Webhook signing on staging"], ["email", "Staging onboarding email"]]
+      .map(([key, title]) => ({ id: seeded.workspaces.find(w => w.key === key).workspaceId, title }));
+    for (const r of renamed) await call("follow.rename-workspace", { workspaceId: r.id, title: r.title });
+    for (const scheme of ["light", "dark"]) {
+      await shoot(`rank-filter-${scheme}`, SIDEBAR, scheme, async page => {
+        await page.goto(`${ORIGIN}/settings/sidebar`);
+        await page.getByText("Default view", { exact: true }).first().click();
+        await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+        await openHome(page);
+        const view = page.getByTestId("plugin-sidebar-view");
+        await view.getByRole("button", { name: /^Staging onboarding email/ }).first().waitFor({ timeout: 60000 });
+        await view.getByPlaceholder("Filter workspaces").fill("staging");
+        await view.getByRole("button", { name: /^SSO login/ }).first().waitFor();
+        const order = await view.getByRole("button", { name: /^(Webhook signing on staging|Staging onboarding email|Search filters|SSO login)/ }).evaluateAll(els => els.map(e => (e.getAttribute("aria-label") ?? "").split(".")[0]));
+        log(`rank: filter "staging" draws ${order.join(" · ")}`);
+      });
+    }
+    for (const r of renamed) await call("follow.rename-workspace", { workspaceId: r.id, undo: true }).catch(error => log(`undo after rank review: ${error.message}`));
   }
   // Review evidence for the sidebar view's row menu (Paseo 0.16+, HARNESS_PASEO=0.16): Follow-up's view picked in
   // Settings → Sidebar, then a row's menu from a right-click and from Shift+F10; dark and light. On a host without

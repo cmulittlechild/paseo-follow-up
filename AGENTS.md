@@ -412,6 +412,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
    behind another tab or chat. Guarded by
    `tests/list-keys.test.ts`.
+28. **One ranking for every workspace search** (`one-ranking-for-every-workspace-search`). Home's search and the
+   sidebar view's filter order matches by one rank (`byRank` over `SearchHit.rank`, `shared/search.ts`): a title match
+   first (a whole word or word start above a match inside a word), then linked items, branch and PR, then the rest of
+   the row. Search breaks a tie by score; the filter keeps its groups and, inside each, the list's own order for a
+   tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
+   (`overseerMatches`). No surface ranks workspace matches its own way. Guarded by `tests/filter-rank.test.ts` and
+   `tests/home-beta2.test.ts`.
 
 ## Bugs
 

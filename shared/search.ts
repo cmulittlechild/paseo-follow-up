@@ -10,11 +10,17 @@ import { linkedSearchText, type LinkedSearchItem } from "./linked-display";
  * word, prefix, a single typo (four letters or more) or, from three characters, inside a word. "#1402", "1402",
  * "ACME-1312" and "scim okta" all work. Ranking weighs the field the token matched (name above branch and PR above
  * agent, project and ask), adds a bonus when the query appears as one phrase, and a little for recency.
+ *
+ * Every search over workspaces orders by one rank first (`rankOf`, `byRank`; invariant
+ * one-ranking-for-every-workspace-search): a title match, then linked items, branch and PR, then the rest of the row.
+ * Home's search breaks a tie by score; the sidebar filter by the list's own order.
  */
 
 export type SearchField = "name" | "branch" | "pr" | "linked" | "agent" | "project" | "ask";
 /** `linked`: a linked item's key and title (Linear, Slack, docs), so "ACME-1312" finds the workspace that links it. */
 export const FIELD_WEIGHT: Record<SearchField, number> = { name: 100, branch: 70, pr: 70, linked: 60, agent: 55, project: 40, ask: 30 };
+/** The rank tier a field's match puts a workspace in: 0 the title, 1 linked items, branch and PR, 2 the rest. */
+export const FIELD_TIER: Record<SearchField, 0 | 1 | 2> = { name: 0, branch: 1, pr: 1, linked: 1, agent: 2, project: 2, ask: 2 };
 export const FIELD_LABEL: Record<SearchField, string> = { name: "Name", branch: "Branch", pr: "PR", linked: "Linked", agent: "Agent", project: "Project", ask: "Ask" };
 
 export type SearchDoc = {
@@ -86,7 +92,24 @@ export type SearchHit = {
   titleRanges: Range[];
   /** Where it matched when that's not the title: the field and its text with the matched words. */
   via: { field: SearchField; text: string; ranges: Range[] } | null;
+  /**
+   * How it ranks against other hits (`byRank`): `tier` is the worst tier any query token needed (0 every token in the
+   * title, 1 linked items, branch or PR, 2 the rest); in the title tier, `strength` 2 is a whole word or a word start,
+   * 1 a typo, 0 inside a word (the weakest token decides). Optional only for rows built outside `search`.
+   */
+  rank?: Rank;
 };
+export type Rank = { tier: 0 | 1 | 2; strength: 0 | 1 | 2 };
+const strengthOf = (m: number): 0 | 1 | 2 => m >= 0.85 ? 2 : m >= 0.45 ? 1 : 0;
+const LAST: Rank = { tier: 2, strength: 0 };
+/**
+ * The one ranking for every search over workspaces (one-ranking-for-every-workspace-search): a lower tier first, then
+ * a stronger title match. Equal ranks are a tie each caller breaks its own way (score, or the list's order).
+ */
+export function byRank(a: Pick<SearchHit, "rank"> | undefined, b: Pick<SearchHit, "rank"> | undefined): number {
+  const x = a?.rank ?? LAST, y = b?.rank ?? LAST;
+  return x.tier - y.tier || y.strength - x.strength;
+}
 
 const DAY = 86_400_000;
 /**
@@ -102,12 +125,17 @@ export function search(index: SearchIndex, query: string, now = Date.now(), limi
     let score = 0;
     let ok = true;
     const matched = new Map<Part, Range[]>();
+    const rank: Rank = { tier: 0, strength: 2 };
     for (const q of qs) {
       let best = 0;
       let at: { part: Part; token: Token } | null = null;
+      // This token's best tier, and its best title strength.
+      let tier: 0 | 1 | 2 = 2, strength: 0 | 1 | 2 = 0;
       for (const part of parts) for (const token of part.tokens) {
         const m = tokenMatch(q, token.t);
         if (!m) continue;
+        tier = Math.min(tier, FIELD_TIER[part.field]) as 0 | 1 | 2;
+        if (part.field === "name") strength = Math.max(strength, strengthOf(m)) as 0 | 1 | 2;
         const s = m * FIELD_WEIGHT[part.field];
         if (s > best) { best = s; at = { part, token }; }
         // Highlight every word the token matches in a part, not only the best one.
@@ -117,6 +145,8 @@ export function search(index: SearchIndex, query: string, now = Date.now(), limi
       }
       if (!at) { ok = false; break; }
       score += best;
+      rank.tier = Math.max(rank.tier, tier) as 0 | 1 | 2;
+      rank.strength = Math.min(rank.strength, strength) as 0 | 1 | 2;
     }
     if (!ok) continue;
     const phraseIn = parts.filter(p => p.joined.includes(phrase)).map(p => FIELD_WEIGHT[p.field]);
@@ -132,13 +162,13 @@ export function search(index: SearchIndex, query: string, now = Date.now(), limi
     // Show "via" only when the title alone doesn't explain the match.
     const coveredByTitle = qs.every(q => name?.tokens.some(tk => tokenMatch(q, tk.t) > 0));
     const via = !coveredByTitle && others[0] ? { field: others[0].field, text: others[0].text, ranges: merge(matched.get(others[0])!) } : null;
-    hits.push({ key: doc.key, title: doc.title, group: doc.group, score, titleRanges, via });
+    hits.push({ key: doc.key, title: doc.title, group: doc.group, score, titleRanges, via, rank: rank.tier ? { tier: rank.tier, strength: 0 } : rank });
   }
   const live = hits.filter(h => h.group !== "archived").sort(byScore);
   const archived = hits.filter(h => h.group === "archived").sort(byScore);
   return [...live, ...archived].slice(0, limit);
 }
-const byScore = (a: SearchHit, b: SearchHit) => b.score - a.score || a.title.localeCompare(b.title) || a.key.localeCompare(b.key);
+const byScore = (a: SearchHit, b: SearchHit) => byRank(a, b) || b.score - a.score || a.title.localeCompare(b.title) || a.key.localeCompare(b.key);
 function merge(ranges: Range[]): Range[] {
   const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
   const out: Range[] = [];
@@ -277,13 +307,16 @@ export function rowHit(hit: SearchHit, row: { title: string; agent?: string | nu
 }
 
 /**
- * The sidebar view's filter (2.1): the same matcher as Home's search, applied in place. Groups keep their order and
- * the chosen sort; only matching rows stay, groups left empty drop out, and archived workspaces aren't listed (Home's
- * search finds those). An empty query returns the model unchanged.
+ * The sidebar view's filter (2.1): the same matcher and the same rank as Home's search, applied in place. Groups keep
+ * their order; inside each, rows rank as Home's search ranks them (`byRank`: title matches first) and an equal rank
+ * keeps the chosen sort. Only matching rows stay, groups left empty drop out, and archived workspaces aren't listed
+ * (Home's search finds those). An empty query returns the model unchanged.
  */
 export function filterHome(model: HomeModel, index: SearchIndex, query: string, now = Date.now()): { model: HomeModel; hits: Map<string, SearchHit> | null } {
   if (!queryTokens(query).length) return { model, hits: null };
   const hits = new Map(search(index, query, now, Infinity).filter(h => h.group !== "archived").map(h => [h.key, h]));
-  const groups = model.groups.map(g => ({ ...g, items: g.items.filter(s => hits.has(s.key)) })).filter(g => g.items.length);
+  // Array sort is stable: an equal rank keeps the list's own order.
+  const groups = model.groups.map(g => ({ ...g, items: g.items.filter(s => hits.has(s.key)).sort((a, b) => byRank(hits.get(a.key), hits.get(b.key))) }))
+    .filter(g => g.items.length);
   return { model: { ...model, groups, needs: groups.find(g => g.id === "needs")?.items.length ?? 0 }, hits };
 }

@@ -8,7 +8,7 @@ import type { InboxRow, Reason } from "../shared/inbox";
 import type { State, Workspace } from "../shared/model";
 import { followsByDefault, migrateFollowEvery, FOLLOW_EVERY_MIGRATION } from "../shared/settings";
 import { applyDiscovery } from "../server/discovery";
-import { excerpt, filterHome, homeSearchDocs, indexDocs, omniboxResults, rowHit, search, tokenMatch, withinOneEdit, workspaceProvider, type OmniboxProvider } from "../shared/search";
+import { byRank, excerpt, filterHome, homeSearchDocs, indexDocs, omniboxResults, rowHit, search, tokenMatch, withinOneEdit, workspaceProvider, type OmniboxProvider } from "../shared/search";
 import { readFile } from "node:fs/promises";
 import { SORT_MODES, type SortMode } from "../shared/sort";
 import { freshPriorities, mergePriorities, priorityNote, PRIORITY_FRESH_MS, type Priority } from "../shared/priorities";
@@ -121,9 +121,9 @@ test("results highlight the title or say where they matched, and providers list 
 
 /**
  * The sidebar view's filter and Home's search answer the same question the same way: `filterHome` keeps exactly the
- * live workspaces `search` finds, in the list's own groups and order (sidebar-filter-uses-home-search).
+ * live workspaces `search` finds, in the list's own groups, ranked like `search` (sidebar-filter-uses-home-search).
  */
-test("the sidebar filter keeps exactly what Home search finds (one matcher), in the list's groups and order", async () => {
+test("the sidebar filter keeps exactly what Home search finds (one matcher), in the list's groups, ranked like it", async () => {
   const { index, model } = fixture();
   for (const q of ["okta", "1402", "acme-1312", "saml", "chore", "nothing-like-this"]) {
     const found = new Set(search(index, q, NOW, Infinity).filter(h => h.group !== "archived").map(h => h.key));
@@ -133,8 +133,10 @@ test("the sidebar filter keeps exactly what Home search finds (one matcher), in 
     assert.deepEqual([...hits!.keys()].sort(), [...found].sort());
     for (const g of narrowed.groups) {
       assert.ok(g.items.length, "a group with no match drops out");
-      const order = model.groups.find(x => x.id === g.id)!.items.map(s => s.key).filter(k => found.has(k));
-      assert.deepEqual(g.items.map(s => s.key), order, "the chosen sort, not match rank");
+      // Inside a group: Home search's rank first (one-ranking-for-every-workspace-search), then the chosen sort.
+      const listed = model.groups.find(x => x.id === g.id)!.items.map(s => s.key).filter(k => found.has(k));
+      const order = [...listed].sort((a, b) => byRank(hits!.get(a), hits!.get(b)));
+      assert.deepEqual(g.items.map(s => s.key), order, "rank, then the chosen sort");
     }
   }
   assert.ok(!filterHome(model, index, "legacy connector", NOW).model.groups.length, "archived workspaces stay out of the filter");
