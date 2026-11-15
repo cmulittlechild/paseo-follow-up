@@ -314,6 +314,8 @@ test("suggestion normalization repairs punctuation, linked-key placement and cha
     ["XYZ-99: Fix retries", "Fix retries"],
     ["Investigate configurable notification preferences across multiple environments", "Investigate configurable notification preferences across"],
     ["Don't retry failed payments", "Don't retry failed payments"],
+    ["Add support for C++", "Add support for C++"],
+    ["Add support for C#", "Add support for C#"],
   ]) {
     assert.equal(normalizeSuggestion(raw, ["ABC-1234"]), expected);
     assert.equal(checkName(expected, { keys: ["ABC-1234"] }).ok, true);

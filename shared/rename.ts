@@ -78,7 +78,7 @@ export const renameIssueKeys = (links: readonly { key: string }[]) => [...new Se
 /** Repair mechanical model mistakes without spending a second job. Human edits still use checkName unchanged. */
 export function normalizeSuggestion(raw: string, keys: readonly string[] = []): string {
   let name = raw.replace(/["`“”„«»]/g, "").replace(/[‘’]/g, "'").replace(/[<>{}\[\]|\\]/g, " ").replace(/\s+/g, " ").trim().replace(/^'+|'+$/g, "");
-  name = name.replace(/[\p{P}\p{S}]+$/u, "").trim();
+  name = name.replace(/[.,;:!?…'*)\]}]+$/u, "").trim();
   const allowed = new Set(keys);
   const tokens = name.split(" ").filter(Boolean).flatMap(token => {
     const key = keyOf(token.toUpperCase());
@@ -94,7 +94,7 @@ export function normalizeSuggestion(raw: string, keys: readonly string[] = []): 
     if ([...kept, token].join(" ").length > NAME_MAX_CHARS) break;
     kept.push(token);
   }
-  return kept.join(" ").replace(/[\p{P}\p{S}]+$/u, "").trim();
+  return kept.join(" ").replace(/[.,;:!?…'*)\]}]+$/u, "").trim();
 }
 
 export const RENAME_SYSTEM = "You name software workspaces. Reply with one JSON object only, no prose and no code fence. Use only facts in the material.";
