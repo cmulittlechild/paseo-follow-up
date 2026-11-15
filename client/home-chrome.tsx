@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Platform, ScrollView, TextInput, View } from "react-native";
+import { Platform, TextInput, View } from "react-native";
 import { Pressable, Text } from "./text";
-import { Icon, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { homeCounts, type HomeGroupId, type HomeModel } from "../shared/home";
 import { filterHome, homeSearchDocs, indexDocs, defaultActive, omniboxResults, overseerProvider, workspaceProvider, type OmniboxItem, type OmniboxProvider } from "../shared/search";
 import { DEFAULT_SORT, SORT_HINT, SORT_LABEL, SORT_MODES, type SortMode } from "../shared/sort";

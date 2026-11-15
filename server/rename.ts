@@ -5,10 +5,13 @@ import { JsonFileStore } from "./json-file-store";
 import { dailyBudget } from "../shared/about";
 import type { RoleConfig } from "../shared/agent-settings";
 import {
-  checkName, EMPTY_RENAME_FILE, freshEntries, lastRename, RENAME_DAILY_CAP, RENAME_SYSTEM, renameFileSchema, renamePrompt, renameReplySchema, undoRefusal,
+  checkName, normalizeSuggestion, renameIssueKeys, EMPTY_RENAME_FILE, freshEntries, lastRename, RENAME_DAILY_CAP, RENAME_SYSTEM, renameFileSchema, renamePrompt, renameReplySchema, undoRefusal,
   type RenameFile, type RenameInputs, type RenameResult, type RenameStatus,
 } from "../shared/rename";
-import type { AiJobs, JobResult } from "./ai-jobs";
+import { claudeRunner, claudeArgs, type AiJobs, type JobResult, type RunInput } from "./ai-jobs";
+
+/** A one-line Haiku job: disable thinking for this subprocess only, without changing Summaries or CLI settings. */
+export const renameRunner = (command = "claude", args: (input: RunInput) => string[] = claudeArgs) => claudeRunner(command, args, { MAX_THINKING_TOKENS: "0", CLAUDE_CODE_DISABLE_THINKING: "1" });
 
 /**
  * Rename title with AI (docs/ai-roles.md#rename-title-with-ai). The suggestion is one small job on Summaries' model, built from
@@ -73,6 +76,7 @@ export type RenameDeps = {
   /** The governor: null when there's room for an on-demand job, else why not. */
   room(): Promise<string | null>;
   now?: () => number;
+  pause?: (ms: number) => Promise<void>;
 };
 
 export class RenameService {
@@ -89,29 +93,38 @@ export class RenameService {
   async status(workspaceId: string, suggest: boolean): Promise<RenameStatus> {
     const cur = await this.current(workspaceId);
     const inputs = await this.d.inputs(workspaceId, cur.shown);
-    const keys = (inputs?.linked ?? []).map(l => l.key).slice(0, 20);
+    const keys = renameIssueKeys(inputs?.linked ?? []).slice(0, 20);
     const last = lastRename(await this.d.store.read(), workspaceId, this.now());
-    const suggestion = suggest ? await this.suggest(inputs ?? empty(cur.shown), keys, cur.shown) : null;
-    return { workspaceId, current: cur.shown, suggestion, keys, last: last ? { from: last.from ?? cur.name, to: last.to, at: last.at } : null };
+    const result = suggest ? await this.suggest(inputs ?? empty(cur.shown), keys, cur.shown) : null;
+    return { workspaceId, current: cur.shown, suggestion: result?.name ?? null, ...(result?.notice ? { notice: result.notice } : {}), keys, last: last ? { from: last.from ?? cur.name, to: last.to, at: last.at } : null };
   }
 
-  private async suggest(inputs: RenameInputs, keys: string[], current: string): Promise<string> {
-    const busy = await this.d.room();
-    if (busy) throw new Error(busy);
+  private async suggest(inputs: RenameInputs, keys: string[], current: string): Promise<{ name: string; notice?: string }> {
+    // A developer click is on demand. Pressure can defer it briefly, never refuse it as background work.
+    if (await this.d.room().catch(() => null)) await (this.d.pause ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(250);
     const role = await this.d.role();
     let rejected: { name: string; reason: string } | null = null;
-    // One retry with the reason; never a bigger model or more effort.
+    let best = "", bestScore = 0;
     for (let attempt = 0; attempt < 2; attempt++) {
       const allowed = await this.d.store.mutate(file => { const b = dailyBudget(file.daily, this.now(), RENAME_DAILY_CAP); if (b.allowed) file.daily = b.next; return b.allowed; });
-      if (!allowed) throw new Error(`Rename title with AI has made its ${RENAME_DAILY_CAP} suggestions for today. Type a name instead.`);
+      if (!allowed) return { name: best, notice: `Rename title with AI has made its ${RENAME_DAILY_CAP} suggestions for today. Type a name instead.` };
       const r: JobResult<{ name: string }> = await this.d.jobs.run({ name: "rename", prompt: renamePrompt(inputs, rejected), schema: renameReplySchema, system: RENAME_SYSTEM,
-        provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, timeoutMs: 45_000, maxPromptChars: 8000, maxOutputChars: 600 });
-      if (!r.ok) { if (r.reason === "invalid-json" || r.reason === "invalid-shape") { rejected = { name: "", reason: "It wasn't the JSON object asked for." }; continue; } throw new Error(`Couldn't suggest a name: ${r.error}`); }
-      const check = checkName(r.value.name, { keys, current });
-      if (check.ok) return check.name;
-      rejected = { name: r.value.name, reason: check.reason };
+        provider: role.provider, model: role.model ?? undefined, thinking: null, ...(role.provider === "claude" ? { runner: renameRunner() } : {}), timeoutMs: 45_000, maxPromptChars: 8000, maxOutputChars: 8000,
+        diagnose: reply => { const checked = checkName(reply.name, { keys, current }); return checked.ok ? null : checked.rule; } });
+      if (!r.ok) {
+        if (r.reason === "invalid-json" || r.reason === "invalid-shape" || r.reason === "too-large") { rejected = { name: "", reason: "Reply with the one JSON object asked for." }; continue; }
+        if (best) return { name: best };
+        throw new Error(`Couldn't suggest a name: ${r.error}`);
+      }
+      const candidate = normalizeSuggestion(r.value.name, keys);
+      const check = checkName(candidate, { keys, current });
+      if (check.ok) return { name: check.name };
+      // Preserve the best model candidate for editing when a fresh name still needs human judgment.
+      const score = !candidate ? 0 : check.rule === "unchanged" ? 2 : 1;
+      if (score > bestScore) { best = candidate; bestScore = score; }
+      rejected = { name: candidate, reason: check.reason };
     }
-    throw new Error(`Couldn't suggest a usable name: ${rejected?.reason ?? "no reply"}`);
+    return { name: best, ...(!best ? { notice: "Type a name, or suggest another." } : {}) };
   }
 
   /** Renames (the dialog's Rename, ai_rename's confirm) or undoes the newest rename. Recorded for 24 h either way. */
@@ -127,7 +140,7 @@ export class RenameService {
       return { workspaceId, title: entry!.from ?? cur.name, previous: entry!.to, undone: true };
     }
     if (input.title === undefined) throw new Error("Give the new name, or undo.");
-    const keys = ((await this.d.inputs(workspaceId, cur.shown))?.linked ?? []).map(l => l.key);
+    const keys = renameIssueKeys((await this.d.inputs(workspaceId, cur.shown))?.linked ?? []);
     const check = checkName(input.title, { keys, current: cur.shown });
     if (!check.ok) throw new Error(check.reason);
     await this.d.titles.set(workspaceId, check.name);

@@ -5,7 +5,7 @@ import { setPrWorkflowInputSchema } from "../shared/pr-workflow";
 import { reviewerListSchema } from "../shared/reviewers";
 import { taskTriggerSchema } from "../shared/task-trigger";
 import { UPDATE_MODES } from "../shared/updates";
-import { briefChoiceSchema } from "../shared/contracts";
+import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -108,6 +108,17 @@ export const RPC_TOOLS: readonly RpcTool[] = [
     input: z.strictObject({ version: z.string().trim().min(1).max(64), anyway: z.boolean().optional(), ...confirm }) },
   // Settings → General: 2.0's move to the new plugin id (status is in updates_status), Try again
   { name: "retry_move", rpc: "follow.retry-move", kind: "planned", before: { rpc: "follow.updates", input: () => ({}) }, input: z.strictObject({ ...confirm }) },
+  // Report an issue's Send: to an agent, a new agent in a workspace, or a new workspace (server/report-send.ts). The dry
+  // run shows the targets the sheet offers; an agent reporting for itself files with report_issue instead.
+  { name: "report_send", rpc: "follow.report-issue-send", kind: "planned", before: { rpc: "follow.report-issue-targets", input: () => ({}) },
+    input: z.strictObject({ kind: reportKindSchema.optional(), text: z.string().max(8000).optional(), error: z.string().max(2000).nullable().optional(), agentId: id.optional(), newAgentWorkspaceId: id.optional(), newWorkspaceProjectId: id.optional(), ...confirm }),
+    guard: (a, caller) => {
+      if (a.confirm) return null;
+      if (!a.kind || a.text === undefined) return "report_send: give kind (bug, feature or feedback) and text (the developer's words).";
+      const targets = [a.agentId, a.newAgentWorkspaceId, a.newWorkspaceProjectId].filter(Boolean).length;
+      if (targets !== 1) return "report_send: give exactly one target: agentId, newAgentWorkspaceId or newWorkspaceProjectId (follow.report-issue-targets lists them).";
+      return a.agentId === caller ? "report_send: that's you. To report it yourself, use report_issue." : null;
+    } },
   // Settings → Permissions: trust bypass agents' approvals
   { name: "trust_bypass_status", rpc: "follow.trust-bypass", kind: "read", input: none },
 ];
@@ -178,7 +189,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.retry-move": { tools: ["retry_move"] },
   "follow.dismiss-update-notice": { exempt: "Hides Home's update line for the person looking at it; updates_status already tells an agent what that line said." },
   "follow.report-issue-targets": { tools: ["report_issue"], note: "The Report sheet's agent picker. An agent asked to report files it itself with report_issue; it has no one to hand the prompt to." },
-  "follow.report-issue-send": { tools: ["report_issue"], note: "The sheet hands the developer's words to an agent, which then uses report_issue; an agent reporting calls the tool directly." },
+  "follow.report-issue-send": { tools: ["report_send", "report_issue"], note: "report_send hands a report to an agent, a new agent or a new workspace, as the sheet's Send does; an agent reporting for itself calls report_issue directly." },
   "follow.created-items": { tools: ["workspace_status"], note: "Read-only live facts for the chat's created-agent / created-workspace cards; an agent reads them through workspace_status and Paseo's own list_agents." },
   "follow.report-issue-link": { tools: ["report_issue"], note: "Open on GitHub with no agent to send to; report_issue's confirm returns the same prefilled link without GitHub auth." },
   "follow.whats-new-seen": { exempt: "Records that a person closed What's new on a device; an agent reading the notes isn't someone seeing the sheet." },

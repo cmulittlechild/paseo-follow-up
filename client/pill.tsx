@@ -1,11 +1,11 @@
 import { useState, useSyncExternalStore } from "react";
 import { browserKey } from "./keys";
 import { openRowCopy, useDetailGate, useWorkspace } from "./workspace-data";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { useQuery } from "@tanstack/react-query";
 import { useRpc, type PluginButtonContentProps, type PluginButtonIconProps, type PluginButtonRegistration, type PluginClientContext } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/ui";
+import { Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { browserStatusRpc } from "../shared/contracts";
 import { activeNeeds, needsYou, type NeedItem } from "../shared/attention";
 import { briefQuestionIds, echoedItems, HEADLINE_ICON, todoLine, HEADLINE_TONE, pillState, todoLabel, withoutBriefQuestions, type PillState } from "../shared/headline";

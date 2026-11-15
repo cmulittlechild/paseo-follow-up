@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useViewSync, useViewVersion } from "./view-store";
-import { ActivityIndicator, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, TextInput, View } from "react-native";
 import { Pressable, Text } from "./text";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useRpc, useSettings } from "@getpaseo/plugin/client";
-import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, ScrollView, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, useToast } from "@getpaseo/plugin/client/ui";
 import { QUESTION_MODES, QUESTION_MODE_RULES, questionPreferences, type QuestionMode } from "../shared/questions";
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { followSettingsRpc, projectSettingsRpc, setFollowSettingsRpc, setProjectTrackingRpc } from "../shared/contracts";

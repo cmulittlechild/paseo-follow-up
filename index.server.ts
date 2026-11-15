@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import * as rpc from "./shared/contracts";
 import { LogRing } from "./server/report-issue/diagnostics";
-import { followUpReporter, reportPrompt } from "./server/report-issue-adapter";
+import { followUpReporter } from "./server/report-issue-adapter";
 import { githubApi } from "./server/github-api";
 import { browserRepositories, browserWorkspaces, prClaims, prOwner } from "./server/pr-owner";
 import { type Workspace } from "./shared/model";
@@ -81,6 +81,7 @@ import { RenameService, RenameStore, renameDaemon } from "./server/rename";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostFeature, type ServerInfo } from "./server/host-features";
+import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
 import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
@@ -430,6 +431,8 @@ export default function contribute(server: PluginServerContext) {
   // Paseo 0.16 runs background jobs itself (features.agentBackgroundWork): Wait retires there (docs/wait.md).
   const hostBackgroundWork = hostFeature("agentBackgroundWork", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   // Paseo 0.16 background agents (features.backgroundAgents): the recovery agent is created background (plan #8).
+  // Paseo's features.workspaceMultiplicity: more than one workspace on one folder, which a report's new (directory) workspace needs.
+  const hostMultiplicity = hostFeature("workspaceMultiplicity", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   gateway.backgroundAgents = hostFeature("backgroundAgents", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   const wait = new Wait(join(directory, "wait"), { enabled: () => agentSettings.waitEnabled(), config: async () => await paseoConfig() as WaitPaseoConfig | null, hostBackgroundWork, legacyDirectory: existsSync(dataDirs(paseoHome).legacy) ? join(dataDirs(paseoHome).legacy, "wait") : null });
   const currentWait = async () => waitStatus(await agentSettings.waitEnabled(), await paseoConfig() as WaitPaseoConfig | null, await hostBackgroundWork());
@@ -1158,21 +1161,16 @@ export default function contribute(server: PluginServerContext) {
     const rank = (a: typeof agents[number]) => (a.id === agentId ? 4 : 0) + (workspaceId && a.workspaceId === workspaceId ? 2 : 0) + (a.main ? 1 : 0);
     const sorted = agents.filter(a => a.id === agentId || a.workspaceId === workspaceId || a.main).sort((x, y) => rank(y) - rank(x) || y.last - x.last).slice(0, 6);
     const here = workspaceId && titles.has(workspaceId) ? { id: workspaceId, title: titles.get(workspaceId)! } : sorted[0]?.workspaceId ? { id: sorted[0].workspaceId, title: sorted[0].workspaceTitle ?? "Workspace" } : (rows?.workspaces ?? []).filter(w => !w.archivingAt)[0] ? { id: rows!.workspaces[0].id, title: rows!.workspaces[0].name } : null;
-    return { agents: sorted.map(({ last: _l, ...a }) => a), defaultId: sorted[0]?.id ?? null, newAgentWorkspace: here };
+    return { agents: sorted.map(({ last: _l, ...a }) => a), defaultId: sorted[0]?.id ?? null, newAgentWorkspace: here, newWorkspace: newWorkspaceTarget(rows, here?.id, await hostMultiplicity()) };
   });
-  handle(rpc.reportSendRpc, async ({ kind, text, error, agentId, newAgentWorkspaceId }, { paseo }) => {
+  handle(rpc.reportSendRpc, async (input, { paseo }) => {
     seen(paseo);
-    const prompt = reportPrompt(kind, text, error);
-    if (agentId) {
-      await sendTo(agentId)(prompt, randomUUID());
-      const row = (await gateway.directory.read().catch(() => null))?.agents.find(r => r.agent.id === agentId)?.agent;
-      return { agentId, title: row?.title ?? "the agent", started: false };
-    }
-    if (!newAgentWorkspaceId) throw new Error("Pick an agent, or a workspace to start a new one in.");
-    const title = kind === "bug" ? "Report a Follow-up bug" : kind === "feature" ? "Follow-up feature request" : "Follow-up feedback";
-    const providerId = (await agentSettings.role("overseer").catch(() => null))?.provider?.split("/")[0] ?? "claude";
-    const agent = await paseo.workspaces.ref(newAgentWorkspaceId).agents.create({ config: { provider: await providerModel(paseo as unknown as OverseerPaseo, providerId) }, title, prompt });
-    return { agentId: agent.id, title, started: true };
+    return sendReport({
+      rows: () => gateway.directory.read().catch(() => null), multiplicity: hostMultiplicity, sendTo: (agentId, prompt, messageId) => sendTo(agentId)(prompt, messageId),
+      agentTitle: async agentId => (await gateway.directory.read().catch(() => null))?.agents.find(r => r.agent.id === agentId)?.agent.title ?? null,
+      provider: async () => ({ provider: await providerModel(paseo as unknown as OverseerPaseo, (await agentSettings.role("overseer").catch(() => null))?.provider?.split("/")[0] ?? "claude") }),
+      paseo: paseo as unknown as ReportSendDeps["paseo"],
+    }, input);
   });
   handle(rpc.reportLinkRpc, async ({ kind, text }) => ({ url: (await reportKit.manualLink(kind, text)).url }));
   // Provider limits are non-essential: at critical memory only the VM meter is served.

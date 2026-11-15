@@ -1,9 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { openExternalUrl, useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
-import { Icon, Modal, TextInput } from "@getpaseo/plugin/client/ui";
+import { Icon, Modal, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
 import { reportLinkRpc, reportSendRpc, reportTargetsRpc } from "../shared/contracts";
+import { NEW_AGENT, NEW_WORKSPACE, PICKER_MAX, defaultChoice, pickerScrolls, newAgentLines, pickerRows, targetLines, type PickerRow, type SendTargets } from "../shared/report-send";
 import { errorText } from "../shared/errors";
 import { BRAND_ICONS } from "./brand-icons";
 import { Button, SubmitScope, text } from "./kit";
@@ -45,23 +46,14 @@ const KINDS: { id: ReportKind; label: string; icon: string; placeholder: string 
 ];
 export const TRUST_LINE = "The agent gathers versions and recent errors, removes private names, and shows you the issue before filing it. Nothing is posted without your yes.";
 
-type Target = { id: string; title: string; provider: string; status: string; workspaceId: string | null; workspaceTitle: string | null; main: boolean };
-const NEW = "new";
-/** The picker's height: about five rows (52 desktop, 54 on phones), plus half a row so it's clear the list scrolls. */
-export const PICKER_MAX = (compact: boolean) => Math.round((compact ? 54 : 52) * 5.5);
+export { PICKER_MAX, targetLines };
 
-/** "Billing retries · main agent", "Claude Code · idle". */
-export function targetLines(t: Target): [string, string] {
-  const provider = t.provider === "claude" ? "Claude Code" : t.provider === "codex" ? "Codex" : t.provider;
-  const head = t.workspaceTitle ? `${t.workspaceTitle} · ${t.main ? "main agent" : t.title}` : t.title;
-  return [head, `${provider} · ${t.status === "running" ? "working" : t.status}`];
-}
-
-function ProviderMark({ provider, theme }: { provider: string | null; theme: Theme }) {
+function ProviderMark({ provider, mark, theme }: { provider: string | null; mark?: PickerRow["mark"]; theme: Theme }) {
   const c = theme.colors;
   return <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: c.surface2, alignItems: "center", justifyContent: "center" }}>
     {provider === "claude" ? <Icon icon={BRAND_ICONS.claude} size={13} color={c.foregroundMuted} />
-      : provider === null ? <Icon name="Plus" size={13} color={c.foregroundMuted} />
+      : mark === "workspace" ? <Icon name="FolderPlus" size={13} color={c.foreground} />
+      : provider === null ? <Icon name="Plus" size={13} color={mark ? c.foreground : c.foregroundMuted} />
       : <Icon name={provider === "codex" ? "SquareTerminal" : "Bot"} size={13} color={c.foregroundMuted} />}
   </View>;
 }
@@ -91,35 +83,40 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
   const [picked, setPicked] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "edit" });
-  const [targets, setTargets] = useState<{ agents: Target[]; defaultId: string | null; newAgentWorkspace: { id: string; title: string } | null } | null>(null);
+  const [targets, setTargets] = useState<SendTargets | null>(null);
   const readTargets = useRpc(reportTargetsRpc); const send = useRpc(reportSendRpc); const link = useRpc(reportLinkRpc);
   useEffect(() => {
     let live = true;
     readTargets({ workspaceId: request.workspaceId, agentId: request.agentId }).then(r => { if (live) setTargets(r); }).catch(() => { if (live) setTargets({ agents: [], defaultId: null, newAgentWorkspace: null }); });
     return () => { live = false; };
   }, [request.workspaceId, request.agentId]);
-  const chosen = picked ?? targets?.defaultId ?? (targets?.newAgentWorkspace ? NEW : null);
-  const target = targets?.agents.find(a => a.id === chosen) ?? null;
-  const nowhere = !!targets && !targets.agents.length && !targets.newAgentWorkspace;
+  const chosen = picked ?? (targets ? defaultChoice(targets) : null);
+  const rows = targets ? pickerRows(targets) : { pinned: [], agents: [] };
+  const chosenRow = [...rows.pinned, ...rows.agents].find(r => r.id === chosen) ?? null;
+  const nowhere = !!targets && !targets.agents.length && !targets.newAgentWorkspace && !targets.newWorkspace;
   const empty = !words.trim() && !error;
   const placeholder = error ? "Anything else? What were you doing when it happened?" : KINDS.find(k => k.id === kind)!.placeholder;
   const submit = async () => {
     if (empty || phase.kind === "sending" || !chosen) return;
     setPhase({ kind: "sending" });
     try {
-      const r = await send({ kind, text: words, error, ...(chosen === NEW ? { newAgentWorkspaceId: targets!.newAgentWorkspace!.id } : { agentId: chosen }) });
+      const r = await send({ kind, text: words, error, ...(chosen === NEW_AGENT ? { newAgentWorkspaceId: targets!.newAgentWorkspace!.id } : chosen === NEW_WORKSPACE ? { newWorkspaceProjectId: targets!.newWorkspace!.projectId } : { agentId: chosen }) });
       setPhase({ kind: "sent", ...r });
     } catch (e) { setPhase({ kind: "failed", message: errorText(e) }); }
   };
   const openGithub = async () => { try { const { url } = await link({ kind, text: [words, error ? `Error: ${error}` : ""].filter(Boolean).join("\n\n") }); await openExternalUrl(url); onClose(); } catch (e) { setPhase({ kind: "failed", message: errorText(e) }); } };
   const pad = compact ? 16 : 16;
-  const row = (id: string, lines: [string, string], provider: string | null, selected: boolean, onPress: () => void, first: boolean) =>
-    <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress}
-      style={state => ({ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 8, minHeight: compact ? 48 : 0, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: selected || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-      <ProviderMark provider={provider} theme={theme} />
-      <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={t.body}>{lines[0]}</Text><Text numberOfLines={1} style={t.meta}>{lines[1]}</Text></View>
+  const row = (r: PickerRow, first: boolean) => {
+    const selected = r.id === chosen;
+    return <Pressable key={r.id} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => { setPicked(r.id); setChoosing(false); }}
+      style={state => ({ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 8, minHeight: compact ? 54 : 52, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: selected || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
+      <ProviderMark provider={r.provider} mark={r.mark} theme={theme} />
+      <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={t.body}>{r.lines[0]}</Text><Text numberOfLines={1} style={t.meta}>{r.lines[1]}</Text></View>
+      {selected && <Icon name="Check" size={14} color={c.foreground} />}
     </Pressable>;
-  const newLines: [string, string] = ["A new agent", `Starts in ${targets?.newAgentWorkspace?.title ?? "this workspace"}, with the default model`];
+  };
+  const agentRows = rows.agents.map((r, i) => row(r, i === 0));
+  const shownLines = chosenRow?.lines ?? newAgentLines(targets?.newAgentWorkspace?.title);
 
   if (phase.kind === "sent") return <Modal.Content contentContainerStyle={{ padding: 0, gap: 0 }}>
     <View style={{ padding: pad, gap: 12 }}>
@@ -158,15 +155,20 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
         {!targets ? <View style={{ minHeight: 46, justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: c.border, borderRadius: 8 }}><Spinner color={c.foregroundMuted} size={14} label="Loading agents" /></View>
           : <Pressable accessibilityRole="button" accessibilityLabel="Send to" accessibilityHint="Pick which agent gets this" onPress={() => setChoosing(v => !v)}
             style={{ flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, minHeight: compact ? 48 : 0, backgroundColor: c.surface0 }}>
-            <ProviderMark provider={target ? target.provider : null} theme={theme} />
-            <View style={{ flex: 1, minWidth: 0 }}>{(target ? targetLines(target) : newLines).map((l, i) => <Text key={i} numberOfLines={1} style={i ? t.meta : t.body}>{l}</Text>)}</View>
+            <ProviderMark provider={chosenRow?.provider ?? null} mark={chosenRow ? chosenRow.mark : "agent"} theme={theme} />
+            <View style={{ flex: 1, minWidth: 0 }}>{shownLines.map((l, i) => <Text key={i} numberOfLines={1} style={i ? t.meta : t.body}>{l}</Text>)}</View>
             <Icon name="ChevronsUpDown" size={14} color={c.foregroundMuted} />
           </Pressable>}
-        {/* About five rows show; more scroll inside, so a long list never pushes the trust line and Send off the dialog. */}
-        {choosing && targets && <ScrollView nestedScrollEnabled style={{ marginTop: 6, maxHeight: PICKER_MAX(compact), borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0 }}>
-          {targets.agents.map((a, i) => row(a.id, targetLines(a), a.provider, a.id === chosen, () => { setPicked(a.id); setChoosing(false); }, i === 0))}
-          {targets.newAgentWorkspace && row(NEW, newLines, null, chosen === NEW, () => { setPicked(NEW); setChoosing(false); }, !targets.agents.length)}
-        </ScrollView>}
+        {/* The new rows first, pinned; then the agents, which scroll inside on desktop and with the sheet on phones. */}
+        {choosing && targets && <View style={{ marginTop: 6, borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0, overflow: "hidden" }}>
+          {rows.pinned.map((r, i) => row(r, i === 0))}
+          {!!rows.agents.length && <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, borderTopWidth: rows.pinned.length ? 1 : 0, borderTopColor: c.border, borderBottomWidth: 1, borderBottomColor: c.border }}>
+            <Text style={t.meta}>Agents</Text><Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{rows.agents.length}</Text>
+          </View>}
+          {pickerScrolls(compact)
+            ? <ScrollView nestedScrollEnabled style={{ maxHeight: PICKER_MAX(compact), flexGrow: 0 }}>{agentRows}</ScrollView>
+            : agentRows}
+        </View>}
       </View>}
       {!nowhere && <View style={{ flexDirection: "row", gap: 8 }}>
         <Icon name="ShieldCheck" size={14} color={c.foregroundMuted} />
@@ -177,7 +179,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
     <Footer compact={compact} theme={theme}>
       <Button title="Cancel" kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
       {nowhere ? <Button title="Open on GitHub" icon="ExternalLink" kind="primary" theme={theme} compact={compact} grow={compact} disabled={empty} onPress={() => void openGithub()} />
-        : <Button title={chosen === NEW ? "Start agent and send" : "Send to agent"} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
+        : <Button title={chosen === NEW_WORKSPACE ? "Start workspace and send" : chosen === NEW_AGENT ? "Start agent and send" : "Send to agent"} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
     </Footer>
   </SubmitScope></Modal.Content>;
 }
