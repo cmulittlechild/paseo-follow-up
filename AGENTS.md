@@ -88,11 +88,11 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
-| Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
+| Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `server/report-send.ts`, `shared/report-send.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
 | Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
 
 ## Invariants
@@ -258,7 +258,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 4. **Agents act on others, not themselves.** An agent can't sign itself off, answer its own question through
    `answer_question`, or act on its own brief. Goal, tasks, questions and Done belong to the main agent.
    Contributors get `workspace_status`, `register_pr`, `sync_workspace` and `make_main_agent` (under its claim
-   rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else.
+   rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else. `report_send` refuses to send a
+   report to the calling agent itself.
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
 6. **Nothing irreversible on its own.**
@@ -419,6 +420,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
    (`overseerMatches`). No surface ranks workspace matches its own way. Guarded by `tests/filter-rank.test.ts` and
    `tests/home-beta2.test.ts`.
+29. **Sheet content scrolls with the sheet** (`sheet-content-scrolls-with-the-sheet`). Every client ScrollView and
+   FlatList comes from the kit (`@getpaseo/plugin/client/ui`), which hands the pan gesture to the list inside a Paseo
+   bottom sheet or popover and is React Native's own everywhere else; a React Native one stays only in
+   `client/scroll-allowlist.ts`, with why it never renders inside a sheet. A sheet coordinates one scrollable, so
+   nothing nests a second scroll view in a sheet's body on phones (Report an issue's Send to: `pickerScrolls`). A field
+   inside a Modal is the kit's TextInput, which keeps it above the keyboard. 2026-11-15: on a phone, Send to showed
+   about six agents and nothing below them, "A new agent" included, could be reached. Guarded by
+   `tests/sheet-scroll.test.ts` and `tests/report-send.test.ts`.
 
 ## Bugs
 

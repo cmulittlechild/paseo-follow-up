@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, View } from "react-native";
+import { View, type FlatList as NativeFlatList } from "react-native";
 import { Pressable, Text } from "./text";
-import { Icon } from "@getpaseo/plugin/client/ui";
+import { Icon, FlatList } from "@getpaseo/plugin/client/ui";
 import { type Badge, type HomeGroupId, type HomeModel, type Workstream } from "../shared/home";
 import { ASK_KEY, excerpt, FIELD_LABEL, highlightRuns, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
@@ -157,7 +157,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
     }
   }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow, selectedBg]);
 
-  const listRef = useRef<FlatList<Entry>>(null);
+  const listRef = useRef<NativeFlatList<Entry>>(null);
   const rootRef = useRef<View>(null);
   // The keyboard walk: the rows as drawn, the brief and the Overseer first (they're rows too). A search walks its
   // results through the omnibox instead.

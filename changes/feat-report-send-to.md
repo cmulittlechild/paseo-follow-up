@@ -1,0 +1,3 @@
+- Report an issue can start the report in a new workspace, with an agent on the default model.
+- On a phone, Report an issue's Send to list scrolls again, and the new workspace and new agent options come first.
+- Lists inside sheets and popovers scroll on a phone, and the reviewer field in a PR sheet stays above the keyboard.

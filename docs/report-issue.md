@@ -112,9 +112,34 @@ directly; it doesn't need to hand a prompt to itself), `follow.report-issue-link
   with that agent picked.
 - **Error toasts:** every Follow-up error toast gets **Report this**, which opens the sheet with the error attached.
 - **The sheet** (`ReportSheet`, a Paseo Modal: a dialog on desktop, a bottom sheet on phones): Bug / Idea / Feedback,
-  one text box, **Send to** (the default agent, others, or A new agent), the trust line, then Send to agent. Sent shows
-  who got it with Open the chat. With nowhere to send it (no workspace at all), Open on GitHub opens the prefilled
+  one text box, **Send to**, the trust line, then Send. Sent shows who got it ("Started <title>" for a new agent or
+  workspace) with Open the chat. With nowhere to send it (no workspace at all), Open on GitHub opens the prefilled
   issue instead. `openReportSheet()` opens it from anywhere; a host is mounted on Home, the panel and Settings.
+
+### Send to
+
+The picker (`pickerRows`, `shared/report-send.ts`) pins the new rows first, then an "Agents · N" label and the agents:
+
+1. **A new workspace** ("In <project>, with the default model"): the project the sheet's workspace belongs to (from
+   Home, the workspace the server picks for a new agent). It's a `directory` workspace on the project's root with its
+   `projectId`, the kind Paseo's own New workspace creates by default (its "local" isolation, not a worktree), titled
+   "<Kind>: <first words>" (`reportWorkspaceTitle`: Bug, Idea or Feedback, the first sentence of the text or else of
+   the error, at most 60 characters cut at a word with "…"; no AI call). An agent starts there with the report, on the
+   Overseer role's provider and its default model. When that agent can't start (a disabled provider), the workspace is
+   archived again and the sheet shows Not sent with the text kept, so a retry never leaves empty workspaces behind.
+   Follow-up then tracks it like any workspace, through the project's follow settings. The row is hidden without a project, and on a host without `features.workspaceMultiplicity`
+   (several directory workspaces can't share one root there; `newWorkspaceTarget`, `server/report-send.ts`).
+2. **A new agent in <workspace>** ("Starts there, with the default model").
+3. The agents: the default first (the agent the sheet opened for, then that workspace's, then main agents).
+
+The default pick is unchanged: the best agent, else a new agent; a new workspace is never picked for the developer.
+On desktop the agents scroll inside the picker (about three and a half rows) under the pinned rows. On phones they
+don't scroll by themselves: Paseo's bottom sheet coordinates one scrollable, its body, so the sheet scrolls and the
+new rows come first (`pickerScrolls`, invariant `sheet-content-scrolls-with-the-sheet`).
+
+An agent does the same with `report_send` (planned: the dry run shows `follow.report-issue-targets`' answer and the
+target; `confirm` runs the sheet's Send). Exactly one target: `agentId`, `newAgentWorkspaceId` or
+`newWorkspaceProjectId`. An agent reporting for itself uses `report_issue` instead.
 
 The repository has issue forms for people filing by hand: `.github/ISSUE_TEMPLATE/bug_report.yml`,
 `feature_request.yml` and `config.yml`.

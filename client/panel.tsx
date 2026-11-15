@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { recoveryActions } from "./recovery-actions";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Text } from "./text";
-import { Icon, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { useAgent, useRpc, useTabState, openExternalUrl, type PluginHostProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { z } from "zod";
 import type { InboxStore } from "./inbox-store";
