@@ -74,7 +74,9 @@ stop.
    Wait for registry integrity verification before saying the version is on npm. To retry a failed publish, run the
    workflow with `workflow_dispatch` and the existing tag. The verifier is loaded from the running workflow’s
    commit so tags that predate that script can still be retried; the package contents stay at the release tag. If a fix is needed, ship it as the next version rather
-   than moving the tag.
+   than moving the tag. A retry whose preflight still returns 404 resumes verification when npm reports the version
+   was already published (`EPUBLISHCONFLICT` or its duplicate-version message); an ordinary authorization E403
+   still fails, and verification still rejects different contents.
 
 ## Backfilling old release pages
 

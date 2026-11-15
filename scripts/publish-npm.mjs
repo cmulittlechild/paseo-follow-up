@@ -59,6 +59,15 @@ export async function waitForPublication(pkg, integrity, distTag, deps = {}) {
   throw new PublicationError("NPM_ACCEPTED_NOT_VISIBLE", `${spec} was accepted by npm but is not fully visible yet after registry verification timed out. The tag must not be rewritten. Retry verification with the same version and tag; do not cut a replacement version just for this delay.`);
 }
 
+// This npm publish targets one exact spec. E403 alone is not proof of acceptance; npm's duplicate-version
+// message or EPUBLISHCONFLICT is. If the message names a version, it must be the one we tried to publish.
+function previouslyPublished(result, version) {
+  const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  const duplicate = text.match(/You cannot publish over the previously published versions(?:\s*:\s*([0-9][0-9A-Za-z.+-]*))?/i);
+  if (duplicate) return !duplicate[1] || duplicate[1].replace(/\.$/, "") === version;
+  return /(?:\bcode\s+|["']code["']\s*:\s*["'])EPUBLISHCONFLICT\b/i.test(text);
+}
+
 export async function publishPackage(pkg, deps = {}) {
   const npm = deps.npm ?? (args => spawnSync("npm", args, { encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }));
   const log = deps.log ?? console.log;
@@ -76,7 +85,7 @@ export async function publishPackage(pkg, deps = {}) {
     log(`Publishing ${spec} under the ${distTag} dist-tag.`);
     const result = npm(["publish", "--access", "public", "--tag", distTag, "--registry", REGISTRY]);
     output(result.stdout, result.stderr); // Preserve npm's + package@version receipt in the workflow log.
-    const accepted = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.split(/\r?\n/).some(line => line.trim() === `+ ${spec}`);
+    const accepted = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.split(/\r?\n/).some(line => line.trim() === `+ ${spec}`) || previouslyPublished(result, pkg.version);
     if (result.status !== 0 && !accepted) throw new PublicationError("NPM_PUBLISH_FAILED", `npm publication failed for ${spec}. Check this package's trusted publisher settings and the npm output above.`);
     log(`${spec} was accepted by npm; waiting up to 45 minutes for registry verification.`);
   }

@@ -149,3 +149,44 @@ test("retrying an old tag uses the verifier from the workflow commit, without ch
   assert.equal(JSON.parse(await readFile(join(dir, "package.json"), "utf8")).version, "1.0.0");
   assert.equal(git("rev-parse", "HEAD").trim(), release);
 });
+
+const republishErrors = [
+  ["E403 duplicate version", `npm error code E403\nnpm error 403 Forbidden - PUT https://registry.npmjs.org/${pkg.name} - You cannot publish over the previously published versions: ${pkg.version}.\n`],
+  ["EPUBLISHCONFLICT", "npm ERR! code EPUBLISHCONFLICT\nnpm ERR! publish fail Cannot publish over existing version.\n"],
+  ["JSON EPUBLISHCONFLICT", JSON.stringify({ error: { code: "EPUBLISHCONFLICT", summary: "Cannot publish over existing version." } })],
+] as const;
+
+test("retry after an invisible accepted publish waits through npm's previously-published rejection", async t => {
+  for (const [label, stderr] of republishErrors) await t.test(label, async () => {
+    const f = fixture(25 * 60_000), npm = f.deps.npm;
+    f.deps.npm = args => args[0] === "publish" ? { ...npm(args), status: 1, stdout: "", stderr } : npm(args);
+    await publishPackage(pkg, f.deps);
+    assert.equal(f.time(), 25 * 60_000, "resume registry verification despite no + spec receipt");
+    assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
+    assert.ok(f.reads.some(path => path.endsWith("/dist-tags")));
+  });
+});
+
+test("previously-published rejection still times out as pending and still checks immutable contents", async () => {
+  const f = fixture(Infinity), npm = f.deps.npm;
+  f.deps.npm = args => args[0] === "publish" ? { ...npm(args), status: 1, stdout: "", stderr: republishErrors[0][1] } : npm(args);
+  await assert.rejects(publishPackage(pkg, f.deps), { code: "NPM_ACCEPTED_NOT_VISIBLE" });
+  assert.equal(f.time(), VERIFY_TIMEOUT_MS);
+  const g = fixture(30_000), run = g.deps.npm, read = g.deps.read;
+  g.deps.npm = args => args[0] === "publish" ? { ...run(args), status: 1, stdout: "", stderr: republishErrors[0][1] } : run(args);
+  g.deps.read = async path => g.time() >= 30_000 ? { dist: { integrity: "sha512-other" } } : read(path);
+  await assert.rejects(publishPackage(pkg, g.deps), { code: "NPM_CONTENT_MISMATCH" });
+  assert.equal(g.time(), 30_000);
+});
+
+test("generic E403 and a duplicate-version message for another version remain publish failures", async () => {
+  for (const stderr of [
+    "npm error code E403\nnpm error 403 Forbidden: authorization denied\n",
+    "npm error code E403\nnpm error You cannot publish over the previously published versions: 1.2.3-beta.01.\n",
+  ]) {
+    const f = fixture(Infinity), npm = f.deps.npm;
+    f.deps.npm = args => args[0] === "publish" ? { ...npm(args), status: 1, stdout: "", stderr } : npm(args);
+    await assert.rejects(publishPackage(pkg, f.deps), { code: "NPM_PUBLISH_FAILED" });
+    assert.equal(f.time(), 0);
+  }
+});
