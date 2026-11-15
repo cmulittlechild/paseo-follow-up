@@ -190,7 +190,8 @@ if (!process.argv.some(a => a.startsWith("You name software workspaces"))) { pro
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
   const mode = (() => { try { return fs.readFileSync(${JSON.stringify(modeFile)}, "utf8").trim(); } catch { return "ready"; } })();
   if (mode === "fail") { process.stdout.write(JSON.stringify({ is_error: true, subtype: "error_during_execution" })); process.exit(0); }
-  const reply = () => process.stdout.write(JSON.stringify({ result: JSON.stringify({ name: "Add APP-142 backoff for soft card declines" }), total_cost_usd: 0.0004, usage: { input_tokens: 420, output_tokens: 14 } }));
+  const name = mode === "repair" ? '\"Add UNLINKED-99 backoff for soft card declines in billing after failures.\"' : mode === "unusable" ? "feat/retry-backoff" : "Add APP-142 backoff for soft card declines";
+  const reply = () => process.stdout.write(JSON.stringify({ result: JSON.stringify({ name }), total_cost_usd: 0.0004, usage: { input_tokens: 420, output_tokens: 14 } }));
   if (mode === "slow") setTimeout(reply, 20000); else reply();
 });
 `;
@@ -414,7 +415,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES, ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !argv.includes("--rename-fixup-review") || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -463,7 +464,7 @@ async function seed({ call, home }) {
     missing = (await call("follow.list", {})).workspaces.flatMap(w => w.prs).filter(p => !p.snapshot).map(p => p.error ? `${p.key}: ${p.error}` : p.key);
     return !missing.length;
   }, { tries: 120, every: 500 });
-  for (const spec of WORKSPACES.filter(s => s.done)) {
+  for (const spec of specs.filter(s => s.done)) {
     const w = workspaces.find(x => x.key === spec.key);
     const done = await call("follow.done", { agentId: w.agentId, summary: spec.done });
     if (done.blockers.length) throw new Error(`${spec.key} could not be Done: ${done.blockers.join("; ")}`);
@@ -471,7 +472,7 @@ async function seed({ call, home }) {
   // The developer's moves: sign a turn off (its PRs then wait on others), put a question off until tomorrow, or send a
   // repair batch the agent is now working on (Fixing). The agent holds that turn open, so it stays Fixing.
   const scripts = JSON.parse(await fs.readFile(join(home, "fixture-scripts.json"), "utf8"));
-  for (const spec of WORKSPACES.filter(s => s.after)) {
+  for (const spec of specs.filter(s => s.after)) {
     const w = workspaces.find(x => x.key === spec.key);
     if (spec.after === "snooze") { await call("follow.inbox-act", { action: "snooze", agentIds: [w.agentId], until: "2026-03-05T09:00:00.000Z" }); continue; }
     await call("follow.inbox-act", { action: "sign_off", agentIds: [w.agentId] });
@@ -984,6 +985,23 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await wait(page);
     };
     const ready = page => page.getByRole("textbox", { name: "New name" }).last().evaluate(el => el.value.length > 0 || Promise.reject(new Error("empty"))).catch(async () => { await page.waitForFunction(() => [...document.querySelectorAll('[aria-label="New name"]')].some(el => el.value)); });
+    if (argv.includes("--rename-fixup-review")) {
+      await mode("repair");
+      for (const scheme of ["light", "dark"]) await bounded(`rename-fixed-${scheme}`, DESKTOP, scheme, dialog(DESKTOP, async page => {
+        await ready(page);
+        const name = await page.getByRole("textbox", { name: "New name" }).last().inputValue();
+        if (name !== "Add backoff for soft card declines in billing") throw new Error("repairable model reply was not normalized");
+        if (!await page.getByRole("button", { name: "Rename", exact: true }).last().isEnabled()) throw new Error("repaired suggestion cannot be renamed");
+      }));
+      await mode("unusable");
+      for (const scheme of ["light", "dark"]) await bounded(`rename-editable-${scheme}`, DESKTOP, scheme, dialog(DESKTOP, async page => {
+        await ready(page);
+        await page.getByText("Use words, not a branch name.", { exact: true }).last().waitFor();
+        if (await page.getByText("Couldn't suggest a name. Type one, or try again.", { exact: true }).count()) throw new Error("unusable model reply was shown as a provider failure");
+        if (await page.getByRole("button", { name: "Rename", exact: true }).last().isEnabled()) throw new Error("an invalid candidate can bypass the name rule");
+      }));
+      return;
+    }
     const panelOpen = async page => {
       await openChat(page, "Billing retries", billing.prompt);
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();

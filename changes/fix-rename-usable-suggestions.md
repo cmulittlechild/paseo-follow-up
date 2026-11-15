@@ -1,0 +1,2 @@
+- Rename title with AI works with linked artifacts and fixes long or quoted suggestions before showing them.
+- Suggestions stay editable when they need a change, and a busy host no longer refuses a rename click.
