@@ -166,7 +166,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
     enabled: !!keys && !touch && !results, order, mode: keys?.mode ?? "focus",
     // Home draws the brief as selected while nothing is.
     selectedKey: selectedKey ?? (order[0] === BRIEF_KEY ? BRIEF_KEY : null),
-    scope: () => (keys?.scope?.current ?? rootRef.current) as { contains(n: unknown): boolean } | null,
+    scope: () => (keys?.scope?.current ?? rootRef.current) as { contains(n: unknown): boolean; checkVisibility?(): boolean } | null,
     claimBody: keys?.claimBody, onSelect, onOpen: key => keys?.onOpen(key),
     reveal: key => { const index = data.findIndex(e => e.key === key); if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }); },
   });

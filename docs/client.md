@@ -150,7 +150,8 @@ since each open loads a chat and moves the main pane. If opening leaves focus no
 Enter keeps walking; if Paseo puts it in the composer, it stays there. The open chat's row wears Paseo's own
 selected-item fill (`sidebarSelected`, `client/theme.ts`: Paseo's `surfaceSidebarSelected`, which the plugin theme
 doesn't carry), so it reads like a selected native item in both themes. The keys count only while
-focus is inside the surface (Home also takes them with nothing focused) and never while typing, except the arrows in
+focus is inside the surface (Home also takes them with nothing focused, but only while it's on screen: a Home kept
+mounted behind another tab or chat leaves them to what's in front, `surfaceVisible`) and never while typing, except the arrows in
 the sidebar's filter and Home's empty search, which step into the list. Modified keys stay Paseo's: ⌘[ ⌘] and ⌘1…9
 (Ctrl, or Alt on the web) walk Paseo's own sidebar, which a plugin view can't feed. Escape and Space are left to Paseo
 too. Phones have no hardware-key walk.

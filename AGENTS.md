@@ -406,7 +406,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 27. **One keyboard walk for every list** (`one-keyboard-walk-for-every-list`). Home and the sidebar view walk their rows
    through one hook (`useListKeys`, `client/list-keys.ts`), called once in `HomeList`, with one key map and step
    (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
-   brief and the Overseer are rows of the walk; never while typing outside the list's own query field. Guarded by
+   brief and the Overseer are rows of the walk; never while typing outside the list's own query field; a key pressed
+   with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
+   behind another tab or chat. Guarded by
    `tests/list-keys.test.ts`.
 
 ## Bugs

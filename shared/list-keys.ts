@@ -43,11 +43,25 @@ export function walkOrder(entries: readonly { type: string; key: string }[]): st
 }
 
 /**
- * Whether a key belongs to this surface: focus inside it, or (Home) nothing focused. Home and the sidebar view sit side
- * by side, so focus in one never moves the other.
+ * Whether a key belongs to this surface: focus inside it, or (Home) nothing focused while Home is on screen. Home and
+ * the sidebar view sit side by side, so focus in one never moves the other; and a Home kept mounted behind another tab
+ * or chat never takes a body key, which there scrolls the chat in front.
  */
-export function ownsKey(input: { inside: boolean; onBody: boolean; claimBody: boolean }): boolean {
-  return input.inside || input.claimBody && input.onBody;
+export function ownsKey(input: { inside: boolean; onBody: boolean; claimBody: boolean; visible: boolean }): boolean {
+  return input.inside || input.claimBody && input.onBody && input.visible;
+}
+
+type Visible = { checkVisibility?(): boolean; getClientRects?(): { length: number } };
+
+/**
+ * Whether a surface is on screen: its page is the visible one and its root is laid out (not display:none, nor inside a
+ * hidden ancestor). `checkVisibility` where the engine has it, else laid-out boxes. No root yet: not visible.
+ */
+export function surfaceVisible(root: Visible | null | undefined, doc: { visibilityState?: string }): boolean {
+  if (!root) return false;
+  if (doc.visibilityState !== undefined && doc.visibilityState !== "visible") return false;
+  if (typeof root.checkVisibility === "function") return root.checkVisibility();
+  return (root.getClientRects?.().length ?? 0) > 0;
 }
 
 /**

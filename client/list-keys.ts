@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import { listMove, ownsKey, walkTarget } from "../shared/list-keys";
+import { listMove, ownsKey, surfaceVisible, walkTarget } from "../shared/list-keys";
 import { rowDomId } from "./kit";
 
 type Row = { focus(o?: { preventScroll?: boolean }): void; scrollIntoView?(o?: { block?: string }): void };
-type Node = { contains(other: unknown): boolean; querySelector?(selector: string): Row | null };
+type Node = { contains(other: unknown): boolean; querySelector?(selector: string): Row | null; checkVisibility?(): boolean; getClientRects?(): { length: number } };
 type Target = { tagName?: string; isContentEditable?: boolean; id?: string; closest?(selector: string): unknown } | null;
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; target: unknown; preventDefault(): void; stopPropagation(): void };
-type Doc = { body: unknown; activeElement: unknown; querySelector(selector: string): Row | null;
+type Doc = { body: unknown; activeElement: unknown; visibilityState?: string; querySelector(selector: string): Row | null;
   addEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void; removeEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void };
 
 export type ListKeysOptions = {
@@ -22,7 +22,10 @@ export type ListKeysOptions = {
   selectedKey: string | null;
   /** The surface the keys belong to: they act only while focus is inside it. */
   scope: () => Node | null;
-  /** Keys pressed with nothing focused (the page body) are this surface's too: Home, the main screen. */
+  /**
+   * Keys pressed with nothing focused (the page body) are this surface's too: Home, the main screen. Only while its
+   * root is on screen: a Home kept mounted behind another tab or chat leaves body keys to what's in front.
+   */
   claimBody?: boolean;
   onSelect: (key: string) => void;
   onOpen: (key: string) => void;
@@ -48,7 +51,10 @@ export function useListKeys(options: ListKeysOptions): void {
       if (typing && !target?.closest?.("[data-list-keys]")) return;
       // A row menu or a dialog over the list keeps its own keys.
       if (target?.closest?.('[role="menu"],[role="dialog"],[aria-modal="true"]')) return;
-      if (!ownsKey({ inside: !!target && !!scope()?.contains(target), onBody: !target || target === doc.body, claimBody: !!claimBody })) return;
+      const root = scope();
+      const onBody = !target || target === doc.body;
+      if (!ownsKey({ inside: !!target && !!root?.contains(target), onBody, claimBody: !!claimBody,
+        visible: !!claimBody && surfaceVisible(root, doc) })) return;
       const move = listMove(e, typing);
       if (!move) return;
       const focused = !typing && target?.id ? order.find(k => rowDomId(k) === target.id) ?? null : null;

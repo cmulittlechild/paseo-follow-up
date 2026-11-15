@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { listMove, ownsKey, stepKey, walkOrder, walkTarget } from "../shared/list-keys";
+import { listMove, ownsKey, stepKey, surfaceVisible, walkOrder, walkTarget } from "../shared/list-keys";
 import { listEntries, type ListEntriesInput } from "../shared/list-entries";
 import { sidebarSelected } from "../client/theme";
 
@@ -92,11 +92,30 @@ test("with the filter on only the matches are stops, and the arrows from the fil
 
 test("keys belong to the surface holding focus: Home never walks while focus is in the sidebar view", () => {
   // Focus in the sidebar view: Home (claimBody) doesn't own it; the sidebar view does.
-  assert.equal(ownsKey({ inside: false, onBody: false, claimBody: true }), false);
-  assert.equal(ownsKey({ inside: true, onBody: false, claimBody: false }), true);
+  assert.equal(ownsKey({ inside: false, onBody: false, claimBody: true, visible: true }), false);
+  assert.equal(ownsKey({ inside: true, onBody: false, claimBody: false, visible: true }), true);
   // Nothing focused: Home's, never the sidebar view's.
-  assert.equal(ownsKey({ inside: false, onBody: true, claimBody: true }), true);
-  assert.equal(ownsKey({ inside: false, onBody: true, claimBody: false }), false);
+  assert.equal(ownsKey({ inside: false, onBody: true, claimBody: true, visible: true }), true);
+  assert.equal(ownsKey({ inside: false, onBody: true, claimBody: false, visible: true }), false);
+});
+
+test("a mounted but hidden Home never takes a body key", async () => {
+  // Paseo may keep a plugin screen mounted behind another tab or chat: a body key there scrolls the chat, not Home.
+  assert.equal(ownsKey({ inside: false, onBody: true, claimBody: true, visible: false }), false);
+  const shown = { checkVisibility: () => true, getClientRects: () => ({ length: 1 }) };
+  const hidden = { checkVisibility: () => false, getClientRects: () => ({ length: 0 }) };
+  assert.equal(surfaceVisible(shown, { visibilityState: "visible" }), true);
+  assert.equal(surfaceVisible(hidden, { visibilityState: "visible" }), false);
+  // A background browser tab or window.
+  assert.equal(surfaceVisible(shown, { visibilityState: "hidden" }), false);
+  // No checkVisibility (older engines): laid-out boxes decide; display:none has none.
+  assert.equal(surfaceVisible({ getClientRects: () => ({ length: 1 }) }, {}), true);
+  assert.equal(surfaceVisible({ getClientRects: () => ({ length: 0 }) }, {}), false);
+  // No root yet: not visible.
+  assert.equal(surfaceVisible(null, { visibilityState: "visible" }), false);
+  // The hook gates the body claim on it.
+  const hook = await readFile(join(import.meta.dirname, "..", "client", "list-keys.ts"), "utf8");
+  assert.match(hook, /visible: !!claimBody && surfaceVisible\(/);
 });
 
 test("phones and native draw no listener; the sidebar's selected row wears Paseo's selected-item fill", async () => {
