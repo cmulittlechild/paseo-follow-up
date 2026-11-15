@@ -11,7 +11,7 @@ import {
 import type { AiJobs, JobResult } from "./ai-jobs";
 
 /**
- * Rename with AI (docs/ai-roles.md#rename-with-ai). The suggestion is one small job on Summaries' model, built from
+ * Rename title with AI (docs/ai-roles.md#rename-title-with-ai). The suggestion is one small job on Summaries' model, built from
  * stored data only (state, the Summary record, linked items, the cached directory's agent titles), so it never reads
  * a chat or loads an agent. The rename itself is Paseo's own workspace title, and every rename is kept in
  * `rename.json` for 24 hours so it can be undone.
@@ -24,18 +24,32 @@ export type WorkspaceTitles = {
 };
 
 /**
- * The daemon side of WorkspaceTitles: fetch_workspaces narrowed to one id, and set_workspace_title. Nothing else is
+ * The daemon side of WorkspaceTitles: workspace list reads paged until the exact id is found, and set_workspace_title. Nothing else is
  * reachable from here: no agent fetch, no timeline (rename-never-wakes-an-agent, tests/rename.test.ts).
  */
+type WorkspaceTitleRow = { id: string; name: string; title?: string | null };
 type TitleDaemon = {
-  fetchWorkspaces(options?: unknown): Promise<{ entries: { id: string; name: string; title?: string | null }[] }>;
+  supportsBackgroundWorkspaces?(): boolean;
+  findWorkspace?(workspaceId: string): Promise<WorkspaceTitleRow | null>;
+  fetchWorkspaces(options?: unknown): Promise<{ entries: WorkspaceTitleRow[]; pageInfo: { hasMore: boolean; nextCursor: string | null } }>;
   setWorkspaceTitle(workspaceId: string, title: string | null): Promise<unknown>;
 };
 export function renameDaemon(connect: <T>(work: (client: TitleDaemon) => Promise<T>) => Promise<T>, onChange?: () => void): WorkspaceTitles {
   return {
     get: id => connect(async client => {
-      const page = await client.fetchWorkspaces({ filter: { idPrefix: id }, page: { limit: 5 } });
-      const row = page.entries.find(e => e.id === id);
+      // idPrefix is accepted on the wire but ignored by the server. Never treat a list as an id lookup.
+      let row: WorkspaceTitleRow | null = null;
+      if (typeof client.findWorkspace === "function") row = await client.findWorkspace(id);
+      else {
+        const filter = client.supportsBackgroundWorkspaces?.() === true ? { includeBackground: true } : {};
+        let cursor: string | undefined;
+        do {
+          const page = await client.fetchWorkspaces({ filter, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+          row = page.entries.find(e => e.id === id) ?? null;
+          if (row) break;
+          cursor = page.pageInfo.nextCursor ?? undefined;
+        } while (cursor);
+      }
       return row ? { title: typeof row.title === "string" && row.title.trim() ? row.title : null, name: row.name } : null;
     }),
     set: async (id, title) => { await connect(client => client.setWorkspaceTitle(id, title)); onChange?.(); },
@@ -89,7 +103,7 @@ export class RenameService {
     // One retry with the reason; never a bigger model or more effort.
     for (let attempt = 0; attempt < 2; attempt++) {
       const allowed = await this.d.store.mutate(file => { const b = dailyBudget(file.daily, this.now(), RENAME_DAILY_CAP); if (b.allowed) file.daily = b.next; return b.allowed; });
-      if (!allowed) throw new Error(`Rename with AI has made its ${RENAME_DAILY_CAP} suggestions for today. Type a name instead.`);
+      if (!allowed) throw new Error(`Rename title with AI has made its ${RENAME_DAILY_CAP} suggestions for today. Type a name instead.`);
       const r: JobResult<{ name: string }> = await this.d.jobs.run({ name: "rename", prompt: renamePrompt(inputs, rejected), schema: renameReplySchema, system: RENAME_SYSTEM,
         provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, timeoutMs: 45_000, maxPromptChars: 8000, maxOutputChars: 600 });
       if (!r.ok) { if (r.reason === "invalid-json" || r.reason === "invalid-shape") { rejected = { name: "", reason: "It wasn't the JSON object asked for." }; continue; } throw new Error(`Couldn't suggest a name: ${r.error}`); }

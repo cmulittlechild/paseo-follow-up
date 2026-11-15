@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Rename with AI (docs/ai-roles.md#rename-with-ai): a short workspace name from what Follow-up already stored.
+ * Rename title with AI (docs/ai-roles.md#rename-title-with-ai): a short workspace name from what Follow-up already stored.
  * Pure: the name rules, the prompt and the ledger's Undo rules, shared by the worker, the dialog and the tests.
  */
 
