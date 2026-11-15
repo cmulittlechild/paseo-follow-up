@@ -2,14 +2,17 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { FlatList, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
-import { GROUP_TITLE, quietFolds, type Badge, type HomeGroupId, type HomeModel, type Workstream } from "../shared/home";
-import { ASK_KEY, excerpt, FIELD_LABEL, highlightRuns, rowHit, type OmniboxItem, type Range, type RowHit, type SearchHit, type WorkspaceItem } from "../shared/search";
+import { type Badge, type HomeGroupId, type HomeModel, type Workstream } from "../shared/home";
+import { ASK_KEY, excerpt, FIELD_LABEL, highlightRuns, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
 import { age, wakeLabel, wakeShort } from "../shared/inbox";
 import { headlineColor, mergedColor, readable, runningColor, tint, toneColor, withAlpha, type Colors } from "./theme";
 import { useMinute } from "./home-data";
 import { Spinner } from "./motion";
-import { Button, rowDomId, type Theme } from "./kit";
+import { Button, focusRing, rowDomId, type Theme } from "./kit";
+import { useListKeys } from "./list-keys";
+import { walkOrder } from "../shared/list-keys";
+import { BRIEF_KEY, OVERSEER_KEY, QUIET_PAGE, listEntries, type Entry } from "../shared/list-entries";
 import { RowMenu, useRowMenuTrigger, type OpenRowMenu, type RowMenuOpen } from "./row-menu";
 import type { RowMenuItem, RowMenuSection } from "../shared/row-menu";
 import { homeGroupOpen, writeHomeGroupOpen } from "../shared/settings-nav";
@@ -21,27 +24,12 @@ import { useViewVersion } from "./view-store";
  * that changes one row redraws only that row.
  */
 
-const QUIET_PAGE = 20;
-export const BRIEF_KEY = "brief";
-export const OVERSEER_KEY = "overseer";
+export { BRIEF_KEY, OVERSEER_KEY, archivedRow } from "../shared/list-entries";
 /** The pinned Overseer row: not started yet (a one-time Start), working, asking, idle, or failed to come back. */
 export type OverseerRowState = { state: "start" | "idle" | "running" | "asks" | "error"; line: string;
   /** A list filter's match in `line`, highlighted like a row's (the sidebar view's "Filter workspaces"). */
   ranges?: Range[] };
 
-type Entry =
-  | { type: "brief"; key: string }
-  | { type: "overseer"; key: string }
-  | { type: "header"; key: string; group: HomeGroupId; title: string; count: number; open: boolean }
-  | { type: "row"; key: string; s: Workstream; hit?: RowHit | null }
-  | { type: "fold"; key: string; project: string; count: number; archivable: number; open: boolean }
-  | { type: "more"; key: string; project: string; left: number }
-  | { type: "result"; key: string; item: WorkspaceItem; index: number; s: Workstream; hit: RowHit; archived: boolean }
-  | { type: "ask"; key: string; ask: string; index: number }
-  | { type: "label"; key: string; text: string }
-  | { type: "hold"; key: string; text: string }
-  | { type: "empty"; key: string }
-  | { type: "slot"; key: string };
 
 export type HomeListProps = {
   model: HomeModel;
@@ -88,11 +76,20 @@ export type HomeListProps = {
    * own Copy/Paste menu opens instead.
    */
   menu: { build: (s: Workstream) => RowMenuSection[]; pick: (s: Workstream, item: RowMenuItem) => void };
+  /**
+   * Desktop and web keys (client/list-keys.ts, one-keyboard-walk-for-every-list): ↑/↓ and j/k walk the rows in this
+   * list's order, Home/End jump, Enter opens. "select" moves the selection (Home); "focus" moves only the focus and
+   * Enter opens (the sidebar view). `scope`: where the keys count (default: this list); `claimBody`: also with
+   * nothing focused.
+   */
+  keys?: { mode: "select" | "focus"; onOpen: (key: string) => void; scope?: { current: unknown }; claimBody?: boolean };
+  /** The selected row's fill. Paseo's sidebar view passes its own selected-item colour (sidebarSelected); Home: surface2. */
+  selectedBg?: string;
 };
 
 const noMenu: OpenRowMenu = () => undefined;
 
-export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow }: HomeListProps) {
+export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow, keys, selectedBg }: HomeListProps) {
   const c = theme.colors;
   const [openMenu, setOpenMenu] = useState<RowMenuOpen | null>(null);
   const build = menu.build;
@@ -111,54 +108,9 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
   const toggle = useCallback((key: string) => { if (key === "needs") setNeedsClosed(v => !v); else writeHomeGroupOpen(key, !homeGroupOpen(key)); }, []);
   const toggleProject = useCallback((p: string) => setOpenProjects(s => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }), []);
 
-  const data = useMemo(() => {
-    const out: Entry[] = [];
-    if (results) {
-      // Search ignores the sort and the groups: ranked by match, archived ones last under their own label.
-      let archivedShown = false;
-      results.forEach((item, index) => {
-        if (item.ask !== undefined) {
-          // The ask row closes the list; with no match it follows the "no match" line.
-          if (index === 0) out.push({ type: "label", key: "l:none", text: "No workspace, branch or PR matches." });
-          out.push({ type: "ask", key: item.key, ask: item.ask, index });
-          return;
-        }
-        if (item.hit.group === "archived" && !archivedShown) { archivedShown = true; out.push({ type: "label", key: "l:archived", text: "Archived" }); }
-        const live = model.byKey.get(item.key);
-        const s = live ?? archivedRow(item.hit);
-        out.push({ type: "result", key: `r:${item.provider}:${item.key}`, item, index, s, hit: rowHit(item.hit, s), archived: !live });
-      });
-      if (!results.length) out.push({ type: "label", key: "l:none", text: "No workspace, branch or PR matches." });
-      return out;
-    }
-    if (briefLine !== undefined && !filter) out.push({ type: "brief", key: BRIEF_KEY });
-    if (overseer && !filter) out.push({ type: "overseer", key: OVERSEER_KEY });
-    for (const g of model.groups) {
-      if (filter && g.id !== filter) continue;
-      const open = !!filter || !!hits || !closed.has(g.id);
-      // Phones with one group filtered: the chip above already says "N Needs you ×"; no header repeating it.
-      if (!(touch && filter)) out.push({ type: "header", key: `h:${g.id}`, group: g.id, title: g.title, count: g.items.length, open });
-      if (!open) { if (g.id === "needs" && afterNeeds && !filter) out.push({ type: "slot", key: "s:afterNeeds" }); continue; }
-      // One hold line per machine, once, at the top of Sending (the model has it only while Sending has rows).
-      if (g.id === "sending" && model.hold) out.push({ type: "hold", key: "l:hold", text: model.hold });
-      const hitOf = (s: Workstream) => { const h = hits?.get(s.key); return h ? rowHit(h, s) : null; };
-      if (g.id !== "quiet") { for (const s of g.items) out.push({ type: "row", key: s.key, s, hit: hitOf(s) }); if (g.id === "needs" && afterNeeds && !filter) out.push({ type: "slot", key: "s:afterNeeds" }); continue; }
-      for (const f of quietFolds(g.items)) {
-        const fopen = !!hits || openProjects.has(f.project);
-        out.push({ type: "fold", key: `f:${f.project}`, project: f.project, count: f.items.length, archivable: f.archivable, open: fopen });
-        if (!fopen) continue;
-        const shown = (pages[f.project] ?? 1) * QUIET_PAGE;
-        for (const s of f.items.slice(0, shown)) out.push({ type: "row", key: s.key, s, hit: hitOf(s) });
-        if (f.items.length > shown) out.push({ type: "more", key: `m:${f.project}`, project: f.project, left: f.items.length - shown });
-      }
-    }
-    // Phones: nothing followed yet says so and what fills the list, instead of a blank screen under the pinned rows.
-    if (hits && !out.some(e => e.type === "row")) out.push({ type: "label", key: "l:none", text: "No workspace matches." });
-    else if (touch && !filter && !hits && model.groups.every(g => !g.items.length)) out.push({ type: "empty", key: "l:nothing" });
-    return out;
-    if (filter && !out.length) out.push({ type: "label", key: "l:empty", text: `Nothing in ${GROUP_TITLE[filter as HomeGroupId]} right now.` });
-    return out;
-  }, [model, closed, openProjects, pages, briefLine, results, hits, filter, !!overseer, touch, !!afterNeeds]);
+  const data = useMemo(() => listEntries({ model, closed, openProjects, pages, briefLine, results, hits, filter, overseer: !!overseer, touch, afterNeeds: !!afterNeeds }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, closed, openProjects, pages, briefLine, results, hits, filter, !!overseer, touch, !!afterNeeds]);
   // A result picks through onResult; Row only knows its key.
   const pickResult = useCallback((key: string) => {
     const item = results?.find(i => !i.ask && i.key === key);
@@ -182,7 +134,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
         onSelect={pickResult} onMenu={item.archived ? noMenu : onMenu} />;
       case "ask": return <AskRow ask={item.ask} theme={theme} active={item.index === activeResult} dense={dense} touch={touch} sending={!!asking} onPress={() => onResult?.({ provider: "overseer", key: ASK_KEY, ask: item.ask })} />;
       case "brief": return <BriefRow theme={theme} line={briefLine ?? ""} selected={!touch && (selectedKey === null || selectedKey === BRIEF_KEY)} touch={touch} onSelect={onSelect} />;
-      case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} stacked={stackOverseer} onSelect={onSelect} /> : null;
+      case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} stacked={stackOverseer} onSelect={onSelect} selectedBg={selectedBg} /> : null;
       case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} onPress={() => toggle(item.group)} />;
       case "fold": return <Pressable accessibilityRole="button" aria-expanded={item.open} accessibilityState={{ expanded: item.open }} accessibilityLabel={`${item.project}, ${item.count}. ${item.open ? "Collapse" : "Expand"}`} onPress={() => toggleProject(item.project)}
         style={state => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: dense ? 8 : 16, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
@@ -198,14 +150,26 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
       case "row": {
         const selected = selectedKey === item.key;
         return <View>
-          <Row s={item.s} theme={theme} dense={dense} touch={touch} selected={selected} onSelect={onSelect} sig={item.s.sig} onMenu={onMenu} menuOpen={menuKey === item.key} hit={item.hit} onSendNow={onSendNow} />
+          <Row s={item.s} theme={theme} dense={dense} touch={touch} selected={selected} onSelect={onSelect} sig={item.s.sig} onMenu={onMenu} menuOpen={menuKey === item.key} hit={item.hit} onSendNow={onSendNow} selectedBg={selectedBg} />
           {selected && renderExpanded ? renderExpanded(item.s) : null}
         </View>;
       }
     }
-  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow]);
+  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow, selectedBg]);
 
   const listRef = useRef<FlatList<Entry>>(null);
+  const rootRef = useRef<View>(null);
+  // The keyboard walk: the rows as drawn, the brief and the Overseer first (they're rows too). A search walks its
+  // results through the omnibox instead.
+  const order = useMemo(() => results ? [] : walkOrder(data), [data, results]);
+  useListKeys({
+    enabled: !!keys && !touch && !results, order, mode: keys?.mode ?? "focus",
+    // Home draws the brief as selected while nothing is.
+    selectedKey: selectedKey ?? (order[0] === BRIEF_KEY ? BRIEF_KEY : null),
+    scope: () => (keys?.scope?.current ?? rootRef.current) as { contains(n: unknown): boolean } | null,
+    claimBody: keys?.claimBody, onSelect, onOpen: key => keys?.onOpen(key),
+    reveal: key => { const index = data.findIndex(e => e.key === key); if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }); },
+  });
   // Keep the keyboard-active result in view.
   useEffect(() => {
     if (!results?.length) return;
@@ -218,7 +182,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
     style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled" />;
   const overlay = openMenu ? <RowMenu key={`${openMenu.s.key}:${openMenu.anchor?.x ?? "sheet"}:${openMenu.anchor?.y ?? ""}`} menu={openMenu} theme={theme} onClose={() => setOpenMenu(null)} onPick={item => menu.pick(openMenu.s, item)} /> : null;
   // The wrapper is always there, so opening the menu never remounts the list (and its scroll).
-  return <View style={{ flex: 1, minHeight: 0 }}>{top}{list}{overlay}</View>;
+  return <View ref={rootRef} style={{ flex: 1, minHeight: 0 }}>{top}{list}{overlay}</View>;
 }
 
 function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }: { theme: Theme; title: string; count: number; open: boolean; tone?: string; dense: boolean; touch: boolean; onPress: () => void }) {
@@ -235,8 +199,8 @@ function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }:
 
 function BriefRow({ theme, line, selected, touch, onSelect }: { theme: Theme; line: string; selected: boolean; touch: boolean; onSelect: (key: string) => void }) {
   const c = theme.colors;
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Morning brief. ${line}`} onPress={() => onSelect(BRIEF_KEY)}
-    style={state => ({ flexDirection: "row", alignItems: "center", gap: 10, minHeight: touch ? 52 : 40, paddingHorizontal: 16, backgroundColor: selected ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+  return <Pressable nativeID={rowDomId(BRIEF_KEY)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Morning brief. ${line}`} onPress={() => onSelect(BRIEF_KEY)}
+    style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: "center", gap: 10, minHeight: touch ? 52 : 40, paddingHorizontal: 16, backgroundColor: selected ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <Icon name="Sun" size={touch ? 16 : 15} color={c.foregroundMuted} />
     <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Morning brief</Text>
     <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: touch ? 13 : 12 }}>{line}</Text>
@@ -244,18 +208,18 @@ function BriefRow({ theme, line, selected, touch, onSelect }: { theme: Theme; li
   </Pressable>;
 }
 
-function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect }: { theme: Theme; o: OverseerRowState; selected: boolean; touch: boolean; stacked?: boolean; onSelect: (key: string) => void }) {
+function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect, selectedBg }: { theme: Theme; o: OverseerRowState; selected: boolean; touch: boolean; stacked?: boolean; onSelect: (key: string) => void; selectedBg?: string }) {
   const c = theme.colors;
   const tone = o.state === "asks" ? c.statusWarning : o.state === "error" ? c.statusDanger : o.state === "running" ? runningColor(c) : c.foregroundMuted;
   const icon = o.state === "running" ? <Spinner color={tone} size={13} label="Overseer working" /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />;
   const lineColor = o.state === "asks" || o.state === "error" ? tone : c.foregroundMuted;
   // Wide Home: one line, the phone's shorter start line. Stacked (the sidebar view): the whole line, wrapping to two.
   const line = marks(!stacked && touch && o.state === "start" ? "Ask about any workspace" : o.line, stacked || !(touch && o.state === "start") ? o.ranges : null, c);
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Overseer. ${o.line}`} onPress={() => onSelect(OVERSEER_KEY)}
-    style={state => ({ flexDirection: "row", alignItems: stacked ? "flex-start" : "center", gap: 10, minHeight: touch ? 52 : 40, paddingLeft: 14, paddingRight: 16, paddingVertical: stacked ? (touch ? 12 : 8) : 0, borderBottomWidth: 1, borderBottomColor: c.border,
+  return <Pressable nativeID={rowDomId(OVERSEER_KEY)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Overseer. ${o.line}`} onPress={() => onSelect(OVERSEER_KEY)}
+    style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: stacked ? "flex-start" : "center", gap: 10, minHeight: touch ? 52 : 40, paddingLeft: 14, paddingRight: 16, paddingVertical: stacked ? (touch ? 12 : 8) : 0, borderBottomWidth: 1, borderBottomColor: c.border,
       // Its ask isn't a Needs-you row (it's yours to route), so the edge marks it the way blocking rows are marked.
       borderLeftWidth: 2, borderLeftColor: o.state === "asks" || o.state === "error" ? withAlpha(tone, 0.9) : "transparent",
-      backgroundColor: selected ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+      backgroundColor: selected ? selectedBg ?? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     {stacked ? <View style={{ paddingTop: 2 }}>{icon}</View> : icon}
     {stacked
       ? <View style={{ flex: 1, gap: 2 }}>
@@ -332,19 +296,14 @@ export function marks(text: string, ranges: Range[] | null | undefined, c: Color
   return highlightRuns(text, ranges).map((r, i) => r.hit ? <Text key={i} style={{ color: c.foreground, fontWeight: "600", backgroundColor: withAlpha(c.statusWarning, 0.22), borderRadius: 2 }}>{r.text}</Text> : r.text);
 }
 
-/** A search hit on a workspace Follow-up has archived: a muted row with the Archive glyph, reading "Archived". */
-export function archivedRow(hit: SearchHit): Workstream {
-  return { key: hit.key, agentId: null, workspaceId: hit.key.startsWith("ws:") ? hit.key.slice(3) : null, title: hit.title, agent: null, project: null, group: "quiet", tier: null,
-    icon: "Archive", tone: "muted", line: "Archived", word: null, badges: [], pr: null, at: null, readyToArchive: false, sig: `archived:${hit.key}` } as unknown as Workstream;
-}
 
 /**
  * One row component for every list, Home's groups and search results alike (search-row-is-the-list-row). A search
  * passes `hit`: the matched words are highlighted where they already are (title, "› agent", the ask line), and a match
  * in a field the row doesn't show replaces line 2 with "<Field> · excerpt", so a result is exactly as tall as the row.
  */
-type RowProps = { s: Workstream; sig: string; theme: Theme; dense: boolean; touch: boolean; selected: boolean; onSelect: (key: string) => void; onMenu: OpenRowMenu; menuOpen?: boolean; hit?: RowHit | null; onSendNow?: (s: Workstream) => Promise<void> };
-const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMenu, menuOpen = false, hit = null, onSendNow }: RowProps) {
+type RowProps = { s: Workstream; sig: string; theme: Theme; dense: boolean; touch: boolean; selected: boolean; onSelect: (key: string) => void; onMenu: OpenRowMenu; menuOpen?: boolean; hit?: RowHit | null; onSendNow?: (s: Workstream) => Promise<void>; selectedBg?: string };
+const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMenu, menuOpen = false, hit = null, onSendNow, selectedBg }: RowProps) {
   const c = theme.colors;
   const trigger = useRowMenuTrigger(s, onMenu, touch);
   const archived = s.icon === "Archive" && s.sig.startsWith("archived:");
@@ -368,10 +327,10 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const label = [s.title + (s.agent ? ` › ${s.agent}` : ""), s.word, s.line, hit?.via && `${FIELD_LABEL[hit.via.field]}: ${hit.via.text}`, wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
   return <Pressable ref={trigger.ref} nativeID={rowDomId(s.key)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label} accessibilityHint={quickActionsHint(touch)}
     onPress={() => onSelect(s.key)} onLongPress={trigger.onLongPress} delayLongPress={450}
-    style={state => ({ flexDirection: "row", alignItems: dense ? "flex-start" : "center", gap: touch ? 10 : dense ? 8 : 10, minHeight: touch ? 56 : dense ? 36 : 38, paddingLeft: touch ? 14 : dense ? 8 : 16, paddingRight: touch ? 16 : dense ? 8 : 16, paddingVertical: touch ? 12 : dense ? 6 : 0,
+    style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: dense ? "flex-start" : "center", gap: touch ? 10 : dense ? 8 : 10, minHeight: touch ? 56 : dense ? 36 : 38, paddingLeft: touch ? 14 : dense ? 8 : 16, paddingRight: touch ? 16 : dense ? 8 : 16, paddingVertical: touch ? 12 : dense ? 6 : 0,
       ...(touch ? { borderBottomWidth: 1, borderBottomColor: withAlpha(c.border, 0.6) } : {}),
       borderLeftWidth: 2, borderLeftColor: blocking ? withAlpha(color, 0.9) : "transparent",
-      backgroundColor: selected || menuOpen || state.pressed && touch ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+      backgroundColor: selected ? selectedBg ?? c.surface2 : menuOpen || state.pressed && touch ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <View style={{ width: touch ? 18 : 16, alignItems: "center", paddingTop: touch ? 2 : dense ? 1 : 0 }}>
       {s.tone === "running" && s.icon === "LoaderCircle" ? <Spinner color={color} size={13} label="Running" /> : <Icon name={s.icon} size={touch ? 17 : 15} color={color} />}
     </View>
@@ -409,7 +368,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
     </View>{!!s.priority?.reason && <View style={{ paddingRight: 40 }}><PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} /></View>}</View>}
     {!touch && <RowTime s={s} c={c} size={dense ? 11 : 12} />}
   </Pressable>;
-}, (a, b) => a.sig === b.sig && a.selected === b.selected && a.theme === b.theme && a.dense === b.dense && a.touch === b.touch && a.onSelect === b.onSelect && a.onMenu === b.onMenu && a.menuOpen === b.menuOpen && a.hit === b.hit && a.onSendNow === b.onSendNow);
+}, (a, b) => a.sig === b.sig && a.selected === b.selected && a.theme === b.theme && a.dense === b.dense && a.touch === b.touch && a.onSelect === b.onSelect && a.onMenu === b.onMenu && a.menuOpen === b.menuOpen && a.hit === b.hit && a.onSendNow === b.onSendNow && a.selectedBg === b.selectedBg);
 
 /** The machine-wide auto-send hold, once above Sending's rows: the same words on every width (shared/sending.ts). */
 function HoldLine({ theme, text: line, dense, touch }: { theme: Theme; text: string; dense: boolean; touch: boolean }) {

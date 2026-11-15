@@ -92,7 +92,9 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, onSubmit, onArrow }: {
+function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, onSubmit, onArrow, listKeys = false }: {
+  /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
+  listKeys?: boolean;
   theme: Theme; value: string; onChange: (q: string) => void; placeholder: string; icon: string; dense: boolean;
   inputRef: { current: TextInput | null }; slashHint: boolean; onSubmit?: () => void; onArrow?: (delta: number) => void;
 }) {
@@ -103,6 +105,7 @@ function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef
     <Icon name={icon as never} size={dense ? 16 : 13} color={c.foregroundMuted} />
     <TextInput ref={inputRef} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
       accessibilityLabel={placeholder} autoCorrect={false} autoCapitalize="none" spellCheck={false} returnKeyType="go"
+      {...(listKeys ? { dataSet: { listKeys: "1" } } as object : {})}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       onSubmitEditing={onSubmit}
       onKeyPress={e => {
@@ -123,7 +126,7 @@ export function SearchField({ theme, omnibox, dense, onEnter }: { theme: Theme; 
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
   return <QueryField theme={theme} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint
-    onSubmit={() => { const item = results?.[active]; if (item) onEnter(item); }} onArrow={move} />;
+    onSubmit={() => { const item = results?.[active]; if (item) onEnter(item); }} onArrow={move} listKeys={!query.trim()} />;
 }
 
 /**
@@ -148,7 +151,7 @@ export function useListFilter(model: HomeModel, sources: HomeSources): ListFilte
 }
 /** "Filter workspaces": a filter icon and no key binding, so it never reads as Paseo's own Search (the Command Center, ⌘K). */
 export function FilterField({ theme, filter, dense }: { theme: Theme; filter: ListFilter; dense: boolean }) {
-  return <QueryField theme={theme} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} />;
+  return <QueryField theme={theme} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys />;
 }
 
 // ---------- sort ----------

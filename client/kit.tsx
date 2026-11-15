@@ -241,5 +241,10 @@ export function focusSoon(id: string, tries = 20): void {
   if (el) { el.focus(); return; }
   if (tries > 0) setTimeout(() => focusSoon(id, tries - 1), 50);
 }
+/** Web: the focus came from the keyboard (:focus-visible), so a click never draws the ring. */
+export const keyboardFocus = () => { try { return !!(globalThis as { document?: { activeElement?: { matches?(q: string): boolean } | null } }).document?.activeElement?.matches?.(":focus-visible"); } catch { return true; } };
+/** The keyboard focus ring: buttons ring outside (offset 2); list rows ring inside their own bounds (`inset`). */
+export const focusRing = (focused: boolean | undefined, c: Colors, inset = false) => focused && Platform.OS === "web" && keyboardFocus()
+  ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: withAlpha(c.accent, 0.6), outlineOffset: inset ? -2 : 2 } as object) : {};
 /** The DOM id of a Home row, for focusSoon. */
 export const rowDomId = (key: string) => `follow-up-row-${key.replace(/[^\w-]/g, "_")}`;

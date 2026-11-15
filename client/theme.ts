@@ -46,6 +46,16 @@ export function withAlpha(color: string, alpha: number): string {
   return rgb ? `rgba(${rgb.join(", ")}, ${alpha})` : color;
 }
 
+/**
+ * The selected row in Paseo's sidebar, as Paseo draws its own (surfaceSidebarSelected, which the plugin theme doesn't
+ * carry). Light themes: the sidebar ground is surface2, and Paseo selects with surface4, two steps darker; the
+ * foreground at 14% over the ground lands there (#f4f4f5 -> #d4d4d8 in the default theme). Dark themes: surface2, the
+ * same step Paseo uses.
+ */
+export function sidebarSelected(colors: Colors): string {
+  return isLight(colors) ? withAlpha(colors.foreground, 0.14) : colors.surface2;
+}
+
 /** A tag fill in the same hue as its text: 12% on light grounds, 16% on dark ones. */
 export function tint(color: string, colors: Colors): string {
   return withAlpha(color, isLight(colors) ? 0.12 : 0.16);

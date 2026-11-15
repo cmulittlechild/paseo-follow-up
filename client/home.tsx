@@ -154,6 +154,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     setSelected(s.key); setAsk(a => ({ key: s.key, id, n: (a?.n ?? 0) + 1 }));
   }, [route, deps]);
   const omniRef = useRef(omnibox); omniRef.current = omnibox;
+  // Home's keys count anywhere on Home (the list and its detail), not just in the list.
+  const homeRef = useRef<View>(null);
   const prefillAsk = useCallback((text: string) => { omniRef.current.setQuery(text); setTimeout(() => omniRef.current.inputRef.current?.focus(), 0); }, []);
   const rowMenu = useRowMenu({ sources: deps.sources, openFull, openQuestion, prefillAsk, overseerOn: !!overseerStatus?.enabled });
   const signOffNext = useCallback((s: Workstream) => {
@@ -177,7 +179,13 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     : <BriefPane theme={theme} compact={compact} pane={pane} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources} />;
   // Nothing followed at all: no sort, no meters, just the empty state and its action.
   const nothing = model.groups.every(g => !g.items.length);
+  // Enter on a row: its chat, as Open full does. The brief has nothing to open; the Overseer opens once it runs.
+  const openKey = (key: string) => {
+    if (key === OVERSEER_KEY) { const id = overseerStatus?.agentId; if (id && navigation) navigation.openAgent({ agentId: id }); return; }
+    const s = model.byKey.get(key); if (s) openFull(s);
+  };
   const list = <HomeList model={model} theme={theme} dense={compact} touch={compact} selectedKey={selected} onSelect={onSelect} briefLine={briefLine}
+    keys={{ mode: "select", onOpen: openKey, scope: homeRef, claimBody: true }}
     results={omnibox.results} activeResult={omnibox.active} onResult={item => void pick(item)} filter={filter} overseer={overseer} asking={asking} menu={rowMenu} onSendNow={sendNow}
     // Phones: the host header already says Follow-up, so no "Home" title row; search, sort and settings share one row and
     // the meters move to the end of the list.
@@ -216,7 +224,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     {updateSheets}
     <View style={{ position: "absolute", left: 12, right: 12, bottom: bottomGap(true) + (current || selected === OVERSEER_KEY ? 132 : 0) }}><UndoBar store={inbox} theme={theme} touch /></View>
   </View>;
-  return <View style={{ flex: 1, flexDirection: "row", backgroundColor: c.surface0 }}>
+  return <View ref={homeRef} style={{ flex: 1, flexDirection: "row", backgroundColor: c.surface0 }}>
     <View style={{ flex: 1, minWidth: 0, borderRightWidth: 1, borderRightColor: c.border }}>
       {list}
       {updateSheets}

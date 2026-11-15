@@ -403,6 +403,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    opens the Overseer's chat, or Home's Overseer pane for Start and a failed restart (`overseerRowTarget`). A list
    filter keeps it only when the query is about it (`overseerMatches`) and marks the match. Guarded by
    `tests/sidebar-overseer.test.ts`.
+27. **One keyboard walk for every list** (`one-keyboard-walk-for-every-list`). Home and the sidebar view walk their rows
+   through one hook (`useListKeys`, `client/list-keys.ts`), called once in `HomeList`, with one key map and step
+   (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
+   brief and the Overseer are rows of the walk; never while typing outside the list's own query field. Guarded by
+   `tests/list-keys.test.ts`.
 
 ## Bugs
 

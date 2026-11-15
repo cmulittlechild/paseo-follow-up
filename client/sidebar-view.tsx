@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { Text } from "./text";
 import { UndoBar, useInbox, useSidebarViewMounted } from "./inbox";
 import { HomeList, OVERSEER_KEY, type OverseerRowState } from "./home-list";
+import { sidebarSelected } from "./theme";
 import { FilterField, SortMenu, useListFilter } from "./home-chrome";
 import { useHomeModel, type HomeSources } from "./home-data";
 import { useRowMenu } from "./row-actions";
@@ -85,6 +86,10 @@ export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => v
     if (!sources.inbox.enabled()) return <View style={{ padding: 12 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>The Needs-you inbox is off. Turn it on in Follow-up's display settings.</Text></View>;
     return <View style={{ flex: 1 }}>
       <HomeList model={model} hits={filter.hits} theme={view.theme} dense touch={touch} selectedKey={selectedKey} onSelect={onSelect} menu={menu} overseer={overseer} stackOverseer
+        // Each open loads a chat and moves the main pane, so the keys move the focus and Enter opens.
+        keys={{ mode: "focus", onOpen: onSelect }}
+        // The open chat's row wears Paseo's own selected-item fill, so it reads like a selected native item.
+        selectedBg={sidebarSelected(c)}
         // One row, nothing else (invariant 8): the filter takes the width, the sort is an icon. zIndex keeps the
         // sort menu above the list on web, where every View is its own stacking context.
         top={<View style={{ zIndex: 10, flexDirection: "row", alignItems: "center", gap: touch ? 8 : 4, paddingHorizontal: touch ? 12 : 8, paddingVertical: touch ? 8 : 6, borderBottomWidth: 1, borderBottomColor: c.border }}>

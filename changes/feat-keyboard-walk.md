@@ -1,0 +1,1 @@
+- Walk Home and Follow-up's sidebar view from the keyboard: ↑/↓ or j/k move between workspaces, Home and End jump to the ends, and Enter opens the chat.
