@@ -17,6 +17,9 @@ import { Spinner } from "./motion";
 import type { Colors } from "./theme";
 import { RichText } from "./rich-text";
 import { runAction } from "./toasts";
+import { Marked, NoMatchRow, useSectionSearch, ViaLine } from "./section-search";
+import { repairFields, taskFields } from "../shared/section-search";
+import type { ItemHit } from "../shared/search";
 
 /** The one-line hint under a task's Auto-send switch (the approved mock). */
 const AUTO_OFF_HINT = "Off: it stays here for you";
@@ -93,7 +96,7 @@ function OpenAgentLink({ status, openAgent, theme, compact }: { status: TaskStat
   </Pressable></>;
 }
 
-function TaskRow({ o, w, agents, openAgent, theme, onOpen, compact }: { o: Obligation; w: Workspace; agents: TaskAgents; openAgent?: (agentId: string) => void; theme: Theme; onOpen: () => void; compact: boolean }) {
+function TaskRow({ o, w, agents, openAgent, theme, onOpen, compact, hit }: { o: Obligation; w: Workspace; agents: TaskAgents; openAgent?: (agentId: string) => void; theme: Theme; onOpen: () => void; compact: boolean; /** A section search hit (taskFields: title, then hidden evidence). */ hit?: ItemHit }) {
   const c = theme.colors; const t = text(c);
   const line = taskStatus(o, w, agents);
   const status = line.text;
@@ -103,12 +106,13 @@ function TaskRow({ o, w, agents, openAgent, theme, onOpen, compact }: { o: Oblig
     style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, paddingVertical: 9, minHeight: compact ? 52 : 44, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <View style={{ width: 16, paddingTop: 2, alignItems: "center" }}><TaskGlyph o={o} w={w} status={line} colors={c} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-      <RichText plain numberOfLines={3} style={[t.body, finished(o) ? { color: c.foregroundMuted } : null]}>{o.title}</RichText>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+      {hit ? <Marked numberOfLines={3} text={o.title} ranges={hit.ranges[0]} theme={theme} style={[t.body, finished(o) ? { color: c.foregroundMuted } : null]} />
+        : <RichText plain numberOfLines={3} style={[t.body, finished(o) ? { color: c.foregroundMuted } : null]}>{o.title}</RichText>}
+      {hit?.via ? <ViaLine via={hit.via} theme={theme} compact={compact} /> : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
         {scheduled && !finished(o) ? <Chip theme={theme} label={`${status}${prs ? ` · ${prs}` : ""}`} color={c.foregroundMuted} />
           : <Text style={[t.meta, blockedOnDeveloper(o) && !linkedQuestion(o, w) ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{status}{prs && !finished(o) && !linkedQuestion(o, w) ? ` · waits for ${prs}` : ""}</Text>}
         <OpenAgentLink status={line} openAgent={openAgent} theme={theme} compact={compact} />
-      </View>
+      </View>}
     </View>
     <View style={{ paddingTop: 2 }}><Icon name="ChevronRight" size={14} color={c.foregroundMuted} /></View>
   </Pressable>;
@@ -208,14 +212,15 @@ function RepairGlyph({ row, w, colors }: { row: RepairRow; w: Workspace; colors:
 }
 
 /** A task Follow-up found on a PR, in the same row as every other task: status glyph, title, PR chip and one state. */
-function RepairTaskRow({ row, w, theme, compact, onOpen }: { row: RepairRow; w: Workspace; theme: Theme; compact: boolean; onOpen: () => void }) {
+function RepairTaskRow({ row, w, theme, compact, onOpen, hit }: { row: RepairRow; w: Workspace; theme: Theme; compact: boolean; onOpen: () => void; /** A section search hit (repairFields: title, PR). */ hit?: ItemHit }) {
   const c = theme.colors; const t = text(c);
   const label = row.state === "done" && row.at ? `${row.text} ${clock(row.at)}` : row.text;
   return <Pressable accessibilityRole="button" accessibilityLabel={`Task: ${row.task.title}. ${label}. Open details`} onPress={onOpen}
     style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, paddingVertical: 9, minHeight: compact ? 52 : 44, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <View style={{ width: 16, paddingTop: 2, alignItems: "center" }}><RepairGlyph row={row} w={w} colors={c} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-      <RichText plain numberOfLines={3} style={[t.body, row.state === "done" ? { color: c.foregroundMuted } : null]}>{repairTitle(row)}</RichText>
+      {hit ? <Marked numberOfLines={3} text={repairTitle(row)} ranges={hit.ranges[0]} theme={theme} style={[t.body, row.state === "done" ? { color: c.foregroundMuted } : null]} />
+        : <RichText plain numberOfLines={3} style={[t.body, row.state === "done" ? { color: c.foregroundMuted } : null]}>{repairTitle(row)}</RichText>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
         <Chip theme={theme} label={row.pr} color={chipColor(row, c)} />
         <Text style={[t.meta, row.state === "capped" ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{label}</Text>
@@ -283,16 +288,22 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
   const doneCount = completed.length + repairs.done.length;
   const showDone = open("tasks-done");
   const repairRow = [...repairs.open, ...repairs.done].find(r => r.task.key === repair) ?? null;
-  return <Card theme={theme} compact={compact} icon="ListTodo" title="Tasks" count={left ? `${left} left` : undefined}>
-    {strip && <StripRow strip={strip} w={w} theme={theme} compact={compact} onPreview={() => setPreview(true)} openAgent={openAgent} />}
-    {!all.length && !repairs.open.length && !repairs.done.length && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
+  // Every task in the order the card draws them with "done" open: the search's "n of N" and its filter.
+  const search = useSectionSearch<RepairRow | Obligation>(w.id, "tasks", { theme, compact, items: [...repairs.open, ...outstanding, ...repairs.done, ...completed], fields: x => "task" in x ? repairFields(x) : taskFields(x) });
+  const hits = search.hits;
+  // While searching the "done" fold is ignored: a matching finished task shows in place, muted as done.
+  const shown = <T extends RepairRow | Obligation>(list: T[]) => hits ? list.filter(x => hits.has(x)) : list;
+  return <Card theme={theme} compact={compact} icon="ListTodo" title="Tasks" count={left ? `${left} left` : undefined} right={search.button} search={search.header}>
+    {hits && !hits.size && <NoMatchRow section="tasks" query={search.query!} theme={theme} compact={compact} />}
+    {strip && !hits && <StripRow strip={strip} w={w} theme={theme} compact={compact} onPreview={() => setPreview(true)} openAgent={openAgent} />}
+    {!hits && !all.length && !repairs.open.length && !repairs.done.length && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
       <Text style={t.meta}>No tasks. Follow-up adds one when a PR needs fixing, and the agent records work that outlives a merge here, like a migration to run or a production check.</Text>
     </View>}
-    {repairs.open.map(r => <RepairTaskRow key={r.task.key} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} />)}
-    {outstanding.map(o => { const q = linkedQuestion(o, w); return <TaskRow key={o.id} o={o} w={w} agents={agents} openAgent={openAgent} theme={theme} compact={compact} onOpen={() => q && onOpenQuestion ? onOpenQuestion(q.id) : setSelected(o.id)} />; })}
-    {doneCount > 0 && <FoldRow theme={theme} compact={compact} open={showDone} onPress={() => toggle("tasks-done")} icon="Check" iconColor={c.statusSuccess} label={`${doneCount} done`} />}
-    {showDone && repairs.done.map(r => <RepairTaskRow key={`done:${r.task.key}`} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} />)}
-    {showDone && completed.map(o => <TaskRow key={o.id} o={o} w={w} agents={agents} openAgent={openAgent} theme={theme} compact={compact} onOpen={() => setSelected(o.id)} />)}
+    {shown(repairs.open).map(r => <RepairTaskRow key={r.task.key} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} hit={hits?.get(r)} />)}
+    {shown(outstanding).map(o => { const q = linkedQuestion(o, w); return <TaskRow key={o.id} o={o} w={w} agents={agents} openAgent={openAgent} theme={theme} compact={compact} onOpen={() => q && onOpenQuestion ? onOpenQuestion(q.id) : setSelected(o.id)} hit={hits?.get(o)} />; })}
+    {!hits && doneCount > 0 && <FoldRow theme={theme} compact={compact} open={showDone} onPress={() => toggle("tasks-done")} icon="Check" iconColor={c.statusSuccess} label={`${doneCount} done`} />}
+    {(showDone || hits) && shown(repairs.done).map(r => <RepairTaskRow key={`done:${r.task.key}`} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} hit={hits?.get(r)} />)}
+    {(showDone || hits) && shown(completed).map(o => <TaskRow key={o.id} o={o} w={w} agents={agents} openAgent={openAgent} theme={theme} compact={compact} onOpen={() => setSelected(o.id)} hit={hits?.get(o)} />)}
     <TaskSheet o={all.find(o => o.id === selected) ?? null} w={w} agents={agents} openAgent={openAgent} theme={theme} compact={compact} onClose={() => setSelected(null)} />
     <RepairSheet row={repairRow} w={w} strip={strip} theme={theme} compact={compact} onClose={() => setRepair(null)} />
     <PreviewSheet open={preview} w={w} strip={strip} theme={theme} compact={compact} onClose={() => setPreview(false)} />

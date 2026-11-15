@@ -194,3 +194,12 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.report-issue-link": { tools: ["report_issue"], note: "Open on GitHub with no agent to send to; report_issue's confirm returns the same prefilled link without GitHub auth." },
   "follow.whats-new-seen": { exempt: "Records that a person closed What's new on a device; an agent reading the notes isn't someone seeing the sheet." },
 };
+
+/**
+ * Developer features that change only what one person's view shows (no RPC, nothing stored), and the agent tools
+ * that already read the same data. An agent never sees the developer's panel, so there is nothing to mirror; the
+ * note says where an agent finds what the developer found.
+ */
+export const VIEW_PARITY: Record<string, { tools: readonly string[]; note: string }> = {
+  "section-search": { tools: ["workspace_status", "list_prs"], note: "The panel's Pull requests, Tasks and Activity search filters lists an agent already reads whole: workspace_status returns the workspace's PRs (title, branch, failed checks), tasks with their evidence, questions with their answers, and the sends, merges and PR actions the timeline is drawn from; list_prs returns every tracked PR with its checks." },
+};

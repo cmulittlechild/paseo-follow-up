@@ -23,6 +23,9 @@ import { prLinksByNumber } from "../shared/presentation";
 import { notice, openQuestion, runAction } from "./toasts";
 import { putInChatOrCopy } from "../shared/put-in-chat";
 import { useChatComposer } from "./put-in-chat";
+import { Marked, NoMatchRow, useSectionSearch } from "./section-search";
+import { activityFields, questionFields, questionStatus } from "../shared/section-search";
+import type { Activity } from "../shared/activity";
 import { clearPendingAnswer, failPendingAnswer, pendingKey, setPendingAnswer, usePendingAnswer, usePendingAnswers, type PendingAnswer } from "./pending-answers";
 
 const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !agentId || agentId === w.mainAgentId ? "the main agent" : "a root session";
@@ -353,9 +356,13 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
   const rows = activity(w);
   const questions = [...w.questions].sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || Number(b.id.slice(1)) - Number(a.id.slice(1)));
   const [tab, setTab] = useState<"timeline" | "questions">("timeline");
+  // Activity searches both tabs at once; each tab chip then counts its own matches.
+  const search = useSectionSearch<Activity | Question>(w.id, "activity", { theme, compact, items: [...rows, ...questions], fields: x => "askedAt" in x ? questionFields(x) : activityFields(x) });
+  const hits = search.hits;
   if (!rows.length && !questions.length) return null;
   const all = open("activity");
   const LIMIT = 5;
+  const found = { timeline: hits ? rows.filter(r => hits.has(r)) : rows, questions: hits ? questions.filter(q => hits.has(q)) : questions };
   const tabButton = (id: "timeline" | "questions", label: string, count?: number) => {
     const selected = tab === id;
     return <Pressable key={id} accessibilityRole="tab" aria-selected={selected} accessibilityState={{ selected }} accessibilityLabel={count !== undefined ? `${label}, ${count}` : label} onPress={() => setTab(id)} hitSlop={4}
@@ -364,14 +371,23 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
       {count !== undefined && <Text style={{ color: c.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>{count}</Text>}
     </Pressable>;
   };
-  const list = tab === "timeline" ? rows : questions;
-  const shown = all ? list : list.slice(0, LIMIT);
-  return <Card theme={theme} compact={compact} icon="Activity" title="Activity"
-    right={questions.length ? <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline")}{tabButton("questions", "Questions", questions.length)}</View> : undefined}>
+  const list = found[tab];
+  // While searching, "Show all" is ignored: every match shows.
+  const shown = all || hits ? list : list.slice(0, LIMIT);
+  const tabs = (counts: boolean) => <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline", counts ? found.timeline.length : undefined)}{tabButton("questions", "Questions", found.questions.length)}</View>;
+  return <Card theme={theme} compact={compact} icon="Activity" title="Activity" search={search.header}
+    right={<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>{questions.length ? tabs(false) : null}{search.button}</View>}>
+    {/* Searching: the tabs move under the field and count their matches, so a hit in the other tab is never hidden. */}
+    {search.header && questions.length > 0 && <View style={{ flexDirection: "row", paddingHorizontal: compact ? 14 : 12, paddingTop: 6, paddingBottom: 10 }}>{tabs(!!hits)}</View>}
+    {hits && !hits.size && <NoMatchRow section="activity" query={search.query!} theme={theme} compact={compact} />}
+    {hits && hits.size > 0 && !list.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
+      <Text style={t.meta}>{`Nothing in ${tab === "timeline" ? "Timeline" : "Questions"} matches. ${found[tab === "timeline" ? "questions" : "timeline"].length} in ${tab === "timeline" ? "Questions" : "Timeline"}.`}</Text>
+    </View>}
     {/* The timeline is drawn on the same rail as the stacks: a 2px line through 16px state nodes. */}
-    {tab === "timeline" ? <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6, borderTopWidth: 1, borderTopColor: c.border }}>
+    {!list.length ? null : tab === "timeline" ? <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6, borderTopWidth: 1, borderTopColor: c.border }}>
       {(shown as typeof rows).map((r, i, all) => {
         const color = toneColor(c, r.tone);
+        const hit = hits?.get(r);
         return <View key={r.key} style={{ flexDirection: "row", gap: 10 }}>
           <View style={{ width: 16, alignItems: "center" }}>
             <View style={{ width: 2, height: 8, backgroundColor: i === 0 ? "transparent" : c.border }} />
@@ -380,17 +396,18 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
           </View>
           <View style={{ flex: 1, minWidth: 0, gap: 2, paddingTop: 6, paddingBottom: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
-              <Text numberOfLines={2} style={[t.body, { flex: 1 }]}>{r.text}</Text>
+              {hit ? <Marked numberOfLines={2} text={r.text} ranges={hit.ranges[0]} theme={theme} style={[t.body, { flex: 1 }]} /> : <Text numberOfLines={2} style={[t.body, { flex: 1 }]}>{r.text}</Text>}
               <Text style={t.small}>{ago(r.at, now)}</Text>
             </View>
-            {(r.detail || r.took) && <RichText linkColor={c.foreground} numberOfLines={2} style={t.meta}>{[r.detail, r.took ? `took ${r.took}` : null].filter(Boolean).join(" · ")}</RichText>}
+            {(r.detail || r.took) && <RichText marks={hit && r.detail ? { ranges: hit.ranges[1], colors: c } : undefined} linkColor={c.foreground} numberOfLines={2} style={t.meta}>{[r.detail, r.took ? `took ${r.took}` : null].filter(Boolean).join(" · ")}</RichText>}
           </View>
         </View>;
       })}
     </View> : (shown as typeof questions).map(q => {
       // Until it reached the agent the row says where it is, in muted, like every other surface (answerStatus).
       const s = answerStatus(q);
-      const status = q.answer ? `${s && !s.delivered ? `${s.label} · ` : ""}${answerLabel(q, q.answer.choice, q.answer.words)}` : q.closed ? `Withdrawn: ${q.closed.reason}` : "Waiting for you";
+      const status = questionStatus(q);
+      const hit = hits?.get(q);
       const icon = q.answer ? "MessageCircleReply" : q.closed ? "MessageCircleOff" : "MessageCircleQuestion";
       const color = s?.delivered ? c.statusSuccess : q.answer || q.closed ? c.foregroundMuted : c.statusWarning;
       return <CardRow key={q.id} theme={theme} onPress={() => onOpenQuestion(q.id)} accessibilityLabel={`${q.id}, ${q.title}. ${status}. Open`}>
@@ -398,14 +415,15 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
           <View style={{ paddingTop: 2 }}><Icon name={icon} size={13} color={color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
-              <RichText plain numberOfLines={1} style={[t.body, { flex: 1 }]}>{`${q.id} · ${q.title}`}</RichText>
+              {hit ? <Marked numberOfLines={1} text={`${q.id} · ${q.title}`} ranges={hit.ranges[0]} theme={theme} style={[t.body, { flex: 1 }]} /> : <RichText plain numberOfLines={1} style={[t.body, { flex: 1 }]}>{`${q.id} · ${q.title}`}</RichText>}
               <Text style={t.small}>{ago(q.answer?.at ?? q.closed?.at ?? q.askedAt, now)}</Text>
             </View>
-            <RichText plain numberOfLines={2} style={[t.meta, !q.answer && !q.closed ? { color: c.statusWarning } : null]}>{status}</RichText>
+            {hit ? <Marked numberOfLines={2} text={status} ranges={hit.ranges[1]} theme={theme} style={[t.meta, !q.answer && !q.closed ? { color: c.statusWarning } : null]} />
+              : <RichText plain numberOfLines={2} style={[t.meta, !q.answer && !q.closed ? { color: c.statusWarning } : null]}>{status}</RichText>}
           </View>
         </View>
       </CardRow>;
     })}
-    {list.length > LIMIT && <FoldRow theme={theme} compact={compact} open={all} onPress={() => toggle("activity")} icon="History" iconColor={c.foregroundMuted} label={all ? "Show less" : `Show all ${list.length}`} />}
+    {!hits && list.length > LIMIT && <FoldRow theme={theme} compact={compact} open={all} onPress={() => toggle("activity")} icon="History" iconColor={c.foregroundMuted} label={all ? "Show less" : `Show all ${list.length}`} />}
   </Card>;
 }

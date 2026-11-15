@@ -92,9 +92,14 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, onSubmit, onArrow, listKeys = false }: {
+export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape }: {
   /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
   listKeys?: boolean;
+  /** "2 of 12" at the field's end (a panel section's search), in place of the field's own ✕: the section has its own. */
+  count?: string;
+  autoFocus?: boolean;
+  /** Esc's own action (a section search closes); without it Esc clears, then leaves the field. */
+  onEscape?: () => void;
   theme: Theme; value: string; onChange: (q: string) => void; placeholder: string; icon: string; dense: boolean;
   inputRef: { current: TextInput | null }; slashHint: boolean; onSubmit?: () => void; onArrow?: (delta: number) => void;
 }) {
@@ -104,7 +109,7 @@ function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef
     borderWidth: 1, borderColor: focused ? withAlpha(c.foreground, 0.35) : c.border, backgroundColor: c.surface1 }}>
     <Icon name={icon as never} size={dense ? 16 : 13} color={c.foregroundMuted} />
     <TextInput ref={inputRef} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
-      accessibilityLabel={placeholder} autoCorrect={false} autoCapitalize="none" spellCheck={false} returnKeyType="go"
+      accessibilityLabel={placeholder} autoFocus={autoFocus} autoCorrect={false} autoCapitalize="none" spellCheck={false} returnKeyType="go"
       {...(listKeys ? { dataSet: { listKeys: "1" } } as object : {})}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       onSubmitEditing={onSubmit}
@@ -112,10 +117,11 @@ function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef
         const key = (e.nativeEvent as { key?: string }).key;
         if (key === "ArrowDown" && onArrow) { e.preventDefault?.(); onArrow(1); }
         else if (key === "ArrowUp" && onArrow) { e.preventDefault?.(); onArrow(-1); }
-        else if (key === "Escape") { if (value) onChange(""); else inputRef.current?.blur(); }
+        else if (key === "Escape") { if (onEscape) onEscape(); else if (value) onChange(""); else inputRef.current?.blur(); }
       }}
       style={{ flex: 1, minWidth: 0, color: c.foreground, fontSize: dense ? 15 : 13, paddingVertical: 0, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-    {!!value && <Pressable accessibilityRole="button" accessibilityLabel={`Clear ${placeholder.toLowerCase()}`} hitSlop={dense ? 14 : 8} onPress={() => { onChange(""); inputRef.current?.focus(); }}>
+    {count !== undefined ? !!count && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: dense ? 13 : 12, fontVariant: ["tabular-nums"] }}>{count}</Text>
+      : !!value && <Pressable accessibilityRole="button" accessibilityLabel={`Clear ${placeholder.toLowerCase()}`} hitSlop={dense ? 14 : 8} onPress={() => { onChange(""); inputRef.current?.focus(); }}>
       <Icon name="X" size={dense ? 16 : 13} color={c.foregroundMuted} />
     </Pressable>}
     {slashHint && !value && !focused && !dense && Platform.OS === "web" && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: c.border }}>/</Text>}

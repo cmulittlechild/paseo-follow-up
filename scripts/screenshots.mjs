@@ -66,7 +66,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -1079,6 +1079,60 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     });
     await actPlanned(call, caller, "set_display", { values: { enable_ranker: false } });
     await fs.rm(rankerFile, { force: true });
+  }
+  // Section search (--secsearch-review, Paseo 0.16): the panel's Pull requests, Tasks and Activity searched in place, on
+  // Billing retries with five more tasks (three done, so the "done" fold holds them). Each section light and dark (the
+  // other cards show the icon at rest), a no-match, and the phone (the larger view at 390) in light.
+  if (argv.includes("--secsearch-review")) {
+    const ws = seeded.workspaces.find(w => w.key === "billing");
+    const tasks = [
+      ["Backfill retry_count for open invoices", "pending", ""],
+      ["Watch the dunning email bounce rate for a week", "waiting", ""],
+      ["Cap retries at four attempts", "done", "Retries stop after the fourth charge attempt, and the dunning email goes out after it."],
+      ["Log each retry with the invoice id", "done", "Every retry writes the invoice id and the attempt number to the billing log."],
+      ["Skip retries for hard declines", "done", "stolen_card and lost_card go straight to the dunning email; only soft declines retry."],
+    ];
+    for (const [title, status, evidence] of tasks) await call("follow.obligation", { agentId: ws.agentId, title, status, ...(evidence ? { evidence } : {}) });
+    const panel = async page => {
+      await openChat(page, billing.title, billing.prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor({ timeout: 60000 });
+    };
+    /** Opens a section's search, types the query, and brings that card to the top of the panel. */
+    const searchIn = (placeholder, query, wait) => async page => {
+      await page.getByRole("button", { name: placeholder, exact: true }).last().click();
+      const field = page.getByPlaceholder(placeholder).last();
+      await field.fill(query);
+      await wait(page);
+      await field.evaluate(el => el.scrollIntoView({ block: "center" }));
+      await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    };
+    const tasksDunning = searchIn("Search tasks", "dunning", page => page.getByText(/^Evidence · /).last().waitFor());
+    const shots = [
+      ["secsearch-tasks", "light", async page => { await panel(page); await tasksDunning(page); }],
+      ["secsearch-tasks", "dark", async page => { await panel(page); await tasksDunning(page); }],
+      // A merged PR from the "merged below" fold, found by its title.
+      ["secsearch-prs", "light", async page => { await panel(page); await searchIn("Search pull requests", "schedule", p => p.getByText("1 of 3").last().waitFor())(page); }],
+      // A failing check's name: line 2 becomes "Check · test".
+      ["secsearch-prs", "dark", async page => { await panel(page); await searchIn("Search pull requests", "test", p => p.getByText(/^Check · /).last().waitFor())(page); }],
+      ["secsearch-activity", "light", async page => { await panel(page); await searchIn("Search activity", "declined", p => p.getByRole("tab", { name: /^Questions, 1/ }).last().waitFor())(page); }],
+      ["secsearch-activity-questions", "dark", async page => {
+        await panel(page);
+        await searchIn("Search activity", "declined", p => p.getByRole("tab", { name: /^Questions, 1/ }).last().waitFor())(page);
+        await page.getByRole("tab", { name: /^Questions, 1/ }).last().click();
+        await page.getByRole("button", { name: /^Q1, Retry declined cards\?/ }).last().waitFor();
+      }],
+      ["secsearch-nomatch", "dark", async page => { await panel(page); await searchIn("Search tasks", "zebra", p => p.getByText("No tasks match ‘zebra’").last().waitFor())(page); }],
+    ];
+    for (const [name, scheme, drive] of shots) await shoot(`${name}-${scheme}`, DESKTOP, scheme, drive);
+    await shoot("secsearch-phone-light", PHONE, "light", async page => {
+      await panel(page);
+      await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+      await page.getByRole("button", { name: "Search tasks", exact: true }).last().waitFor({ timeout: 60000 });
+      await page.setViewportSize(PHONE);
+      await tasksDunning(page);
+      if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("secsearch-phone scrolls sideways");
+    });
   }
   // The filter's ranking (--rank-review, Paseo 0.16): two workspaces renamed so "staging" is in their titles, while it
   // stays in other rows' second lines (Search filters' permission, SSO login's next step). Inside each group the title
