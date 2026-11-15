@@ -25,7 +25,9 @@ const QUIET_PAGE = 20;
 export const BRIEF_KEY = "brief";
 export const OVERSEER_KEY = "overseer";
 /** The pinned Overseer row: not started yet (a one-time Start), working, asking, idle, or failed to come back. */
-export type OverseerRowState = { state: "start" | "idle" | "running" | "asks" | "error"; line: string };
+export type OverseerRowState = { state: "start" | "idle" | "running" | "asks" | "error"; line: string;
+  /** A list filter's match in `line`, highlighted like a row's (the sidebar view's "Filter workspaces"). */
+  ranges?: Range[] };
 
 type Entry =
   | { type: "brief"; key: string }
@@ -74,6 +76,8 @@ export type HomeListProps = {
   filter?: HomeGroupId | null;
   /** The pinned Overseer row under the brief. Absent: the Overseer is off (or this surface has none). */
   overseer?: OverseerRowState | null;
+  /** A narrow list (Paseo's sidebar view): the Overseer row stacks like every row there, title then its line. */
+  stackOverseer?: boolean;
   /** An omnibox ask is on its way to the Overseer. */
   asking?: boolean;
   /** Sending rows' Send now (only where the server would take it: Workstream.sendNow). Absent: the list offers none. */
@@ -88,7 +92,7 @@ export type HomeListProps = {
 
 const noMenu: OpenRowMenu = () => undefined;
 
-export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, asking = false, menu, onSendNow }: HomeListProps) {
+export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow }: HomeListProps) {
   const c = theme.colors;
   const [openMenu, setOpenMenu] = useState<RowMenuOpen | null>(null);
   const build = menu.build;
@@ -178,7 +182,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
         onSelect={pickResult} onMenu={item.archived ? noMenu : onMenu} />;
       case "ask": return <AskRow ask={item.ask} theme={theme} active={item.index === activeResult} dense={dense} touch={touch} sending={!!asking} onPress={() => onResult?.({ provider: "overseer", key: ASK_KEY, ask: item.ask })} />;
       case "brief": return <BriefRow theme={theme} line={briefLine ?? ""} selected={!touch && (selectedKey === null || selectedKey === BRIEF_KEY)} touch={touch} onSelect={onSelect} />;
-      case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} onSelect={onSelect} /> : null;
+      case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} stacked={stackOverseer} onSelect={onSelect} /> : null;
       case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} onPress={() => toggle(item.group)} />;
       case "fold": return <Pressable accessibilityRole="button" aria-expanded={item.open} accessibilityState={{ expanded: item.open }} accessibilityLabel={`${item.project}, ${item.count}. ${item.open ? "Collapse" : "Expand"}`} onPress={() => toggleProject(item.project)}
         style={state => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: dense ? 8 : 16, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
@@ -199,7 +203,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
         </View>;
       }
     }
-  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow]);
+  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow]);
 
   const listRef = useRef<FlatList<Entry>>(null);
   // Keep the keyboard-active result in view.
@@ -240,18 +244,29 @@ function BriefRow({ theme, line, selected, touch, onSelect }: { theme: Theme; li
   </Pressable>;
 }
 
-function OverseerRow({ theme, o, selected, touch, onSelect }: { theme: Theme; o: OverseerRowState; selected: boolean; touch: boolean; onSelect: (key: string) => void }) {
+function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect }: { theme: Theme; o: OverseerRowState; selected: boolean; touch: boolean; stacked?: boolean; onSelect: (key: string) => void }) {
   const c = theme.colors;
   const tone = o.state === "asks" ? c.statusWarning : o.state === "error" ? c.statusDanger : o.state === "running" ? runningColor(c) : c.foregroundMuted;
+  const icon = o.state === "running" ? <Spinner color={tone} size={13} label="Overseer working" /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />;
+  const lineColor = o.state === "asks" || o.state === "error" ? tone : c.foregroundMuted;
+  // Wide Home: one line, the phone's shorter start line. Stacked (the sidebar view): the whole line, wrapping to two.
+  const line = marks(!stacked && touch && o.state === "start" ? "Ask about any workspace" : o.line, stacked || !(touch && o.state === "start") ? o.ranges : null, c);
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Overseer. ${o.line}`} onPress={() => onSelect(OVERSEER_KEY)}
-    style={state => ({ flexDirection: "row", alignItems: "center", gap: 10, minHeight: touch ? 52 : 40, paddingLeft: 14, paddingRight: 16, borderBottomWidth: 1, borderBottomColor: c.border,
+    style={state => ({ flexDirection: "row", alignItems: stacked ? "flex-start" : "center", gap: 10, minHeight: touch ? 52 : 40, paddingLeft: 14, paddingRight: 16, paddingVertical: stacked ? (touch ? 12 : 8) : 0, borderBottomWidth: 1, borderBottomColor: c.border,
       // Its ask isn't a Needs-you row (it's yours to route), so the edge marks it the way blocking rows are marked.
       borderLeftWidth: 2, borderLeftColor: o.state === "asks" || o.state === "error" ? withAlpha(tone, 0.9) : "transparent",
       backgroundColor: selected ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
-    {o.state === "running" ? <Spinner color={tone} size={13} label="Overseer working" /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />}
-    <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Overseer</Text>
-    <Text numberOfLines={1} style={{ flex: 1, color: o.state === "asks" || o.state === "error" ? tone : c.foregroundMuted, fontSize: touch ? 13 : 12 }}>{touch && o.state === "start" ? "Ask about any workspace" : o.line}</Text>
-    {touch && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
+    {stacked ? <View style={{ paddingTop: 2 }}>{icon}</View> : icon}
+    {stacked
+      ? <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Overseer</Text>
+          <Text numberOfLines={2} style={{ color: lineColor, fontSize: touch ? 13 : 12, lineHeight: touch ? 18 : 16 }}>{line}</Text>
+        </View>
+      : <>
+          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Overseer</Text>
+          <Text numberOfLines={1} style={{ flex: 1, color: lineColor, fontSize: touch ? 13 : 12 }}>{line}</Text>
+          {touch && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
+        </>}
   </Pressable>;
 }
 
