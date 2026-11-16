@@ -152,6 +152,11 @@ function threadDate(key: string): string | null {
   const ts = /\/(\d{10})\.\d{6}$/.exec(key)?.[1];
   return ts ? new Date(Number(ts) * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
 }
+/** UTC calendar date keeps untitled references distinguishable without exposing their opaque ids. */
+function seenDate(at: string): string | null {
+  const date = new Date(at);
+  return Number.isFinite(date.getTime()) && date.getTime() > 0 ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
+}
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 /** One row of the sheet: a lead, the title, and a meta line (design table). */
@@ -169,7 +174,7 @@ export function linkedRow(i: LinkedViewItem, mainAgentId: string | null): Linked
       return { ...base, lead: null, title: i.title ?? "Slack thread", meta: join(date ? `Thread from ${date}` : null, date ? lower(who) : who), glyph: { type: "brand", icon: "slack" }, label: i.title ?? "the Slack thread" };
     }
     case "artifact":
-      return { ...base, lead: null, title: i.title ?? "Untitled artifact", meta: who, glyph: { type: "brand", icon: "claude" }, label: i.title ?? "the artifact" };
+      return { ...base, lead: null, title: i.title ?? "Claude artifact", meta: i.title ? who : join(i.origin === "extracted" && !i.why ? "Mentioned in this workspace" : who, seenDate(i.firstSeen)), glyph: { type: "brand", icon: "claude" }, label: i.title ?? "the artifact" };
     case "doc": {
       const host = hostOf(i.url);
       const icon = host && /notion\.(so|site)$/.test(host) ? "notion" : host && /google\.com$/.test(host) ? "googleDocs" : null;

@@ -30,6 +30,7 @@ Everything lives in `$PASEO_HOME/plugin-data/follow-up/`.
 | `about.json`, `ai-jobs.jsonl` | `server/about.ts`, `server/ai-jobs.ts` | Summary overviews and linked items, and each model call’s duration and cost, plus privacy-safe validation rule codes for rejected rename replies (never their text). |
 | `rename.json` | `server/rename.ts` | Rename title with AI: the day's suggestion count and each rename of the last 24 hours (workspace, old title or null for Paseo's default name, new title, when, by whom), so it can be undone. Pruned on every write. |
 | `linked.json` | `server/linked.ts` | Linked items per workspace (items, exclusions, Linear candidates), keys Linear rejected, the known Linear teams, the daily check count and migrations ([linked-items.md](linked-items.md)). Read on use, never cached in the worker. |
+| `title-index.json` | `server/transcript-titles.ts` | One local artifact receipt index: per-transcript inode, size, mtime and byte cursor, bounded partial line/pending Artifact inputs, and URL/title evidence with its source path. Appends read once; completed files remain cached misses until changed. |
 | `overseer.json`, `overseer-digest.json`, `overseer-home/` | `server/overseer.ts` | The Overseer's agent id, the digest its hook injects, and its workspace folder. |
 | `onboarding.json` | `server/onboarding.ts` | Setup progress: fresh or existing install, the current step, offer state. |
 | `versions.json` | `server/release-notes.ts` | The installed version, the previous one, and the host-wide What's new record. |

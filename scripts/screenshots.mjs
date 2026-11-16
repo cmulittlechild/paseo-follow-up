@@ -43,7 +43,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -415,7 +415,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !argv.includes("--rename-fixup-review") || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -491,6 +491,11 @@ async function seed({ call, home }) {
   // One item the developer added by hand ("Added by you" in the Linked list).
   const billing = workspaces.find(w => w.key === "billing");
   await call("follow.set-linked-items", { workspaceId: billing.workspaceId, action: "add", ref: "APP-151" });
+  if (only.includes("local-titles")) {
+    await call("follow.workspace-spec", { workspaceId: billing.workspaceId, action: "set", url: "https://claude.ai/artifact/charge-retry-spec", title: "Charge retry spec" });
+    await call("follow.set-linked-items", { workspaceId: billing.workspaceId, action: "add", ref: "https://claude.ai/artifact/retry-rollout", title: "Retry rollout checklist" });
+    await call("follow.link-item", { agentId: billing.agentId, ref: "https://claude.ai/artifact/example-untitled" });
+  }
   // needs-you-states: the developer answers, so the question and its brief leave every surface.
   for (const spec of specs.filter(s => s.answer)) await call("follow.answer-question", { workspaceId: workspaces.find(w => w.key === spec.key).workspaceId, ...spec.answer, action: "send" });
   await call("follow.refresh", {});
@@ -1334,7 +1339,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, "utf8")), error: "the agent was archived" }));
     await shoot("sidebar-overseer-error-dark", SIDEBAR, "dark", async page => { await sidebarView(page, "Couldn't bring it back", false); });
   }
-  for (const name of SHOTS) {
+  for (const name of [...SHOTS, "local-titles"]) {
     if (!only.includes(name) || name === "setup") continue;
     if (name === "home") await shoot("home", DESKTOP, "dark", async page => {
       await openHome(page);
@@ -1438,6 +1443,22 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       // Desktop focuses the filter field once the sheet opens; wait for it, so capture's blur clears the focus ring.
       await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filter, or paste a link or key");
     });
+    if (name === "local-titles") {
+      await shoot("local-titles-spec", DESKTOP, "dark", async page => {
+        await openHome(page);
+        await (await homeRow(page, "Billing retries")).click();
+        await page.getByRole("link", { name: "Open the spec: Charge retry spec" }).first().waitFor();
+      });
+      await shoot("local-titles-linked", DESKTOP, "dark", async page => {
+        await openHome(page);
+        await (await homeRow(page, "Billing retries")).click();
+        await page.getByRole("button", { name: /^Linked: / }).first().click();
+        const sheet = page.getByRole("dialog").last();
+        await sheet.getByText("Retry rollout checklist", { exact: true }).waitFor();
+        await sheet.getByText("Claude artifact", { exact: true }).waitFor();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filter, or paste a link or key");
+      });
+    }
     // The 2.0.0 notes' two images (What's new and the GitHub page): the same scenes as home and panel, cropped to what
     // a ~500px sheet can show legibly. Home without Paseo's own sidebar; the panel at its real width (320), its head (tab,
     // status line, stack bar, Auto-send) and the question card under it. Shoot notes-panel with --scale 3: the sheet and

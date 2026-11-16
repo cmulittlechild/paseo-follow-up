@@ -109,7 +109,7 @@ export function SpecSheet({ workspace: w, open, theme, compact, onClose }: { wor
         {others.map(a => <View key={a.url} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Icon name="FileText" size={13} color={c.foregroundMuted} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={t.body}>{a.title ?? "Untitled artifact"}</Text>
+            <Text numberOfLines={1} style={t.body}>{a.title ?? "Claude artifact"}</Text>
             <Text numberOfLines={1} style={t.small}>{a.publishes > 1 ? `Published ${a.publishes} times` : "Published once"}{a.lastAt ? ` · ${ago(a.lastAt)}` : ""}</Text>
           </View>
           <Button theme={theme} compact={compact} kind="ghost" icon="ArrowUpRight" title="Open" accessibilityLabel={`Open ${a.title ?? "artifact"}`} onPress={() => openUrl(a.url)} />

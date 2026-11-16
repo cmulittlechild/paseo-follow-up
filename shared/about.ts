@@ -104,6 +104,7 @@ export function classifyUrl(raw: string): AboutLink | null {
     return { ...base, kind: "slack", key: `slack:${m[1]}/${ts}` };
   }
   if (host === "claude.ai" && /^\/(code\/)?(artifact|public\/artifacts)\//.test(u.pathname)) return { ...base, kind: "artifact", key: url.split(/[?#]/)[0] };
+  if (host === "claude.ai" && /^\/(?:docs?|public\/docs?)\//.test(u.pathname)) return { ...base, kind: "doc", key: url.split(/[?#]/)[0] };
   if (/^(docs|drive)\.google\.com$/.test(host) || /(^|\.)notion\.(so|site)$/.test(host) || host === "www.notion.so") return { ...base, kind: "doc", key: url.split("#")[0] };
   return null;
 }
