@@ -80,7 +80,7 @@ export class TranscriptTitleLookup {
   async tick(workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, found: (titles: TitleIndex) => Promise<void>): Promise<{ bytes: number; attempted: number }> {
     if (this.running) return { bytes: 0, attempted: 0 };
     const tracked = workspaces.filter(w => w.enable_tracking);
-    if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title))) return { bytes: 0, attempted: 0 };
+    if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title))) { this.parked = null; this.pathsAt = -Infinity; return { bytes: 0, attempted: 0 }; }
     const now = (this.d.now ?? Date.now)(), key = unnamedKey(tracked, items);
     if (this.parked && this.parked.key === key && now - this.parked.at < TITLE_PARK_RECHECK_MS) return { bytes: 0, attempted: 0 };
     if (this.parked) { this.parked = null; this.pathsAt = -Infinity; }

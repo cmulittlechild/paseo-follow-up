@@ -103,7 +103,7 @@ test("untitled-link workspaces precede other tracked transcripts, newest first w
   assert.deepEqual((await trackedTitleTranscripts(dir, [priority, other], { claude: join(dir, "claude") }, new Set([priority.id]))).map(p => p.split("/").at(-1)), ["priority-new.jsonl", "priority-old.jsonl", "other-new.jsonl", "other-old.jsonl"]);
 });
 
-for (const wake of ["link", "scope", "timer"] as const) test(`caught-up misses park without filesystem work until ${wake} wakes them`, async t => {
+for (const wake of ["link", "scope", "timer", "readd"] as const) test(`caught-up misses park without filesystem work until ${wake} wakes them`, async t => {
   const { stat } = await import("node:fs/promises");
   const dir = await temp(t), path = join(dir, "session.jsonl"); await writeFile(path, line([{ type: "text", text: "No receipt" }]));
   const s = setup(dir, [path], 4096); let now = 1000, stats = 0, metadataPasses = 0, cacheReads = 0;
@@ -113,6 +113,7 @@ for (const wake of ["link", "scope", "timer"] as const) test(`caught-up misses p
   await tick(); stats = 0; metadataPasses = 0; cacheReads = 0;
   for (let i = 0; i < 10; i++) { now += 30_000; assert.deepEqual(await tick(), { bytes: 0, attempted: 0 }); }
   assert.deepEqual({ stats, metadataPasses, cacheReads }, { stats: 0, metadataPasses: 0, cacheReads: 0 }, "parked ticks do not stat transcripts/cache or rediscover/read agent metadata");
+  if (wake === "readd") { const previous = s.file.workspaces[s.w.id].items; s.file.workspaces[s.w.id].items = []; await tick(); s.file.workspaces[s.w.id].items = previous; }
   const appended = receipt("Newly learned plan"); await appendFile(path, appended);
   if (wake === "link") noteRefs(s.file, s.w.id, [{ raw: URL + "-new", strong: true }], now);
   if (wake === "scope") workspaces = [s.w, workspace({ id: "new-scope" })];
