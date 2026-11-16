@@ -79,6 +79,17 @@ export const AMBIGUOUS_MS = [15_000, 60_000, 300_000, 900_000] as const;
 /** One attempt's cap: past it the send counts as left but unconfirmed. */
 export const QUEUE_ATTEMPT_MS = 120_000;
 
+/**
+ * A send that never left because Paseo was unreachable waits for Paseo instead of the ladder: one connect-only probe
+ * (no agent read, nothing that could wake one) every PROBE_MS while any item waits so, every PROBE_SLOW_MS once the
+ * outage has lasted PROBE_BACKOFF_AFTER_MS, and none when nothing waits. A probe that connects, or any connection the
+ * worker opens, sends them at once: they go out within about 15 s of Paseo coming back.
+ */
+export const PASEO_UNREACHABLE = "Paseo unreachable";
+export const PROBE_MS = 15_000;
+export const PROBE_SLOW_MS = 60_000;
+export const PROBE_BACKOFF_AFTER_MS = 10 * 60_000;
+
 export const neverLeftDelay = (attempts: number) => NEVER_LEFT_MS[Math.min(Math.max(attempts, 1), NEVER_LEFT_MS.length) - 1];
 
 /**

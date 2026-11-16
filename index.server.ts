@@ -312,7 +312,7 @@ export default function contribute(server: PluginServerContext) {
   });
   onBeforeSend((agentId, messageId, by) => inbox.noteDelivery(agentId, messageId, by === "developer" || by?.startsWith("agent:") ? by as "developer" | `agent:${string}` : undefined));
   // a-message-is-saved-before-sent-and-arrives-once: every message to an agent goes through one queue (queue.json).
-  const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker) }, { health: writeHealth });
+  const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth });
   engine.attachQueue(queue);
   inbox.attachQueue(queue);
   onDaemonReconnect(() => queue.reconnected());

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
+import { PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
 import { ConversationGone, DeliveryDeferred, realTimers, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
 
@@ -38,6 +38,8 @@ export interface Courier {
   deliverTo(target: Target, text: string, messageId: string, by?: string): Promise<string>;
   /** Whether `messageId` is in the agent's chat since `since` (`marker`: the text to look for where ids aren't kept). Null: unknown. */
   arrived(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null>;
+  /** Connect-only: whether Paseo answers, on the worker's one connection, without reading or waking any agent. */
+  probe?(): Promise<boolean>;
 }
 
 export const QUEUE_FILE = "queue.json";
@@ -76,6 +78,9 @@ export class MessageQueue {
   private draining = new Map<string, Promise<void>>();
   private again = new Set<string>();
   private running = new Set<Promise<unknown>>();
+  /** The outage probe: the queue's one timer for items waiting on Paseo (PASEO_UNREACHABLE), and when the outage began. */
+  private probing: { handle: unknown; at: number } | null = null;
+  private outageSince: number | null = null;
   private stopped = false;
   private loaded = false;
   readonly writer: WriteBehind<QueueFile>;
@@ -115,6 +120,9 @@ export class MessageQueue {
   }
   /** The daemon connection came back: sends that never left go at once. */
   reconnected(): void {
+    if (this.stopped) return;
+    this.outageSince = null;
+    if (this.probing) { this.timers.clear(this.probing.handle); this.probing = null; }
     const now = this.iso();
     for (const item of this.items.values()) if (item.state === "queued" && item.attempts > 0) item.nextAt = now;
     for (const key of this.keys()) this.arm(key);
@@ -169,13 +177,14 @@ export class MessageQueue {
     }
   }
   async flush(): Promise<void> { if (this.loaded) { this.writer.set(this.snapshot()); } await this.writer.flush(); }
-  stop(): void { this.stopped = true; for (const { handle } of this.armed.values()) this.timers.clear(handle); this.armed.clear(); }
+  stop(): void { this.stopped = true; for (const { handle } of this.armed.values()) this.timers.clear(handle); this.armed.clear(); if (this.probing) this.timers.clear(this.probing.handle); this.probing = null; }
 
   // ---- the sender -------------------------------------------------------------------------------------------------
 
   private keys(): Set<string> { return new Set([...this.items.values()].map(i => i.key)); }
   private dueAt(item: QueueItem): number | null {
     if (item.state !== "queued" && item.state !== "uncertain") return null;
+    if (this.outageSince !== null && this.waitsForPaseo(item)) return null;
     if (item.nextAt) return Date.parse(item.nextAt);
     const last = this.lastEnqueue.get(item.key);
     const created = Date.parse(item.createdAt);
@@ -269,8 +278,42 @@ export class MessageQueue {
   }
   private async neverLeft(item: QueueItem, reason: string): Promise<void> {
     item.attempts++;
-    Object.assign(item, { state: item.envelope ? "uncertain" : "queued", reason, nextAt: this.iso(neverLeftDelay(item.attempts) * this.scale) });
+    const unreachable = reason === PASEO_UNREACHABLE && !item.envelope && !!this.courier.probe;
+    if (unreachable) this.outageSince ??= this.now();
+    Object.assign(item, { state: item.envelope ? "uncertain" : "queued", reason, nextAt: this.iso(unreachable ? this.probeDelay() : neverLeftDelay(item.attempts) * this.scale) });
     await this.project(item); this.save();
+    if (unreachable) this.armProbe();
+  }
+
+  // ---- the outage probe -------------------------------------------------------------------------------------------
+
+  /** Waits on the probe, not the ladder: a send that never left because Paseo was unreachable. */
+  private waitsForPaseo(item: QueueItem): boolean {
+    return !!this.courier.probe && item.state === "queued" && item.reason === PASEO_UNREACHABLE && !item.envelope;
+  }
+  private probeDelay(): number {
+    const long = this.outageSince !== null && this.now() - this.outageSince >= PROBE_BACKOFF_AFTER_MS * this.scale;
+    return (long ? PROBE_SLOW_MS : PROBE_MS) * this.scale;
+  }
+  /** One timer while anything waits on Paseo; none otherwise. */
+  private armProbe(): void {
+    if (this.stopped || this.probing) return;
+    if (![...this.items.values()].some(i => this.waitsForPaseo(i))) { this.outageSince = null; return; }
+    const delay = this.probeDelay();
+    const handle = this.timers.set(() => { const run = this.probe().catch(() => undefined).finally(() => this.running.delete(run)); this.running.add(run); }, delay);
+    this.probing = { handle, at: this.now() + delay };
+  }
+  private async probe(): Promise<void> {
+    this.probing = null;
+    if (this.stopped) return;
+    const waiting = [...this.items.values()].filter(i => this.waitsForPaseo(i));
+    if (!waiting.length) { this.outageSince = null; return; }
+    if (await this.courier.probe!().catch(() => false)) { this.reconnected(); return; }
+    // Still down: the cards' "retrying at" moves to the next probe.
+    const next = this.iso(this.probeDelay());
+    for (const item of waiting) { item.nextAt = next; await this.project(item); }
+    this.save();
+    this.armProbe();
   }
   private async settle(item: QueueItem, state: "sent" | "cancelled", reason: string | null, to: string | null): Promise<void> {
     Object.assign(item, { state, reason, to, nextAt: null, settledAt: this.iso() });
@@ -278,6 +321,7 @@ export class MessageQueue {
     this.items.delete(item.id);
     this.recent = [...this.recent.filter(i => i.id !== item.id), { ...item, text: "" }].slice(-QUEUE_RECENT);
     this.save();
+    if (this.probing && ![...this.items.values()].some(i => this.waitsForPaseo(i))) { this.timers.clear(this.probing.handle); this.probing = null; this.outageSince = null; }
   }
   private async project(item: QueueItem): Promise<void> {
     await this.channels.get(item.kind)?.project(item).catch(error => console.warn(`[follow-up] couldn't update the ${item.kind} record: ${error instanceof Error ? error.message : String(error)}`));

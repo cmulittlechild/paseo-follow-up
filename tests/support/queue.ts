@@ -6,7 +6,7 @@ import { FakeTimers } from "./fake-timers";
  * them), and the courier records every message that reached an agent. `quiet: 0` makes a send go out on `idle()`.
  */
 export type Delivery = { target: Target; text: string; messageId: string; by?: string; to: string };
-export async function testQueue(directory: string, o: { deliver?: Courier["deliverTo"]; arrived?: Courier["arrived"]; quiet?: number; cap?: number; start?: number } = {}) {
+export async function testQueue(directory: string, o: { deliver?: Courier["deliverTo"]; arrived?: Courier["arrived"]; probe?: Courier["probe"]; quiet?: number; cap?: number; start?: number } = {}) {
   const timers = new FakeTimers();
   const start = o.start ?? Date.parse("2026-11-16T09:00:00.000Z");
   const delivered: Delivery[] = [];
@@ -17,6 +17,7 @@ export async function testQueue(directory: string, o: { deliver?: Courier["deliv
       return to;
     },
     arrived: o.arrived ?? (async (_agentId, messageId) => delivered.some(d => d.messageId === messageId)),
+    ...(o.probe ? { probe: o.probe } : {}),
   };
   const queue = new MessageQueue(directory, courier, { writeMs: 0 });
   queue.timers = timers;
