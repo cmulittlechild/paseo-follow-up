@@ -44,13 +44,13 @@ const COPY_ON_ACCESS: Record<string, Collected> = {
     touch: (v, id) => { v.entries[id].seq = 9; },
   },
   "server/json-file-store.ts (linked.json)": {
-    make: async dir => new LinkedStore(dir) as never,
+    make: async dir => testStore(LinkedStore, dir) as never,
     seed: (v, n) => { for (let i = 0; i < n; i++) v.workspaces[`w${i}`] = emptyWorkspaceLinks(); },
     items: v => rec(v, "workspaces"),
     touch: (v, id) => { v.workspaces[id].candidates.push({ key: "ACME-1", seen: 1, firstSeen: "2026-11-13T00:00:00.000Z", retryAt: null, failures: 0, strong: true }); },
   },
   "server/json-file-store.ts (about.json)": {
-    make: async dir => new AboutStore(dir) as never,
+    make: async dir => testStore(AboutStore, dir) as never,
     seed: (v, n) => { for (let i = 0; i < n; i++) v.entries[`w${i}`] = { workspaceId: `w${i}`, inputsHash: `h${i}`, generatedAt: "2026-11-13T00:00:00.000Z", gist: `Synthetic summary ${i}.`, overview: "", links: [], basis: { chat: true, source: "live", prs: 1, issues: [] }, failed: [], costUsd: null }; },
     items: v => rec(v, "entries"),
     touch: (v, id) => { v.entries[id].inputsHash = "changed"; },

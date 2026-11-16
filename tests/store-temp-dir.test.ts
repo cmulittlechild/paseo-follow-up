@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readdir, readFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
-import { rm, trackPersistence } from "./support/store-temp-dir";
+import { discoverStores, storeCleanupProblems } from "./support/store-temp-dir-guard";
+import { JsonFileStore } from "../server/json-file-store";
+import { z } from "zod";
+import { rm, testStore, trackPersistence } from "./support/store-temp-dir";
 
 // Test the ordering, not an rm retry: every registered writer must settle before removal starts.
 test("store cleanup drains every instance and nested directory, but leaves siblings alone", async () => {
@@ -35,56 +37,60 @@ test("failed flush preserves the directory and stays registered for a later clea
   assert.equal(calls, 2);
 });
 
-const parse = (path: string, source: string) => ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
-const visit = (node: ts.Node, fn: (node: ts.Node) => void) => { fn(node); ts.forEachChild(node, child => visit(child, fn)); };
+test("cleanup drains a JsonFileStore's inherited mutation queue without an extra save", async () => {
+  const root = await mkdtemp(join(tmpdir(), "follow-cleanup-"));
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  class QueuedStore extends JsonFileStore<{ n: number }> {
+    constructor(directory: string) {
+      super({ path: join(directory, "queued.json"), schema: z.object({ n: z.number() }), empty: () => ({ n: 0 }),
+        move: async (from, to) => { entered(); await gate; await rename(from, to); } });
+    }
+  }
+  const store = testStore(QueuedStore, root);
+  const writing = store.mutate(state => { state.n = 1; });
+  void writing.catch(() => undefined);
+  let removing: Promise<void> | undefined;
+  try {
+    await started;
+    removing = rm(root, { recursive: true, force: true });
+    let removed = false;
+    void removing.then(() => { removed = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(removed, false);
+    await access(root);
+    release(); await writing; await removing;
+    assert.equal(store.writes, 1, "draining a write-through queue must not save a second value");
+    await assert.rejects(access(root), { code: "ENOENT" });
+  } finally {
+    release(); await writing; await removing;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
-// Discover the delayed writers from their public flush method, plus containers that construct one (Inbox).
-// Resolve both static imports and await-import aliases, so renaming a store locally cannot bypass this guard.
-test("invariant 39: tests construct delayed writers through the cleanup helper and never import raw rm", async () => {
-  const classes = new Map<string, { module: string; creates: string[]; delayed: boolean }>();
-  for (const file of await readdir("server")) {
-    if (!file.endsWith(".ts")) continue;
-    const ast = parse(file, await readFile(join("server", file), "utf8"));
-    for (const node of ast.statements) if (ts.isClassDeclaration(node) && node.name) {
-      const creates: string[] = [];
-      visit(node, n => { if (ts.isNewExpression(n)) creates.push(n.expression.getText(ast)); });
-      const delayed = node.members.some(m => ts.isMethodDeclaration(m) && m.name.getText(ast) === "flush" &&
-        !m.modifiers?.some(mod => mod.kind === ts.SyntaxKind.PrivateKeyword || mod.kind === ts.SyntaxKind.ProtectedKeyword));
-      classes.set(node.name.text, { module: `../server/${file.slice(0, -3)}`, creates, delayed });
-    }
+for (const method of ["flush", "mutate"]) test(`cleanup discovery follows inherited ${method} through an imported alias and multiple base classes`, () => {
+  const classes = discoverStores(new Map([
+    ["../server/base", `export class Base { async ${method}() {} }`],
+    ["../server/middle", 'import { Base as Parent } from "./base"; export class Middle extends Parent {}'],
+    ["../server/child", 'import { Middle } from "./middle"; export class Child extends Middle {}'],
+  ]));
+  const problems = storeCleanupProblems(classes, "child.test.ts", `
+    import { Child as Store } from "../server/child";
+    import { rm } from "node:fs/promises";
+    const store = new Store("fixture");
+  `);
+  assert.equal(problems.length, 2, `inherited ${method} must guard both construction and raw removal`);
+});
+
+test("invariant 39: tests construct queued writers through the cleanup helper and never import raw rm", async () => {
+  const sources = new Map<string, string>();
+  for (const file of await readdir("server")) if (file.endsWith(".ts")) {
+    sources.set(`../server/${file.slice(0, -3)}`, await readFile(join("server", file), "utf8"));
   }
-  for (let changed = true; changed;) {
-    changed = false;
-    for (const value of classes.values()) if (!value.delayed && value.creates.some(c => classes.get(c)?.delayed)) {
-      value.delayed = true; changed = true;
-    }
-  }
-  const problems: string[] = [];
-  for (const file of await readdir("tests")) {
-    if (!file.endsWith(".test.ts")) continue;
-    const ast = parse(file, await readFile(join("tests", file), "utf8"));
-    const bindings = new Map<string, { module: string; name: string }>();
-    visit(ast, node => {
-      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
-        for (const e of node.importClause.namedBindings.elements) bindings.set(e.name.text, { module: node.moduleSpecifier.text, name: (e.propertyName ?? e.name).text });
-      }
-      if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
-        let init = node.initializer; if (ts.isAwaitExpression(init)) init = init.expression;
-        if (ts.isCallExpression(init) && init.expression.kind === ts.SyntaxKind.ImportKeyword && ts.isStringLiteral(init.arguments[0])) {
-          for (const e of node.name.elements) bindings.set(e.name.getText(ast), { module: init.arguments[0].text, name: (e.propertyName ?? e.name).getText(ast) });
-        }
-      }
-    });
-    const delayed = new Set([...bindings].filter(([, b]) => classes.get(b.name)?.delayed && classes.get(b.name)?.module === b.module).map(([name]) => name));
-    if (!delayed.size) continue;
-    for (const b of bindings.values()) if (b.module === "node:fs/promises" && b.name === "rm") problems.push(`${file}: import rm from ./support/store-temp-dir`);
-    visit(ast, node => {
-      if (!ts.isNewExpression(node) || !delayed.has(node.expression.getText(ast))) return;
-      const parent = node.parent;
-      if (!(ts.isCallExpression(parent) && parent.expression.getText(ast) === "trackPersistence")) {
-        problems.push(`${file}:${ast.getLineAndCharacterOfPosition(node.getStart()).line + 1}: use testStore or trackPersistence`);
-      }
-    });
+  const classes = discoverStores(sources), problems: string[] = [];
+  for (const file of await readdir("tests")) if (file.endsWith(".test.ts")) {
+    problems.push(...storeCleanupProblems(classes, file, await readFile(join("tests", file), "utf8")));
   }
   assert.deepEqual(problems, []);
 });

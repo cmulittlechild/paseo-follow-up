@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dueChecks, emptyLinkedFile, linkedView, noteRefs, setTeams } from "../shared/linked";
@@ -69,7 +70,7 @@ test("a weak key waits for a second sighting; a strong one goes to Linear now; U
 
 test("link_item: Linear confirms the key first; unknown keys, other teams and PRs are refused with a reason, never stored", async t => {
   const dir = await temp(t);
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const linear = fakeLinear({ "ACME-1312": "Vendor fix" });
   const svc = new LinkedService({ store, sources: linear.sources, now: () => NOW });
   await store.mutate(f => setTeams(f, ["ACME", "OPS"], NOW));
@@ -92,7 +93,7 @@ test("link_item: Linear confirms the key first; unknown keys, other teams and PR
 
 test("Linear unreachable: the linked key waits as a candidate instead of a 'couldn't be read' row", async t => {
   const dir = await temp(t);
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const svc = new LinkedService({ store, sources: fakeLinear({}, true).sources, now: () => NOW });
   const r = await svc.link("w1", "ACME-7", { origin: "registered", by: "agent-1" });
   assert.ok(r.ok && r.pending);
@@ -103,7 +104,7 @@ test("Linear unreachable: the linked key waits as a candidate instead of a 'coul
 
 test("unlink sticks against every agent origin; the developer can re-add, and Undo restores the item as it was", async t => {
   const dir = await temp(t);
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const svc = new LinkedService({ store, sources: fakeLinear({ "ACME-1": "One" }).sources, now: () => NOW });
   await svc.link("w1", "ACME-1", { origin: "registered", by: "agent-1", why: "start" });
   await svc.unlink("w1", "https://linear.app/acme/issue/ACME-1/one", "agent-2", "unrelated");
@@ -160,7 +161,7 @@ test("extraction never reads a dormant agent, and a cursor re-read never counts 
   } as unknown as Daemon;
   const connect = (async work => work(client)) as typeof withDaemon;
   const gateway = new PaseoGateway(connect, new SessionGuard(dir), async () => false, new HistoryCache(null), () => clock);
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const svc = new LinkedService({ store, sources: fakeLinear({}).sources, now: () => NOW });
   const pending: Promise<unknown>[] = [];
   gateway.linkRefs = batch => { pending.push(svc.note(batch)); };

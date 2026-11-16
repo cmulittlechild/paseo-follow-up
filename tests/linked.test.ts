@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -116,7 +117,7 @@ test("the service: an empty queue makes no call; the team list is read once; the
   const dir = await mkdtemp(join(tmpdir(), "linked-"));
   const calls: string[] = [];
   let now = clock;
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const service = new LinkedService({ store, now: () => now, sources: {
     async teams() { calls.push("teams"); return ["ACME"]; },
     async issue(key) { calls.push(key); return key === "ACME-2" ? null : { title: `Issue ${key}`, state: "Todo", url: null }; },

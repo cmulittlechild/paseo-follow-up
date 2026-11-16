@@ -64,7 +64,7 @@ async function aboutService(history: () => Promise<unknown>) {
   const w = workspace({ id: "w1", title: "Vendor query", goal: "Speed up the vendor activity query (ACME-1312)", mainAgentId: "a1", prs: [] });
   const ctx = { history, subagents: async () => [] } as unknown as AboutContext;
   const s = new AboutService({
-    store: new AboutStore(dir), jobs: new AiJobs({ runner: () => hang() }), sources: {} as never,
+    store: testStore(AboutStore, dir), jobs: new AiJobs({ runner: () => hang() }), sources: {} as never,
     workspace: async id => id === w.id ? w : null, context: () => ctx, usage: async () => ({ accounts: [] }), now: () => NOW,
   });
   return { s, done: () => rm(dir, { recursive: true, force: true }) };
