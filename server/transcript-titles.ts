@@ -1,33 +1,29 @@
 import { constants } from "node:fs";
-import { open, readdir, readFile } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Workspace } from "../shared/model";
 import type { LinkedItem } from "../shared/linked";
-import { titleKey, type TitleEvidence } from "../shared/local-titles";
-import { artifactPublishUrl, receiptTitles } from "./local-titles";
+import { rememberTitle, titleKey, type TitleIndex } from "../shared/local-titles";
+import { receiptTitles } from "./local-titles";
 import { JsonFileStore } from "./json-file-store";
-import { agentRecord, transcriptFile, type TranscriptRoots } from "./transcript";
+import { transcriptFile, type AgentRecordLite, type TranscriptRoots } from "./transcript";
 
-export const TITLE_SCAN_BYTES = 1024 * 1024;
-export const TITLE_MISS_RETRY_MS = 7 * 24 * 3600_000;
+export const TITLE_SCAN_BYTES = 2 * 1024 * 1024;
 const pendingSchema = z.record(z.string(), z.object({ title: z.string().optional(), file_path: z.string().optional(), description: z.string().optional(), action: z.string().optional() }));
-const lookupSchema = z.object({
-  paths: z.array(z.string()).max(40), file: z.number().int().nonnegative(), offset: z.number().int().nonnegative(),
-  dropping: z.boolean(), pending: pendingSchema, retryAt: z.number(), title: z.string().nullable(), rank: z.number(),
-});
-type Lookup = z.infer<typeof lookupSchema>;
-const cacheSchema = z.object({ entries: z.record(z.string(), lookupSchema) });
-const fresh = (paths: string[]): Lookup => ({ paths, file: 0, offset: 0, dropping: false, pending: {}, retryAt: 0, title: null, rank: 0 });
+const cursorSchema = z.object({ offset: z.number().int().nonnegative(), inode: z.string(), size: z.number(), mtime: z.number(), dropping: z.boolean(), partial: z.string().default(""), pending: pendingSchema });
+type Cursor = z.infer<typeof cursorSchema>;
+const titleSchema = z.object({ title: z.string().max(120), rank: z.number(), path: z.string() });
+const cacheSchema = z.object({ files: z.record(z.string(), cursorSchema), titles: z.record(z.string(), titleSchema) });
 export class TranscriptTitleStore extends JsonFileStore<z.infer<typeof cacheSchema>> {
-  constructor(directory: string) { super({ path: join(directory, "title-lookups.json"), schema: cacheSchema, empty: () => ({ entries: {} }), collections: { entries: { kind: "record", item: lookupSchema } } }); }
+  constructor(directory: string) { super({ path: join(directory, "title-index.json"), schema: cacheSchema, empty: () => ({ files: {}, titles: {} }), collections: { files: { kind: "record", item: cursorSchema }, titles: { kind: "record", item: titleSchema } } }); }
 }
 
-/** Only recorded local roots and an item's recorded publisher; discovery never reads another agent's timeline. */
-export async function titleTranscriptPaths(paseoHome: string, w: Workspace, item: Pick<LinkedItem, "by">, roots?: TranscriptRoots): Promise<string[]> {
-  const ids = [...new Set([w.mainAgentId, ...(w.contributorAgentIds ?? [])].filter((id): id is string => !!id))];
-  // Include historical roots still recorded for this workspace, including archived sessions. This lists agent
-  // metadata only; transcript content is read only after membership is established. No recursive transcript search.
+/** One pass over local agent metadata, then resolve only agents whose workspace is tracked. Never list transcripts. */
+export async function trackedTitleTranscripts(paseoHome: string, workspaces: readonly Workspace[], roots?: TranscriptRoots): Promise<string[]> {
+  const tracked = new Set(workspaces.filter(w => w.enable_tracking).map(w => w.id));
+  const knownIds = new Set(workspaces.filter(w => w.enable_tracking).flatMap(w => [w.mainAgentId, ...(w.contributorAgentIds ?? [])]));
+  const records: AgentRecordLite[] = [];
   const root = join(paseoHome, "agents");
   for (const dir of await readdir(root, { withFileTypes: true }).catch(() => [])) {
     if (!dir.isDirectory()) continue;
@@ -35,102 +31,103 @@ export async function titleTranscriptPaths(paseoHome: string, w: Workspace, item
       if (!name.endsWith(".json")) continue;
       try {
         const record = JSON.parse(await readFile(join(root, dir.name, name), "utf8"));
-        if (record.workspaceId === w.id && record.provider === "claude" && typeof record.id === "string" && !ids.includes(record.id) && ids.length < 40) ids.push(record.id);
-      } catch { /* unreadable agent metadata is not transcript evidence */ }
+        if (record.provider !== "claude" || !(tracked.has(record.workspaceId) || !record.workspaceId && knownIds.has(record.id))) continue;
+        records.push({ id: record.id, provider: record.provider, cwd: record.cwd ?? "", persistence: record.persistence ? { sessionId: record.persistence.sessionId, nativeHandle: record.persistence.nativeHandle } : null });
+      } catch { /* unreadable metadata contributes no file */ }
     }
   }
-  if (item.by && !ids.includes(item.by) && ids.length < 40) ids.push(item.by);
-  const paths: string[] = [];
-  for (const id of ids) {
-    const record = await agentRecord(paseoHome, id);
-    if (!record || record.provider !== "claude") continue;
-    const path = await transcriptFile(record, roots);
-    if (path && !paths.includes(path)) paths.push(path);
-  }
-  return paths;
+  const paths = new Set<string>();
+  for (const record of records) { const path = await transcriptFile(record, roots); if (path) paths.add(path); }
+  return [...paths].sort();
 }
 
-/** One bounded byte window, retaining only Artifact call inputs needed to pair a later result. */
-export async function scanTitleWindow(url: string, state: Lookup, budget = TITLE_SCAN_BYTES): Promise<{ state: Lookup; bytes: number; evidence: TitleEvidence | null }> {
-  const next: Lookup = { ...state, paths: [...state.paths], pending: { ...state.pending } };
-  let bytes = 0;
-  while (next.file < next.paths.length && bytes < budget) {
-    let handle;
-    try {
-      handle = await open(next.paths[next.file], constants.O_RDONLY | constants.O_NONBLOCK);
-      const stat = await handle.stat();
-      if (!stat.isFile()) { next.file++; next.offset = 0; next.pending = {}; continue; }
-      if (next.offset > stat.size) { next.offset = 0; next.pending = {}; next.dropping = false; }
-      const buffer = Buffer.alloc(Math.min(budget - bytes, Math.max(0, stat.size - next.offset)));
-      const { bytesRead } = buffer.length ? await handle.read(buffer, 0, buffer.length, next.offset) : { bytesRead: 0 };
-      bytes += bytesRead;
-      const chunk = buffer.subarray(0, bytesRead);
-      let start = 0;
-      // An oversized line is skipped, never buffered beyond the pass's byte budget.
-      for (let end = chunk.indexOf(10); end >= 0; end = chunk.indexOf(10, start)) {
-        const line = chunk.subarray(start, end).toString("utf8");
-        start = end + 1;
-        if (next.dropping) { next.dropping = false; continue; }
-        let row: any; try { row = JSON.parse(line); } catch { continue; }
-        const content = row?.message?.content;
-        if (!Array.isArray(content)) continue;
-        for (const part of content) {
-          if (part?.type === "tool_use" && part.name === "Artifact" && typeof part.id === "string") {
-            const input = part.input ?? {};
-            if ((input.action ?? "publish") !== "publish" || input.asset === true) continue;
-            if (Object.keys(next.pending).length >= 64) delete next.pending[Object.keys(next.pending)[0]];
-            next.pending[part.id] = Object.fromEntries(["title", "file_path", "description", "action"].filter(k => typeof input[k] === "string").map(k => [k, input[k].slice(0, k === "file_path" ? 4096 : 1000)]));
-          }
-          if (part?.type !== "tool_result" || part.is_error || typeof part.tool_use_id !== "string") continue;
-          const input = next.pending[part.tool_use_id];
-          delete next.pending[part.tool_use_id];
-          if (!input || titleKey(artifactPublishUrl(part.content) ?? "") !== titleKey(url)) continue;
-          const titles = await receiptTitles([{ item: { type: "tool_call", name: "Artifact", status: "completed", detail: { input, output: part.content } } }]);
-          const evidence = titles.get(titleKey(url)) ?? null;
-          if (evidence) { next.offset += start; return { state: next, bytes, evidence }; }
-        }
-      }
-      if (next.offset + bytesRead >= stat.size) { next.file++; next.offset = 0; next.pending = {}; next.dropping = false; }
-      else if (start) next.offset += start;
-      else { next.offset += bytesRead; next.dropping = true; }
-    } catch { next.file++; next.offset = 0; next.pending = {}; next.dropping = false; }
-    finally { await handle?.close().catch(() => undefined); }
-  }
-  return { state: next, bytes, evidence: null };
+/** A replaced, truncated, or edited-in-place file restarts; an append retains the prior byte offset and pending call. */
+function cursorFor(saved: Cursor | undefined, info: { ino: number; size: number; mtimeMs: number }): Cursor {
+  const inode = String(info.ino);
+  const restart = !saved || saved.inode !== inode || info.size < saved.size || info.size === saved.size && info.mtimeMs !== saved.mtime;
+  return restart ? { offset: 0, inode, size: info.size, mtime: info.mtimeMs, dropping: false, partial: "", pending: {} }
+    : { ...saved, size: info.size, mtime: info.mtimeMs, pending: { ...saved.pending } };
 }
 
-/** One URL per worker background tick. Progress and negative results survive worker reloads. No daemon dependency. */
+/** One shared, append-only receipt index. No per-URL scans, timeline reads or daemon dependencies. */
 export class TranscriptTitleLookup {
   private running = false;
-  constructor(private d: { store: TranscriptTitleStore; paths(w: Workspace, item: LinkedItem): Promise<string[]>; now?: () => number; budget?: number }) {}
-  async tick(workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, found: (url: string, evidence: TitleEvidence) => Promise<void>): Promise<{ bytes: number; attempted: number }> {
+  private paths: string[] = [];
+  private scopeKey = "";
+  private pathsAt = -Infinity;
+  constructor(private d: { store: TranscriptTitleStore; paths(workspaces: readonly Workspace[]): Promise<string[]>; now?: () => number; budget?: number }) {}
+  async tick(workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, found: (titles: TitleIndex) => Promise<void>): Promise<{ bytes: number; attempted: number }> {
     if (this.running) return { bytes: 0, attempted: 0 };
+    const tracked = workspaces.filter(w => w.enable_tracking);
+    if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title))) return { bytes: 0, attempted: 0 };
     this.running = true;
     try {
-      const now = (this.d.now ?? Date.now)(), cache = await this.d.store.read();
-      for (const w of workspaces) {
-        if (!w.enable_tracking || w.archived) continue;
-        for (const item of items[w.id]?.items ?? []) {
-          if (item.kind !== "artifact" || item.title || !item.url) continue;
-          const key = `${w.id}:${titleKey(item.url)}`, saved = cache.entries[key];
-          if (saved?.retryAt && saved.retryAt > now) {
-            if (saved.title) { await found(item.url, { title: saved.title, rank: saved.rank }); return { bytes: 0, attempted: 1 }; }
-            continue;
-          }
-          const cursor = saved && saved.file < saved.paths.length ? saved : fresh(await this.d.paths(w, item));
-          const result = await scanTitleWindow(item.url, cursor, this.d.budget);
-          const done = result.state.file >= result.state.paths.length;
-          const next = { ...result.state, retryAt: result.evidence || done ? now + TITLE_MISS_RETRY_MS : 0, title: result.evidence?.title ?? null, rank: result.evidence?.rank ?? 0 };
-          await this.d.store.mutate(file => {
-            file.entries[key] = next;
-            const keys = Object.keys(file.entries);
-            if (keys.length > 256) delete file.entries[keys.find(k => k !== key)!];
-          });
-          if (result.evidence) await found(item.url, result.evidence);
-          return { bytes: result.bytes, attempted: 1 };
-        }
+      const cache = await this.d.store.read();
+      const known: TitleIndex = new Map(Object.entries(cache.titles).map(([url, evidence]) => [url, evidence]));
+      await found(known);
+      // The callback can fill the caller's records; a hit needs no filesystem discovery or scan.
+      if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title && !known.has(titleKey(i.url ?? i.key))))) return { bytes: 0, attempted: 0 };
+      const now = (this.d.now ?? Date.now)(), scopeKey = JSON.stringify(tracked.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]));
+      if (scopeKey !== this.scopeKey || now - this.pathsAt >= 5 * 60_000) {
+        this.paths = await this.d.paths(tracked); this.scopeKey = scopeKey; this.pathsAt = now;
       }
-      return { bytes: 0, attempted: 0 };
+      const budget = this.d.budget ?? TITLE_SCAN_BYTES;
+      let bytes = 0, attempted = 0;
+      const updates = new Map<string, Cursor>(), learned: TitleIndex = new Map(), locations = new Map<string, string>();
+      for (const path of this.paths.flatMap(path => [path, path])) {
+        if (bytes >= budget) break;
+        let handle;
+        try {
+          const info = await stat(path);
+          if (!info.isFile()) continue;
+          const cursor = cursorFor(updates.get(path) ?? cache.files[path], info);
+          if (cursor.offset >= info.size) continue;
+          handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+          const actual = await handle.stat();
+          if (!actual.isFile()) continue;
+          const current = cursorFor(updates.get(path) ?? cache.files[path], actual);
+          const buffer = Buffer.alloc(Math.min(1024 * 1024, budget - bytes, Math.max(0, actual.size - current.offset)));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, current.offset);
+          bytes += bytesRead; attempted++;
+          const chunk = Buffer.concat([Buffer.from(current.partial, "base64"), buffer.subarray(0, bytesRead)]);
+          current.partial = "";
+          let start = 0;
+          for (let end = chunk.indexOf(10); end >= 0; end = chunk.indexOf(10, start)) {
+            const line = chunk.subarray(start, end).toString("utf8"); start = end + 1;
+            if (current.dropping) { current.dropping = false; continue; }
+            let row: any; try { row = JSON.parse(line); } catch { continue; }
+            const content = row?.message?.content;
+            if (!Array.isArray(content)) continue;
+            for (const part of content) {
+              if (part?.type === "tool_use" && part.name === "Artifact" && typeof part.id === "string") {
+                const input = part.input ?? {};
+                if ((input.action ?? "publish") !== "publish" || input.asset === true) continue;
+                if (Object.keys(current.pending).length >= 64) delete current.pending[Object.keys(current.pending)[0]];
+                current.pending[part.id] = Object.fromEntries(["title", "file_path", "description", "action"].filter(k => typeof input[k] === "string").map(k => [k, input[k].slice(0, k === "file_path" ? 4096 : 1000)]));
+              }
+              if (part?.type !== "tool_result" || part.is_error || typeof part.tool_use_id !== "string") continue;
+              const input = current.pending[part.tool_use_id]; delete current.pending[part.tool_use_id];
+              if (!input) continue;
+              for (const [url, evidence] of await receiptTitles([{ item: { type: "tool_call", name: "Artifact", status: "completed", detail: { input, output: part.content } } }])) {
+                rememberTitle(learned, url, evidence); locations.set(url, path);
+              }
+            }
+          }
+          current.offset += bytesRead;
+          const suffix = chunk.subarray(start);
+          if (suffix.length > 256 * 1024) current.dropping = true;
+          else if (!current.dropping) current.partial = suffix.toString("base64");
+          updates.set(path, current);
+        } catch { /* a missing file is a miss, never a worker failure */ }
+        finally { await handle?.close().catch(() => undefined); }
+      }
+      if (updates.size || learned.size) await this.d.store.mutate(file => {
+        for (const [path, cursor] of updates) file.files[path] = cursor;
+        for (const [url, evidence] of learned) if (!file.titles[url] || file.titles[url].rank < evidence.rank) file.titles[url] = { ...evidence, path: locations.get(url)! };
+      });
+      for (const [url, evidence] of learned) rememberTitle(known, url, evidence);
+      if (learned.size) await found(known);
+      return { bytes, attempted };
     } finally { this.running = false; }
   }
 }

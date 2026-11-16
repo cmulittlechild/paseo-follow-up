@@ -1,5 +1,5 @@
-import { TranscriptTitleLookup, TranscriptTitleStore, titleTranscriptPaths } from "./server/transcript-titles";
-import { fillWorkspaceTitles, localTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
+import { TranscriptTitleLookup, TranscriptTitleStore, trackedTitleTranscripts } from "./server/transcript-titles";
+import { fillLinkedTitles, fillWorkspaceTitles, localTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
 import { stopWorker } from "./server/teardown";
 import { WriteHealth } from "./server/write-behind";
 import { actorBy, actorOf, type Actor } from "./shared/actor";
@@ -225,7 +225,7 @@ export default function contribute(server: PluginServerContext) {
       }
     },
   });
-  const transcriptTitles = new TranscriptTitleLookup({ store: new TranscriptTitleStore(directory), paths: (w, item) => titleTranscriptPaths(paseoHome, w, item) });
+  const transcriptTitles = new TranscriptTitleLookup({ store: new TranscriptTitleStore(directory), paths: workspaces => trackedTitleTranscripts(paseoHome, workspaces) });
   // Extraction rides discovery's own timeline batch (loaded agents only): no extra reads (shared/linked-extract.ts).
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();
@@ -1134,16 +1134,16 @@ export default function contribute(server: PluginServerContext) {
     if (!stopped) linkedTimer = setTimeout(() => void linkedLoop(), 10 * 60_000);
   };
   linkedTimer = setTimeout(() => void linkedLoop(), 90_000);
-  // Local title recovery is independent of a panel/RPC response and scans one URL, at most 1 MB, per tick.
+  // Local title recovery is independent of a panel/RPC response: one shared index, at most 2 MB per tick.
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   const titleLoop = async () => {
     await ready;
     if (stopped || loadError) return;
     if (governor.allowsBackground()) try {
       const state = await store.snapshot(), file = await linkedStore.read();
-      await transcriptTitles.tick(state.workspaces, file.workspaces, async (raw, evidence) => {
-        const workspaceId = state.workspaces.find(w => w.enable_tracking && file.workspaces[w.id]?.items.some(i => i.url === raw))?.id;
-        if (workspaceId) await linked.note(new Map([[workspaceId, [{ raw, strong: true, title: evidence.title, titleRank: evidence.rank }]]]));
+      await transcriptTitles.tick(state.workspaces, file.workspaces, async titles => {
+        await linkedStore.mutate(file => { fillLinkedTitles(file, titles); });
+        for (const w of (await store.snapshot()).workspaces) if (w.enable_tracking && workspaceNeedsTitles(w, titles)) await store.mutateWorkspace(w.id, current => { fillWorkspaceTitles(current, titles); });
       });
     } catch { /* a local miss never prevents following work */ }
     if (!stopped) titleTimer = setTimeout(() => void titleLoop(), 30_000);

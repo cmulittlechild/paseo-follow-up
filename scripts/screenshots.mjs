@@ -1295,7 +1295,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, "utf8")), error: "the agent was archived" }));
     await shoot("sidebar-overseer-error-dark", SIDEBAR, "dark", async page => { await sidebarView(page, "Couldn't bring it back", false); });
   }
-  for (const name of SHOTS) {
+  for (const name of [...SHOTS, "local-titles"]) {
     if (!only.includes(name) || name === "setup") continue;
     if (name === "home") await shoot("home", DESKTOP, "dark", async page => {
       await openHome(page);

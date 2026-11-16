@@ -115,10 +115,17 @@ and calendar date beneath it. The spec uses the same Claude artifact fallback. N
 no model session starts to recover a name. Tests: `tests/local-titles.test.ts`, `tests/spec.test.ts`,
 `tests/linked-ui.test.ts` and the `a-linked-item-uses-every-known-local-title` status invariant.
 
-`server/transcript-titles.ts` adds a second, lazy local lookup for artifacts still unnamed after the cheap index.
-One URL per 30-second background tick, gated by the resource governor, reads at most 1 MB of its workspace's
-recorded Claude agents' transcripts, then its recorded publisher's transcript if different. Agent membership comes
-from local agent records; archived workspace sessions are eligible. It never asks for a timeline or wakes an agent.
-`title-lookups.json` keeps byte offsets, at most 64 pending Artifact inputs, and positive or negative results.
-Incomplete scans resume; complete misses retry after seven days. The cache is capped at 256 URLs. Oversized
-individual lines are skipped rather than buffered without bound. No transcript prose is persisted in this cache.
+`server/transcript-titles.ts` maintains one local receipt index for artifacts still unnamed after the cheap index.
+A background tick runs only with untitled artifacts, is gated by the resource governor, and reads at most 2 MB in
+1 MB chunks. Scope is every Claude agent whose local agent record belongs to a tracked workspace, including
+historical sessions. Agent metadata is listed once per scope change or five minutes; only the resulting session
+files are opened. No timeline read or agent wake is possible through this service.
+
+`title-index.json` stores one cursor per transcript (inode, size, mtime, byte offset, a bounded partial line and at
+most 64 pending Artifact inputs) and URL/title evidence with its source path. Each byte is indexed once, and later
+passes read only appends. Replaced, truncated or edited-in-place files restart. A completed file is a persistent
+negative result until it changes, so a missing title never causes another per-URL scan. All publish receipts met
+along the way contribute their best title using the same resolver; an index hit fills any tracked workspace's link.
+When every artifact is named, no transcript discovery, stat or read occurs. If untitled artifacts remain but all
+in-scope files are caught up, only append detection runs, without reading transcript content. Oversized individual
+lines are skipped rather than retained without bound. Raw transcript prose is never persisted in this index.
