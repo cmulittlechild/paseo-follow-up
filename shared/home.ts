@@ -123,6 +123,20 @@ export function prChip(w: Workspace | undefined): PrChip | null {
   return { label: `#${pr.number}${more > 0 ? `+${more}` : ""}`, tone: prTone(pr), checks, url: s?.url ?? null };
 }
 
+/** One trailing chip on a desktop row: a semantic badge or the PR chip. */
+export type RailChip = { kind: "badge"; badge: Badge } | { kind: "pr"; pr: PrChip };
+const TONE_RANK: Record<BadgeTone, number> = { danger: 0, warning: 1, success: 2, merged: 2, muted: 3 };
+/**
+ * row-chips-never-cover-the-time: a row's chips in the order they keep their place when the row is narrow (the last
+ * drops first). Red before amber before green before grey, so a failing check or a conflict outlasts "Approved"; the PR
+ * chip ranks by its checks, and ties keep the badges' own order with the PR chip after them.
+ */
+export function railChips(s: Pick<Workstream, "badges" | "pr">): RailChip[] {
+  const chips: RailChip[] = [...s.badges.map(badge => ({ kind: "badge" as const, badge })), ...(s.pr ? [{ kind: "pr" as const, pr: s.pr }] : [])];
+  const rank = (c: RailChip) => c.kind === "badge" ? TONE_RANK[c.badge.tone] : c.pr.checks && c.pr.checks.tone !== "muted" ? TONE_RANK[c.pr.checks.tone] : 2;
+  return chips.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(x => x.c);
+}
+
 /** Up to two semantic badges, most telling first. */
 export function badges(input: { headline: Headline | null; row?: InboxRow; workspace?: Workspace; items: NeedItem[] }): Badge[] {
   const out: Badge[] = [];

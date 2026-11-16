@@ -60,7 +60,7 @@ Nothing polls while the app is hidden.
 | --- | --- |
 | `client/home.tsx` | Home: the list and the detail pane, the Overseer card, the setup flow's place. |
 | `client/feeds.ts` | `openFeed`, `hasFeeds`: the stores subscribe to the worker's feeds on Paseo 0.16 (resubscribing after a worker restart) and poll on 0.15. See [Feeds](#feeds). |
-| `client/home-list.tsx`, `shared/list-entries.ts` | The one virtualised list, used by Home and the sidebar view; `listEntries` builds what it draws, in order. |
+| `client/home-list.tsx`, `shared/list-entries.ts` | The one virtualised list, used by Home and the sidebar view; `listEntries` builds what it draws, in order. A desktop row's badges and PR chip sit in `ChipRail`, which yields (shrinks, drops the last chip in `railChips`' red-amber-green-grey order, truncates) before the time column moves (invariant `row-chips-never-cover-the-time`, `tests/row-chips.test.ts`). |
 | `client/home-chrome.tsx` | Omnibox, sort menu, status strip, provider and memory meters. |
 | `client/list-keys.ts`, `shared/list-keys.ts` | The keyboard walk through a list's rows, for Home and the sidebar view. See [Keyboard walk](#keyboard-walk). |
 | `client/row-menu.tsx`, `client/menu-item.tsx`, `client/row-actions.ts`, `shared/row-menu.ts`, `client/panel-menu.tsx`, `client/rename.tsx` | The row menu: right-click, long-press or the menu key (Shift+F10) on a Home row or search result. See [Row menu](#row-menu). |

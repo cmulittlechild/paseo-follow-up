@@ -479,6 +479,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`takeFocus`), never lost to a timer. Guarded by `tests/search-shortcut.test.ts`, `tests/agent-parity.test.ts` and
    `scripts/screenshots.mjs --only shortcut` (the key from a chat's composer, on Home, with the sidebar collapsed,
    None, another preset, after a reload; writes `shortcut.json`).
+34. **Row chips never cover the time** (`row-chips-never-cover-the-time`). A desktop Home row's badges and PR chip
+   sit in one rail (`ChipRail`, `client/home-list.tsx`) that yields before the time column moves: the rail shrinks
+   first, a chip that no longer fits wraps onto a second line the rail clips (so the last chip drops first), and a lone
+   chip truncates. `railChips` (`shared/home.ts`) orders them red, amber, green, grey, so a failing check or a conflict
+   outlasts "Approved". A Needs-you row's word, the PR number and the time column never shrink, and the row's
+   accessibility label names every chip, shown or not. 2026-11-16: in a 1024 px window the
+   list is about 400 px and a row's chips were drawn over its age. Guarded by `tests/row-chips.test.ts` and
+   `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
+   `rowchips.json`).
 
 ## Bugs
 

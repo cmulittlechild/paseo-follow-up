@@ -43,7 +43,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["shortcut", "split", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1547,6 +1547,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
+  if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1633,6 +1634,83 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
  * the handle must widen the pane by what it moved, the share must survive a reload and a fresh browser, the arrow keys
  * must move it, and an agent's set_display must reach Home. Writes split.json to --out; any failed check fails the run.
  */
+/**
+ * row-chips-never-cover-the-time: at a 1024 window, every Home row's visible chips (badges, PR chip) and its time
+ * column, measured as CDP box models at list widths 320, 360 and 400, never overlap; the time stays inside its row.
+ * The list is narrowed by widening the right pane's element. A chip the rail clipped away has no visible box.
+ * Writes rowchips.json.
+ */
+async function rowChipShots({ shoot, out }) {
+  const checks = [];
+  const check = (name, okay, detail) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`rowchips: ${name}`); log(`rowchips check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const NARROW = { width: 1024, height: 760 };
+  /** Every row's chip and time boxes, from CDP's DOM.getBoxModel (border box, CSS px). */
+  const measure = async page => {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      const { root } = await cdp.send("DOM.getDocument", { depth: 0 });
+      const box = async nodeId => {
+        const m = await cdp.send("DOM.getBoxModel", { nodeId }).catch(() => null);
+        if (!m) return null;
+        const q = m.model.border; const xs = [q[0], q[2], q[4], q[6]], ys = [q[1], q[3], q[5], q[7]];
+        return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+      };
+      const all = async (nodeId, selector) => (await cdp.send("DOM.querySelectorAll", { nodeId, selector })).nodeIds;
+      const rows = [];
+      for (const row of await all(root.nodeId, '[id^="follow-up-row-"]')) {
+        const [time] = await all(row, '[data-testid="follow-up-row-time"]');
+        const chips = await all(row, '[data-testid="follow-up-row-chip"]');
+        if (!time || !chips.length) continue;
+        const [rail] = await all(row, '[data-testid="follow-up-row-chips"]');
+        const clip = rail ? await box(rail) : null;
+        const visible = [];
+        for (const chip of chips) {
+          const b = await box(chip); if (!b) continue;
+          // What the rail's overflow clip leaves of the chip (no rail: the whole chip).
+          const v = clip ? { x1: Math.max(b.x1, clip.x1), y1: Math.max(b.y1, clip.y1), x2: Math.min(b.x2, clip.x2), y2: Math.min(b.y2, clip.y2) } : b;
+          if (v.x2 - v.x1 > 0.5 && v.y2 - v.y1 > 0.5) visible.push(v);
+        }
+        rows.push({ row: await box(row), time: await box(time), chips: visible, total: chips.length });
+      }
+      return rows;
+    } finally { await cdp.detach().catch(() => {}); }
+  };
+  const narrowTo = async (page, list) => {
+    const split = await page.locator('[data-testid="follow-up-home-split"]').boundingBox();
+    await page.locator('[data-testid="follow-up-home-split-side"]').evaluate((el, w) => el.style.setProperty("width", `${w}px`, "important"), Math.round(split.width - list));
+    await page.waitForTimeout(400);
+    const side = await page.locator('[data-testid="follow-up-home-split-side"]').boundingBox();
+    return Math.round(split.width - side.width);
+  };
+  const overlaps = (a, b) => Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1) > 0.5 && Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1) > 0.5;
+  await shoot("rowchips-check", NARROW, "dark", async page => {
+    await openHome(page); await page.setViewportSize(NARROW); check("the window is 1024 px wide", (await page.evaluate(() => window.innerWidth)) === 1024, {}); await page.waitForTimeout(600);
+    for (const list of [400, 360, 320]) {
+      const got = await narrowTo(page, list);
+      const rows = await measure(page);
+      const bad = rows.filter(r => r.chips.some(ch => overlaps(ch, r.time)) || r.time.x2 > r.row.x2 + 0.5)
+        .map(r => ({ time: [Math.round(r.time.x1), Math.round(r.time.x2)], chips: r.chips.map(ch => [Math.round(ch.x1), Math.round(ch.x2)]) }));
+      check(`list ${list} px: no row's chips cover its time`, rows.length > 0 && Math.abs(got - list) <= 2 && bad.length === 0, { list: got, rows: rows.length, bad });
+      check(`list ${list} px: every chipped row still shows a chip`, rows.length > 0 && rows.every(r => r.chips.length > 0), { shown: rows.map(r => `${r.chips.length}/${r.total}`) });
+      if (list === 320) await shoot.now("rowchips-list320-dark", page, "dark");
+    }
+  });
+  // The renders: a 1024 window as it opens, and a wide window with the list at its minimum (480).
+  await shoot("rowchips-1024-dark", NARROW, "dark", async page => { await openHome(page); await page.setViewportSize(NARROW); await page.waitForTimeout(600); });
+  await shoot("rowchips-list480-check", DESKTOP, "dark", async page => {
+    await openHome(page); const handle = page.getByRole("separator", { name: "Resize the detail pane" }); await handle.waitFor(); await page.waitForTimeout(600);
+    await handle.focus(); await page.keyboard.press("End"); await page.waitForTimeout(500); await handle.blur();
+    const split = await page.locator('[data-testid="follow-up-home-split"]').boundingBox();
+    const side = await page.locator('[data-testid="follow-up-home-split-side"]').boundingBox();
+    check("the list's minimum is 480 px", Math.abs(split.width - side.width - 480) <= 2, { list: Math.round(split.width - side.width) });
+    await shoot.now("rowchips-list480-dark", page, "dark");
+    // Back to the default share for any later shot.
+    await handle.focus(); await page.keyboard.press("Enter"); await page.waitForTimeout(300);
+  });
+  await fs.writeFile(join(out, "rowchips.json"), JSON.stringify(checks, null, 2));
+  log(`rowchips: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
+
 async function splitShots({ shoot, seeded, call, out }) {
   const checks = [];
   const check = (name, okay, detail) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`split: ${name}`); log(`split check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };

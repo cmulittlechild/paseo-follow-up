@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { View, type FlatList as NativeFlatList } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon, FlatList } from "@getpaseo/plugin/client/ui";
-import { type Badge, type HomeGroupId, type HomeModel, type Workstream } from "../shared/home";
+import { type Badge, type HomeGroupId, type HomeModel, type Workstream, railChips } from "../shared/home";
 import { ASK_KEY, excerpt, FIELD_LABEL, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
 import { age, wakeLabel, wakeShort } from "../shared/inbox";
@@ -250,7 +250,7 @@ const badgeColor = (b: Badge, c: Colors) => b.tone === "danger" ? c.statusDanger
 
 export function BadgeView({ b, c }: { b: Badge; c: Colors }) {
   const col = badgeColor(b, c);
-  return <View style={{ paddingHorizontal: 6, height: 20, justifyContent: "center", borderRadius: 4, backgroundColor: b.tone === "muted" ? c.surface2 : tint(col, c) }}>
+  return <View testID="follow-up-row-chip" style={{ flexShrink: 1, minWidth: 0, paddingHorizontal: 6, height: 20, justifyContent: "center", borderRadius: 4, backgroundColor: b.tone === "muted" ? c.surface2 : tint(col, c) }}>
     <Text numberOfLines={1} style={{ color: col, fontSize: 11, lineHeight: 14, fontWeight: "500" }}>{b.text}</Text>
   </View>;
 }
@@ -258,10 +258,10 @@ export function BadgeView({ b, c }: { b: Badge; c: Colors }) {
 export function PrChipView({ s, c }: { s: Workstream; c: Colors }) {
   if (!s.pr) return null;
   const checks = s.pr.checks;
-  return <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
+  return <View testID="follow-up-row-chip" style={{ flexShrink: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
     <Icon name="GitPullRequest" size={11} color={toneColor(c, s.pr.tone)} />
-    <Text style={{ color: c.foreground, fontSize: 11, lineHeight: 14, fontVariant: ["tabular-nums"] }}>{s.pr.label}</Text>
-    {checks && <Text style={{ color: checks.tone === "muted" ? c.foregroundMuted : badgeColor({ text: "", tone: checks.tone }, c), fontSize: 11, lineHeight: 14 }}>{checks.text}</Text>}
+    <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foreground, fontSize: 11, lineHeight: 14, fontVariant: ["tabular-nums"] }}>{s.pr.label}</Text>
+    {checks && <Text numberOfLines={1} style={{ flexShrink: 1, minWidth: 0, color: checks.tone === "muted" ? c.foregroundMuted : badgeColor({ text: "", tone: checks.tone }, c), fontSize: 11, lineHeight: 14 }}>{checks.text}</Text>}
   </View>;
 }
 
@@ -281,7 +281,21 @@ export function WakeTime({ until, c, size = 12 }: { until: string; c: Colors; si
 }
 /** The right-hand time: when a Later row comes back, otherwise how long ago. */
 function RowTime({ s, c, size }: { s: Workstream; c: Colors; size: number }) {
-  return s.group === "later" && s.wakeAt ? <WakeTime until={s.wakeAt} c={c} size={size} /> : <Age iso={s.at} c={c} size={size} />;
+  return <View testID="follow-up-row-time" style={{ flexShrink: 0 }}>{s.group === "later" && s.wakeAt ? <WakeTime until={s.wakeAt} c={c} size={size} /> : <Age iso={s.at} c={c} size={size} />}</View>;
+}
+
+/**
+ * row-chips-never-cover-the-time: a desktop row's badges and PR chip, in priority order (most telling first). They yield
+ * before the time column ever moves: the rail shrinks first, a chip that doesn't fit wraps onto a second line the rail
+ * clips (so the lowest-priority chips drop, last first), and a lone chip truncates. Guarded by
+ * `scripts/screenshots.mjs --only rowchips` (CDP boxes at list widths 320, 360 and 400) and tests/row-chips.test.ts.
+ */
+function ChipRail({ s, c }: { s: Workstream; c: Colors }) {
+  const chips = railChips(s);
+  if (chips.length === 0) return null;
+  return <View testID="follow-up-row-chips" style={{ flexShrink: 1000, minWidth: 0, height: 20, overflow: "hidden", flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 10, rowGap: 4 }}>
+    {chips.map(ch => ch.kind === "badge" ? <BadgeView key={ch.badge.text} b={ch.badge} c={c} /> : <PrChipView key="pr" s={s} c={c} />)}
+  </View>;
 }
 
 /** The age on the right. It re-renders on the shared minute clock without touching its row. */
@@ -325,7 +339,9 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   // A Later row says when it comes back on screen; the label also keeps how long it has waited.
   const wake = s.group === "later" && s.wakeAt ? wakeLabel({ until: s.wakeAt, at: s.at ?? new Date().toISOString() }, Date.now()) : "";
   const waited = s.group === "later" && s.at ? age(s.at, Date.now()) : "";
-  const label = [s.title + (s.agent ? ` › ${s.agent}` : ""), s.word, s.line, hit?.via && `${FIELD_LABEL[hit.via.field]}: ${hit.via.text}`, wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
+  const label = [s.title + (s.agent ? ` › ${s.agent}` : ""), s.word, s.line, hit?.via && `${FIELD_LABEL[hit.via.field]}: ${hit.via.text}`,
+    // Every chip, even one a narrow row hides (row-chips-never-cover-the-time).
+    ...s.badges.map(b => b.text), s.pr && `Pull request ${s.pr.label}${s.pr.checks ? ` ${s.pr.checks.text}` : ""}`, wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
   return <Pressable ref={trigger.ref} nativeID={rowDomId(s.key)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label} accessibilityHint={quickActionsHint(touch)}
     onPress={() => onSelect(s.key)} onLongPress={trigger.onLongPress} delayLongPress={450}
     style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: dense ? "flex-start" : "center", gap: touch ? 10 : dense ? 8 : 10, minHeight: touch ? 56 : dense ? 36 : 38, paddingLeft: touch ? 14 : dense ? 8 : 16, paddingRight: touch ? 16 : dense ? 8 : 16, paddingVertical: touch ? 12 : dense ? 6 : 0,
@@ -359,12 +375,16 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
         {s.badges.map(b => <BadgeView key={b.text} b={b} c={c} />)}<PrChipView s={s} c={c} />
       </View>}
     </View> : <View style={{ flex: 1, minWidth: 0, gap: 1, paddingVertical: s.priority?.reason ? 4 : 0 }}><View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <Text numberOfLines={1} style={{ flexShrink: 0, maxWidth: "55%", color: muted ? c.foregroundMuted : c.foreground, fontSize: 13, fontWeight: muted ? "400" : "500" }}>{title}</Text>
-      <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12 }}>
-        {via ?? <>{s.word && s.group === "needs" ? <Text style={{ color }}>{s.word}</Text> : null}{s.word && s.group === "needs" && s.line ? " · " : ""}{line}</>}
+      {/* The title keeps its width (up to 55 %) and the chips yield; only beside Send now, which can't, does it shrink. */}
+      <Text numberOfLines={1} style={{ flexShrink: sendNow ? 1 : 0, minWidth: 0, maxWidth: "55%", color: muted ? c.foregroundMuted : c.foreground, fontSize: 13, fontWeight: muted ? "400" : "500" }}>{title}</Text>
+      {/* A Needs-you row's word (Permission, Question…) is why it's there: it keeps its place, the chips yield first. */}
+      {!via && s.word && s.group === "needs" ? <Text numberOfLines={1} style={{ flexShrink: 0, color, fontSize: 12 }}>{s.word}</Text> : null}
+      {/* -10 takes back the row gap and the separator opens with a no-break space (a leading plain space is trimmed), so
+          "Permission · Accept…" reads as one line, and the dot goes with the line when there's no room for it. */}
+      <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12, marginLeft: !via && s.word && s.group === "needs" ? -10 : 0 }}>
+        {via ?? <>{s.word && s.group === "needs" && s.line ? "\u00a0· " : ""}{line}</>}
       </Text>
-      {s.badges.map(b => <BadgeView key={b.text} b={b} c={c} />)}
-      <PrChipView s={s} c={c} />
+      <ChipRail s={s} c={c} />
       {sendNow}
     </View>{!!s.priority?.reason && <View style={{ paddingRight: 40 }}><PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} /></View>}</View>}
     {!touch && <RowTime s={s} c={c} size={dense ? 11 : 12} />}
