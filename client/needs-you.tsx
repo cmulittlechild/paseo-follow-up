@@ -160,7 +160,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {!said && <RichText numberOfLines={2} style={t.label}>{item.title}</RichText>}
-            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
+            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" || item.kind === "message" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
             {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
           </View>
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>
