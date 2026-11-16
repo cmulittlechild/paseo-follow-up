@@ -37,6 +37,8 @@ const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i
 const baseline = process.argv.includes("--baseline");
 // --renders: its own daemon (web UI on, FOLLOW_UP_QUEUE_TIME_SCALE so Retrying and Failed come within minutes).
 const renders = process.argv.includes("--renders");
+/** --renders --only message: only Needs you's row for a forward that didn't go out (needs the Overseer path). */
+const rendersOnly = renders ? arg("--only", null) : null;
 /** 0.25: the attempt deadline is 30 s (long enough to shoot Sending), Failed comes ~5 min after an unconfirmed send. */
 const RENDER_TIME_SCALE = 0.25;
 const ALL_CASES = ["unreachable-then-back", "back-within-20s", "reload-mid-send", "permission-prompt", "card-answer", "reply-timing", "busy-agent", "answer-plus-repair", "reply-timing-b"];
@@ -308,7 +310,7 @@ const cases = {
       notsent: ["Default page size", "What page size should the listing use by default?", ["Twenty five", "One hundred"]],
       sent: ["Timezone for reports", "Which timezone should weekly reports use?", ["UTC", "The team's local time"]],
     };
-    for (const [key, [title, question, labels]] of Object.entries(QTEXT)) {
+    for (const [key, [title, question, labels]] of Object.entries(rendersOnly === "message" ? {} : QTEXT)) {
       const w = await workspace(`Delivery ${key}`);
       const res = await rpc("follow.ask-question", { agentId: w.agentId, title, question, options: labels.map((label, i) => ({ letter: "AB"[i], label })), recommend: "A" });
       Q[key] = { ...w, title: `Delivery ${key}`, qid: res.question.id, qtitle: title, prompt: `Fixture: start delivery-${key}` };
@@ -356,6 +358,16 @@ const cases = {
         if (words) await page.getByText(words).filter({ visible: true }).first().waitFor();
         await page.getByText(words ?? C[key].ask).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
       },
+      // A forward that didn't go out (Workspace.undelivered): its row says so, with Retry and Cancel.
+      async message(page, key, words) {
+        await openHome(page, { origin, serverId });
+        const row = page.getByText(words).filter({ visible: true }).first();
+        if (!await row.isVisible().catch(() => false)) await page.getByText(M.title, { exact: true }).filter({ visible: true }).first().click().catch(() => {});
+        await row.waitFor();
+        await page.getByText(M.title, { exact: true }).filter({ visible: true }).last().click().catch(() => {});
+        await page.getByText("Cancel", { exact: true }).filter({ visible: true }).first().waitFor();
+        await page.getByText(words).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
+      },
       async needsyou(page, key) {
         await openHome(page, { origin, serverId });
         const row = page.getByText(`Your ${Q[key].qid} answer may not have reached the agent`).filter({ visible: true }).first();
@@ -402,6 +414,24 @@ const cases = {
     }
     const shootAll = async (surface, state, key, words) => { for (const combo of COMBOS) await shot(surface, state, key, words, combo); };
     const wait = (what, fn, ms = 60_000) => waitUntil(what, fn, { baseMs: ms, everyMs: 500 });
+
+    // Needs you's message row: a forward that never left (Paseo unreachable) past MESSAGE_STUCK_MS × scale.
+    const M = { title: "Stuck forward" };
+    if (rendersOnly === "message") {
+      const w = await workspace(M.title);
+      const o = await workspace("Overseer stand-in", { track: false });
+      await seedOverseer(o.agentId, o.workspaceId);
+      await proxy.refuse();
+      await forward(o.agentId, w.agentId, "Please rerun the export with the new filter.");
+      const stuck = await wait("the stuck forward shows on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.agentId === w.agentId) ?? null, 400_000).catch(() => null);
+      r.states.message = stuck && { state: stuck.state, agentTitle: stuck.agentTitle };
+      check("renders: the forward reads as didn't go out", !!stuck, r.states.message ?? {});
+      const words = `A message to ${M.title} main didn't go out`;
+      await shootAll("message", "stuck", "message", words);
+      await proxy.pass();
+      r.pngs = r.shots.map(s => s.file);
+      return;
+    }
 
     // Sent and Not sent (Paseo reachable).
     await answerQ("sent"); await answerC("sent");
@@ -804,7 +834,7 @@ try {
   if (report.timing) report.timingTable = (report.timing ?? []).map(row => ({ action: row.action, queueMs: baseline ? null : row.ms, queueOk: baseline ? null : row.ok, mainMs: baseline ? row.ms : report.mainTiming?.rows?.find(m => m.action === row.action)?.ms ?? null, mainError: baseline ? row.error ?? null : report.mainTiming?.rows?.find(m => m.action === row.action)?.error ?? null }));
   failed = report.checks.some(c => !c.ok);
   report.result = baseline ? "recorded" : failed ? "fail" : "pass";
-  const file = renders ? "message-queue-renders.json" : scaled ? "message-queue-stuck.json" : baseline ? "message-queue-main.json" : "message-queue.json";
+  const file = renders ? (rendersOnly ? `message-queue-renders-${rendersOnly}.json` : "message-queue-renders.json") : scaled ? "message-queue-stuck.json" : baseline ? "message-queue-main.json" : "message-queue.json";
   await fs.writeFile(join(out, file), JSON.stringify(report, null, 2) + "\n");
   console.log(`${report.result.toUpperCase()}: ${report.checks.filter(c => c.ok).length}/${report.checks.length} checks; wrote ${join(out, file)}`);
   await fs.rm(root, { recursive: true, force: true });
