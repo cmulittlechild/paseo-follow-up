@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 
 /**
  * The message queue (server/message-queue.ts): every message Follow-up sends to an agent is saved here before anything
@@ -74,7 +75,7 @@ export type QueueFile = z.infer<typeof queueFileSchema>;
  */
 export const ENVELOPE_SEPARATOR = "\n\n---\n\n";
 /** The headers a part starts with, any version's spelling (shared/legacy.ts keeps 1.x's). */
-export const PART_HEADERS = ["Follow-up answer ", "Follow-up batch ", "Workspace Follow-up batch ", "Follow-up recovery ", "From the developer via Overseer:", "Follow-through batch ", "Workspace follow-through batch ", "Follow-through recovery "] as const;
+export const PART_HEADERS: readonly string[] = ["Follow-up answer ", ...BATCH_PREFIXES.map(p => `${p} `), ...RECOVERY_TITLES.map(t => `${t} `), "From the developer via Overseer:"];
 export const envelopeText = (parts: readonly string[]) => parts.join(ENVELOPE_SEPARATOR);
 /** A message's parts: split only where `---` is followed by a part header, so a part's own `---` stays in it. */
 export function envelopeParts(text: string): string[] {

@@ -28,7 +28,7 @@ test("the hook's guidance names the separator and the headers the queue sends", 
     assert.ok(ENVELOPE_GUIDANCE.includes(header), `the guidance names ${header}`);
     assert.ok(PART_HEADERS.some(h => h.startsWith(header)), `the queue splits on ${header}`);
   }
-  assert.ok(PART_HEADERS.includes(`${BATCH_PREFIX} ` as never) && PART_HEADERS.includes(`${RECOVERY_TITLE} ` as never), "the queue's headers are the senders' own");
+  assert.ok(PART_HEADERS.includes(`${BATCH_PREFIX} `) && PART_HEADERS.includes(`${RECOVERY_TITLE} `), "the queue's headers are the senders' own");
 });
 
 test("the guidance reaches the agent: SessionStart text and the batch instructions", async () => {
