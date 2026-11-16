@@ -234,6 +234,9 @@ try {
       const path = join(root, "claude", "projects", "fixture", "acme-title-source.jsonl");
       const row = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "x".repeat(8000) }] } }) + "\n";
       for (let chunk = 0; chunk < 16; chunk++) await appendFile(path, row.repeat(130));
+      // A completed empty index is parked. A new unnamed link wakes the backlog promptly; ordinary appends
+      // alone intentionally wait for the slow recheck after catch-up.
+      await client.invokePluginRpc("follow-up", "follow.set-linked-items", { workspaceId: created[0].workspaceId, action: "add", ref: "https://claude.ai/artifact/acme-title-probe-new" });
       const durations = []; let indexedBytes = 0, maxAdvance = 0, previousOffset = 0;
       const end = Date.now() + 125_000;
       while (Date.now() < end && indexedBytes < 8 * 1024 * 1024) {
