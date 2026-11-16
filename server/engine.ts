@@ -15,7 +15,7 @@ import { ACTIVE_SCOPE_MIGRATION, followsByDefault, migrateActiveScope } from "..
 import { replyRecorded } from "../shared/communication";
 import { DeliveryDeferred, ConversationGone } from "./delivery";
 import type { MessageQueue, Resolution, Target } from "./message-queue";
-import { deliveryOf, type NewQueueItem, type QueueItem, type QueueItemInput } from "../shared/queue";
+import { PASEO_UNREACHABLE, deliveryOf, type NewQueueItem, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { recordSnapshot } from "./deployment-anchor";
 import { pruneUnsent } from "./batch-archive";
 import { holdSuperseded, liftHold } from "../shared/status";
@@ -332,10 +332,16 @@ export class Engine {
             if (b?.state === "pending") b.refusal = { reason, at: new Date(this.now()).toISOString() };
           });
         });
-      // A repair the queue holds until its agent is idle goes as soon as this tick sees it idle (no polling of its own).
+      // A repair the queue holds for its agent (a running turn, Session Guard, a permission prompt) goes as soon as this
+      // tick sees the agent free, never on the retry ladder's next step (up to 5 min later; 2026-11-16 harness: a repair
+      // held by Session Guard, and once one held by a turn, waited out the ladder after the agent was idle). The holds
+      // this tick can't see clear on their own: Paseo unreachable (the probe), the previous message, GitHub's answer.
       const held = current.batches.find(b => b.state === "pending" && !isRecovery(b));
       const heldItem = held && this.queue?.get(repairItemId(current.id, held.id));
-      if (heldItem?.state === "queued" && heldItem.reason?.startsWith("waits for the agent's turn") && !runtime.busy && !runtime.backgroundBusy) await this.queue!.retry(heldItem.id).catch(() => undefined);
+      // An Auto send keeps its own pace (a refusal retries once per settle window: the-send-line-matches-the-send-decision);
+      // only the developer's Send, or any repair waiting out a turn, goes on this tick.
+      const due = heldItem?.state === "queued" && !!heldItem.reason && (heldItem.reason.startsWith("waits for the agent's turn") || !heldItem.ref.automatic && heldAgentSide(heldItem.reason));
+      if (due && !runtime.busy && !runtime.backgroundBusy && !runtime.reason) await this.queue!.retry(heldItem!.id).catch(() => undefined);
       current = findWorkspace(await this.store.snapshot(), original.id);
       const done = !current.archived && !!current.completion && completionBlockers(current, this.now()).length === 0;
       if (done || current.managedDoneLabel) {
@@ -804,4 +810,6 @@ export function agentWorkspace(state: State, agentId: string, access: "read" | "
 /** A Q answer's queue item: one per answer (its messageId), so a Resend is the same item. */
 export const answerItemId = (workspaceId: string, q: Pick<Question, "id" | "answer">) => `answer:${workspaceId}:${q.id}:${q.answer?.delivery.messageId ?? ""}`;
 /** A batch's queue item: one per batch (a Retry makes a new batch, so a new item). */
+/** A repair's hold that only the agent's runtime can clear, so a tick that sees the agent free retries it. */
+export const heldAgentSide = (reason: string) => reason !== PASEO_UNREACHABLE && !reason.startsWith("waits for the last message") && !reason.startsWith("waits until GitHub answers");
 export const repairItemId = (workspaceId: string, batchId: string) => `repair:${workspaceId}:${batchId}`;

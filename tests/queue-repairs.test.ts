@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine, repairItemId, type Gateway, type Runtime } from "../server/engine";
+import { Engine, heldAgentSide, repairItemId, type Gateway, type Runtime } from "../server/engine";
 import { Store } from "../server/store";
 import { askQuestion } from "../server/questions";
 import { envelopeParts } from "../shared/queue";
@@ -103,4 +103,23 @@ test("Send replies at once while Paseo takes a minute to answer, and the batch r
   void f.engine.idle();
   release(); f.hang(null); await f.engine.idle();
   assert.equal((await f.get()).batches[0].state, "sent");
+});
+
+test("a Send held by Session Guard goes on the tick that sees the agent free, never on the retry ladder", async t => {
+  const f = await setup(t);
+  await f.engine.tick();
+  const batch = (await f.get()).batches.find(b => b.state === "pending")!;
+  f.set({ reason: "Session Guard paused this agent" });
+  await f.engine.sendPending(f.wid, batch.id); await f.engine.idle();
+  assert.equal(f.delivered.length, 0, "nothing reaches the agent while Session Guard owns the pause");
+  assert.match((await f.get()).batches[0].refusal?.reason ?? "", /Session Guard/, "the batch line says why it waits");
+  f.set({ reason: null });
+  await f.engine.tick(); await f.engine.idle();
+  assert.equal(f.delivered.length, 1, "sent on the next tick, not after the ladder's next step");
+  assert.equal((await f.get()).batches[0].state, "sent");
+});
+
+test("holds the tick can't see clear on their own: a tick never retries them", () => {
+  for (const r of ["Paseo unreachable", "waits for the last message to finish", "waits until GitHub answers, so the message isn't based on stale PRs"]) assert.equal(heldAgentSide(r), false, r);
+  for (const r of ["waits for the agent's turn to end, so it isn't interrupted", "Session Guard paused this agent", "waiting for the agent's permission prompt"]) assert.equal(heldAgentSide(r), true, r);
 });
