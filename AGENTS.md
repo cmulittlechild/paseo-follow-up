@@ -494,6 +494,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    list is about 400 px and a row's chips were drawn over its age. Guarded by `tests/row-chips.test.ts` and
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
+35. **Follow-up has one mark** (`follow-up-has-one-mark`). Every surface that stands for Follow-up itself (the
+   sidebar row, the header button, the workspace panel tab, Settings, the "open for this workspace" command and the
+   larger view's empty state) draws `FOLLOW_UP_ICON` (`client/follow-up-icon.ts`): one 24-unit glyph in
+   `currentColor`, valid for `findSvgIconProblem`. `assets/icon.svg` (and `assets/icon.png` rendered from it) is the
+   same mark on the app tile. Lucide GitPullRequest stays for pull requests only (PR chips, the stacks card, briefs,
+   the PR sheet, reviewers). The header button's Needs-you dot sits on the glyph's end dot, clamped inside the icon box
+   (`needDotBox`): Paseo clips a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot
+   drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
+   inside every clipping box, and its amber box as tall as wide within 1 px).
 37. **A new worker starts once the old one exits** (`a-new-worker-starts-once-the-old-one-exits`). A worker that
    starts while the previous one is still shutting down waits for it and starts the moment it exits; a transient
    start-up failure never becomes a permanent load error. `Store.lock` (`server/store.ts`) waits while
