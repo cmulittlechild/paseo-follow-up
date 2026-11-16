@@ -167,3 +167,25 @@ test("the idle window starts drained: no awake agent running and no timeline rea
   assert.equal(drainState([relist(2, false), relist(30, false), relist(50, false)]).settled, false, "quiet, but the due re-read hasn't happened");
   assert.deepEqual(drainState([relist(2, false), relist(30, false), relist(62, true)]), { settled: true, expired: false, atMs: 62_000 });
 });
+
+test("plain test:scale drains after its send phase too: nothing running, no timeline read and no directory re-read for a re-read's whole wait", async () => {
+  const { DIRTY_REFRESH_MS: script, DRAIN_BOUND_MS, DRAIN_QUIET_MS, ENGINE_TICK_MS, SEND_DRAIN_QUIET_MS, drainPlan, drainState } = await import("../scripts/scale-budget.mjs");
+  const { DIRTY_REFRESH_MS } = await import("../server/directory");
+  assert.equal(script, DIRTY_REFRESH_MS, "the script's copy of the directory's dirty re-read wait");
+  // 2026-11-16 (#211, local): a 7th send late in the send phase; its turn, turn-end reads and the directory re-read after
+  // them landed in the idle window: 5.3 requests a minute against 2. Only --busy drained before the idle window.
+  assert.deepEqual(drainPlan({ busyMs: 180_000 }), { quietMs: DRAIN_QUIET_MS, awaitRelist: true }, "the busy window keeps its drain");
+  assert.deepEqual(drainPlan({ busyMs: 0 }), { quietMs: SEND_DRAIN_QUIET_MS, awaitRelist: false }, "the send phase drains too");
+  // Without the busy window's known re-read, quiet must outlast one: a dirty directory re-reads within DIRTY_REFRESH_MS
+  // of its last read, on the next tick.
+  assert.ok(SEND_DRAIN_QUIET_MS >= DIRTY_REFRESH_MS + ENGINE_TICK_MS, "quiet outlasts a due re-read");
+  assert.ok(SEND_DRAIN_QUIET_MS < DRAIN_BOUND_MS, "and fits inside the bound");
+  const q = SEND_DRAIN_QUIET_MS / 1000;
+  const at = (s: number, running: number, reads: number, lists: number) => ({ atMs: s * 1000, running, reads, lists });
+  assert.deepEqual(drainState([at(2, 0, 5, 3), at(q + 2, 0, 5, 3)], drainPlan({ busyMs: 0 })), { settled: true, expired: false, atMs: (q + 2) * 1000 }, "quiet from the start");
+  assert.equal(drainState([at(2, 0, 5, 3), at(60, 0, 5, 4), at(q + 2, 0, 5, 4)], drainPlan({ busyMs: 0 })).settled, false, "a directory re-read is activity: quiet restarts from it");
+  assert.equal(drainState([at(2, 0, 5, 3), at(60, 0, 5, 4), at(q + 60, 0, 5, 4)], drainPlan({ busyMs: 0 })).settled, true);
+  const src = await (await import("node:fs/promises")).readFile("scripts/scale-check.mjs", "utf8");
+  assert.ok(!/if \(BUSY_MS > 0\) \{\s*const from = Date\.now\(\); const polls/.test(src), "scale-check drains whether or not it ran a busy window");
+  assert.match(src, /drainPlan\(\{ busyMs: BUSY_MS \}\)/, "with the plan for the phase it ran");
+});
