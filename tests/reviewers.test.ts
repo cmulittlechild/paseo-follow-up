@@ -17,7 +17,8 @@ async function fixture(t: TestContext) {
   const directory = await mkdtemp(join(tmpdir(), "follow-reviewers-")); t.after(() => rm(directory, { recursive: true, force: true }));
   const store = new Store(directory);
   let current = snapshot({ reviewers: reviewers() }); let now = clock;
-  await store.mutate(s => { s.workspaces = [workspace({ prs: [pr({ snapshot: current })] })]; });
+  // The store gets its own copy: `current` is the fake GitHub's, and it changes it (committed-workspaces-are-owned).
+  await store.mutate(s => { s.workspaces = [workspace({ prs: [pr({ snapshot: structuredClone(current) })] })]; });
   const writes: string[][] = []; let fail: Error | null = null;
   const github = { observe: async () => new Map([["example/app#1", { snapshot: structuredClone(current), error: null }]]), requestReviewers: async (_: unknown, logins: string[]) => { writes.push(logins); if (fail) throw fail; current.reviewers!.requested = logins; } };
   const actions = new PrActions(store, github, { merge: async () => { throw Error("Unexpected merge"); }, invalidate() {} }, new BrowserBridge(), () => now, () => [{ name: "First", login: "reviewer-a" }, { name: "Second", login: "reviewer-b" }]);

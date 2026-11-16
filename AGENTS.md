@@ -444,6 +444,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2 minutes. `heartbeat.json`'s `memory` reports RSS, heap, external, array buffers and the last settles every minute.
    2026-11-15: the live worker stepped 232 → 325 → 376 MB over busy periods and never came down. Guarded by
    `tests/memory-settle.test.ts` and `test:scale:live`'s `--cycles` (`BURST_RETURN_BUDGET_MB`, enforced).
+31. **Committed workspaces are owned** (`committed-workspaces-are-owned`). A workspace a store commit changed is the
+   store's own copy from that commit on: `Store.own` (`server/store.ts`) parses it (`workspaceSchema`) and
+   deep-freezes it before the commit lands, so it never aliases an object a caller still holds (an observation's
+   snapshot) and a write to it throws in strict code. Production isn't strict: Paseo's wrapper (`compiler-build.js`
+   `wrapCommonJsBundle`) evaluates the server bundle in sloppy mode, so there such a write is silently ignored and
+   only tests (strict) throw; the candidate upstream fix is one line, `"use strict"` first in the wrapper. The save
+   validates only workspaces the store doesn't own yet. An unchanged workspace keeps its object across commits, so
+   `ListCache` and `perSnapshot` reuse its entry by identity. Anything that skips work by identity also respects
+   time: the engine's untouched-pass skip ends at the earliest task due time (`nextDue`), and a read that only moves
+   `observedAt` counts while an acknowledged repair awaits a newer read (`awaitsRead`). 2026-11-16: a committed but
+   unsaved workspace was a fresh draft object, so `follow.list` rebuilt it on every call until the next save (about
+   200 MB/min under a burst). Guarded by `tests/store-owned.test.ts`, `tests/engine.test.ts` (a task due inside the
+   quiet minute) and `tests/no-retry.test.ts` (the first read after an acknowledgment).
 
 ## Bugs
 
