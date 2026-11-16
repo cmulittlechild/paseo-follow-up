@@ -8,7 +8,7 @@ import { Store } from "../server/store";
 import { askQuestion, developerAnswer } from "../server/questions";
 import { DeliveryDeferred } from "../server/delivery";
 import { MessageQueue, QUEUE_FILE, queueTimeScale } from "../server/message-queue";
-import { AMBIGUOUS_MS, NEVER_LEFT_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema } from "../shared/queue";
+import { AMBIGUOUS_MS, NEVER_LEFT_MS, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema } from "../shared/queue";
 import { clock, workspace, pr } from "./fixtures";
 import { testQueue } from "./support/queue";
 
@@ -208,4 +208,54 @@ test("the harness time scale counts only for a data dir under the temp dir: a st
   assert.equal(queueTimeScale("/home/user/.paseo/plugin-data/follow-up", env), 1, "a developer's machine: ignored");
   assert.equal(queueTimeScale(join(tmpdir(), "x"), {}), 1, "unset");
   for (const bad of ["0", "-1", "2", "abc", "1"]) assert.equal(queueTimeScale(join(tmpdir(), "x"), { FOLLOW_UP_QUEUE_TIME_SCALE: bad }), 1, bad);
+});
+
+test("Paseo unreachable: one connect-only probe every 15 s, 60 s after 10 min, none once nothing waits; a probe that connects sends at once", async t => {
+  let up = false; let probes = 0; let sends = 0;
+  const f = await setup(t, { deliver: async target => { sends++; if (!up) throw new DeliveryDeferred("Paseo unreachable"); return target.recipients[0]!; }, probe: async () => { probes++; return up; } });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  assert.equal(sends, 1);
+  assert.deepEqual(f.timers.pending, [PROBE_MS], "one timer: the probe, not a ladder step per workspace");
+  const waits: number[] = [];
+  while (f.timers.now < PROBE_BACKOFF_AFTER_MS + 3 * PROBE_SLOW_MS) { waits.push(await f.timers.fire()); await f.engine.idle(); assert.equal(f.timers.pending.length, 1, "still one timer"); }
+  const fast = PROBE_BACKOFF_AFTER_MS / PROBE_MS;
+  assert.deepEqual(waits.slice(0, fast), Array(fast).fill(PROBE_MS));
+  assert.deepEqual(waits.slice(fast), Array(waits.length - fast).fill(PROBE_SLOW_MS), "backs off to 60 s after 10 min down");
+  assert.equal(sends, 1, "a failed probe sends nothing: it only connects");
+  assert.equal(probes, waits.length);
+  const d = await f.delivery();
+  assert.equal(d.state, "queued"); assert.equal(Date.parse(d.nextAt!), Date.parse("2026-11-16T09:00:00.000Z") + f.timers.now + PROBE_SLOW_MS, "the card's 'retrying at' is the next probe");
+  up = true;
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal((await f.delivery()).state, "sent", "the probe connected: sent at once");
+  assert.equal(sends, 2);
+  assert.deepEqual(f.timers.pending, [], "nothing waits: no probe, no timer");
+});
+
+test("any connection the worker opens sends what waited on Paseo at once; cancelling the last one stops the probe", async t => {
+  let up = false; let probes = 0;
+  const f = await setup(t, { deliver: async target => { if (!up) throw new DeliveryDeferred("Paseo unreachable"); return target.recipients[0]!; }, probe: async () => { probes++; return false; } });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  up = true;
+  f.queue.reconnected(); await f.engine.idle();
+  assert.equal((await f.delivery()).state, "sent", "a tick's connection (or any other) reopened: sent without waiting for the probe");
+  assert.equal(probes, 0);
+  assert.deepEqual(f.timers.pending, []);
+  const g = await setup(t, { deliver: async () => { throw new DeliveryDeferred("Paseo unreachable"); }, probe: async () => { probes++; return false; } });
+  await g.engine.answer(g.wid, "Q1", "A", undefined, "send"); await g.engine.idle();
+  assert.equal(g.timers.pending.length, 1);
+  const [item] = g.queue.list().items;
+  await g.queue.cancel(item!.id, "Cancelled by the developer");
+  assert.deepEqual(g.timers.pending, [], "nothing waits: the probe stops at once");
+});
+
+test("the probe only connects: it reads no agent, so nothing wakes, and a dropped connection reads as down", async () => {
+  const { PaseoGateway } = await import("../server/daemon");
+  const touched: string[] = [];
+  const client = (status: string) => new Proxy({ connectionState: { status } }, { get: (o, k) => { if (k !== "connectionState" && k !== "then") touched.push(String(k)); return (o as Record<string | symbol, unknown>)[k]; } });
+  const via = (status: string | null) => new PaseoGateway((async (work: (c: unknown) => Promise<unknown>) => { if (status === null) throw new Error("ECONNREFUSED"); return work(client(status)); }) as never);
+  assert.equal(await via("connected").probe(), true);
+  assert.equal(await via("disconnected").probe(), false);
+  assert.equal(await via(null).probe(), false);
+  assert.deepEqual(touched, [], "no daemon call beyond the connection itself");
 });

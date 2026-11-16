@@ -496,7 +496,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    brief answers today) is a `queue.json` item before anything talks to Paseo (`server/message-queue.ts`). The action
    replies once it is saved, never after a Paseo call. The sender waits for the write that marks it `sending`, then
    sends. A send that never left (Paseo unreachable, no agent, a permission prompt, Session Guard) never fails: it
-   retries 15 s, 1 min, then every 5 min, and at once on worker start and daemon reconnect. Paseo does not refuse a
+   retries 15 s, 1 min, then every 5 min (Paseo unreachable: a connect-only probe every 15 s, so it goes out within
+   about 15 s of Paseo coming back), and at once on worker start and whenever the worker's connection reopens. Paseo does not refuse a
    resend by messageId (it skips only the timeline row; the provider runs the prompt again), so a send that may have
    left is never repeated blind: the agent's chat is read for its messageId first (an unloaded agent's transcript on
    disk, never waking it), and only a ladder of unknowns (15 s, 1 min, 5 min, 15 min) ends in Failed with Retry. The

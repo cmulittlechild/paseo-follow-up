@@ -332,8 +332,12 @@ Today that is Q answers (`Engine.answer`, kind `answer`) and brief answers (`Inb
   Q answer): an answer whose asker was archived or replaced reaches the workspace's main agent. A workspace archived or
   no longer followed cancels it, with the reason on the card ("Not sent").
 - **Never left: never fails.** Paseo unreachable, no agent available, a permission prompt or Session Guard: nothing
-  was sent, so it waits as Queued ("Queued: Paseo unreachable, retrying at 12:04") on `NEVER_LEFT_MS` (15 s, 1 min,
-  then every 5 min), and goes at once on worker start and when the daemon connection comes back (`onDaemonReconnect`).
+  was sent, so it waits as Queued ("Queued: Paseo unreachable, retrying at 12:04") and goes at once on worker start.
+  Paseo unreachable: it goes out within about 15 s of Paseo coming back. While anything waits so, one connect-only
+  probe (`PaseoGateway.probe`: the worker's one connection, no agent read, so nothing wakes) runs every `PROBE_MS`
+  (15 s), every `PROBE_SLOW_MS` (60 s) once the outage passes 10 min, and stops the moment nothing waits; a probe that
+  connects, or any connection the worker opens for anything (`onDaemonReconnect`), sends them at once. The other
+  reasons wait on `NEVER_LEFT_MS` (15 s, 1 min, then every 5 min).
 - **Left unconfirmed: read the chat first.** An error after the message went out, or the attempt's 2-minute deadline,
   makes it `uncertain` (Retrying). Paseo doesn't refuse a resend by messageId, so before any resend `arrivedMessage`
   (`server/daemon.ts`) looks for it: a loaded agent's timeline by clientMessageId, an unloaded agent's provider

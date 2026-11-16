@@ -31,6 +31,7 @@ import { agentRecord, headAndTail, transcriptFile } from "./transcript";
 import { DaemonDirectory, type DirectoryRows } from "./directory";
 import { traceDaemon } from "./request-trace";
 import type { TurnTimeline } from "./turn-timeline";
+import { PASEO_UNREACHABLE } from "../shared/queue";
 type RecoveryAgentOptions = Partial<PluginBeforeRequests["agent.create"]["config"]> & { workspaceId: string; labels: Record<string, string>; idempotencyKey: string; env: Record<string, string>; /** Paseo 0.16 (features.backgroundAgents): no tab, no notification, no sidebar row. */ background?: boolean };
 
 /**
@@ -599,8 +600,20 @@ export class PaseoGateway implements Gateway {
       throw new DeliveryDeferred("no agent in this workspace can take it right now");
     }).catch(error => {
       if (attempted || error instanceof DeliveryDeferred || error instanceof ConversationGone) throw error;
-      throw new DeliveryDeferred("Paseo unreachable");
+      throw new DeliveryDeferred(PASEO_UNREACHABLE);
     });
+  }
+  /**
+   * The message queue's outage probe (PROBE_MS): opens the worker's one shared connection if it isn't open, and nothing
+   * else (no agent read, so no agent wakes). True when it is connected. A connection that went stale is retired, so the
+   * next call opens a fresh one.
+   */
+  async probe(): Promise<boolean> {
+    return this.connect(async client => {
+      const status = (client as unknown as { connectionState?: { status?: string } }).connectionState?.status;
+      if (status !== undefined && status !== "connected") throw new Error("Paseo connection is down");
+      return true;
+    }).catch(() => false);
   }
   /**
    * Whether `messageId` reached the agent since `since`. A loaded agent: its timeline, where Paseo records the message
