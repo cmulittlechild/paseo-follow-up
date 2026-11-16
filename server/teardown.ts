@@ -49,6 +49,7 @@ export interface WorkerParts {
   inbox?: { flush(): Promise<void> };
   /** Files saved behind the reply (an-ack-never-waits-on-the-disk): what is pending is written before the lock goes. */
   files?: { flush(): Promise<void> }[];
+  /** Mandatory local ownership cleanup, completed before the caller may exit. Never waits on remote work. */
   unlock?: (() => Promise<unknown>) | null;
 }
 /**
@@ -69,5 +70,10 @@ export async function stopWorker(parts: WorkerParts, ms = STOP_WAIT_MS): Promise
   await step(() => parts.store.close(work, save), save);
   if (parts.inbox) await step(() => parts.inbox!.flush(), save);
   if (parts.files?.length) await step(() => Promise.allSettled(parts.files!.map(f => f.flush())), save);
-  if (parts.unlock) await step(parts.unlock, save);
+  // stop-completes-lock-release: the caller may process.exit() as soon as we return. An expired save deadline
+  // must never win a race with lock removal. Store's release uses synchronous local filesystem operations.
+  if (parts.unlock) {
+    try { await parts.unlock(); }
+    catch (error) { console.warn(`[follow-up] lock release failed: ${error instanceof Error ? error.message : String(error)}`); }
+  }
 }

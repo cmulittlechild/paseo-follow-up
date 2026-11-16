@@ -31,6 +31,9 @@
    directory and feed the inbox. `agent.permission_requested` also feeds trust bypass. `server.before`
    handles `agent.session_open`, which attaches tools (`withTools`, wrapped by `withWait`).
 8. Returns a teardown that stops timers, Wait, the governor and AI jobs, removes hooks, and flushes the store.
+   Work and saving share a deadline, but lock release must complete before teardown returns and the orphan worker
+   exits (`stop-completes-lock-release`). The lock's token check and removal are synchronous local operations, so
+   an expired save deadline cannot abandon queued filesystem cleanup.
 
 ## RPCs
 

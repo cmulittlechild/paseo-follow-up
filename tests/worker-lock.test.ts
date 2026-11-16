@@ -159,8 +159,25 @@ test("a-new-worker-starts-once-the-old-one-exits: a worker whose host goes away 
   const gone = Date.now();
   const exited = once(child, "exit");
   child.disconnect();
-  const exit = await Promise.race([exited.then(() => "exited"), new Promise(r => setTimeout(() => r("alive"), 10_000))]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const exit = await Promise.race([exited.then(() => "exited"), new Promise(r => { timer = setTimeout(() => r("alive"), 10_000); })]).finally(() => clearTimeout(timer));
+  t.diagnostic(`disconnect-to-exit: ${Date.now() - gone} ms; lock remains: ${existsSync(lock)}`);
   assert.equal(exit, "exited", "the worker exits once its host's channel closes");
   assert.ok(Date.now() - gone < 3_000, `within Paseo's stop window: ${Date.now() - gone} ms`);
   assert.equal(existsSync(lock), false, "and frees the lock on the way out");
+});
+
+test("worker lock: release removes our claim before yielding and preserves a replacement claim", async t => {
+  const dir = await directory(t);
+  const store = testStore(Store, dir);
+  const lock = join(dir, "worker.lock");
+  const unlock = await store.lock();
+  const released = unlock();
+  const remains = existsSync(lock);
+  await released;
+  assert.equal(remains, false, "lock release must not wait in the filesystem queue after the stop deadline");
+  await unlock(); // Already removed is harmless.
+  await writeFile(lock, "123:replacement");
+  await unlock();
+  assert.equal(await readFile(lock, "utf8"), "123:replacement", "never remove a later worker's claim");
 });
