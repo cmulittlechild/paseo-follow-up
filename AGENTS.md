@@ -118,8 +118,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      minute; the bare plugin process is ~120 MB. Headroom (~15 % peak, ~20 % idle) covers live's extras the seed lacks
      (archived agents, real transcripts, AI jobs) and CI noise. The old 240 MB budget was checked on an empty-workspace
      seed and only after start-up, so a 450 MB live worker passed it.
-   - `test:scale:live` (PR CI, after `verify`): the same budgets on the **live-sized** seed (`--live-sized`: plus one
-     153-PR workspace and a live-shaped 120 KB inbox) after a 180 s **busy window** (awake agents end 20 turns a minute
+   - `test:scale:live` (PR CI, its own `scale-live` job beside `verify`): the same budgets on the **live-sized** seed
+      (`--live-sized`: plus one 153-PR workspace and a live-shaped 120 KB inbox) after a 180 s **busy window** (awake
+      agents end 20 turns a minute
      with live-sized timelines), plus **busy-window growth** under `BUSY_GROWTH_BUDGET_MB` (`scripts/scale-budget.mjs`).
      The idle window starts drained (`drainState`): no awake agent running, no worker timeline read for a tick plus a
      margin (`DRAIN_QUIET_MS`) and the directory's due re-read done (at most `DRAIN_BOUND_MS`), so the busy window's

@@ -104,7 +104,9 @@ test("scale gate: test:scale fails on its budgets; test:scale:live reports them 
   }
   assert.ok(gate.includes("--idle-rss-budget realistic"), "test:scale's idle budget is the derived REALISTIC_IDLE_BUDGET_MB, not a typed-in number");
   assert.ok(live.includes("--live-sized") && live.includes("--busy 180"), "test:scale:live is the live-sized busy window");
-  assert.match(await readFile(".github/workflows/ci.yml", "utf8"), /^\s+- run: npm run test:scale:live$/m);
+  // Its own job (scale-live), so the ~20-minute run goes alongside verify instead of after it.
+  const job = (await readFile(".github/workflows/ci.yml", "utf8")).split(/^  scale-live:$/m)[1] ?? "";
+  assert.match(job, /^\s+- run: npm run test:scale:live$/m, "ci.yml runs test:scale:live in the scale-live job");
 });
 
 /**
