@@ -553,6 +553,12 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Shutdown tests may discard an intentionally stuck fake only when it can never perform filesystem writes.
    Guarded by `tests/store-temp-dir.test.ts` and the held-fsync regression in `tests/pr-workflow.test.ts`.
 
+40. **Stopping completes lock release before returning** (`stop-completes-lock-release`). The save deadline
+   bounds work and persistence, never the ownership cleanup that follows them. `stopWorker` awaits lock release
+   before its caller can exit. `Store.lock` releases its own token synchronously, without queuing filesystem work
+   behind an expired save deadline, and leaves any replacement token alone.
+   Guarded by `tests/worker-stop.test.ts` and `tests/worker-lock.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

@@ -1,6 +1,6 @@
 import { settleWithin, stopDeadline, type Deadline } from "./teardown";
 import { mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stateSchema, workspaceSchema, type State, type Workspace } from "../shared/model";
@@ -367,7 +367,14 @@ export class Store {
         if (await readFile(path, "utf8").catch(() => null) === prior) await unlink(path);
       } finally { await recovery.close(); await unlink(`${path}.recovery`); }
     }
-    return async () => { if (await readFile(path, "utf8").catch(() => "") === token) await unlink(path); };
+    // Mandatory ownership cleanup, even after the save deadline expires: do not queue filesystem callbacks
+    // that stop could abandon just before process.exit(). Only remove this claim, never a replacement.
+    return async () => {
+      let held: string;
+      try { held = readFileSync(path, "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+      if (held === token) unlinkSync(path);
+    };
   }
   /** A wait between lock attempts that close() cuts short; it never keeps the process alive on its own. */
   private lockPause(ms: number): Promise<void> {
