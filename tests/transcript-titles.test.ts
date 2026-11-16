@@ -16,7 +16,7 @@ const cursor = (path: string) => ({ paths: [path], file: 0, offset: 0, dropping:
 test("streaming scan stays within its byte budget and pairs receipts across passes", async t => {
   const dir = await temp(t), path = join(dir, "session.jsonl");
   await writeFile(path, use + line([{ type: "text", text: "x".repeat(600) }]) + result);
-  let state = cursor(path), evidence = null, windows = 0;
+  let state: Awaited<ReturnType<typeof scanTitleWindow>>["state"] = cursor(path), evidence = null, windows = 0;
   while (state.file < state.paths.length && !evidence && windows++ < 12) {
     const pass = await scanTitleWindow(URL, state, 256);
     assert.ok(pass.bytes <= 256);
