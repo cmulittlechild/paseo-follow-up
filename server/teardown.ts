@@ -72,5 +72,8 @@ export async function stopWorker(parts: WorkerParts, ms = STOP_WAIT_MS): Promise
   if (parts.files?.length) await step(() => Promise.allSettled(parts.files!.map(f => f.flush())), save);
   // stop-completes-lock-release: the caller may process.exit() as soon as we return. An expired save deadline
   // must never win a race with lock removal. Store's release uses synchronous local filesystem operations.
-  if (parts.unlock) await parts.unlock();
+  if (parts.unlock) {
+    try { await parts.unlock(); }
+    catch (error) { console.warn(`[follow-up] lock release failed: ${error instanceof Error ? error.message : String(error)}`); }
+  }
 }

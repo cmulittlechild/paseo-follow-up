@@ -206,3 +206,28 @@ test("worker stop: an expired save deadline cannot finish stop before lock remov
   await stop;
   assert.equal(finishedBeforeRemoval, false, "stop returned while the lock was still being removed");
 });
+
+test("worker stop: a failed lock release is warned after it runs and does not reject stop", async t => {
+  const warnings: unknown[][] = [];
+  t.mock.method(console, "warn", (...args: unknown[]) => { warnings.push(args); });
+  let entered!: () => void;
+  const removing = new Promise<void>(resolve => { entered = resolve; });
+  let release!: () => void;
+  const removal = new Promise<void>(resolve => { release = resolve; });
+  let stopped = false;
+  const stop = teardown.stopWorker({
+    ready: Promise.resolve(), actions: { close: async () => {} }, closeConnections: async () => {},
+    engine: { stop: async () => {} }, store: { close: async () => {} },
+    unlock: async () => { entered(); await removal; throw new Error("fixture removal failed"); },
+  }, 0).then(() => { stopped = true; });
+  // Observe a rejection immediately too, so a failure cannot become an unhandled rejection before assert.doesNotReject.
+  void stop.catch(() => undefined);
+  await removing;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(stopped, false, "stop must wait for the release attempt");
+  assert.deepEqual(warnings, [], "no failure is reported before the release attempt finishes");
+  release();
+  await assert.doesNotReject(stop);
+  assert.equal(stopped, true);
+  assert.deepEqual(warnings, [["[follow-up] lock release failed: fixture removal failed"]]);
+});
