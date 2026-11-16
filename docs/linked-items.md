@@ -89,3 +89,28 @@ The design is §5 of the Linked items design; the rules below are what the code 
   workspace linking ACME-1352; words keep their typo tolerance.
 - **Reads:** a surface showing the line reads `follow.linked-items` once when it mounts and keeps it a minute. Nothing
   polls.
+
+## Local artifact and Claude Docs titles
+
+`shared/local-titles.ts` is the shared title index and precedence rule. `server/local-titles.ts` reads completed
+Artifact and Claude Docs tool receipts from the timeline batch discovery already has. Artifact names prefer the
+publish input's title, then the source HTML's title, then description, then filename. Source reads are asynchronous,
+limited to the first 8 KB and harmless when a file has disappeared. A completed Artifact read can contribute an HTML
+or explicitly labelled page title without counting as a publish. Unknown-tool timeline projection preserves input
+and output, including MCP text blocks. Failed calls, assets, list and quickstart receipts contribute nothing.
+
+The index includes every tracked workspace's `artifacts`, specs and locally titled linked artifacts/docs. A title
+known in one workspace fills an unnamed item in another, including existing items at worker start. The backfill is
+idempotent and runs without timeline or network reads. New sightings repeat the same fill operation, so a title
+learned later repairs existing links. Explicit linked and spec names are never overwritten. Published artifact
+records retain stronger evidence over a later weaker or untitled receipt.
+
+Claude Docs `container.create` names are paired with the corresponding successful result URL; operations without a
+returned URL cannot safely name a link. Live create receipts were not available during development; projected
+unknown-tool payload retention is confirmed in Paseo's projection source and tests. Fixtures cover create results
+as MCP text blocks. Claude Docs URLs under `/doc/`, `/docs/` and their public forms classify as `doc`.
+
+When no local evidence exists, the artifact row says **Claude artifact**, with its publisher or workspace mention
+and calendar date beneath it. The spec uses the same Claude artifact fallback. No request goes to claude.ai, and
+no model session starts to recover a name. Tests: `tests/local-titles.test.ts`, `tests/spec.test.ts`,
+`tests/linked-ui.test.ts` and the `a-linked-item-uses-every-known-local-title` status invariant.

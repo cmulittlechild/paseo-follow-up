@@ -489,6 +489,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
 
+38. **A linked item uses every known local title** (`a-linked-item-uses-every-known-local-title`). Resolve artifact
+   and Claude Docs names from completed receipts and every tracked workspace's stored artifacts. Fill missing names
+   in linked items and specs at worker start and when evidence arrives; preserve developer and agent choices.
+   Read at most 8 KB of an artifact's source HTML asynchronously, and treat unreadable files as misses. Never fetch
+   remote page metadata or wake an agent for a name. Guarded by `tests/local-titles.test.ts` and
+   `shared/status-invariants.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

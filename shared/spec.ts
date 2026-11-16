@@ -23,6 +23,7 @@ export const artifactSchema = z.object({
   by: z.string().nullable().default(null),
   firstAt: z.string().nullable().default(null),
   lastAt: z.string().nullable().default(null),
+  titleRank: z.number().int().min(1).max(5).optional(),
   publishes: z.number().int().positive().default(1),
 });
 export type Spec = z.infer<typeof specSchema>;

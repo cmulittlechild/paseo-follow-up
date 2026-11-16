@@ -1,3 +1,4 @@
+import { fillWorkspaceTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
 import { stopWorker } from "./server/teardown";
 import { WriteHealth } from "./server/write-behind";
 import { actorBy, actorOf, type Actor } from "./shared/actor";
@@ -214,7 +215,15 @@ export default function contribute(server: PluginServerContext) {
   actions.settleTasks = w => engine.settleTasks(w);
   const governor = new Governor();
   const linkedStore = new LinkedStore(directory);
-  const linked = new LinkedService({ store: linkedStore, sources: liveLinkedSources(), roomForBackground: async () => governor.allowsBackground() });
+  const linked = new LinkedService({ store: linkedStore, sources: liveLinkedSources(), roomForBackground: async () => governor.allowsBackground(),
+    workspaces: async () => (await store.snapshot()).workspaces,
+    titlesChanged: async (titles: TitleIndex) => {
+      for (const w of (await store.snapshot()).workspaces) {
+        if (!w.enable_tracking) continue;
+        if (workspaceNeedsTitles(w, titles)) await store.mutateWorkspace(w.id, current => { fillWorkspaceTitles(current, titles); });
+      }
+    },
+  });
   // Extraction rides discovery's own timeline batch (loaded agents only): no extra reads (shared/linked-extract.ts).
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();
@@ -400,6 +409,7 @@ export default function contribute(server: PluginServerContext) {
     // 1.4.0-beta.2: tools are per agent now; drop the old user-scope registrations that spawned mcp.mjs in every session.
     void removeGlobalRegistrations().then(results => { const removed = results.filter(r => r.status === "removed").map(r => r.path); if (removed.length) console.warn(`[follow-up] removed the global follow-up MCP registration from ${removed.length} file(s); backups end in .follow-up-unregister.bak`); });
     governor.start();
+    await linked.backfill();
     await engine.recover();
     await migrateTracking();
     await dedupeQuestions();

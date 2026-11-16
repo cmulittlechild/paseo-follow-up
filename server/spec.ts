@@ -2,32 +2,17 @@ import { DEVELOPER, type Actor } from "../shared/actor";
 import type { Workspace } from "../shared/model";
 import { MAX_ARTIFACTS, isClaudeArtifact, validSpecUrl, type Artifact } from "../shared/spec";
 
+import { fillWorkspaceTitles, localTitles, receiptTitle, titleKey, type TitleIndex } from "../shared/local-titles";
+import { resultText } from "./local-titles";
+
 type Entry = { item: unknown; timestamp?: string };
 const publishReceipt = /^(?:Published \S.*? at|Created a new Artifact at) (https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+)(?=[\s(.,]|$)/;
-
-function resultText(output: unknown): string | null {
-  if (typeof output === "string") return output;
-  if (Array.isArray(output)) {
-    const text = output.map(part => (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join("");
-    return text || null;
-  }
-  if (output && typeof output === "object" && typeof (output as { text?: unknown }).text === "string") return (output as { text: string }).text;
-  return null;
-}
-
-function titleFrom(input: Record<string, unknown>): string | null {
-  if (typeof input.title === "string" && input.title.trim()) return input.title.trim().slice(0, 120);
-  const path = typeof input.file_path === "string" ? input.file_path : null;
-  const base = path?.split(/[\\/]/).pop()?.replace(/\.(?:html?|md)$/i, "").replace(/[-_]+/g, " ").trim();
-  if (!base || /^(?:index|page|artifact)$/i.test(base)) return null;
-  return (base[0].toUpperCase() + base.slice(1)).slice(0, 120);
-}
 
 /**
  * Claude artifacts this session published, from completed Artifact tool receipts only. Reads, lists,
  * quickstarts and asset uploads also mention artifact links and never count; neither do links in chat.
  */
-export function publishedArtifacts(entries: readonly Entry[], agentId: string): Artifact[] {
+export function publishedArtifacts(entries: readonly Entry[], agentId: string, titles?: TitleIndex): Artifact[] {
   const found = new Map<string, Artifact>();
   for (const entry of entries) {
     const v = entry.item as { type?: string; name?: string; status?: string; error?: unknown; detail?: { type?: string; input?: unknown; output?: unknown } } | null;
@@ -39,7 +24,8 @@ export function publishedArtifacts(entries: readonly Entry[], agentId: string): 
     const at = typeof entry.timestamp === "string" ? entry.timestamp : null;
     const previous = found.get(match[1]);
     found.set(match[1], {
-      url: match[1], title: titleFrom(input) ?? previous?.title ?? null, by: agentId,
+      url: match[1], title: titles?.get(titleKey(match[1]))?.title ?? receiptTitle(input)?.title ?? previous?.title ?? null, by: agentId,
+      ...(titles?.get(titleKey(match[1])) ? { titleRank: titles.get(titleKey(match[1]))!.rank } : {}),
       firstAt: previous?.firstAt ?? at, lastAt: at ?? previous?.lastAt ?? null, publishes: (previous?.publishes ?? 0) + 1,
     });
   }
@@ -51,7 +37,9 @@ const later = (a: string | null, b: string | null) => (a ?? "").localeCompare(b 
 /** Keeps the workspace's artifact list current. Newer scans replace what they cover; others stay. */
 export function mergeArtifacts(w: Workspace, scanned: Artifact[], now = Date.now()): boolean {
   const byUrl = new Map<string, Artifact>();
-  for (const a of scanned) {
+  for (let a of scanned) {
+    const previous = w.artifacts.find(old => titleKey(old.url) === titleKey(a.url));
+    if (previous?.title && (!a.title || (previous.titleRank ?? 1) > (a.titleRank ?? 1))) a = { ...a, title: previous.title, ...(previous.titleRank ? { titleRank: previous.titleRank } : {}) };
     const seen = byUrl.get(a.url);
     byUrl.set(a.url, seen ? { ...seen, publishes: seen.publishes + a.publishes, title: seen.title ?? a.title, firstAt: [seen.firstAt, a.firstAt].filter(Boolean).sort()[0] ?? null, lastAt: [seen.lastAt, a.lastAt].sort(later).at(-1) ?? null, by: a.by === w.mainAgentId ? a.by : seen.by } : a);
   }
@@ -59,7 +47,8 @@ export function mergeArtifacts(w: Workspace, scanned: Artifact[], now = Date.now
     .sort((a, b) => later(b.lastAt, a.lastAt)).slice(0, MAX_ARTIFACTS);
   const changed = JSON.stringify(next) !== JSON.stringify(w.artifacts);
   w.artifacts = next;
-  return chooseDetectedSpec(w, now) || changed;
+  const enriched = fillWorkspaceTitles(w, localTitles([w]));
+  return chooseDetectedSpec(w, now) || changed || enriched;
 }
 
 /**
