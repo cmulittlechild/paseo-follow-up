@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { rm, testStore } from "./support/store-temp-dir";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, answerItemId, type Gateway, type Runtime } from "../server/engine";
@@ -29,7 +30,7 @@ const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { s
 
 async function setup(t: { after(fn: () => unknown): void }, o: Parameters<typeof testQueue>[1] = {}) {
   const root = await mkdtemp(join(tmpdir(), "follow-queue-"));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   const stops: (() => Promise<unknown> | void)[] = [];
   t.after(async () => { for (const stop of stops) await stop(); await store.flush().catch(() => undefined); await rm(root, { recursive: true, force: true }); });
   const w = workspace({ prs: [pr()] });
@@ -197,7 +198,7 @@ test("the file stays tiny: settled items keep only a short tail", async t => {
 test("an unreadable queue.json starts empty instead of stopping the worker", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-queue-bad-")); t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, QUEUE_FILE), "{not json");
-  const q = new MessageQueue(root, { deliverTo: async () => "a", arrived: async () => null });
+  const q = testStore(MessageQueue, root, { deliverTo: async () => "a", arrived: async () => null });
   await q.load();
   assert.deepEqual(q.list().items, []);
 });

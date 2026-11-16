@@ -1,5 +1,6 @@
 import { MessageQueue, type Courier, type Target } from "../../server/message-queue";
 import { FakeTimers } from "./fake-timers";
+import { trackPersistence } from "./store-temp-dir";
 
 /**
  * A MessageQueue for tests: FakeTimers drive its quiet window, retries and attempt deadlines (the queue's clock follows
@@ -19,7 +20,8 @@ export async function testQueue(directory: string, o: { deliver?: Courier["deliv
     arrived: o.arrived ?? (async (_agentId, messageId) => delivered.some(d => d.messageId === messageId)),
     ...(o.probe ? { probe: o.probe } : {}),
   };
-  const queue = new MessageQueue(directory, courier, { writeMs: 0 });
+  // Registered like every store, so a test's rm drains its pending write first (tests/store-temp-dir.test.ts).
+  const queue = trackPersistence(directory, new MessageQueue(directory, courier, { writeMs: 0 }));
   queue.timers = timers;
   queue.now = () => start + timers.now;
   queue.quietMs = o.quiet ?? 0;
