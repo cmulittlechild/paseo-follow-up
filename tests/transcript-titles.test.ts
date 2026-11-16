@@ -101,3 +101,37 @@ test("untitled-link workspaces precede other tracked transcripts, newest first w
   }
   assert.deepEqual((await trackedTitleTranscripts(dir, [priority, other], { claude: join(dir, "claude") }, new Set([priority.id]))).map(p => p.split("/").at(-1)), ["priority-new.jsonl", "priority-old.jsonl", "other-new.jsonl", "other-old.jsonl"]);
 });
+
+for (const reload of [false, true]) test(`backward chunks pair straddling receipts and partial lines${reload ? " across restart" : ""}`, async t => {
+  const dir = await temp(t), path = join(dir, "session.jsonl");
+  const text = line([{ type: "text", text: "x".repeat(600) }]) + receipt("Backward plan");
+  await writeFile(path, text); const s = setup(dir, [path], 128);
+  let bytes = 0;
+  let scanner = new TranscriptTitleLookup({ store: new TranscriptTitleStore(dir), paths: async () => [path], budget: 128, direction: "backward" });
+  for (let i = 0; i < 30; i++) {
+    if (reload && i > 0) scanner = new TranscriptTitleLookup({ store: new TranscriptTitleStore(dir), paths: async () => [path], budget: 128, direction: "backward" });
+    const pass = await scanner.tick([s.w], s.file.workspaces, async titles => { fillLinkedTitles(s.file, titles); });
+    assert.ok(pass.bytes <= 128); bytes += pass.bytes;
+    if (!pass.bytes) break;
+  }
+  assert.equal(s.file.workspaces[s.w.id].items[0].title, "Backward plan");
+  assert.ok(bytes <= Buffer.byteLength(text));
+  assert.ok((await s.store.read()).files[path].backward < Buffer.byteLength(text));
+});
+
+test("appends during backward backfill use an independent forward cursor", async t => {
+  const dir = await temp(t), path = join(dir, "session.jsonl");
+  const original = receipt("Original plan") + line([{ type: "text", text: "x".repeat(2000) }]);
+  await writeFile(path, original); const s = setup(dir, [path], 512);
+  const appendedUrl = URL + "-new"; noteRefs(s.file, s.w.id, [{ raw: appendedUrl, strong: true }], 0);
+  const lookup = new TranscriptTitleLookup({ store: s.store, paths: async () => [path], budget: 512, direction: "backward" });
+  const tick = () => lookup.tick([s.w], s.file.workspaces, async titles => { fillLinkedTitles(s.file, titles); });
+  await tick(); const before = (await s.store.read()).files[path];
+  const appended = receipt("Appended plan", appendedUrl); await appendFile(path, appended);
+  assert.equal((await tick()).bytes, Buffer.byteLength(appended));
+  const after = (await s.store.read()).files[path];
+  assert.equal(after.backward, before.backward); assert.equal(after.offset, Buffer.byteLength(original + appended));
+  assert.equal(s.file.workspaces[s.w.id].items.find(i => i.url === appendedUrl)?.title, "Appended plan");
+  for (let i = 0; i < 15 && !s.file.workspaces[s.w.id].items[0].title; i++) await tick();
+  assert.equal(s.file.workspaces[s.w.id].items[0].title, "Original plan");
+});
