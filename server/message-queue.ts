@@ -46,6 +46,11 @@ export class MessageQueue {
   quietMs = QUEUE_QUIET_MS;
   capMs = QUEUE_CAP_MS;
   attemptMs = QUEUE_ATTEMPT_MS;
+  /**
+   * Harness only (FOLLOW_UP_QUEUE_TIME_SCALE, e.g. 0.01): shrinks every retry wait and the attempt deadline, so a check
+   * reaches Retrying and Failed in seconds. Unset (1) everywhere else.
+   */
+  scale = Math.min(1, Math.max(0.001, Number(process.env.FOLLOW_UP_QUEUE_TIME_SCALE) || 1));
   private items = new Map<string, QueueItem>();
   private recent: QueueItem[] = [];
   private migrations: string[] = [];
@@ -204,7 +209,7 @@ export class MessageQueue {
       if (arrived.unknown) {
         item.unknowns++;
         if (item.unknowns >= AMBIGUOUS_MS.length) { item.state = "failed"; item.nextAt = null; item.reason = "Follow-up couldn't confirm the agent got it."; }
-        else item.nextAt = this.iso(AMBIGUOUS_MS[item.unknowns]);
+        else item.nextAt = this.iso(AMBIGUOUS_MS[item.unknowns] * this.scale);
         await this.project(item); this.save();
         return;
       }
@@ -231,7 +236,7 @@ export class MessageQueue {
     if (this.stopped) return;
     try {
       this.sends++;
-      const to = await withDeadline(this.courier.deliverTo(target, item.text, messageId, item.by), this.attemptMs, "Paseo didn't confirm the message in time", this.timers);
+      const to = await withDeadline(this.courier.deliverTo(target, item.text, messageId, item.by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
       // A stopped worker writes nothing: the next one owns queue.json and reads this send back as uncertain.
       if (this.stopped) return;
       if (item.envelope) item.envelope.to = to;
@@ -240,14 +245,14 @@ export class MessageQueue {
       if (this.stopped) return;
       if (error instanceof DeliveryDeferred) { item.envelope = null; return this.neverLeft(item, error.message); }
       if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, reason: "The agent's conversation is gone, so it can't take messages." }); await this.project(item); this.save(); return; }
-      Object.assign(item, { state: "uncertain", reason: "Paseo didn't confirm it", nextAt: this.iso(AMBIGUOUS_MS[Math.min(item.unknowns, AMBIGUOUS_MS.length - 1)]) });
+      Object.assign(item, { state: "uncertain", reason: "Paseo didn't confirm it", nextAt: this.iso(AMBIGUOUS_MS[Math.min(item.unknowns, AMBIGUOUS_MS.length - 1)] * this.scale) });
       console.warn(`[follow-up] ${item.kind} ${item.id} not confirmed: ${error instanceof Error ? error.message : String(error)}`);
       await this.project(item); this.save();
     }
   }
   private async neverLeft(item: QueueItem, reason: string): Promise<void> {
     item.attempts++;
-    Object.assign(item, { state: item.envelope ? "uncertain" : "queued", reason, nextAt: this.iso(neverLeftDelay(item.attempts)) });
+    Object.assign(item, { state: item.envelope ? "uncertain" : "queued", reason, nextAt: this.iso(neverLeftDelay(item.attempts) * this.scale) });
     await this.project(item); this.save();
   }
   private async settle(item: QueueItem, state: "sent" | "cancelled", reason: string | null, to: string | null): Promise<void> {
