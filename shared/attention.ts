@@ -196,7 +196,7 @@ function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
   // The queue's rare loud case (a-message-is-saved-before-sent-and-arrives-once): the chat couldn't confirm the answer
   // after the whole retry ladder, so it is the developer's to check and Retry. Everything else retries on its own.
   for (const q of questions.filter(q => q.answer?.delivery.state === "failed"))
-    items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Your ${q.id} answer may not have reached the agent`, detail: deliveryStatus({ state: "failed", reason: q.answer!.delivery.reason }).detail });
+    items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Your ${q.id} answer: Failed`, detail: deliveryStatus({ state: "failed", reason: q.answer!.delivery.reason }).detail });
   // Copied or put in the agent's chat: the developer's to send, so it stays here until it is
   // (an-answer-leaves-needs-you-only-when-delivered, shared/questions.ts awaitingSend).
   for (const q of questions.filter(awaitingSend)) {

@@ -57,9 +57,9 @@ function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: s
     // The queue's states read one way everywhere (shared/queue.ts deliveryStatus).
     case "sending": case "queued": case "retrying": case "failed": case "cancelled": {
       const s = deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt });
-      return { icon: s.tone === "spinner" ? "" : d.state === "queued" ? "Clock" : d.state === "cancelled" ? "CircleSlash" : "TriangleAlert", tone: s.tone === "danger" ? "warning" : s.tone === "success" ? "success" : s.tone, text: s.detail };
+      return { icon: s.tone === "spinner" ? "" : d.state === "queued" ? "Clock" : d.state === "retrying" ? "RotateCcw" : d.state === "cancelled" ? "CircleSlash" : "TriangleAlert", tone: s.tone === "danger" ? "warning" : s.tone, text: s.detail };
     }
-    case "unconfirmed": return { icon: "TriangleAlert", tone: "warning", text: RETRYING_DETAIL };
+    case "unconfirmed": return { icon: "RotateCcw", tone: "muted", text: RETRYING_DETAIL };
     case "copied": return { icon: "Copy", tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
     case "signed-off": return { icon: "Check", tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
     case "in-chat": return { icon: "MessageSquareText", tone: "muted", text: `Put in ${who(w, d.to)}'s chat ${ago(d.at, now)}. Send it there, or send it from here.` };
@@ -273,7 +273,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {open && composer && <IconButton theme={theme} compact={compact} icon="Copy" label="Copy answer" tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
       {q.answer && resendTitle(q.answer.delivery) && <Button theme={theme} compact={compact} kind={q.answer.delivery.state === "failed" ? "primary" : undefined} icon="RotateCcw" title={resendTitle(q.answer.delivery)!} accessibilityLabel={q.answer.delivery.state === "failed" ? `Send the ${q.id} answer again` : `Try sending the ${q.id} answer now`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
-      {q.answer && q.answer.delivery.state === "failed" && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
+      {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
       {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title="Open chat" accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
       {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
       {pinned && open && !free && !other && !noteOpen && <Button theme={theme} compact={compact} kind="ghost" icon="Pencil" title="Note" accessibilityLabel={`Add a note for the agent about ${q.id}`} onPress={() => setNoteOpen(true)} />}

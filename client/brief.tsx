@@ -296,13 +296,13 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
   // Pending reads as in progress (a dashed circle), and becomes the solid check when the send lands.
   const icon = b.state === "superseded" ? "History" : failed ? "CircleAlert" : sending ? "CircleDashed" : "CircleCheck";
   const spoken = pending ? `Done, sending (undo available): ${ask}` : unsent ? `${status!.label}: ${ask}` : failed ? `Answer not delivered: ${ask}` : sending ? `Answered, sending to the agent: ${ask}` : undefined;
-  const color = failed ? c.statusDanger : pastTone(b.state, sending) === "success" ? c.statusSuccess : c.foregroundMuted;
+  const color = failed ? c.statusWarning : pastTone(b.state, sending) === "success" ? c.statusSuccess : c.foregroundMuted;
   // A Done card already says "Done" as its outcome; its time stands alone rather than repeating it.
   const right = delivery && !pending ? delivery.label : unsent ? status!.label : answered && b.outcomeAt ? (b.outcome === "Done" ? clock(b.outcomeAt) : `Answered ${clock(b.outcomeAt)}`) : age(b.outcomeAt ?? b.at, now);
   // Failed (the rare loud case) says so with Retry; a timer's wait (Queued, Retrying) offers Try now; Cancelled says why.
   const undelivered = (indent: number) => delivery && !pending && (failed || cancelled || delivery.action === "try-now") && <View style={{ paddingLeft: indent, gap: 8, alignItems: "flex-start" }}>
-    <Text accessibilityRole={failed ? "alert" : undefined} style={{ color: failed ? c.statusDanger : c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{failed ? `${delivery.detail} Your answer is kept.` : delivery.detail}</Text>
-    {onResend && delivery.action && <Btn label={resending ? "Sending…" : delivery.action === "retry" ? "Retry" : "Try now"} icon="RotateCcw" onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
+    <Text accessibilityRole={failed ? "alert" : undefined} style={{ color: failed ? c.statusWarning : c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{failed ? `${delivery.detail} Your answer is kept.` : delivery.detail}</Text>
+    {onResend && delivery.action && <Btn label={resending ? "Sending…" : delivery.action === "retry" ? "Retry" : "Try now"} icon="RotateCcw" primary={delivery.action === "retry"} onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
   </View>;
   const body = expanded && <View style={{ gap: 10, paddingTop: 4 }}>
     <BriefBody b={b} c={c} compact={compact} tight={false} embedded height={height} mode="readonly" picks={{}} onPick={() => undefined} busy={null} />

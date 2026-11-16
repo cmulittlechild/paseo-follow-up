@@ -366,7 +366,7 @@ export function resendTitle(d: { state: string; nextAt?: string | null }): "Retr
  * (2026-11-16: the row's own state list left out failed and retrying, so "Check the agent's chat, then Retry" had no Retry).
  */
 export function answerHasActions(d: { state: string; nextAt?: string | null }): boolean {
-  return resendTitle(d) !== null || d.state === "copied" || d.state === "in-chat" || d.state === "queued" || d.state === "unconfirmed";
+  return resendTitle(d) !== null || d.state === "copied" || d.state === "in-chat" || d.state === "queued" || d.state === "unconfirmed" || d.state === "cancelled";
 }
 
 export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {

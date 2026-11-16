@@ -117,6 +117,7 @@ export type DeliveryStatus = {
   label: string;
   /** The sentence under the answer. */
   detail: string;
+  /** Failed is amber (the developer's to check: DESIGN.md), never red; Retrying is muted (Follow-up's own work). */
   tone: "muted" | "spinner" | "success" | "warning" | "danger";
   /** The button the card offers: Retry (failed) or Try now (waiting on a timer). */
   action: "retry" | "try-now" | null;
@@ -125,7 +126,7 @@ export type DeliveryStatus = {
 };
 const hhmm = (iso: string) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
 
-export const RETRYING_DETAIL = "Paseo didn't confirm it. Follow-up reads the agent's chat before sending again, so it never arrives twice.";
+export const RETRYING_DETAIL = "Not confirmed yet. Follow-up reads the agent's chat before sending again, so it never arrives twice.";
 export const FAILED_DETAIL = "Follow-up couldn't confirm the agent got it. Check the agent's chat, then Retry.";
 
 export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string = hhmm): DeliveryStatus {
@@ -133,8 +134,8 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
   switch (d.state) {
     case "sending": return { label: "Sending…", detail: "Sending to the agent…", tone: "spinner", action: null, pending: true };
     case "queued": return { label: "Queued", detail: `Queued${d.reason ? `: ${d.reason}` : ""}${at ? `, retrying at ${at}` : ""}.`, tone: "muted", action: d.nextAt ? "try-now" : null, pending: true };
-    case "retrying": return { label: at ? `Retrying at ${at}` : "Retrying", detail: RETRYING_DETAIL, tone: "warning", action: "try-now", pending: true };
-    case "failed": return { label: "Failed", detail: d.reason ? `${d.reason} Check the agent's chat, then Retry.` : FAILED_DETAIL, tone: "danger", action: "retry", pending: false };
+    case "retrying": return { label: at ? `Retrying at ${at}` : "Retrying", detail: at ? `Retrying at ${at}. ${RETRYING_DETAIL}` : RETRYING_DETAIL, tone: "muted", action: "try-now", pending: true };
+    case "failed": return { label: "Failed", detail: d.reason ? `${d.reason} Check the agent's chat, then Retry.` : FAILED_DETAIL, tone: "warning", action: "retry", pending: false };
     case "cancelled": return { label: "Not sent", detail: d.reason ?? "Follow-up didn't send it.", tone: "muted", action: null, pending: false };
     case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };
   }
