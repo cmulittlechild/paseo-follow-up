@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
+import { rm, testStore } from "./support/store-temp-dir";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, heldAgentSide, repairItemId, type Gateway, type Runtime } from "../server/engine";
@@ -20,7 +21,7 @@ import { testQueue } from "./support/queue";
  */
 async function setup(t: { after(fn: () => unknown): void }, w = workspace({ prs: [pr({ snapshot: snapshot({ conflict: true }) })] })) {
   const root = await mkdtemp(join(tmpdir(), "follow-queue-repairs-"));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   askQuestion(w, w.mainAgentId, { title: "Retry window", question: "How long?", options: [{ letter: "A", label: "An hour" }, { letter: "B", label: "A day" }], recommend: "A" } as never, "work-around", clock);
   await store.mutate(s => { s.workspaces.push(w); });
   let runtime: Runtime = { busy: false, reason: null, archived: false, mainLoaded: true, mainRecent: true };
