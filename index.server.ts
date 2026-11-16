@@ -316,7 +316,7 @@ export default function contribute(server: PluginServerContext) {
       const w = (await store.snapshot()).workspaces.find(w => w.id === item.key && w.enable_tracking && !w.archived);
       if (!w) return;
       const has = w.undelivered?.find(m => m.id === item.id);
-      const entry = undeliveredEntry(item, Date.now(), gateway.directory.cached(item.ref.agentId!)?.title ?? null, has?.since ?? null);
+      const entry = undeliveredEntry(item, Date.now(), gateway.directory.cached(item.ref.agentId!)?.title ?? null, has?.since ?? null, queue.scale);
       if (!entry && !has || entry && has && JSON.stringify(entry) === JSON.stringify(has)) return;
       await store.mutateWorkspace(w.id, x => {
         const rest = (x.undelivered ?? []).filter(m => m.id !== item.id);
