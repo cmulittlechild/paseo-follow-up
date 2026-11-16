@@ -13,6 +13,8 @@ export const BUSY_TURNS_PER_MIN: number;
 export const BUSY_TURN_ITEMS: number;
 export const BUSY_ITEM_BYTES: number;
 export const BUSY_GROWTH_BUDGET_MB: number;
+export const BURST_RETURN_BUDGET_MB: number;
+export function burstReturnVerdict(gapsMb: readonly (readonly number[])[], budgetMb: number): { gapMediansMb: number[]; lastMb: number; over: boolean };
 export function busyVerdict(samplesMb: readonly number[], budgetMb: number): { firstMb: number; lastMb: number; growthMb: number; peakMb: number; over: boolean };
 export const CI_IDLE_P50_MB: number;
 export const CI_IDLE_SD_MB: number;

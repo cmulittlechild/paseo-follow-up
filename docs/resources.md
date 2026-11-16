@@ -49,9 +49,27 @@ loaded for an hour.
   with `sameJson`. An unchanged draft writes, re-validates and derives nothing.
 - **Mutate one workspace when you can.** `mutateWorkspace(id, work)` copies only that workspace, not the whole
   state. Use it in per-workspace loops like the engine's tick.
-- **One GC after the first tick.** `compactHeap()` (`server/memory.ts`) runs one compacting GC after startup and
-  the first engine tick, so the worker doesn't idle at its startup peak. Guarded by `tests/store-idle.test.ts` and
+- **One GC after the first tick.** `compactHeap()` (`server/memory.ts`) runs one memory-reducing GC after startup
+  and the first engine tick, so the worker doesn't idle at its startup peak. Guarded by `tests/store-idle.test.ts` and
   `test:scale`'s RSS budget.
+- **Memory returns after a burst** (`memory-returns-after-a-burst`). A busy period (agent turns, an open app, PR and
+  check updates) grows V8's young generation to its 128 MB cap, and V8 keeps those pages after it shrinks. Only a
+  memory-reducing collection (`gc({ type: "major", flavor: "last-resort" })`) returns them; a plain `gc()` doesn't.
+  `watchMemory()` starts after the first tick: its `HeapSettler` runs one when RSS is 48 MB over where the last one
+  left it, the worker has had a quiet minute (mean event-loop utilization under 1 %; bursts run at about 3 %, gaps at
+  0.2 %) and 2 minutes have passed. Busy for 10 minutes past the threshold, it runs anyway; one that gives back under
+  8 MB doubles the wait (a runtime that ignores the flavor, as Node 20 does, or growth outside V8).
+  - Cost: 57–96 ms with the event loop blocked and about 0.2–0.3 s of CPU per collection on a live-sized heap, about
+    one per busy period.
+  - Harness, live-sized, 3-minute bursts: 320–369 MB after each burst without it, 195–208 MB with it.
+  - The young generation's cap is V8's default; `--max-semi-space-size` would lower it, but only as a flag on the
+    process that starts the worker (Paseo does), not from inside the plugin.
+- **The worker's memory in heartbeat.json.** Every minute `heartbeat.json` gets `memory`: `rssMb`, `heapUsedMb`,
+  `heapTotalMb`, `externalMb`, `arrayBuffersMb`, `youngMb`, the last minute's mean event-loop `utilization`,
+  `quietSettles` and `forcedSettles` (settles a quiet minute allowed, and ones the 10-minute fallback forced), and the
+  last five settles (`beforeMb`, `afterMb`, `ms`, `cpuMs`, `forced`). `version`, `at` and `error` stay as the
+  installer's probation reads them. The 1 % quiet gate comes from the harness: on a host whose worker never idles under
+  it, settles show up as forced, and `utilization` says by how much.
 
 ## The resource governor
 

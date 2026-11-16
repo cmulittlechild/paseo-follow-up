@@ -75,6 +75,18 @@ test("the busy window is judged on growth: last fifth's median over the first fi
   assert.ok(v.over && v.growthMb > BUSY_GROWTH_BUDGET_MB, `a steady climb fails (grew ${v.growthMb} MB)`);
 });
 
+test("memory-returns-after-a-burst: the last gap's median RSS is judged, and the budget sits between the two builds", async () => {
+  const { burstReturnVerdict, BURST_RETURN_BUDGET_MB } = await import("../scripts/scale-budget.mjs");
+  // Harness 2026-11-16, live-sized, 3-minute bursts: 2.1.0-beta.2's gaps 320–369 MB, the settler's 195–208.
+  const kept = [Array.from({ length: 36 }, (_, i) => 325 + (i % 5)), Array.from({ length: 36 }, (_, i) => 329 + (i % 4))];
+  const returned = [Array.from({ length: 36 }, (_, i) => (i < 12 ? 316 : 197) + (i % 3)), Array.from({ length: 36 }, (_, i) => (i < 12 ? 318 : 199) + (i % 3))];
+  const v = burstReturnVerdict(kept, BURST_RETURN_BUDGET_MB);
+  assert.ok(v.over && v.lastMb > BURST_RETURN_BUDGET_MB, `memory held after the bursts fails (${v.gapMediansMb})`);
+  assert.equal(burstReturnVerdict(returned, BURST_RETURN_BUDGET_MB).over, false, "a gap that settles a minute in passes on its median");
+  assert.equal(burstReturnVerdict([], BURST_RETURN_BUDGET_MB).over, false, "no cycles, no verdict");
+  assert.ok(BURST_RETURN_BUDGET_MB >= 208 + 40 && BURST_RETURN_BUDGET_MB <= 320 - 40, "the budget keeps a margin on both sides of the measured builds");
+});
+
 /**
  * scale-gate-never-reports-only (2026-11-13): the live-sized busy window (`test:scale:live`) reports its budgets until
  * their derived values land, so the memory fix could merge. The gate in `verify` keeps failing on every budget, and
