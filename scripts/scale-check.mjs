@@ -129,7 +129,7 @@ try {
       const source = join(home, "agents", dir, created[0].agentId + ".json");
       const record = await readFile(source, "utf8").then(JSON.parse, () => null);
       if (!record) continue;
-      await writeFile(join(home, "agents", dir, "acme-title-source.json"), JSON.stringify({ ...record, id: "acme-title-source", provider: "claude", archivedAt: old, persistence: { sessionId: "acme-title-source" } }));
+      await writeFile(join(home, "agents", dir, "acme-title-source.json"), JSON.stringify({ ...record, id: "acme-title-source", provider: "claude", archivedAt: old, persistence: { provider: "claude", sessionId: "acme-title-source" } }));
       break;
     }
     const projects = join(root, "claude", "projects", "fixture"); await mkdir(projects, { recursive: true });

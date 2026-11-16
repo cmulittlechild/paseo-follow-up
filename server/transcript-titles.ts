@@ -82,15 +82,17 @@ export class TranscriptTitleLookup {
       }
       const budget = this.d.budget ?? TITLE_BACKLOG_BYTES;
       let bytes = 0, attempted = 0;
+      const caughtUp = new Set<string>();
       const updates = new Map<string, Cursor>(), learned: TitleIndex = new Map(), locations = new Map<string, string>();
       for (const path of this.paths.flatMap(path => Array.from({ length: Math.ceil(budget / (1024 * 1024)) }, () => path))) {
         if (bytes >= budget) break;
+        if (caughtUp.has(path)) continue;
         let handle;
         try {
           const info = await stat(path);
           if (!info.isFile()) continue;
           const cursor = cursorFor(updates.get(path) ?? cache.files[path], info);
-          if (cursor.offset >= info.size) continue;
+          if (cursor.offset >= info.size) { caughtUp.add(path); continue; }
           handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
           const actual = await handle.stat();
           if (!actual.isFile()) continue;

@@ -1140,7 +1140,7 @@ export default function contribute(server: PluginServerContext) {
     if (!stopped) linkedTimer = setTimeout(() => void linkedLoop(), 10 * 60_000);
   };
   linkedTimer = setTimeout(() => void linkedLoop(), 90_000);
-  // Local title recovery is independent of a panel/RPC response: one shared index, at most 2 MB per tick.
+  // Local title recovery is independent of a panel/RPC response: one shared index, at most 4 MB for an unnamed backlog.
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   const titleLoop = async () => {
     await ready;
