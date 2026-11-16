@@ -35,6 +35,9 @@ test("the settler compacts once RSS is over its baseline and the worker has been
   tick(300, 0.002, 12); assert.equal(runs, 2, "again once the gap has passed");
   tick(300, 0.04, 110); assert.equal(runs, 2, "busy: waits");
   tick(300, 0.04, 10); assert.equal(runs, 3, "busy ten minutes past the threshold: settles anyway");
+  assert.deepEqual(s.settles.map(x => x.forced), [false, false, true], "the fallback's settle is marked forced");
+  assert.equal(s.quietSettles, 2); assert.equal(s.forcedSettles, 1);
+  assert.ok(Math.abs(s.utilization()! - 0.04) < 1e-9, "the last minute's mean utilization");
   gives = 2; tick(330, 0.002, 24); assert.equal(runs, 4);
   tick(400, 0.002, 30); assert.equal(runs, 4, "a futile collection doubles the gap");
   tick(400, 0.002, 20); assert.equal(runs, 5);
@@ -52,5 +55,7 @@ test("heartbeat.json gets the worker's memory and keeps what the installer reads
     const m = beat.memory!;
     assert.ok(m.rssMb > 0 && m.heapUsedMb > 0 && m.heapTotalMb >= m.heapUsedMb && m.externalMb >= 0 && m.arrayBuffersMb >= 0, JSON.stringify(m));
     assert.ok(m.youngMb === null || m.youngMb >= 0); assert.deepEqual(m.settles, []);
+    assert.ok(m.utilization !== null && m.utilization >= 0 && m.utilization <= 1, `utilization ${m.utilization}`);
+    assert.equal(m.quietSettles, 0); assert.equal(m.forcedSettles, 0);
   } finally { watch.stop(); await rm(dir, { recursive: true, force: true }); }
 });

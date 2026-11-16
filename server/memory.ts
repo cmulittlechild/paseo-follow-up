@@ -29,7 +29,8 @@ export function compactHeap(): boolean {
   return true;
 }
 
-export type Settle = { at: number; beforeMb: number; afterMb: number; ms: number; cpuMs: number };
+/** One settle: `forced` when the 10-minute fallback ran it, not a quiet minute. */
+export type Settle = { at: number; beforeMb: number; afterMb: number; ms: number; cpuMs: number; forced: boolean };
 export type SettlerOptions = { growthMb?: number; minGapMs?: number; quietSamples?: number; quietUtilization?: number; maxWaitMs?: number; now?: () => number; rssMb?: () => number; compact?: () => boolean; cpuMs?: () => number };
 /**
  * Memory a burst grows comes back when the burst ends (memory-returns-after-a-burst). Under a burst of work V8 grows its
@@ -49,6 +50,11 @@ export class HeapSettler {
   private recent: number[] = [];
   private overSince: number | null = null;
   readonly settles: Settle[] = [];
+  /** Settles since start, by what let them run: a quiet minute, or the fallback (live verification, heartbeat.json). */
+  quietSettles = 0;
+  forcedSettles = 0;
+  /** The mean event-loop utilization over the last minute's samples, or null before the first. */
+  utilization(): number | null { return this.recent.length ? this.recent.reduce((a, b) => a + b, 0) / this.recent.length : null; }
   constructor(private o: SettlerOptions = {}) { this.gap = o.minGapMs ?? 120_000; }
   observe(rssMb: number, utilization = 0): Settle | null {
     const now = (this.o.now ?? Date.now)();
@@ -67,7 +73,8 @@ export class HeapSettler {
     this.last = now; this.overSince = null;
     if (!ran) return null;
     const after = (this.o.rssMb ?? (() => process.memoryUsage().rss / 1048576))();
-    const settle = { at: now, beforeMb: Math.round(rssMb), afterMb: Math.round(after), ms, cpuMs };
+    const settle = { at: now, beforeMb: Math.round(rssMb), afterMb: Math.round(after), ms, cpuMs, forced: !quiet };
+    if (quiet) this.quietSettles++; else this.forcedSettles++;
     this.gap = rssMb - after < 8 ? Math.min(this.gap * 2, 3_600_000) : (this.o.minGapMs ?? 120_000);
     this.baseline = after; this.settles.push(settle); if (this.settles.length > 20) this.settles.shift();
     console.error(`[follow-up] memory settled: ${settle.beforeMb} → ${settle.afterMb} MB, ${ms} ms (cpu ${cpuMs} ms)`);
@@ -75,13 +82,17 @@ export class HeapSettler {
   }
 }
 
-export type MemoryBeat = { at: number; rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number; arrayBuffersMb: number; youngMb: number | null; settles: Settle[] };
+export type MemoryBeat = { at: number; rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number; arrayBuffersMb: number; youngMb: number | null; utilization: number | null; quietSettles: number; forcedSettles: number; settles: Settle[] };
 const mb = (n: number) => Math.round(n / 1048576 * 10) / 10;
-/** The worker's memory as heartbeat.json reports it: process.memoryUsage(), V8's young generation, the last settles. */
-export function memoryBeat(settles: readonly Settle[]): MemoryBeat {
+const round = (u: number | null) => u === null ? null : Math.round(u * 10000) / 10000;
+/**
+ * The worker's memory as heartbeat.json reports it: process.memoryUsage(), V8's young generation, the last minute's mean
+ * event-loop utilization (is the 1 % quiet gate reachable on this host?), and the settles, quiet and forced counted.
+ */
+export function memoryBeat(settler: HeapSettler): MemoryBeat {
   const m = process.memoryUsage();
   const young = getHeapSpaceStatistics().find(x => x.space_name === "new_space");
-  return { at: Date.now(), rssMb: mb(m.rss), heapUsedMb: mb(m.heapUsed), heapTotalMb: mb(m.heapTotal), externalMb: mb(m.external), arrayBuffersMb: mb(m.arrayBuffers), youngMb: young ? mb(young.space_size) : null, settles: settles.slice(-5) };
+  return { at: Date.now(), rssMb: mb(m.rss), heapUsedMb: mb(m.heapUsed), heapTotalMb: mb(m.heapTotal), externalMb: mb(m.external), arrayBuffersMb: mb(m.arrayBuffers), youngMb: young ? mb(young.space_size) : null, utilization: round(settler.utilization()), quietSettles: settler.quietSettles, forcedSettles: settler.forcedSettles, settles: settler.settles.slice(-5) };
 }
 
 /**
@@ -101,7 +112,7 @@ export function watchMemory(o: { heartbeatFile: string; settler?: HeapSettler; s
   const beat = setInterval(() => void (async () => {
     const current = JSON.parse(await readFile(o.heartbeatFile, "utf8").catch(() => "{}")) as Record<string, unknown>;
     const temporary = `${o.heartbeatFile}.${process.pid}.tmp`;
-    await writeFile(temporary, JSON.stringify({ ...current, memory: memoryBeat(settler.settles) }), { mode: 0o600 });
+    await writeFile(temporary, JSON.stringify({ ...current, memory: memoryBeat(settler) }), { mode: 0o600 });
     await rename(temporary, o.heartbeatFile);
   })().catch(() => undefined), o.beatMs ?? 60_000);
   sample.unref?.(); beat.unref?.();

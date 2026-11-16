@@ -65,8 +65,11 @@ loaded for an hour.
   - The young generation's cap is V8's default; `--max-semi-space-size` would lower it, but only as a flag on the
     process that starts the worker (Paseo does), not from inside the plugin.
 - **The worker's memory in heartbeat.json.** Every minute `heartbeat.json` gets `memory`: `rssMb`, `heapUsedMb`,
-  `heapTotalMb`, `externalMb`, `arrayBuffersMb`, `youngMb` and the last five settles (`beforeMb`, `afterMb`, `ms`,
-  `cpuMs`). `version`, `at` and `error` stay as the installer's probation reads them.
+  `heapTotalMb`, `externalMb`, `arrayBuffersMb`, `youngMb`, the last minute's mean event-loop `utilization`,
+  `quietSettles` and `forcedSettles` (settles a quiet minute allowed, and ones the 10-minute fallback forced), and the
+  last five settles (`beforeMb`, `afterMb`, `ms`, `cpuMs`, `forced`). `version`, `at` and `error` stay as the
+  installer's probation reads them. The 1 % quiet gate comes from the harness: on a host whose worker never idles under
+  it, settles show up as forced, and `utilization` says by how much.
 
 ## The resource governor
 

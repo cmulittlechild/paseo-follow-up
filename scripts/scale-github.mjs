@@ -9,7 +9,10 @@ const sha = n => Array.from({ length: 40 }, (_, k) => "0123456789abcdef"[(n * 31
 const checks = n => Array.from({ length: 25 }, (_, k) => k % 6 === 5 ? { context: "deploy/preview-" + k, state: "SUCCESS" } : { name: "ci / job " + k + " (node 22, shard " + (k % 4) + ")", status: "COMPLETED", conclusion: (n + epoch) % 5 === 0 && k === (2 + epoch) % 25 ? "FAILURE" : (n + epoch) % 7 === 0 && k === 3 ? "CANCELLED" : "SUCCESS" });
 // SCALE_GH_STATES (scale-check --data-from): each PR answers in the state the copied data last saw.
 const states = process.env.SCALE_GH_STATES ? JSON.parse(require("fs").readFileSync(process.env.SCALE_GH_STATES, "utf8")) : null;
-// SCALE_GH_EPOCH (scale-check --cycles): a file holding the burst number; each burst moves some PRs' heads, checks and\n// review threads, so the worker reads real PR and check updates.\nconst epoch = process.env.SCALE_GH_EPOCH ? Number(require("fs").readFileSync(process.env.SCALE_GH_EPOCH, "utf8")) || 0 : 0;\nconst stateOf = n => states?.[process.env.GH_REPO + "#" + n] ?? (n % 9 === 0 ? "MERGED" : "OPEN");
+// SCALE_GH_EPOCH (scale-check --cycles): a file holding the burst number; each burst moves some PRs' heads, checks and
+// review threads, so the worker reads real PR and check updates.
+const epoch = process.env.SCALE_GH_EPOCH ? Number(require("fs").readFileSync(process.env.SCALE_GH_EPOCH, "utf8")) || 0 : 0;
+const stateOf = n => states?.[process.env.GH_REPO + "#" + n] ?? (n % 9 === 0 ? "MERGED" : "OPEN");
 const node = n => ({
   number: n, title: "Synthetic change " + n + ": retry backoff for the billing ledger reconcile job", url: "https://github.com/" + process.env.GH_REPO + "/pull/" + n,
   state: stateOf(n), headRefOid: sha(n + ((n + epoch) % 4 === 0 ? epoch * 1000 : 0)), headRefName: "feat/synthetic-" + n, baseRefName: n % 3 === 0 ? "main" : "feat/synthetic-" + (n - 1),
