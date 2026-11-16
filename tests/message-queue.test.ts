@@ -7,7 +7,7 @@ import { Engine, answerItemId, type Gateway, type Runtime } from "../server/engi
 import { Store } from "../server/store";
 import { askQuestion, developerAnswer } from "../server/questions";
 import { DeliveryDeferred } from "../server/delivery";
-import { MessageQueue, QUEUE_FILE } from "../server/message-queue";
+import { MessageQueue, QUEUE_FILE, queueTimeScale } from "../server/message-queue";
 import { AMBIGUOUS_MS, NEVER_LEFT_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema } from "../shared/queue";
 import { clock, workspace, pr } from "./fixtures";
 import { testQueue } from "./support/queue";
@@ -200,4 +200,12 @@ test("an unreadable queue.json starts empty instead of stopping the worker", asy
   const q = new MessageQueue(root, { deliverTo: async () => "a", arrived: async () => null });
   await q.load();
   assert.deepEqual(q.list().items, []);
+});
+
+test("the harness time scale counts only for a data dir under the temp dir: a stray variable never shortens a real ladder", () => {
+  const env = { FOLLOW_UP_QUEUE_TIME_SCALE: "0.01" };
+  assert.equal(queueTimeScale(join(tmpdir(), "follow-harness-x", "home", "plugin-data", "follow-up"), env), 0.01, "a harness run");
+  assert.equal(queueTimeScale("/home/user/.paseo/plugin-data/follow-up", env), 1, "a developer's machine: ignored");
+  assert.equal(queueTimeScale(join(tmpdir(), "x"), {}), 1, "unset");
+  for (const bad of ["0", "-1", "2", "abc", "1"]) assert.equal(queueTimeScale(join(tmpdir(), "x"), { FOLLOW_UP_QUEUE_TIME_SCALE: bad }), 1, bad);
 });

@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
 import { ConversationGone, DeliveryDeferred, realTimers, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
@@ -40,6 +42,20 @@ export interface Courier {
 
 export const QUEUE_FILE = "queue.json";
 
+/**
+ * FOLLOW_UP_QUEUE_TIME_SCALE shrinks the retry ladder, for harness runs only. It counts only when the data dir is under
+ * the OS temp dir (every harness root is a mkdtemp there; the same rule keeps agent-hooks out of real settings), so a
+ * stray variable on a developer's machine never shortens a retry. Anything else, or an unusable value, is 1.
+ */
+export function queueTimeScale(directory: string, env: NodeJS.ProcessEnv = process.env, temp = tmpdir()): number {
+  const value = Number(env.FOLLOW_UP_QUEUE_TIME_SCALE);
+  if (!value || !(value > 0) || value >= 1) return 1;
+  const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };
+  const r = relative(real(temp), real(directory));
+  if (r === "" || r.startsWith("..") || isAbsolute(r)) return 1;
+  return Math.max(0.001, value);
+}
+
 export class MessageQueue {
   timers: Timers = realTimers;
   now: () => number = Date.now;
@@ -47,10 +63,10 @@ export class MessageQueue {
   capMs = QUEUE_CAP_MS;
   attemptMs = QUEUE_ATTEMPT_MS;
   /**
-   * Harness only (FOLLOW_UP_QUEUE_TIME_SCALE, e.g. 0.01): shrinks every retry wait and the attempt deadline, so a check
+   * Harness only (FOLLOW_UP_QUEUE_TIME_SCALE, e.g. 0.01, honoured under the temp dir only: queueTimeScale): shrinks every retry wait and the attempt deadline, so a check
    * reaches Retrying and Failed in seconds. Unset (1) everywhere else.
    */
-  scale = Math.min(1, Math.max(0.001, Number(process.env.FOLLOW_UP_QUEUE_TIME_SCALE) || 1));
+  scale: number;
   private items = new Map<string, QueueItem>();
   private recent: QueueItem[] = [];
   private migrations: string[] = [];
@@ -66,6 +82,7 @@ export class MessageQueue {
   /** Sends that went out (tests and the harness count them). */
   sends = 0;
   constructor(readonly directory: string, private courier: Courier, o: { health?: WriteHealth; writeMs?: number } = {}) {
+    this.scale = queueTimeScale(directory);
     this.writer = new WriteBehind<QueueFile>({ path: join(directory, QUEUE_FILE), encode: v => JSON.stringify(v), delayMs: o.writeMs ?? 1_000, health: o.health });
   }
 
