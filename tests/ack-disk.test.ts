@@ -121,7 +121,7 @@ test("an-ack-never-waits-on-the-disk: the worker shows a save that keeps failing
   const source = await readFile("index.server.ts", "utf8");
   assert.equal(source.match(/loadError \?\? hookError \?\? writeHealth\.message\(\) \?\? engine\.error/g)?.length, 3, "follow.list, follow.get and the workspaces feed carry it");
   assert.match(source, /for \(const file of \[store, reviewerStore\.persist, agentSettings\.persist, prWorkflow\.persist, inbox\.store\.persist\]\) file\.health = writeHealth;/);
-  assert.match(source, /stopWorker\(\{ files: \[reviewerStore, agentSettings, prWorkflow\]/);
+  assert.match(source, /stopWorker\(\{ files: \[reviewerStore, agentSettings, prWorkflow, queue\]/, "the message queue lands its last write at stop too");
 });
 
 test("an-ack-never-waits-on-the-disk: a failing state.json write retries, surfaces after SURFACE_AFTER attempts, and clears once it lands", async t => {

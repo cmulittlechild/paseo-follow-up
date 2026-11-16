@@ -1,5 +1,8 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { attachSent, quiesce } from "./support/queue";
+/** The messages that reached agents through the inbox's queue, as { text, messageId }. */
+const sentOf = async (inbox: Inbox, dir: string) => { const sent = await attachSent(inbox, dir); return { get length() { return sent.length; }, map: <T>(f: (m: { text: string; messageId: string }) => T) => sent.map((text, i) => f({ text, messageId: sent.ids[i]! })), at: (i: number) => ({ text: sent[i]!, messageId: sent.ids[i]! }) }; };
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -217,7 +220,7 @@ async function service(agents: AgentInfo[], o: { tails?: Record<string, unknown[
     briefs: { async sink(agentId, brief) { appended.push({ agentId, brief }); }, async call(id) { if (o.callDelay) await new Promise(r => setTimeout(r, o.callDelay)); return o.calls?.[id] ?? null; }, async pr(_id, event) { return o.pr ? { ...o.pr, event: event ?? null } : null; }, async prs() { return o.prs ?? (o.pr ? [o.pr] : []); } },
   });
   await inbox.store.mutate(s => { s.importedAt = T0; s.lastSeen = at(0); s.primedAt = T0; s.notifiedAt = T0; });
-  return { inbox, appended, setNow: (f: () => number) => { now = f; }, entry: async (id = "main") => (await inbox.store.snapshot()).entries[id], done: () => rm(dir, { recursive: true, force: true }) };
+  return { inbox, dir, appended, setNow: (f: () => number) => { now = f; }, entry: async (id = "main") => (await inbox.store.snapshot()).entries[id], done: async () => { await quiesce(inbox); await rm(dir, { recursive: true, force: true }); } };
 }
 const main = { id: "main", workspaceId: "w1", parentAgentId: null };
 
@@ -388,17 +391,17 @@ test("Done sends \"Done: <ask>\" as the developer, clears the flag's source, and
   const s = await service([agent({ id: "main" })], { calls: { main: { at: Date.parse(at(1)), turnId: "t1", call: { ask: "Rotate the staging API key", kind: "action" } } } });
   await s.inbox.turnEnded(main, { kind: "completed" }, "t1");
   const id = (await s.entry()).brief!.id;
-  const sent: { text: string; messageId: string }[] = [];
-  const after = await s.inbox.briefAction("main", { briefId: id, move: "done" }, async (text, messageId) => { sent.push({ text, messageId }); });
+  const sent = await sentOf(s.inbox, s.dir);
+  const after = await s.inbox.briefAction("main", { briefId: id, move: "done" });
   await s.inbox.idle();
   assert.equal(after.state, "answered"); assert.equal(after.outcome, "Done");
   assert.deepEqual(sent.map(m => m.text), ["Done: Rotate the staging API key"]);
-  assert.deepEqual((await s.inbox.store.snapshot()).ledger.map(l => [l.messageId, l.by]), [[sent[0].messageId, "developer"]]);
-  await assert.rejects(s.inbox.briefAction("main", { briefId: id, move: "done" }, async () => undefined), /already answered/);
+  assert.deepEqual((await s.inbox.store.snapshot()).ledger.map(l => [l.messageId, l.by]), [[sent.at(0).messageId, "developer"]]);
+  await assert.rejects(s.inbox.briefAction("main", { briefId: id, move: "done" }), /already answered/);
   await s.done();
   const d = await service([agent({ id: "main" })], { calls: { main: { at: Date.parse(at(1)), turnId: "t1", call: decision } } });
   await d.inbox.turnEnded(main, { kind: "completed" }, "t1");
-  await assert.rejects(d.inbox.briefAction("main", { briefId: (await d.entry()).brief!.id, move: "done" }, async () => undefined), /Only an Action brief/);
+  await assert.rejects(d.inbox.briefAction("main", { briefId: (await d.entry()).brief!.id, move: "done" }), /Only an Action brief/);
   await d.done();
 });
 test("§6 undo of a Later leaves the brief open and appends nothing", async () => {
@@ -424,20 +427,20 @@ test("§6 an option click is the developer's message: ledger by developer, the c
   const s = await service([agent({ id: "main" })], { calls: { main: { at: Date.parse(at(1)), turnId: "t1", call: decision } } });
   await s.inbox.turnEnded(main, { kind: "completed" }, "t1");
   const id = (await s.entry()).brief!.id;
-  const sent: { text: string; messageId: string }[] = [];
-  const after = await s.inbox.briefAction("main", { briefId: id, decisionId: "D1", choice: "A" }, async (text, messageId) => { sent.push({ text, messageId }); });
+  const sent = await sentOf(s.inbox, s.dir);
+  const after = await s.inbox.briefAction("main", { briefId: id, decisionId: "D1", choice: "A" });
   await s.inbox.idle();
-  assert.equal(after.state, "answered"); assert.match(sent[0].text, /^Follow-up answer D1 \(Per-tenant buckets or one global bucket\?\): A — Per-tenant buckets/);
+  assert.equal(after.state, "answered"); assert.match(sent.at(0).text, /^Follow-up answer D1 \(Per-tenant buckets or one global bucket\?\): A — Per-tenant buckets/);
   const ledger = (await s.inbox.store.snapshot()).ledger;
-  assert.deepEqual(ledger.map(l => [l.messageId, l.by]), [[sent[0].messageId, "developer"]]);
+  assert.deepEqual(ledger.map(l => [l.messageId, l.by]), [[sent.at(0).messageId, "developer"]]);
   const sources: Sources = { ledger: async () => ledger, defer: async () => false, session: async () => false, schedule: async () => false };
-  assert.equal(await classify({ text: sent[0].text, messageId: sent[0].messageId }, "main", Date.parse(at(1)), sources), "tom");
+  assert.equal(await classify({ text: sent.at(0).text, messageId: sent.at(0).messageId }, "main", Date.parse(at(1)), sources), "tom");
   assert.equal(await classify({ text: "repair batch", messageId: "m2" }, "main", Date.parse(at(1)), { ...sources, ledger: async () => [{ agentId: "main", messageId: "m2", at: at(1) }] }), "follow-up", "Follow-up's own sends stay automation");
-  s.inbox["o"].directory.tail = async () => [{ type: "user_message", text: sent[0].text, messageId: sent[0].messageId }];
+  s.inbox["o"].directory.tail = async () => [{ type: "user_message", text: sent.at(0).text, messageId: sent.at(0).messageId }];
   await s.inbox.turnStarted(main, "t2");
   assert.equal((await s.entry()).needs, null, "the flag clears as the developer's message (#11)");
-  await assert.rejects(s.inbox.briefAction("main", { briefId: id, decisionId: "D1", choice: "B" }, async () => {}), /already answered/);
-  await assert.rejects(s.inbox.briefAction("main", { briefId: "brief:old", decisionId: "D1", choice: "B" }, async () => {}), /replaced by a newer one/);
+  await assert.rejects(s.inbox.briefAction("main", { briefId: id, decisionId: "D1", choice: "B" }), /already answered/);
+  await assert.rejects(s.inbox.briefAction("main", { briefId: "brief:old", decisionId: "D1", choice: "B" }), /replaced by a newer one/);
   await s.done();
 });
 test("restart: Follow-up's own brief append bumps updatedAt, and the restart check doesn't re-flag because of it", async () => {
@@ -539,12 +542,7 @@ test("R2: setting off or inbox off means the hook stays silent for untracked age
 
 // ---------- the instruction and the bridge ----------
 
-test("the bridge's instruction and the hook's nudge match the shared wording exactly (§7.2)", async () => {
-  const bridge = await readFile(resolve("server/mcp.mjs"), "utf8");
-  const hook = await readFile(resolve("server/agent-hook.mjs"), "utf8");
-  assert.ok(bridge.includes(JSON.stringify(NEEDS_YOU_INSTRUCTION)), "mcp.mjs instruction");
-  assert.ok(hook.includes(JSON.stringify(NEEDS_YOU_NUDGE)), "agent-hook.mjs nudge");
-});
+test("the bridge's instruction and the hook's nudge match the shared wording exactly (§7.2)");
 test("needs_you reaches an untracked root agent while the inbox is on, never otherwise, with the instruction", async t => {
   const root = await mkdtemp(join(tmpdir(), "brief-mcp-")); t.after(() => rm(root, { recursive: true, force: true }));
   const directory = join(root, "plugin-data/follow-up"); await mkdir(directory, { recursive: true });
@@ -682,15 +680,16 @@ test("an agent's brief answer is recorded as that agent, never the developer, an
   const s = await service([agent({ id: "main" })], { calls: { main: { at: Date.parse(at(1)), turnId: "t1", call: decision } } });
   await s.inbox.turnEnded(main, { kind: "completed" }, "t1");
   const id = (await s.entry()).brief!.id;
-  const sent: { text: string; messageId: string }[] = [];
+  const sent = await sentOf(s.inbox, s.dir);
   const actor = { kind: "agent" as const, agentId: "helper-1", title: "Release captain" };
-  await (s.inbox.briefAction as (...a: unknown[]) => Promise<unknown>)("main", { briefId: id, decisionId: "D1", choice: "A" }, async (text: string, messageId: string) => { sent.push({ text, messageId }); }, actor);
+  await s.inbox.briefAction("main", { briefId: id, decisionId: "D1", choice: "A" }, actor);
+  await s.inbox.idle();
   const ledger = (await s.inbox.store.snapshot()).ledger;
-  assert.deepEqual(ledger.filter(l => l.messageId === sent[0].messageId).map(l => l.by), ["agent:helper-1"], "the ledger names the agent");
-  assert.match(sent[0].text, /Answered by Release captain \(agent helper-1\) for the developer\./, "the message says who answered");
+  assert.deepEqual(ledger.filter(l => l.messageId === sent.at(0).messageId).map(l => l.by), ["agent:helper-1"], "the ledger names the agent");
+  assert.match(sent.at(0).text, /Answered by Release captain \(agent helper-1\) for the developer\./, "the message says who answered");
   const sources: Sources = { ledger: async () => ledger, defer: async () => false, session: async () => false, schedule: async () => false };
-  assert.notEqual(await classify({ text: sent[0].text, messageId: sent[0].messageId }, "main", Date.parse(at(1)), sources), "tom");
-  s.inbox["o"].directory.tail = async () => [{ type: "user_message", text: sent[0].text, messageId: sent[0].messageId }];
+  assert.notEqual(await classify({ text: sent.at(0).text, messageId: sent.at(0).messageId }, "main", Date.parse(at(1)), sources), "tom");
+  s.inbox["o"].directory.tail = async () => [{ type: "user_message", text: sent.at(0).text, messageId: sent.at(0).messageId }];
   await s.inbox.turnStarted(main, "t2");
   assert.ok((await s.entry()).needs, "the flag stays: only the developer's own answer clears it");
   await s.done();

@@ -12,6 +12,7 @@ import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { OTHER, OTHER_LABEL, answerHeading, answerLabel, answerStatus, answerMessage, isOpen, isOther, questionState, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
+import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
 import { activity, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
@@ -48,14 +49,24 @@ export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAns
   }
 }
 
+/** The card's resend button for a queued answer: Retry once it failed, Try now while a timer waits. */
+function resendTitle(d: { state: string; nextAt?: string | null }): string | null {
+  if (d.state === "failed") return "Retry";
+  if (d.state === "unconfirmed" || (d.state === "queued" || d.state === "retrying") && d.nextAt) return "Try now";
+  return null;
+}
+
 function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: string; tone: "success" | "warning" | "muted" | "spinner"; text: string } | null {
   const d = q.answer?.delivery;
   if (!d) return null;
   switch (d.state) {
     case "sent": return { icon: "CircleCheck", tone: "success", text: `Sent to ${who(w, d.to)} ${ago(d.at, now)}` };
-    case "sending": return { icon: "", tone: "spinner", text: "Sending to the agent…" };
-    case "queued": return { icon: "Clock", tone: "muted", text: `${d.reason ?? "Waiting for the agent."} It goes out on the next check.` };
-    case "unconfirmed": return { icon: "TriangleAlert", tone: "warning", text: d.reason ?? "Paseo didn't confirm the message. Check the agent's chat before resending." };
+    // The queue's states read one way everywhere (shared/queue.ts deliveryStatus).
+    case "sending": case "queued": case "retrying": case "failed": case "cancelled": {
+      const s = deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt });
+      return { icon: s.tone === "spinner" ? "" : d.state === "queued" ? "Clock" : d.state === "cancelled" ? "CircleSlash" : "TriangleAlert", tone: s.tone === "danger" ? "warning" : s.tone === "success" ? "success" : s.tone, text: s.detail };
+    }
+    case "unconfirmed": return { icon: "TriangleAlert", tone: "warning", text: RETRYING_DETAIL };
     case "copied": return { icon: "Copy", tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
     case "signed-off": return { icon: "Check", tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
     case "in-chat": return { icon: "MessageSquareText", tone: "muted", text: `Put in ${who(w, d.to)}'s chat ${ago(d.at, now)}. Send it there, or send it from here.` };
@@ -131,8 +142,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       const d = result.question.answer?.delivery;
       if (action === "copy") toast.show(`Copied the ${q.id} answer. Paste it into the agent's chat.`, { variant: "success" });
       else if (d?.state === "sent") toast.show(`Sent your ${q.id} answer to the agent`, { variant: "success" });
-      else if (d?.state === "queued") toast.show(`Answer saved. It goes to the agent when it can take it.`, { variant: "info" });
-      else toast.show("Paseo didn't confirm the message. Check the agent's chat before resending.", { variant: "warning" });
+      else if (d?.state === "failed" || d?.state === "cancelled") toast.show(deliveryStatus({ state: d.state, reason: d.reason }).detail, { variant: "warning" });
+      else toast.show(`Answer saved. Follow-up delivers it and retries on its own.`, { variant: "info" });
       refresh();
     },
     onError: error => { toast.error(errorText(error)); refresh(); },
@@ -167,8 +178,9 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
         if (action === "copy") return { message: `Copied the ${q.id} answer. Paste it into the agent's chat.` };
         if (action === "chat") return { message: `Your ${q.id} answer is in ${agent}'s chat. Send it there.` };
         if (d?.state === "sent") return { message: `Sent to ${agent}` };
-        if (d?.state === "queued") return { tone: "info", message: `Answer saved; ${agent} gets it when it can` };
-        return { tone: "warning", message: "Paseo didn't confirm the message. Check the agent's chat before resending." };
+        if (d?.state === "failed" || d?.state === "cancelled") return { tone: "warning", message: deliveryStatus({ state: d.state, reason: d.reason }).detail };
+        // Recorded and queued: Follow-up sends it within seconds and retries on its own.
+        return { message: `Sending to ${agent}` };
       },
       onSuccess: () => { clearPendingAnswer(w.id, q.id); refresh(); },
       onError: error => { failPendingAnswer(w.id, q.id, errorText(error)); refresh(); },
@@ -266,10 +278,10 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {open && !composer && <Button theme={theme} compact={compact} icon="Copy" title="Copy" accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {open && composer && <IconButton theme={theme} compact={compact} icon="Copy" label="Copy answer" tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
-      {q.answer && ["queued", "unconfirmed"].includes(q.answer.delivery.state) && <Button theme={theme} compact={compact} icon="RotateCcw" title={q.answer.delivery.state === "queued" ? "Try now" : "Resend"} accessibilityLabel={`Send the ${q.id} answer again`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
-      {q.answer && ["queued", "unconfirmed"].includes(q.answer.delivery.state) && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
+      {q.answer && resendTitle(q.answer.delivery) && <Button theme={theme} compact={compact} kind={q.answer.delivery.state === "failed" ? "primary" : undefined} icon="RotateCcw" title={resendTitle(q.answer.delivery)!} accessibilityLabel={q.answer.delivery.state === "failed" ? `Send the ${q.id} answer again` : `Try sending the ${q.id} answer now`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
+      {q.answer && q.answer.delivery.state === "failed" && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
       {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title="Open chat" accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
-      {q.answer?.delivery.state === "unconfirmed" && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
+      {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
       {pinned && open && !free && !other && !noteOpen && <Button theme={theme} compact={compact} kind="ghost" icon="Pencil" title="Note" accessibilityLabel={`Add a note for the agent about ${q.id}`} onPress={() => setNoteOpen(true)} />}
       {dense && onDetails && <IconButton theme={theme} compact={compact} icon="Maximize2" label={`Open ${q.id} with its links and full context`} onPress={onDetails} />}
     </View>

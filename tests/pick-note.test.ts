@@ -1,5 +1,6 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { attachSent, quiesce } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -35,14 +36,14 @@ async function inbox(brief: Brief) {
   const directory = { agents: async () => [agent], workspaces: async () => [{ id: "w", name: "W" }], agent: async () => agent, tail: async () => [], clearAttention: async () => {} } as unknown as Directory;
   const box = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never, guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async () => {}, call: async () => null, pr: async () => null } } as never);
   await box.store.mutate(s => { s.entries.main = { ...(s.entries.main ?? {}), agentId: "main", brief } as never; });
-  return { box, done: () => rm(dir, { recursive: true, force: true }) };
+  return { box, dir, done: async () => { await quiesce(box); await rm(dir, { recursive: true, force: true }); } };
 }
 
 test("a-pick-note-reaches-the-agent: brief_action with a letter and a note sends and records the note", async () => {
-  const { box, done } = await inbox(open(one));
+  const { box, dir, done } = await inbox(open(one));
   try {
-    const sent: string[] = [];
-    const after = await box.briefAction("main", { briefId: "brief:t1", decisionId: "D1", choice: "A", words: "but keep the BOM off" }, async t => { sent.push(t); });
+    const sent = await attachSent(box, dir);
+    const after = await box.briefAction("main", { briefId: "brief:t1", decisionId: "D1", choice: "A", words: "but keep the BOM off" });
     await box.idle();
     assert.equal(parseAnswerMessage(sent[0])?.words, "but keep the BOM off", "the agent's message carries the note");
     assert.equal(after.decisions[0].words, "but keep the BOM off", "the card's record keeps it");
@@ -51,10 +52,10 @@ test("a-pick-note-reaches-the-agent: brief_action with a letter and a note sends
 });
 
 test("a-pick-note-reaches-the-agent: several picks sent together keep each note on its own decision", async () => {
-  const { box, done } = await inbox(open());
+  const { box, dir, done } = await inbox(open());
   try {
-    const sent: string[] = [];
-    const after = await box.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "D1", choice: "A", words: "but keep the BOM off" }, { decisionId: "D2", choice: "B" }] }, async t => { sent.push(t); });
+    const sent = await attachSent(box, dir);
+    const after = await box.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "D1", choice: "A", words: "but keep the BOM off" }, { decisionId: "D2", choice: "B" }] });
     await box.idle();
     assert.deepEqual(parseAnswersMessage(sent[0])?.answers.map(a => [a.id, a.choice, a.words]), [["D1", "A", "but keep the BOM off"], ["D2", "B", null]]);
     assert.deepEqual(after.decisions.map(d => [d.chosen, d.words]), [["A", "but keep the BOM off"], ["B", null]]);

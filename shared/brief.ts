@@ -83,7 +83,8 @@ export const briefSchema = z.object({
    * Getting the answer to the agent, after the card already recorded it (server/inbox.ts AnswerOutbox): "sending"
    * until Paseo confirms, "failed" with the reason once every retry failed. Absent once delivered, and on old briefs.
    */
-  delivery: z.object({ state: z.enum(["sending", "failed"]), error: z.string().nullable().default(null) }).nullable().optional(),
+  /** The answer's delivery while the message queue has it (shared/queue.ts deliveryOf); null once sent. */
+  delivery: z.object({ state: z.enum(["queued", "sending", "retrying", "failed", "cancelled"]), error: z.string().nullable().default(null), nextAt: z.string().optional() }).nullable().optional(),
 });
 export type Brief = z.infer<typeof briefSchema>;
 export type BriefDecision = z.infer<typeof briefDecisionSchema>;
@@ -544,8 +545,6 @@ export function shouldReopen(b: Pick<Brief, "state" | "outcome" | "questionIds">
 
 /** An answer's id, made once per Send (no crypto needed: phones run Hermes). */
 export const newAnswerId = (): string => `a${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12).padEnd(10, "0")}`;
-/** The delivery failure as one sentence, or a plain fallback. */
-export const undeliveredReason = (error: string | null | undefined): string => { const e = (error ?? "").trim() || "Paseo didn't confirm it"; return /[.!?]$/.test(e) ? e : `${e}.`; };
 
 /**
  * What a brief card shows, from the server's live brief rather than the timeline row it was rendered from. The row is a

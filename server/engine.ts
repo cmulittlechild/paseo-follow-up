@@ -13,7 +13,9 @@ import { reconcileSubmittedStacks } from "./submissions";
 import { applyDiscovery, interruptionHold, startsWithAutoSend, type DiscoveredWorkspace } from "./discovery";
 import { ACTIVE_SCOPE_MIGRATION, followsByDefault, migrateActiveScope } from "../shared/settings";
 import { replyRecorded } from "../shared/communication";
-import { DeliveryDeferred, ConversationGone, realTimers, withDeadline, type Timers } from "./delivery";
+import { DeliveryDeferred, ConversationGone } from "./delivery";
+import type { MessageQueue, Resolution } from "./message-queue";
+import { deliveryOf, type NewQueueItem, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { recordSnapshot } from "./deployment-anchor";
 import { pruneUnsent } from "./batch-archive";
 import { holdSuperseded, liftHold } from "../shared/status";
@@ -52,8 +54,6 @@ export interface Gateway {
   label(w: Workspace, assigned: boolean): Promise<void>;
   /** A tick begins: the gateway may list agents once for it (a-send-lists-agents-at-most-once-per-tick). */
   tickStarted?(): void;
-  /** Sends a developer message to the first available recipient; DeliveryDeferred means try again later. */
-  deliver?(w: Workspace, recipients: string[], text: string, messageId: string): Promise<string>;
 }
 
 /**
@@ -138,7 +138,6 @@ export class Engine {
       }
 
       for (const w of state.workspaces) for (const a of w.prActions) if (a.state === "sending") { a.state = "uncertain"; a.result = `Follow-up reloaded before ${a.kind === "request_reviewers" ? "GitHub confirmed the review request" : w.prs.some(p => a.prs.includes(p.key) && p.snapshot?.prWorkflow === "github") ? "GitHub confirmed the action" : "Graphite confirmed the action"}. Check state before sending another request.`; }
-      for (const w of state.workspaces) for (const q of w.questions) if (q.answer?.delivery.state === "sending") q.answer.delivery = { ...q.answer.delivery, state: "unconfirmed", reason: "Follow-up reloaded before Paseo confirmed the answer. Check the agent's chat before resending." };
       // 2.0 betas before Q49 blocked a batch whose capped condition went out twice; the cap is per task now.
       for (const w of state.workspaces) for (const b of w.batches) if (b.state === "blocked" && b.unacknowledged) b.state = "completed";
       // The retired 3-strike rule blocked a message before it went out; the per-task cap decides now, so it is re-formed.
@@ -317,7 +316,6 @@ export class Engine {
           current.state = "blocked"; current.result = current.acknowledgmentError ? `Acknowledgment was refused for agent ${current.acknowledgmentError.agentId}: ${current.acknowledgmentError.error}` : status?.reason ?? "Recovery finished without an accepted acknowledgment. Check its result before retrying.";
         });
       }
-      for (const q of findWorkspace(await this.store.snapshot(), original.id).questions.filter(q => q.answer?.delivery.state === "queued")) await this.deliverAnswer(original.id, q.id).catch(() => undefined);
       await this.checkArrivals(original.id);
       let current = findWorkspace(await this.store.snapshot(), original.id);
       // Persist the holds that live only in this refresh, so every surface can say why repairs wait (shared/status.ts).
@@ -382,50 +380,81 @@ export class Engine {
     void this.tick();
     return activated;
   }
-  /** Records the developer's answer, then sends it unless they chose to copy it. */
+  /** Records the developer's answer, then queues it unless they chose to copy it or put it in chat. */
   async answer(workspaceId: string, questionId: string, choice: string, words: string | undefined, action: AnswerAction, actor: Actor = DEVELOPER): Promise<{ workspace: Workspace; question: Question }> {
     await this.store.mutateWorkspace(workspaceId, w => {
       if (!w.enable_tracking || w.archived) throw new Error("Follow-up isn't following this workspace. Turn it back on in Follow-up settings, under Workspace exceptions.");
       developerAnswer(w, questionId, choice, words, action, this.now(), actor);
       if (!w.questions.some(isOpenQuestion)) w.updatedAt = new Date(this.now()).toISOString();
     });
-    // Recorded as "sending": the reply goes back now and the message after it. Reaching a dormant agent can take Paseo
-    // longer than the 30 s a plugin RPC gets; the question shows sending → sent (or queued, unconfirmed) as it lands.
-    if (action !== "copy" && action !== "chat") this.later(() => this.deliverAnswer(workspaceId, questionId));
+    // Recorded: the reply goes back now. The message goes through the queue (server/message-queue.ts), which saves it
+    // before sending, retries what never left, and reads the chat before resending what may have.
+    const recorded = findWorkspace(await this.store.snapshot(), workspaceId).questions.find(q => q.id === questionId)!;
+    if (this.queue && (action === "send" || action === "resend")) {
+      const id = answerItemId(workspaceId, recorded);
+      const queued = this.queue.get(id);
+      if (action === "resend" && queued && !["sent", "cancelled"].includes(queued.state)) await this.queue.retry(id);
+      else this.queue.enqueue(this.answerItem(workspaceId, recorded, action === "resend"));
+    }
     const workspace = findWorkspace(await this.store.snapshot(), workspaceId);
     return { workspace, question: workspace.questions.find(q => q.id === questionId)! };
   }
-  /** Work that runs after an RPC replied. Its outcome lands on the record; tests await `idle()`. */
-  private deliveries = new Set<Promise<unknown>>();
-  private later(work: () => Promise<unknown>): void {
-    const p = work().catch(error => console.warn(`[follow-up] background delivery failed: ${error instanceof Error ? error.message : String(error)}`)).finally(() => this.deliveries.delete(p));
-    this.deliveries.add(p);
+  /** The queue that carries answers; the worker attaches it (tests may leave it off: answers are then only recorded). */
+  private queue: MessageQueue | null = null;
+  attachQueue(queue: MessageQueue): void {
+    this.queue = queue;
+    queue.register("answer", { resolve: item => this.resolveAnswer(item), project: item => this.projectAnswer(item) });
   }
-  async idle(): Promise<void> { while (this.deliveries.size) await Promise.allSettled([...this.deliveries]); }
-  /** One delivery attempt's cap: past it the answer reads "unconfirmed" instead of "sending" forever. */
-  deliveryAttemptMs = 120_000;
-  /** The attempt deadline runs on this; tests inject fake timers (see Timers). */
-  timers: Timers = realTimers;
-  private async deliverAnswer(workspaceId: string, questionId: string): Promise<void> {
-    const w = findWorkspace(await this.store.snapshot(), workspaceId);
-    const q = w.questions.find(q => q.id === questionId);
-    if (!q?.answer?.delivery.messageId || !["sending", "queued"].includes(q.answer.delivery.state)) return;
-    let outcome: { state: "sent" | "queued" | "unconfirmed"; to: string | null; reason: string | null };
-    try {
-      if (!this.gateway.deliver) throw new DeliveryDeferred("Messaging is unavailable in this Paseo version; copy the answer instead.");
-      const to = await withDeadline(this.gateway.deliver(w, answerRecipients(w, q), answerMessage(q, q.answer.choice, q.answer.words), q.answer.delivery.messageId), this.deliveryAttemptMs, "Paseo didn't confirm the answer in time", this.timers);
-      outcome = { state: "sent", to, reason: null };
-    } catch (error) {
-      outcome = error instanceof DeliveryDeferred
-        ? { state: "queued", to: null, reason: error.message }
-        : { state: "unconfirmed", to: null, reason: "Paseo didn't confirm the message. Check the agent's chat before resending." };
+  private answerItem(workspaceId: string, q: Question, now = false): NewQueueItem {
+    const a = q.answer!;
+    return { id: answerItemId(workspaceId, q), kind: "answer", key: workspaceId, ref: { workspaceId, questionId: q.id }, messageId: a.delivery.messageId!,
+      text: answerMessage(q, a.choice, a.words), priority: "now", state: "queued", ...(now ? { nextAt: new Date(this.now()).toISOString() } : {}) };
+  }
+  /**
+   * Every start: an answer its record still shows as on its way, with no queue item, joins the queue (the upgrade from
+   * the per-answer sender, or a queue.json that was lost). One that may have left (sending, unconfirmed, retrying) is
+   * `uncertain`, so the chat is read before it is sent again.
+   */
+  async adoptAnswers(): Promise<void> {
+    if (!this.queue) return;
+    const queue = this.queue;
+    const inputs: QueueItemInput[] = [];
+    const at = new Date(this.now()).toISOString();
+    for (const w of (await this.store.snapshot()).workspaces) for (const q of w.questions) {
+      const d = q.answer?.delivery;
+      if (!d?.messageId || !["sending", "queued", "unconfirmed", "retrying", "failed"].includes(d.state) || queue.get(answerItemId(w.id, q))) continue;
+      const left = d.state !== "queued";
+      inputs.push({ ...this.answerItem(w.id, q), state: d.state === "failed" ? "failed" : left ? "uncertain" : "queued", nextAt: d.state === "failed" ? null : at, reason: d.reason ?? null,
+        envelope: left ? { messageId: d.messageId, to: d.to, at: d.at } : null, createdAt: d.at });
     }
-    await this.store.mutateWorkspace(workspaceId, w => {
-      const current = w.questions.find(x => x.id === questionId);
-      if (!current?.answer || current.answer.delivery.messageId !== q.answer!.delivery.messageId) return;
-      current.answer.delivery = { ...current.answer.delivery, ...outcome, at: new Date(this.now()).toISOString() };
+    await queue.adopt("answers-v1", inputs);
+  }
+  private async resolveAnswer(item: QueueItem): Promise<Resolution> {
+    const w = (await this.store.snapshot()).workspaces.find(w => w.id === item.ref.workspaceId);
+    if (!w) return { cancel: "The workspace is gone, so the answer wasn't sent." };
+    if (w.archived) return { cancel: "The workspace was archived, so the answer wasn't sent." };
+    if (!w.enable_tracking) return { cancel: "Follow-up stopped following this workspace, so the answer wasn't sent." };
+    const q = w.questions.find(q => q.id === item.ref.questionId);
+    if (!q?.answer || q.answer.delivery.messageId !== item.messageId) return { settled: "cancelled", reason: "The answer was replaced." };
+    if (["sent", "recorded", "signed-off"].includes(q.answer.delivery.state)) return { settled: "sent" };
+    // Resolved now, not when queued: an asker archived or replaced since falls back to the workspace's main agent.
+    return { target: { workspaceId: w.id, recipients: answerRecipients(w, q) } };
+  }
+  private async projectAnswer(item: QueueItem): Promise<void> {
+    const state = deliveryOf(item);
+    const snapshot = (await this.store.snapshot()).workspaces.find(w => w.id === item.ref.workspaceId);
+    const before = snapshot?.questions.find(q => q.id === item.ref.questionId)?.answer?.delivery;
+    if (!before || before.messageId !== item.messageId || ["recorded", "signed-off"].includes(before.state)) return;
+    const to = item.to ?? item.envelope?.to ?? before.to;
+    if (before.state === state && before.reason === item.reason && (before.nextAt ?? null) === item.nextAt && before.to === to) return;
+    await this.store.mutateWorkspace(item.ref.workspaceId, w => {
+      const a = w.questions.find(q => q.id === item.ref.questionId)?.answer;
+      if (!a || a.delivery.messageId !== item.messageId || ["recorded", "signed-off"].includes(a.delivery.state)) return;
+      a.delivery = { ...a.delivery, state, to, reason: item.reason, nextAt: item.nextAt, at: a.delivery.state === state ? a.delivery.at : new Date(this.now()).toISOString() };
     });
   }
+  /** Background work after an RPC replied lands on its record; tests await `idle()`. */
+  async idle(): Promise<void> { await this.queue?.idle(); }
   async sendPending(workspaceId: string, batchId: string): Promise<Workspace> {
     const before = findWorkspace(await this.store.snapshot(), workspaceId).batches.find(b => b.id === batchId);
     if (before && isRecovery(before)) return this.sendRecoveryPending(workspaceId, batchId);
@@ -723,3 +752,6 @@ export function agentWorkspace(state: State, agentId: string, access: "read" | "
   if (access === "write") requireTracking(w, agentId);
   return w;
 }
+
+/** A Q answer's queue item: one per answer (its messageId), so a Resend is the same item. */
+export const answerItemId = (workspaceId: string, q: Pick<Question, "id" | "answer">) => `answer:${workspaceId}:${q.id}:${q.answer?.delivery.messageId ?? ""}`;

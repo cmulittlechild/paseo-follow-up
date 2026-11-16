@@ -106,6 +106,8 @@ export function withdrawQuestion(w: Workspace, agentId: string, id: string, reas
   return q;
 }
 
+/** Delivery states a Resend (Retry, Try now) applies to. */
+export const RESENDABLE: readonly string[] = ["queued", "retrying", "failed", "unconfirmed"];
 /** How the developer's answer leaves the card: sent by Follow-up, copied, or put in the agent's chat (Paseo 0.16), or sent again. */
 export type AnswerAction = "send" | "copy" | "chat" | "resend";
 
@@ -116,8 +118,8 @@ export function developerAnswer(w: Workspace, id: string, choice: string, words:
   if (q.closed) throw new Error(`${id} was withdrawn: ${q.closed.reason}`);
   const at = new Date(now).toISOString();
   if (action === "resend") {
-    if (!q.answer || !["queued", "unconfirmed"].includes(q.answer.delivery.state)) throw new Error(`${id} has nothing waiting to be resent.`);
-    q.answer.delivery = { ...q.answer.delivery, state: "sending", at, reason: null };
+    if (!q.answer?.delivery.messageId || !RESENDABLE.includes(q.answer.delivery.state)) throw new Error(`${id} has nothing waiting to be resent.`);
+    // The queue item keeps its own state; Retry on a failed one resends, Try now on a waiting one moves its time.
     return q;
   }
   if (q.answer && !(q.answer.by === "developer" && ["copied", "in-chat"].includes(q.answer.delivery.state) && action === "send")) throw new Error(`${id} is already answered.`);
