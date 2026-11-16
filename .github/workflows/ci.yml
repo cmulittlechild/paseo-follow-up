@@ -33,8 +33,23 @@ jobs:
       - name: Install CLIs for isolated integration checks
         run: npm install --global @getpaseo/cli@0.15.2 @anthropic-ai/claude-code@2.1.300 @openai/codex@0.162.1
       - run: npm run verify
+      - run: npm run test:install
+      - run: npm pack --dry-run
+
+  # Its own job, in parallel with verify: the live-sized run alone takes about 20 minutes, and in series it made every
+  # PR wait for both. Both jobs are required.
+  scale-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The same CLIs as verify: the scale check drives a real (isolated) Paseo daemon.
+      - name: Install CLIs for isolated integration checks
+        run: npm install --global @getpaseo/cli@0.15.2 @anthropic-ai/claude-code@2.1.300 @openai/codex@0.162.1
       # The live-sized busy window (live's outliers, 20 turns/min). It reports its RSS, CPU and request budgets without
       # failing until the derived budgets land (scripts/scale-check.mjs --budgets-report-only); wakes and sends still fail.
       - run: npm run test:scale:live
-      - run: npm run test:install
-      - run: npm pack --dry-run
