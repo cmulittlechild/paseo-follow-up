@@ -293,13 +293,13 @@ const cases = {
       },
       async needsyou(page, key) {
         await openHome(page, { origin, serverId });
-        const row = page.getByText(`Your ${Q[key].qid} answer may not have reached the agent`).filter({ visible: true }).first();
+        const row = page.getByText(`Your ${Q[key].qid} answer: Failed`).filter({ visible: true }).first();
         if (!await row.isVisible().catch(() => false)) await page.getByText(Q[key].title, { exact: true }).filter({ visible: true }).first().click().catch(() => {});
         await row.waitFor();
         // Open the row: its detail carries the item's Retry and Open agent.
         await page.getByText(Q[key].title, { exact: true }).filter({ visible: true }).last().click().catch(() => {});
         await page.getByText("Open agent").filter({ visible: true }).first().waitFor();
-        await page.getByText(`Your ${Q[key].qid} answer may not have reached the agent`).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
+        await page.getByText(`Your ${Q[key].qid} answer: Failed`).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
       },
     };
     async function shot(surface, state, key, words, [form, viewport, theme]) {
