@@ -231,6 +231,8 @@ const cases = {
     const DESKTOP = { width: 1280, height: 900 }; const PHONE = { width: 390, height: 844 };
     const COMBOS = [["desktop", DESKTOP, "light"], ["desktop", DESKTOP, "dark"], ["phone", PHONE, "light"], ["phone", PHONE, "dark"]];
     const shotDir = out;
+    // Home opens on Getting started until setup is done or skipped.
+    await rpc("follow.set-onboarding", { action: "skip" });
     // The words each state shows (shared/queue.ts deliveryStatus), on the dialog and on the card.
     const WORDS = { sending: /Sending to the agent/, queued: /Queued: Paseo unreachable/, retrying: /reads the agent's chat before sending again/, failed: /Check the agent's chat, then Retry/ };
     // One followed workspace per question state, one unfollowed agent per card state (needs_you's decision stays a card there).
@@ -265,7 +267,8 @@ const cases = {
       await page.getByText("Follow-up", { exact: true }).first().waitFor({ timeout: 30_000 });
       await page.getByText("Skip setup", { exact: true }).first().click({ timeout: 3000 }).catch(() => {});
       await page.getByText(t.title, { exact: true }).first().click({ timeout: 30_000 });
-      await page.getByText(t.prompt).first().waitFor({ timeout: 30_000 });
+      // The agent's tab (its first prompt may be scrolled out of a long chat, which renders only what's near the end).
+      await page.getByText(`${t.title} main`, { exact: true }).first().waitFor({ timeout: 30_000 });
     };
     const SURFACES = {
       async dialog(page, key, words) {
@@ -279,7 +282,12 @@ const cases = {
       },
       async card(page, key, words) {
         await openChat(page, C[key]);
-        await page.getByText(C[key].ask).first().waitFor();
+        // Once the agent replied, the answered card sits inside that turn's collapsed details.
+        const ask = page.getByText(C[key].ask).filter({ visible: true }).first();
+        if (!await ask.waitFor({ timeout: 8000 }).then(() => true, () => false)) {
+          await page.getByText("View turn details").filter({ visible: true }).last().click();
+          await ask.waitFor();
+        }
         if (words) await page.getByText(words).filter({ visible: true }).first().waitFor();
         await page.getByText(words ?? C[key].ask).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
       },
@@ -288,7 +296,10 @@ const cases = {
         const row = page.getByText(`Your ${Q[key].qid} answer may not have reached the agent`).filter({ visible: true }).first();
         if (!await row.isVisible().catch(() => false)) await page.getByText(Q[key].title, { exact: true }).filter({ visible: true }).first().click().catch(() => {});
         await row.waitFor();
-        await row.scrollIntoViewIfNeeded().catch(() => {});
+        // Open the row: its detail carries the item's Retry and Open agent.
+        await page.getByText(Q[key].title, { exact: true }).filter({ visible: true }).last().click().catch(() => {});
+        await page.getByText("Open agent").filter({ visible: true }).first().waitFor();
+        await page.getByText(`Your ${Q[key].qid} answer may not have reached the agent`).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
       },
     };
     async function shot(surface, state, key, words, [form, viewport, theme]) {
@@ -297,8 +308,17 @@ const cases = {
       const page = await context.newPage(); page.setDefaultTimeout(30_000);
       try {
         // Phones open at desktop width (Paseo's sidebar is a drawer there), then narrow.
-        if (form === "phone") { await SURFACES[surface](page, key, null); await page.setViewportSize(viewport); }
         await SURFACES[surface](page, key, words);
+        if (form === "phone") {
+          await page.setViewportSize(viewport);
+          await page.waitForTimeout(800);
+          const anchor = words ?? (surface === "dialog" ? QTEXT[key][1] : surface === "card" ? C[key].ask : "Open agent");
+          const shown = () => page.getByText(anchor).filter({ visible: true }).first().waitFor({ timeout: 8000 }).then(() => true, () => false);
+          // Narrowing can fold the answered card's turn details again.
+          if (!await shown() && surface === "card") await page.getByText("View turn details").filter({ visible: true }).last().click().catch(() => {});
+          await page.getByText(anchor).filter({ visible: true }).first().waitFor();
+          await page.getByText(anchor).filter({ visible: true }).first().scrollIntoViewIfNeeded().catch(() => {});
+        }
         await page.mouse.move(1, viewport.height - 1);
         await page.waitForTimeout(400);
         const text = await page.evaluate(() => document.body.innerText);
@@ -311,7 +331,7 @@ const cases = {
         if (form === "phone") check(`render ${name}: no horizontal overflow at 390`, overflow.scrollWidth <= overflow.innerWidth, overflow);
         else check(`render ${name}`, true);
       } catch (error) {
-        await page.screenshot({ path: join(root, `${name}-failed.png`) }).catch(() => {});
+        await fs.mkdir(join(shotDir, "failed"), { recursive: true }).catch(() => {}); await page.screenshot({ path: join(shotDir, "failed", `${name}.png`) }).catch(() => {});
         check(`render ${name}`, false, { error: (error instanceof Error ? error.message : String(error)).split("\n")[0] });
       } finally { await context.close(); }
     }
@@ -325,25 +345,32 @@ const cases = {
     await rpc("follow.set-follow-settings", { workspace: { workspaceId: Q.notsent.workspaceId, follow: false } });
     await answerC("notsent");
     await client.archiveAgent(C.notsent.agentId).catch(error => { r.states.cardNotSent = `couldn't archive: ${error.message}`; });
-    await wait("the question's answer is cancelled", async () => await qState("notsent") === "cancelled");
+    // Unfollowed, the workspace reads as nothing (follow.get), so the queue item tells when it was cancelled.
+    const notsentItem = async () => { const q = await readQueue(); return q.recent.find(i => i.kind === "answer" && i.ref.workspaceId === Q.notsent.workspaceId) ?? null; };
+    await wait("the question's answer is cancelled", async () => (await notsentItem())?.state === "cancelled");
+    r.states.notsentReason = (await notsentItem())?.reason ?? null;
     // Following again keeps the cancelled answer (resolved once), and puts the question back on the panel.
     await rpc("follow.set-follow-settings", { workspace: { workspaceId: Q.notsent.workspaceId, follow: true } });
     await rpc("follow.activate", { workspaceId: Q.notsent.workspaceId }).catch(() => undefined);
+    await wait("the followed-again question reads Not sent", async () => await qState("notsent") === "cancelled", 30_000).catch(() => undefined);
     const cardCancelled = await wait("the card's answer is cancelled", async () => await cState("notsent") === "cancelled", 30_000).then(() => true, () => false);
     r.states.sent = { question: await qState("sent"), card: await cState("sent") };
     r.states.notsent = { question: await qState("notsent"), card: await cState("notsent") };
     check("renders: Not sent reached on the question", r.states.notsent.question === "cancelled", r.states.notsent);
     await shootAll("dialog", "sent", "sent", /Sent to/); await shootAll("card", "sent", "sent", null);
     await shootAll("dialog", "notsent", "notsent", /stopped following/);
-    if (cardCancelled) await shootAll("card", "notsent", "notsent", /was archived/);
-    else check("renders: Not sent reached on the card", false, { card: r.states.notsent.card });
+    // A card's answer is cancelled only when its agent is archived, and an archived agent has no chat tab to open:
+    // recorded, not shot.
+    r.states.cardNotSent = cardCancelled ? "cancelled (the agent is archived, so its chat card can't be opened to shoot)" : `not reached: ${r.states.notsent.card}`;
+    check("renders: Not sent reached on the card (state only)", cardCancelled, { card: r.states.notsent.card });
 
     // Sending: the send is held at the proxy; the attempt deadline (120 s × scale) bounds the window.
     await proxy.hold(/"send_agent_message_request"/, "up", "drop");
     await answerQ("inflight"); await answerC("inflight");
     await wait("both sends are out and unanswered", async () => await qState("inflight") === "sending" && await cState("inflight") === "sending", 20_000);
     const sendingAt = Date.now();
-    await Promise.all([shootAll("dialog", "sending", "inflight", WORDS.sending), shootAll("card", "sending", "inflight", WORDS.sending)]);
+    // All eight at once: the card reads its "Sending…" label (it has no detail line while sending).
+    await Promise.all(COMBOS.flatMap(combo => [shot("dialog", "sending", "inflight", WORDS.sending, combo), shot("card", "sending", "inflight", /^Sending…$/, combo)]));
     r.states.sendingShotSeconds = Math.round((Date.now() - sendingAt) / 1000);
     check("renders: the Sending shots finished inside the attempt deadline", Date.now() - sendingAt < 120_000 * RENDER_TIME_SCALE, { seconds: r.states.sendingShotSeconds });
     await wait("the unconfirmed sends read Retrying", async () => await qState("inflight") === "retrying" && await cState("inflight") === "retrying", 90_000);
