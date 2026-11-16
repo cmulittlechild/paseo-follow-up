@@ -111,8 +111,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      (Paseo's cgroup working set ≥ 75 %, or pressure).
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
-     three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **300 MB peak RSS** from the
-     worker's start (VmHWM, so the cold-start tick counts), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (250: CI's median 220 plus 4 standard deviations of CI's own readings, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`; the old 240 sat inside the runner's noise and flaked on a no-op PR), **3 %
+     three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
+     from the worker's start (VmHWM, so the cold-start tick counts; 321: CI's median 278 plus 4 standard deviations of
+     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`; the old 300 sat 2 deviations up and main itself
+     read 313 on 2026-11-16), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (250: CI's median 220 plus 4 standard deviations of CI's own readings, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`; the old 240 sat inside the runner's noise and flaked on a no-op PR), **3 %
      idle CPU**, **2 idle daemon requests a minute**. Measured 2026-11-12 (two runs): peak 262–264 MB (a ~2 s cold-start
      tick that changes and validates every workspace once), idle 198–200 MB and flat, CPU 1.3–1.4 %, 1.3 requests a
      minute; the bare plugin process is ~120 MB. Headroom (~15 % peak, ~20 % idle) covers live's extras the seed lacks
@@ -130,7 +132,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      memory fix alike, ~100 MB JS heap and ~220 MB native. Never loosen a `test:scale` budget to pass it.
    - **Budgets judge the typical cost** (`scale-budgets-judge-the-typical-cost`): an idle budget reads the idle window's
      median, because RSS there is a GC sawtooth (main swung 17 MB between runs; CI once peaked at 279 MB over a ~215 MB
-     median). One sample decides nothing except the lifetime cap (VmHWM ≤ 300 MB). The idle peak is still reported.
+     median). One sample decides nothing except the lifetime cap (VmHWM ≤ `REALISTIC_PEAK_BUDGET_MB`). The idle peak is still reported.
      The send phase's bound comes from the worker's send schedule (`SETTLE_MS`, `POLL_IDLE_MS`, `NO_PROGRESS_CAP`) plus
      a named margin, timed from the worker loading the seed, never a literal that equals a normal run's length.
      Guarded by `tests/scale-budget.test.ts`.
