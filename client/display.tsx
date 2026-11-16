@@ -3,9 +3,10 @@ import { useRpc, useSettings } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { displayFeed, inboxListRpc, trustBypassRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
-import { SettingsAction, SettingsCard, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { isMac, searchShortcutOf, searchShortcutOptions, type SearchShortcut } from "../shared/search-key";
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { Text } from "./text";
 import { displayPreferences, displayRpc, trustCountText } from "../shared/display";
 import { sidebarVisibility } from "./sidebar-visibility";
@@ -97,6 +98,13 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
       </SettingsCard>
       {settings.saveError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger }}>{settings.saveError}</Text>}
     </SettingsSection>
+    {Platform.OS === "web" && <SettingsSection title="Keyboard" info="Follow-up's key never takes one Paseo uses, and inside a code editor the editor keeps it. Pick None to keep it free.">
+      <SettingsCard>
+        <SettingsSelect label="Search from anywhere" hint="Jumps to Home's search from any screen, even mid-message. On Home, / works too."
+          value={searchShortcutOf(settings.values.search_shortcut)} options={searchShortcutOptions(isMac())} disabled={settings.saving}
+          onValueChange={(search_shortcut: SearchShortcut) => save({ search_shortcut })} />
+      </SettingsCard>
+    </SettingsSection>}
     <SettingsSection title="Needs-you inbox" trailing={<BetaChip theme={theme} />} info="Agents stay in Needs you until you sign them off or write to them. Opening an agent doesn't clear it.">
       <SettingsCard>
         <SettingsSwitch label="Needs-you inbox" hint="Off: no agent is flagged. The pill still shows workspace items, and the sidebar badge counts workspaces instead." value={settings.values.enable_inbox} disabled={settings.saving} onValueChange={(enable_inbox) => save({ enable_inbox })} />

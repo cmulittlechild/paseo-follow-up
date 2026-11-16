@@ -64,9 +64,9 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const current = active ?? fallback;
   const move = useCallback((delta: number) => setActive(a => Math.max(0, Math.min((results?.length ?? 1) - 1, (a ?? fallback) + delta))), [results, fallback]);
   // ⌘K "Follow-up: Search".
+  // A request made before this field mounted (the search key opening Home) is taken on mount.
   const token = useSyncExternalStore(sources.extras.subscribe, sources.extras.focusToken, sources.extras.focusToken);
-  const first = useRef(token);
-  useEffect(() => { if (token !== first.current) inputRef.current?.focus(); }, [token]);
+  useEffect(() => { if (sources.extras.takeFocus()) inputRef.current?.focus(); }, [token, sources.extras]);
   return { query, setQuery, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn };
 }
 
@@ -92,7 +92,7 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape }: {
+export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape }: {
   /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
   listKeys?: boolean;
   /** "2 of 12" at the field's end (a panel section's search), in place of the field's own ✕: the section has its own. */
@@ -101,7 +101,10 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
   /** Esc's own action (a section search closes); without it Esc clears, then leaves the field. */
   onEscape?: () => void;
   theme: Theme; value: string; onChange: (q: string) => void; placeholder: string; icon: string; dense: boolean;
-  inputRef: { current: TextInput | null }; slashHint: boolean; onSubmit?: () => void; onArrow?: (delta: number) => void;
+  /** The key chip at the field's end (web, desktop width): "/" or the search-from-anywhere key; false for none. */
+  /** The chip's hover title (web): what each key does. */
+  slashTitle?: string;
+  inputRef: { current: TextInput | null }; slashHint: string | false; onSubmit?: () => void; onArrow?: (delta: number) => void;
 }) {
   const c = theme.colors;
   const [focused, setFocused] = useState(false);
@@ -124,14 +127,19 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
       : !!value && <Pressable accessibilityRole="button" accessibilityLabel={`Clear ${placeholder.toLowerCase()}`} hitSlop={dense ? 14 : 8} onPress={() => { onChange(""); inputRef.current?.focus(); }}>
       <Icon name="X" size={dense ? 16 : 13} color={c.foregroundMuted} />
     </Pressable>}
-    {slashHint && !value && !focused && !dense && Platform.OS === "web" && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: c.border }}>/</Text>}
+    {slashHint && !value && !focused && !dense && Platform.OS === "web" && <Text accessibilityElementsHidden importantForAccessibility="no" {...(slashTitle ? { title: slashTitle } as object : null)} style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: c.border, fontVariant: ["tabular-nums"] }}>{slashHint}</Text>}
   </View>;
 }
 
-export function SearchField({ theme, omnibox, dense, onEnter }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem) => void }) {
+/**
+ * Home's search. Its chip names the search-from-anywhere key when one is set (it works here too), else "/"; plain "/"
+ * focuses it on Home either way (useSlashToFocus).
+ */
+export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
-  return <QueryField theme={theme} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint
+  return <QueryField theme={theme} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+    slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item) onEnter(item); }} onArrow={move} listKeys={!query.trim()} />;
 }
 

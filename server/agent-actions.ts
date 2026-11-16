@@ -23,6 +23,7 @@ import { waitNote, type WaitStatus } from "../shared/wait";
 import { reportInputSchema } from "./report-issue";
 import type { RenameStatus } from "../shared/rename";
 import { DISPLAY_KEYS, displayPreferences, HOME_DETAIL_DEFAULT } from "../shared/display";
+import { DEFAULT_SEARCH_SHORTCUT, SEARCH_SHORTCUTS } from "../shared/search-key";
 import { DEFAULT_SORT, SORT_MODES } from "../shared/sort";
 
 /**
@@ -325,14 +326,14 @@ export class AgentActions {
   private async displayTool(caller: string, tool: "display_settings" | "set_display", args: Record<string, any>) {
     if (!this.d.display) throw new Error(`${tool} isn't available in this Follow-up.`);
     const current = await this.d.display.read();
-    if (tool === "display_settings") return { values: { home_sort: DEFAULT_SORT, home_detail_fraction: HOME_DETAIL_DEFAULT, ...current.values }, sorts: SORT_MODES, change: "set_display changes these, only when the developer asked. home_sort orders Home and the sidebar view. home_detail_fraction is the share of Home's width its right pane takes (0.2 to 0.8, default 0.42)." };
+    if (tool === "display_settings") return { values: { home_sort: DEFAULT_SORT, home_detail_fraction: HOME_DETAIL_DEFAULT, search_shortcut: DEFAULT_SEARCH_SHORTCUT, ...current.values }, sorts: SORT_MODES, search_shortcuts: SEARCH_SHORTCUTS, change: "set_display changes these, only when the developer asked. home_sort orders Home and the sidebar view. home_detail_fraction is the share of Home's width its right pane takes (0.2 to 0.8, default 0.42). search_shortcut is the key that opens Home's search from anywhere: mod-slash (⌘/ or Ctrl+/, the default), mod-shift-k, mod-shift-h or none." };
     const values = args.values as Record<string, boolean | string | number> | undefined;
     if (!values || !Object.keys(values).length) throw new Error("set_display: give values, e.g. { enable_trust_bypass: false } or { home_sort: \"recent\" }. display_settings lists them.");
     const unknown = Object.keys(values).filter(k => !DISPLAY_KEYS.includes(k));
     if (unknown.length) throw new Error(`set_display: unknown setting ${unknown.join(", ")}. display_settings lists them.`);
     const parsed = displayPreferences.schema.safeParse({ ...current.values, ...values });
     if (!parsed.success) throw new Error(`set_display: ${parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
-    const was = (k: string) => current.values[k] ?? (k === "home_sort" ? DEFAULT_SORT : k === "home_detail_fraction" ? HOME_DETAIL_DEFAULT : undefined);
+    const was = (k: string) => current.values[k] ?? (k === "home_sort" ? DEFAULT_SORT : k === "home_detail_fraction" ? HOME_DETAIL_DEFAULT : k === "search_shortcut" ? DEFAULT_SEARCH_SHORTCUT : undefined);
     const changes = Object.entries(values).filter(([k, v]) => was(k) !== v).map(([key, to]) => ({ key, from: was(key), to }));
     const planId = changes.length ? this.plan(caller, "set_display", async () => {
       const now = await this.d.display!.read();

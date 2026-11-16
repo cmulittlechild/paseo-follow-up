@@ -35,6 +35,8 @@ import { UpdateNotice, VersionMark } from "./updates";
 import { WhatsNewGate } from "./release-notes";
 import { ViewSync } from "./view-store";
 import { ResizableSplit } from "./split";
+import type { SearchKey } from "./search-key";
+
 import { displayPreferences, displayRpc, writeDisplay, HOME_DETAIL_DEFAULT, HOME_DETAIL_MAX, HOME_DETAIL_MIN, type DisplayClient } from "../shared/display";
 import { subscribeDisplay } from "./display";
 import { useRowMenu } from "./row-actions";
@@ -43,6 +45,10 @@ import { PrLinksProvider, RichText } from "./rich-text";
 import { TOAST_ANCHOR, ToastHost, useQuestionOpener } from "./toasts";
 import { openRowCopy, useDetailGate, useWorkspace } from "./workspace-data";
 import type { ListWorkspace } from "../shared/list";
+
+/** Home without a search key (tests, older wiring): no subscription, no label. */
+const noSubscribe = () => () => undefined;
+const noLabel = () => null;
 
 export const HOME_SCREEN = "follow-up";
 
@@ -59,6 +65,8 @@ export type HomeDeps = {
   /** Phones: open one Home item as its own screen, so the host's ← (and Android back) returns to the list. */
   openItem?(key: string, extra?: { question?: string }): void;
   briefDeps: BriefDeps;
+  /** The search-from-anywhere key (client/search-key.ts), for the search field's chip. */
+  searchKey?: SearchKey;
 };
 
 /**
@@ -85,6 +93,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const compact = layout.compact;
   const model = useHomeModel(deps.sources);
   const omnibox = useOmnibox(model, deps.sources);
+  const searchKey = deps.searchKey;
+  const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
   useSlashToFocus(omnibox, params.view !== "log");
   const [filter, setFilter] = useState<HomeGroupId | null>(null);
   const [selected, setSelected] = useState<string | null>(() => params.item ?? (params.select ? `agent:${params.select}` : null));
@@ -204,7 +214,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
-        <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} />
+        <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} anywhereKey={anywhereKey} />
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>

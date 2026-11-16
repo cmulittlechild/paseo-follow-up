@@ -21,6 +21,10 @@
   0.8, absent until first dragged (read as 0.42). Dragging the divider (or moving it with the keyboard) writes it once,
   on release, through `writeDisplay` (`shared/display.ts`); `set_display` sets it with
   `{ values: { home_detail_fraction: 0.5 } }`, and the Display feed brings an agent's change to an open Home.
+- **Search from anywhere** is the Display field `search_shortcut`: `mod-slash` (⌘/ on a Mac, Ctrl+/ elsewhere; the
+  default when absent), `mod-shift-k`, `mod-shift-h` or `none`. Settings → Inbox & display → Keyboard picks it (web
+  and desktop only); `set_display` sets it with `{ values: { search_shortcut: "none" } }`. No choice is a key Paseo
+  binds (`PASEO_BOUND`, `shared/search-key.ts`; invariant `every-shortcut-is-configurable-and-never-paseo-s`).
 - **Display fields** are read and written by agents through `display_settings` and `set_display`
   (`DISPLAY_TOOLS` in `server/agent-parity.ts`, PARITY key `settings.display`).
 - **View state is per device; settings are per host** (invariant 22, `view-state-is-per-device-settings-are-per-host`).

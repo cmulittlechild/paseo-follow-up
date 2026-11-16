@@ -88,7 +88,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
@@ -467,6 +467,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-16: Home's right pane was 42 % capped at 680 px, so it couldn't grow on a wide window and nothing let the
    developer drag it. Guarded by `tests/side-panes.test.ts`, `tests/agent-parity.test.ts` and
    `scripts/screenshots.mjs --only split` (a real drag in the harness, kept across a reload; writes `split.json`).
+33. **Every shortcut is configurable and never Paseo's** (`every-shortcut-is-configurable-and-never-paseo-s`). A key
+   Follow-up handles outside its own focused surface is a Display setting with a None choice (so `display_settings`
+   reads it and `set_display` sets it), matched with exact modifiers (Mod is ⌘ on a Mac, Ctrl elsewhere; never while
+   composing or on auto-repeat), handled by one capture-phase document listener on web only, and never a combo Paseo's
+   web app binds (`PASEO_BOUND` in `shared/search-key.ts`, read from its bundles). Today that is Search from anywhere,
+   `search_shortcut` (⌘/ by default): it opens Home with the cursor in its search from any screen, even mid-message,
+   and on Home only moves the cursor (`client/search-key.ts`); inside a code editor (Paseo 0.16's CodeMirror binds
+   Mod-/) the editor keeps the key. The ⌘K "Follow-up: Search" row and Home's search
+   chip name the chosen key. A focus request made before Home mounts is kept until Home's search takes it
+   (`takeFocus`), never lost to a timer. Guarded by `tests/search-shortcut.test.ts`, `tests/agent-parity.test.ts` and
+   `scripts/screenshots.mjs --only shortcut` (the key from a chat's composer, on Home, with the sidebar collapsed,
+   None, another preset, after a reload; writes `shortcut.json`).
 
 ## Bugs
 

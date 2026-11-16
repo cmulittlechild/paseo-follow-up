@@ -43,7 +43,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["split", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["shortcut", "split", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1546,6 +1546,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
+  if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1713,6 +1714,86 @@ async function splitShots({ shoot, seeded, call, out }) {
   await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
   await fs.writeFile(join(out, "split.json"), JSON.stringify(checks, null, 2));
   log(`split: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
+
+/**
+ * shortcut (every-shortcut-is-configurable-and-never-paseo-s): the search-from-anywhere key, end to end. Headless
+ * Chromium on Linux is "not a Mac", so the default is Ctrl+/. From an agent chat with the cursor in the composer it
+ * opens Home with the cursor in Home's search; on Home it only moves the cursor; with Paseo's sidebar collapsed (its own
+ * Ctrl+B) it still works; None does nothing; Ctrl+Shift+K works once chosen and Ctrl+/ then does nothing, also after a
+ * reload. Renders: Settings → Inbox & display's Keyboard row, Home's search chip and the ⌘K row, light and dark.
+ * Writes shortcut.json; any failed check fails the run.
+ */
+async function shortcutShots({ shoot, seeded, call, out, billing }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`shortcut: ${name}`); log(`shortcut check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const agent = seeded.workspaces.find(w => w.key === "audit").agentId;
+  const setKey = value => actPlanned(call, agent, "set_display", { values: { search_shortcut: value } });
+  const SEARCH = /^(Search, or ask the Overseer|Search workspaces, branches, PRs)$/;
+  const onHome = page => page.url().includes("/surface/follow-up");
+  const searchFocused = page => page.evaluate(() => { const a = document.activeElement; return !!a && /^(Search, or ask the Overseer|Search workspaces, branches, PRs)$/.test(a.getAttribute("aria-label") ?? a.getAttribute("placeholder") ?? ""); });
+  const settle = async (page, ok) => { for (let i = 0; i < 20; i++) { if (await ok()) return true; await page.waitForTimeout(150); } return false; };
+  const inComposer = async page => {
+    await openChat(page, billing.title, billing.prompt);
+    const composer = page.locator("textarea").filter({ visible: true }).last();
+    await composer.click(); await composer.fill("draft");
+    return composer;
+  };
+  await setKey("mod-slash");
+  await shoot("shortcut-check", DESKTOP, "dark", async page => {
+    await page.goto(ORIGIN); await page.getByText("Follow-up", { exact: true }).first().waitFor();
+    await inComposer(page);
+    await page.keyboard.press("Control+/");
+    check("Ctrl+/ from the composer opens Home with the cursor in its search", await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
+    // Already on Home, with the cursor elsewhere: only the cursor moves.
+    await page.getByText("Morning brief", { exact: true }).first().click(); await page.waitForTimeout(300);
+    const before = page.url();
+    await page.keyboard.press("Control+/");
+    check("on Home it only moves the cursor", await settle(page, () => searchFocused(page)) && page.url() === before, { before, after: page.url() });
+    // Paseo's sidebar collapsed (its own Ctrl+B): the key needs no sidebar row.
+    await inComposer(page);
+    await page.keyboard.press("Control+b"); await page.waitForTimeout(400);
+    const sidebarRow = await page.getByText("Follow-up", { exact: true }).filter({ visible: true }).count();
+    await page.locator("textarea").filter({ visible: true }).last().click();
+    await page.keyboard.press("Control+/");
+    check("works with Paseo's sidebar collapsed", await settle(page, async () => onHome(page) && await searchFocused(page)), { sidebarRowsVisible: sidebarRow });
+    await page.keyboard.press("Control+b"); await page.waitForTimeout(300);
+    // None: nothing happens, and the composer keeps its draft.
+    await setKey("none"); await page.reload();
+    await inComposer(page);
+    const chat = page.url();
+    await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+    check("None does nothing", page.url() === chat && !await searchFocused(page), { url: page.url() });
+    // Ctrl+Shift+K: works, and Ctrl+/ no longer does; both after a reload too.
+    await setKey("mod-shift-k"); await page.reload();
+    for (const pass of ["after choosing it", "after a reload"]) {
+      if (pass === "after a reload") await page.reload();
+      await inComposer(page);
+      const at = page.url();
+      await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+      check(`Ctrl+/ does nothing once Ctrl+Shift+K is chosen (${pass})`, page.url() === at, { url: page.url() });
+      await page.keyboard.press("Control+Shift+K");
+      check(`Ctrl+Shift+K opens Home's search (${pass})`, await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
+    }
+    await setKey("mod-slash");
+  });
+  // Renders: the settings row, Home's search chip, the ⌘K row; light and dark.
+  for (const theme of ["light", "dark"]) {
+    await shoot(`shortcut-settings-${theme}`, DESKTOP, theme, async page => {
+      await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
+      await page.getByRole("tab", { name: /^Inbox & display/ }).filter({ visible: true }).first().click();
+      const row = page.getByText("Search from anywhere", { exact: true }).filter({ visible: true }).first();
+      await row.waitFor(); await row.evaluate(el => el.scrollIntoView({ block: "center" }));
+      return { x: 400, y: 0, width: DESKTOP.width - 400, height: DESKTOP.height };
+    });
+    await shoot(`shortcut-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("textbox", { name: SEARCH }).first().waitFor(); return { x: 320, y: 0, width: 840, height: 220 }; });
+    await shoot(`shortcut-cmdk-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page); await page.keyboard.press("Control+k");
+      await page.keyboard.type("Follow-up: Search"); await page.getByText(/Follow-up: Search \(Ctrl\+\/\)/).first().waitFor();
+    });
+  }
+  await fs.writeFile(join(out, "shortcut.json"), JSON.stringify(checks, null, 2));
+  log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
 }
 
 async function prLinkShots({ shoot, billing }) {
