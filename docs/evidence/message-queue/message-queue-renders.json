@@ -167,18 +167,6 @@
           }
         },
         {
-          "name": "mq-dialog-sending-desktop-light",
-          "surface": "dialog",
-          "state": "sending",
-          "form": "desktop",
-          "theme": "light",
-          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
-          "overflow": {
-            "scrollWidth": 1280,
-            "innerWidth": 1280
-          }
-        },
-        {
           "name": "mq-card-sending-desktop-dark",
           "surface": "card",
           "state": "sending",
@@ -191,27 +179,15 @@
           }
         },
         {
-          "name": "mq-dialog-sending-desktop-dark",
+          "name": "mq-dialog-sending-desktop-light",
           "surface": "dialog",
           "state": "sending",
           "form": "desktop",
-          "theme": "dark",
-          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
           "overflow": {
             "scrollWidth": 1280,
             "innerWidth": 1280
-          }
-        },
-        {
-          "name": "mq-card-sending-phone-dark",
-          "surface": "card",
-          "state": "sending",
-          "form": "phone",
-          "theme": "dark",
-          "file": "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
-          "overflow": {
-            "scrollWidth": 390,
-            "innerWidth": 390
           }
         },
         {
@@ -227,15 +203,15 @@
           }
         },
         {
-          "name": "mq-dialog-sending-phone-dark",
+          "name": "mq-dialog-sending-desktop-dark",
           "surface": "dialog",
           "state": "sending",
-          "form": "phone",
+          "form": "desktop",
           "theme": "dark",
-          "file": "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
           "overflow": {
-            "scrollWidth": 390,
-            "innerWidth": 390
+            "scrollWidth": 1280,
+            "innerWidth": 1280
           }
         },
         {
@@ -245,6 +221,30 @@
           "form": "phone",
           "theme": "light",
           "file": "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-sending-phone-dark",
+          "surface": "card",
+          "state": "sending",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-sending-phone-dark",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
           "overflow": {
             "scrollWidth": 390,
             "innerWidth": 390
@@ -598,11 +598,11 @@
           "card": "cancelled"
         },
         "cardNotSent": "cancelled (the agent is archived, so its chat card can't be opened to shoot)",
-        "sendingShotSeconds": 17,
+        "sendingShotSeconds": 12,
         "failed": {
           "question": "failed",
           "card": "failed",
-          "timelineReadsDropped": 10
+          "timelineReadsDropped": 9
         }
       },
       "pngs": [
@@ -619,13 +619,13 @@
         "docs/evidence/message-queue/mq-dialog-notsent-phone-light.png",
         "docs/evidence/message-queue/mq-dialog-notsent-phone-dark.png",
         "docs/evidence/message-queue/mq-card-sending-desktop-light.png",
-        "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
         "docs/evidence/message-queue/mq-card-sending-desktop-dark.png",
-        "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
-        "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
         "docs/evidence/message-queue/mq-card-sending-phone-light.png",
-        "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
         "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
+        "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
         "docs/evidence/message-queue/mq-dialog-queued-desktop-light.png",
         "docs/evidence/message-queue/mq-dialog-queued-desktop-dark.png",
         "docs/evidence/message-queue/mq-dialog-queued-phone-light.png",
@@ -739,25 +739,31 @@
       "ok": true
     },
     {
+      "name": "render mq-card-sending-desktop-dark",
+      "ok": true
+    },
+    {
       "name": "render mq-dialog-sending-desktop-light",
       "ok": true
     },
     {
-      "name": "render mq-card-sending-desktop-dark",
-      "ok": true
+      "name": "render mq-card-sending-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
     },
     {
       "name": "render mq-dialog-sending-desktop-dark",
       "ok": true
     },
     {
-      "name": "render mq-card-sending-phone-dark: no horizontal overflow at 390",
+      "name": "render mq-dialog-sending-phone-light: no horizontal overflow at 390",
       "ok": true,
       "scrollWidth": 390,
       "innerWidth": 390
     },
     {
-      "name": "render mq-card-sending-phone-light: no horizontal overflow at 390",
+      "name": "render mq-card-sending-phone-dark: no horizontal overflow at 390",
       "ok": true,
       "scrollWidth": 390,
       "innerWidth": 390
@@ -769,15 +775,9 @@
       "innerWidth": 390
     },
     {
-      "name": "render mq-dialog-sending-phone-light: no horizontal overflow at 390",
-      "ok": true,
-      "scrollWidth": 390,
-      "innerWidth": 390
-    },
-    {
       "name": "renders: the Sending shots finished inside the attempt deadline",
       "ok": true,
-      "seconds": 17
+      "seconds": 12
     },
     {
       "name": "render mq-dialog-queued-desktop-light",
