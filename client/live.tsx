@@ -12,6 +12,7 @@ import { useSidebarViewActive } from "./inbox";
 import { homeCounts } from "../shared/home";
 import { useHomeModel, type HomeSources } from "./home-data";
 import { onVisible, whileVisible } from "./visibility";
+import { FOLLOW_UP_ICON, NEED_DOT, needDotBox } from "./follow-up-icon";
 import { WhatsNewGate } from "./release-notes";
 import { ViewSync } from "./view-store";
 import { ToastHost } from "./toasts";
@@ -95,13 +96,13 @@ export function useLive<T>(store: LiveStore, select: () => T): T {
   return select();
 }
 
-/** The header button's icon: a pull-request glyph with a warning dot while the workspace needs you. */
+/** The header button's icon: Follow-up's mark. While the workspace needs you, its end dot turns into the warning dot. */
 export function headerIcon(store: LiveStore) {
   return function HeaderIcon(props: PluginButtonIconProps) {
     const need = useLive(store, () => { const w = store.get(props.workspaceId); return w ? activeNeeds(w).length : 0; });
     return <View style={{ width: props.size, height: props.size }}>
-      <Icon name="GitPullRequest" size={props.size} color={props.color} />
-      {need > 0 && <View accessibilityLabel={`${need} need you`} style={{ position: "absolute", top: -2, right: -3, width: 7, height: 7, borderRadius: 4, backgroundColor: props.theme.colors.statusWarning, borderWidth: 1.5, borderColor: props.theme.colors.surface0 }} />}
+      <Icon icon={FOLLOW_UP_ICON} size={props.size} color={props.color} />
+      {need > 0 && <View testID="follow-up-need-dot" accessibilityLabel={`${need} need you`} style={{ position: "absolute", ...needDotBox(props.size), width: NEED_DOT, height: NEED_DOT, borderRadius: NEED_DOT / 2, backgroundColor: props.theme.colors.statusWarning }} />}
     </View>;
   };
 }
@@ -120,7 +121,7 @@ export function sidebarItem(sources: HomeSources, screenId: string) {
     const c = theme.colors;
     const shown = count > 0 && !inSidebarView;
     // What's new mounts here too (the sidebar is always there), so it shows even if you live in agent chats.
-    return <><ViewSync /><WhatsNewGate surface="sidebar" theme={theme} compact={layout.compact} /><ToastHost theme={theme} compact={layout.compact} /><SidebarRow icon="GitPullRequest" active={currentScreen?.screenId === screenId} onPress={() => openScreen({ screenId, params: { section: "needs" } })}
+    return <><ViewSync /><WhatsNewGate surface="sidebar" theme={theme} compact={layout.compact} /><ToastHost theme={theme} compact={layout.compact} /><SidebarRow icon={FOLLOW_UP_ICON} active={currentScreen?.screenId === screenId} onPress={() => openScreen({ screenId, params: { section: "needs" } })}
       trailing={shown ? <View accessibilityLabel={`${count} need${count === 1 ? "s" : ""} you`} style={{ minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: c.statusWarning }}>
         <Text style={{ color: c.surface0, fontSize: 11, lineHeight: 14, fontWeight: "700", fontVariant: ["tabular-nums"] }}>{count}</Text>
       </View> : undefined} /></>;

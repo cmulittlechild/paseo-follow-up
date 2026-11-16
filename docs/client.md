@@ -82,6 +82,7 @@ Nothing polls while the app is hidden.
 | `client/spec.tsx` | The spec link chip, row and sheet. The chip sits in the references line (`client/linked.tsx`). |
 | `client/linked.tsx`, `shared/linked-display.ts` | Linked items on screen: the references line (Spec and Linked chips), the Linked sheet, the disclosure row, and Home search's index. See [linked-items.md](linked-items.md#ui). |
 | `client/brand-icons.ts` | Monochrome brand marks (Simple Icons, CC0) for linked items, passed to the host `Icon` as inline SVG. |
+| `client/follow-up-icon.ts` | `FOLLOW_UP_ICON`, Follow-up's own mark as a `currentColor` glyph: the sidebar row, header button, panel tab, Settings, the open command and the larger view's empty state (`follow-up-has-one-mark`). |
 | `client/about.tsx` | Summary at the top of Home's detail pane and the panel. |
 | `client/inbox.tsx`, `client/inbox-store.ts`, `client/done-windows.ts` | Needs-you rows, the undo bar and inbox commands, plus the shared inbox poll and Done's per-agent Undo windows (the pill says Done while one is open). |
 | `client/brief.tsx` | The brief card in agent timelines. |

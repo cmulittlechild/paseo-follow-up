@@ -524,6 +524,50 @@ const INIT = ({ seen }) => {
 
 // ---------- reaching Home (scripts/ui-home.mjs) ----------
 let ORIGIN = null; let SERVER_ID = null;
+/**
+ * The header button's Needs-you dot is drawn whole (follow-up-has-one-mark): the amber box in a screenshot of the
+ * button is as tall as it is wide, within 1 px. Paseo clips a header icon to its 16 px box, and 2026-11-16 the dot
+ * drew flat-topped (7 wide, 6 tall). Measures pixels, so it catches any clipper, not one known style.
+ */
+async function checkNeedDot(page) {
+  const dot = page.getByTestId("follow-up-need-dot").first();
+  await dot.waitFor();
+  if (await page.getByTestId("follow-up-need-dot").count() !== 1) throw new Error("expected one header Needs-you dot");
+  // Geometry first, exact: the dot lies inside every ancestor that clips (a 0.2 px cut can hide in anti-aliasing).
+  const cut = await dot.evaluate(el => {
+    const d = el.getBoundingClientRect();
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (getComputedStyle(a).overflow === "visible") continue;
+      const r = a.getBoundingClientRect();
+      if (d.left < r.left - 0.01 || d.top < r.top - 0.01 || d.right > r.right + 0.01 || d.bottom > r.bottom + 0.01) return { dot: [d.left, d.top, d.right, d.bottom], clipper: [r.left, r.top, r.right, r.bottom] };
+    }
+    return null;
+  });
+  if (cut) throw new Error(`the header's Needs-you dot pokes out of a clipping box: ${JSON.stringify(cut)}`);
+  const color = await dot.evaluate(el => getComputedStyle(el).backgroundColor);
+  const b = await dot.boundingBox();
+  const clip = { x: b.x - 8, y: b.y - 8, width: b.width + 16, height: b.height + 16 };
+  const png = (await page.screenshot({ clip })).toString("base64");
+  const box = await page.evaluate(async ({ png, color }) => {
+    const img = new Image(); img.src = `data:image/png;base64,${png}`; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+    const [r0, g0, b0] = color.match(/\d+/g).map(Number); const px = g.getImageData(0, 0, c.width, c.height).data;
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+      const i = (y * c.width + x) * 4;
+      if (Math.abs(px[i] - r0) + Math.abs(px[i + 1] - g0) + Math.abs(px[i + 2] - b0) > 60) continue;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    return x1 < 0 ? null : { width: x1 - x0 + 1, height: y1 - y0 + 1, image: img.width };
+  }, { png, color });
+  const dpr = box ? box.image / clip.width : 1; // device px per css px
+  const w = box && box.width / dpr, h = box && box.height / dpr;
+  if (!box || Math.abs(w - h) > 1) throw new Error(`the header's Needs-you dot is clipped: amber box ${JSON.stringify({ w, h })} css px`);
+  if (w < 5 || w > 9) throw new Error(`the amber box isn't the 7 px dot: ${w.toFixed(1)} x ${h.toFixed(1)} css px`);
+  log(`need dot ok: ${w.toFixed(1)} x ${h.toFixed(1)} css px`);
+}
+
 /** Follow-up Home by URL, asserted (scripts/ui-home.mjs); `keepDialogs` leaves Getting started or What's new open. */
 const openHome = (page, { keepDialogs = false } = {}) => openHomeAt(page, { origin: ORIGIN, serverId: SERVER_ID, keepDialogs });
 
@@ -1324,6 +1368,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await openChat(page, "Billing retries", billing.prompt);
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
       await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor();
+      await checkNeedDot(page);
     });
     // Repairs are tasks (Q49): Onboarding email's PR #160 has a conflict and review threads. With Auto on, the strip
     // says who gets the next message, when and why; the crawling clock keeps it inside the settle, so nothing sends.

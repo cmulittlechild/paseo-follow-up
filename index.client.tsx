@@ -13,6 +13,7 @@ import { contributeChat } from "./client/chat";
 import { contributeCreated } from "./client/created";
 import { hasFeeds } from "./client/feeds";
 import { createLiveStore, headerIcon, sidebarItem } from "./client/live";
+import { FOLLOW_UP_ICON } from "./client/follow-up-icon";
 import { contributeFollowUpPill } from "./client/pill";
 import { FollowLarge, LARGE_SCREEN } from "./client/large";
 import { createInboxStore } from "./client/inbox-store";
@@ -98,9 +99,9 @@ export default function contribute(host: PluginClientContext) {
     client.addScreen({ id: OVERVIEW, title: "Follow-up", Component: Overview }),
     client.addScreen({ id: LARGE_SCREEN, title: params => store.get(params.workspaceId ?? "")?.title ?? "Follow-up", Component: Large }),
     ...LEGACY_SETTINGS_SCREENS.map(id => client.addScreen({ id, title: "Follow-up settings", Component: Settings })),
-    client.addSettingsScreen({ id: "projects", title: "Follow-up", icon: "GitPullRequest", Component: Settings }),
-    client.addWorkspacePanel({ id: PANEL, title: "Follow-up", icon: "GitPullRequest", locations: ["workspace", "explorer"], Component: Panel }),
-    client.addCommandCenterItem({ id: "open-follow-up", title: "Follow-up: open for this workspace", icon: "GitPullRequest", keywords: ["PR", "stack", "repairs", "done", "archive"], context: "workspace", onSelect({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
+    client.addSettingsScreen({ id: "projects", title: "Follow-up", icon: FOLLOW_UP_ICON, Component: Settings }),
+    client.addWorkspacePanel({ id: PANEL, title: "Follow-up", icon: FOLLOW_UP_ICON, locations: ["workspace", "explorer"], Component: Panel }),
+    client.addCommandCenterItem({ id: "open-follow-up", title: "Follow-up: open for this workspace", icon: FOLLOW_UP_ICON, keywords: ["PR", "stack", "repairs", "done", "archive"], context: "workspace", onSelect({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
     client.addCommandCenterItem({ id: "open-follow-up-large", title: "Follow-up: open the larger view", icon: "Maximize2", keywords: ["expand", "full screen", "maximize", "PR", "stack"], context: "workspace", onSelect({ workspace, openScreen }) { openScreen({ screenId: LARGE_SCREEN, params: { workspaceId: workspace.id } }); } }),
     client.addCommandCenterItem({ id: "open-follow-up-spec", title: "Follow-up: open the spec", icon: "FileText", keywords: ["spec", "artifact", "plan", "doc", "design"], context: "workspace", onSelect({ workspace, openPanel }) {
       const url = store.get(workspace.id)?.spec?.url;

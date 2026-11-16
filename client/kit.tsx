@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, View, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
-import { openExternalUrl } from "@getpaseo/plugin/client";
+import { openExternalUrl, type PluginSvgIcon } from "@getpaseo/plugin/client";
 import { PressScale, Spinner } from "./motion";
 import { raised, tint, withAlpha, type Colors, type Theme } from "./theme";
 
@@ -173,14 +173,14 @@ export type CardTone = "plain" | "attention" | "success";
  * is being searched (client/section-search.tsx), and its field takes the title's place in the header.
  */
 export function Card({ theme, icon, title, tone = "plain", count, right, children, compact = false, style, search }: {
-  theme: Theme; icon: string; title: string; tone?: CardTone; count?: string | number; right?: ReactNode; children: ReactNode; compact?: boolean; style?: StyleProp<ViewStyle>; search?: ReactNode;
+  theme: Theme; icon: string | PluginSvgIcon; title: string; tone?: CardTone; count?: string | number; right?: ReactNode; children: ReactNode; compact?: boolean; style?: StyleProp<ViewStyle>; search?: ReactNode;
 }) {
   const c = theme.colors;
   const accent = tone === "attention" ? c.statusWarning : tone === "success" ? c.statusSuccess : null;
   return <View style={[{ marginHorizontal: compact ? 16 : 12, marginTop: 12, borderRadius: 8, overflow: "hidden", backgroundColor: c.surface0 },
     accent ? { borderWidth: 1, borderColor: withAlpha(accent, 0.7) } : raised(c), style]}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? 8 : 7, paddingHorizontal: compact ? 14 : 12, paddingTop: 10, paddingBottom: 8, minHeight: compact ? 44 : undefined }}>
-      <Icon name={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} />
+      {typeof icon === "string" ? <Icon name={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} /> : <Icon icon={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} />}
       {search ?? <>
         <Text accessibilityRole="header" style={{ color: accent ?? c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, fontWeight: "600" }}>{title}</Text>
         {count !== undefined && count !== "" && <Chip theme={theme} color={accent ?? c.foregroundMuted} label={String(count)} />}
