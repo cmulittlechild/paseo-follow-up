@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isWorkspaceRoot, type WorkspaceAgent } from "../server/workspace-agent";
@@ -40,7 +41,7 @@ async function fixture(t: any, enableDefault = true, parentIndexed = true) {
     fetchAgentTimeline: async () => { timelineCalls++; return { entries: [], hasOlder: false, error: null, gap: false, staleCursor: false }; },
   } as unknown as Daemon;
   const gateway = new PaseoGateway((async work => work(client)) as typeof withDaemon);
-  const store = new Store(directory);
+  const store = testStore(Store, directory);
   const state: State = { version: 1, workspaces: [], projectDefaults: { project: enableDefault } };
   await store.mutate(s => Object.assign(s, state));
   return { gateway, store, state, created, parent, timelineCalls: () => timelineCalls, populate: () => { agents.push(created, agent("same-workspace-child", created.workspaceId!, created.id)); } };

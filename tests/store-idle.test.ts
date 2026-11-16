@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
@@ -13,7 +14,7 @@ import { clock, pr, snapshot, workspace } from "./fixtures";
 async function store(t: { after: (fn: () => Promise<void>) => void }, writeMs = 0) {
   const root = await mkdtemp(join(tmpdir(), "follow-store-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const s = new Store(root, writeMs);
+  const s = testStore(Store, root, writeMs);
   await s.mutate(state => { state.workspaces.push(workspace(), workspace({ id: "w2", title: "Second" })); });
   await s.flush();
   let changed = 0; s.onChanged = async () => { changed++; };
@@ -38,7 +39,7 @@ test("mutateWorkspace copies only that workspace, writes it and derives files on
   assert.equal(after.workspaces[1].title, "Renamed");
   assert.equal(after.workspaces[0].title, before.workspaces[0].title);
   assert.equal(f.changed(), 1);
-  assert.equal((await new Store(f.s.directory).snapshot()).workspaces[1].title, "Renamed", "persisted");
+  assert.equal((await testStore(Store, f.s.directory).snapshot()).workspaces[1].title, "Renamed", "persisted");
   await assert.rejects(f.s.mutateWorkspace("missing", () => undefined), /initializing/);
   assert.equal((await f.s.snapshot()).workspaces.length, 2, "a failed mutation leaves the state as it was");
 });
@@ -46,7 +47,7 @@ test("mutateWorkspace copies only that workspace, writes it and derives files on
 test("an idle engine tick with nothing new writes no state and rebuilds no derived files", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-store-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const s = new Store(root);
+  const s = testStore(Store, root);
   await s.mutate(state => { state.workspaces.push(workspace({ prs: [pr({ snapshot: snapshot() })] })); });
   const runtime: Runtime = { busy: false, reason: null, archived: false };
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "r", contextPath: "/fixture/r.json" }), observe: async () => runtime, send: async () => undefined, label: async () => undefined };

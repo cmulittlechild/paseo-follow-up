@@ -1,3 +1,4 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -157,13 +158,13 @@ test("resolved states compose with delivery: an answered brief whose delivery fa
 });
 
 test("store.onChanged never awaits a write to the store it runs in (it runs inside the write queue)", async () => {
-  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { mkdtemp } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { Store } = await import("../server/store");
   const dir = await mkdtemp(join(tmpdir(), "onchanged-"));
   try {
     // Why the rule exists: an awaited write from onChanged never finishes.
-    const store = new Store(dir);
+    const store = testStore(Store, dir);
     let nested = false;
     store.onChanged = async () => { if (nested) return; nested = true; await store.mutate(() => undefined); };
     const outcome = await Promise.race([store.mutate(s => { s.workspaces = []; (s as { importedAt?: string }).importedAt = T0; }).then(() => "done"), new Promise(r => setTimeout(() => r("deadlock"), 1500))]);

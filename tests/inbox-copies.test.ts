@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InboxStore } from "../server/inbox";
@@ -37,7 +38,7 @@ async function wholeStringifies<T>(work: () => Promise<T>): Promise<number> {
 }
 
 test("an-inbox-mutation-copies-one-entry: a mutation of one entry keeps every other entry's saved object", async t => {
-  const store = new InboxStore(await dir(t));
+  const store = testStore(InboxStore, await dir(t));
   await store.mutate(s => seed(s));
   const before = await store.snapshot();
   await store.mutate(s => { s.entries["agent-3"].lastEventAt = "2026-11-13T06:00:00.000Z"; });
@@ -52,7 +53,7 @@ test("an-inbox-mutation-copies-one-entry: a mutation of one entry keeps every ot
 
 test("an-inbox-mutation-copies-one-entry: reading an entry inside a mutation without changing it copies and writes nothing", async t => {
   const d = await dir(t);
-  const store = new InboxStore(d);
+  const store = testStore(InboxStore, d);
   await store.mutate(s => seed(s));
   const before = await store.snapshot(); const file = await readFile(join(d, "inbox.json"), "utf8");
   const n = await wholeStringifies(() => store.mutate(s => { for (const e of Object.values(s.entries)) void e.brief; return s.entries["agent-1"].needs?.reasons.length; }));
@@ -63,7 +64,7 @@ test("an-inbox-mutation-copies-one-entry: reading an entry inside a mutation wit
 });
 
 test("an-inbox-mutation-copies-one-entry: a real change never stringifies the whole inbox (a-mutation-costs-what-it-changes: the write encodes only what changed)", async t => {
-  const store = new InboxStore(await dir(t));
+  const store = testStore(InboxStore, await dir(t));
   await store.mutate(s => seed(s));
   const writes = store.writes;
   const n = await wholeStringifies(() => store.mutate(s => { s.entries["agent-5"].needs = null; }));
@@ -73,7 +74,7 @@ test("an-inbox-mutation-copies-one-entry: a real change never stringifies the wh
 
 test("an-inbox-mutation-copies-one-entry: adds, deletes, replacements and root fields still land, and an invalid entry is refused", async t => {
   const d = await dir(t);
-  const store = new InboxStore(d);
+  const store = testStore(InboxStore, d);
   await store.mutate(s => seed(s, 4));
   await store.mutate(s => {
     s.entries["agent-new"] = newEntry("agent-new");

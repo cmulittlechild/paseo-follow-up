@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -14,7 +15,7 @@ function scopedExchange(browser: BrowserBridge, client: string, ready: boolean, 
   return browser.exchange(client, ready, results, acceptJobs, ["example/app"]).jobs;
 }
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "follow-actions-")); const store = new Store(root);
+  const root = await mkdtemp(join(tmpdir(), "follow-actions-")); const store = testStore(Store, root);
   const bottom = pr({ snapshot: snapshot({ headBranch: "bottom", head: "bottom-head", reviewDecision: "APPROVED", graphiteMergeStatus: "READY_TO_MERGE" }) });
   const top = pr({ key: "example/app#2", number: 2, parent: bottom.key, snapshot: snapshot({ headBranch: "top", head: "top-head", base: "bottom", reviewDecision: "APPROVED", graphiteMergeStatus: "READY_TO_MERGE_AS_STACK" }) });
   await store.mutate(s => s.workspaces.push(workspace({ prs: [top, bottom] })));
@@ -60,7 +61,7 @@ test("uncertain merge is durable and never automatically retried", async () => {
   const f = await fixture(); try {
     f.fail(); const plan = await f.actions.prepare("workspace", f.top.key, "merge");
     assert.equal((await f.actions.confirm(plan.id, "downstack")).state, "uncertain");
-    assert.equal((await new Store(f.store.directory).snapshot()).workspaces[0].prActions[0].state, "uncertain");
+    assert.equal((await testStore(Store, f.store.directory).snapshot()).workspaces[0].prActions[0].state, "uncertain");
     const retry = await f.actions.prepare("workspace", f.top.key, "merge"); assert.ok(retry.blockers.length);
     await assert.rejects(f.actions.confirm(retry.id, "downstack"), /readiness changed/); assert.equal(f.merges.length, 1);
   } finally { await f.close(); }

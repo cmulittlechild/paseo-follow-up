@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
@@ -142,7 +143,7 @@ test("blocked tasks become questions without losing the task; unblocking closes 
 async function fixture(t: any, deliver: Gateway["deliver"]) {
   const root = await mkdtemp(join(tmpdir(), "follow-questions-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   const w = workspace({ prs: [pr()] }); ask(w);
   await store.mutate(s => { s.workspaces.push(w); });
   const runtime: Runtime = { busy: false, reason: null, archived: false };

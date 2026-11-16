@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { batchArchive, pruneUnsent } from "../server/batch-archive";
@@ -23,7 +24,7 @@ test("never-sent cancelled batches beyond the newest three move to the archive; 
 
 test("a completion check survives the agent's turns instead of being cancelled and recreated", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-churn-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr({ snapshot: snapshot({ state: "MERGED" }) })] })); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr({ snapshot: snapshot({ state: "MERGED" }) })] })); });
   let now = clock; let runtime: Runtime = { busy: false, reason: null, archived: false };
   const archived: string[] = [];
   const engine = new Engine(store, { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { snapshot: { ...p.snapshot, observedAt: new Date(now).toISOString() }, error: null }])) }, { observe: async () => runtime, send: async () => {}, prepareRecovery: async () => ({ agentId: "r", contextPath: "/r" }), label: async () => {} }, () => now);

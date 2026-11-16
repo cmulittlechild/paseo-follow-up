@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
@@ -22,7 +23,7 @@ const N = 20;
 
 async function fleet(t: { after: (fn: () => unknown) => void }) {
   const root = await mkdtemp(join(tmpdir(), "follow-send-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => {
     s.migrations = [ACTIVE_SCOPE_MIGRATION];
     for (let i = 0; i < N; i++) s.workspaces.push(workspace({ id: `w${i}`, mainAgentId: `a${i}`, enable_auto_sends: i === 0, prs: [pr({ key: `example/app#${i + 1}`, number: i + 1, snapshot: snapshot({ conflict: i === 0, observedAt: new Date(clock).toISOString() }) })] }));

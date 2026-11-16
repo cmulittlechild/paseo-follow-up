@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PaseoGateway, agentIndexStats, type Agent, type Daemon, type withDaemon } from "../server/daemon";
@@ -112,7 +113,7 @@ test("the inbox tail never reads an unloaded agent", async () => {
 
 async function engineFixture(t: any, w: Workspace, runtime: Runtime) {
   const root = await temp(t);
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); s.migrations = [ACTIVE_SCOPE_MIGRATION]; });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); s.migrations = [ACTIVE_SCOPE_MIGRATION]; });
   let now = clock; const sends: string[] = []; const observed: string[] = [];
   let send: (text: string) => Promise<void> = async text => { sends.push(text); };
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }), observe: async x => { observed.push(x.id); return runtime; }, send: async (_w, _b, text) => send(text), label: async () => {} };
@@ -182,7 +183,7 @@ test("upgrade parks auto-send outside the active scope once and restores it when
   const dir = await temp(t);
   const sleeper = agent("sleeper", "dormant");
   const d = daemon([sleeper], [{ id: "dormant", name: "dormant", projectId: "project" }]);
-  const store = new Store(dir);
+  const store = testStore(Store, dir);
   await store.mutate(s => { s.workspaces.push(workspace({ id: "dormant", mainAgentId: "sleeper", enable_auto_sends: true, prs: [] })); });
   const gateway = new PaseoGateway(d.connect, new SessionGuard(dir), async () => false, new HistoryCache(null), () => clock);
   const github = { observe: async () => new Map() };

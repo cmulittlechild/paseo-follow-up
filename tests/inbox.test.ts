@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { wakeLabel, compareNeeds, displayReason, newEntry, nextAfter, reduce, replay, rowTitle, sectionRows, StaleSignOff, stateOf, type Entry, type InboxEvent, type InboxRow } from "../shared/inbox";
@@ -187,7 +188,7 @@ const agent = (patch: Partial<AgentInfo> & { id: string }): AgentInfo => ({ work
 async function service(agents: AgentInfo[], options: { tails?: Record<string, unknown[]>; sources?: Partial<Sources>; pauses?: GuardPause[]; now?: () => number; enable_inbox?: boolean; dir?: string } = {}) {
   const dir = options.dir ?? await mkdtemp(join(tmpdir(), "inbox-"));
   const f = fake(agents, options.tails, options.pauses ?? null);
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: options.enable_inbox ?? true, enable_inbox_pr_closed: true }), directory: f.directory, sources: { ...f.none, ...options.sources }, guard: async () => options.pauses ?? null, graceMs: 5, now: options.now ?? (() => Date.parse(at(1))) });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: options.enable_inbox ?? true, enable_inbox_pr_closed: true }), directory: f.directory, sources: { ...f.none, ...options.sources }, guard: async () => options.pauses ?? null, graceMs: 5, now: options.now ?? (() => Date.parse(at(1))) });
   return { inbox, cleared: f.cleared, done: () => rm(dir, { recursive: true, force: true }) };
 }
 const mark = async (inbox: Inbox) => inbox.store.mutate(s => { s.importedAt = T0; s.lastSeen = at(1); s.primedAt = T0; s.notifiedAt = T0; });
@@ -370,7 +371,7 @@ test("the grace period on a mock clock: answered at 2.999 s never flags, unanswe
   const f = fake([agent({ id: "a1" }), agent({ id: "a2" })]);
   // The production default grace (no graceMs); only setTimeout is mocked, so store I/O stays real.
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => Date.parse(at(1)) });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => Date.parse(at(1)) });
   await mark(inbox);
   const a1 = { id: "a1", workspaceId: "w1" }; const a2 = { id: "a2", workspaceId: "w1" };
   const answered = inbox.permissionRequested(a1, { id: "p1", title: "Allow?" });
@@ -558,7 +559,7 @@ test("a-tick-copies-the-state-at-most-once: a tick that only moves lastSeen copi
   const dir = await mkdtemp(join(tmpdir(), "follow-inbox-tick-")); t.after(() => rm(dir, { recursive: true, force: true }));
   let now = Date.parse(at(1));
   const f = fake([agent({ id: "a1" })]);
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => now });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => now });
   await inbox.store.mutate(s => { s.importedAt = at(1); s.entries.a1 = newEntry("a1"); });
   let copies = 0; const mutate = inbox.store.mutate.bind(inbox.store);
   inbox.store.mutate = (work => { copies++; return mutate(work); }) as typeof inbox.store.mutate;
@@ -575,7 +576,7 @@ test("a-tick-copies-the-state-at-most-once: the seen-event drop never swallows a
   // #144 added pr_merged ('Merged'); the per-tick drop of already-seen PR events must let its first sighting through.
   const dir = await mkdtemp(join(tmpdir(), "follow-inbox-merged-")); t.after(() => rm(dir, { recursive: true, force: true }));
   const f = fake([agent({ id: "a1" }), agent({ id: "a2" })]);
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => Date.parse(at(1)) });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory: f.directory, sources: f.none, guard: async () => null, now: () => Date.parse(at(1)) });
   await inbox.store.mutate(s => { s.importedAt = at(0); s.primedAt = at(0); s.notifiedAt = at(0); });
   const follow = { version: 1 as const, workspaces: [
     workspace({ id: "w1", mainAgentId: "a1", prs: [pr({ key: "example/app#7", number: 7, snapshot: snapshot({ state: "MERGED" }) })] }),

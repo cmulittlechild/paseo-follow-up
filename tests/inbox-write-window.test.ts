@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Inbox, INBOX_WRITE_MS, InboxStore, type AgentInfo, type Directory } from "../server/inbox";
@@ -24,7 +25,7 @@ async function fixture(t: { after(fn: () => unknown): void }, writeMs: number) {
     async tail() { return [{ type: "user_message", text: "Fixture prompt" }, { type: "assistant_message", text: "Fixture reply" }]; }, async clearAttention() {},
   };
   const none: Sources = { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false };
-  const inbox = new Inbox(dir, { writeMs, enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, now: () => at } as never);
+  const inbox = testStore(Inbox, dir, { writeMs, enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, now: () => at } as never);
   await inbox.store.mutate(s => { s.importedAt = "2026-11-10T00:00:00.000Z"; s.lastSeen = "2026-11-10T00:00:30.000Z"; s.primedAt = "2026-11-10T00:00:00.000Z"; s.notifiedAt = "2026-11-10T00:00:00.000Z"; });
   await inbox.store.flush();
   return { dir, inbox };
@@ -47,7 +48,7 @@ test("the-inbox-writes-at-most-once-per-window: a burst of turns inside one wind
 
 test("the-inbox-writes-at-most-once-per-window: a held change reaches the file within the window, without a flush", async t => {
   const dir = await mkdtemp(join(tmpdir(), "follow-inbox-window-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new InboxStore(dir, Date.now, 20);
+  const store = testStore(InboxStore, dir, Date.now, 20);
   await store.mutate(s => { s.unsorted = ["agent-1"]; });
   await store.mutate(s => { s.unsorted = ["agent-1", "agent-2"]; });
   assert.equal(store.writes, 0, "held for the window");

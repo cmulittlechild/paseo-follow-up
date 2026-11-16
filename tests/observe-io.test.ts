@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { State } from "../shared/model";
@@ -106,8 +107,8 @@ test("one-daemon-connection-per-tick: closeConnections closes the shared connect
 test("InboxStore keeps its state in memory: mutations don't re-read inbox.json", async t => {
   const dir = await mkdtemp(join(tmpdir(), "follow-inbox-mem-")); t.after(() => rm(dir, { recursive: true, force: true }));
   const entries = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`agent-${i}`, { agentId: `agent-${i}`, seq: 1, needs: null, snooze: null, undo: null, ledger: [], lastEventAt: iso(clock), note: "z".repeat(400) }]));
-  const seed = await new InboxStore(dir).mutate(s => { Object.assign(s.entries, entries); return JSON.stringify(s).length; });
-  const inbox = new InboxStore(dir);
+  const seed = await testStore(InboxStore, dir).mutate(s => { Object.assign(s.entries, entries); return JSON.stringify(s).length; });
+  const inbox = testStore(InboxStore, dir);
   await inbox.snapshot();
   const before = await rchar();
   for (let i = 0; i < 30; i++) await inbox.mutate(s => { s.lastSeen = iso(clock + i * 1000); });

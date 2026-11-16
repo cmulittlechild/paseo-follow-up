@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { followUpEvents } from "../server/inbox";
@@ -90,7 +91,7 @@ test("a-no-review-repo-never-asks-for-review-or-merge: after a restart the set i
   const dir = await mkdtemp(join(tmpdir(), "review-mode-")); t.after(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(dir, "pr-workflow.json"), JSON.stringify({ version: 1, repos: { "example/app": { review: "none" } }, migratedAt: "2026-11-12T00:00:00Z" }));
   setNoReviewRepos([]); // a fresh worker process
-  const store = new PrWorkflowStore(dir, probe);
+  const store = testStore(PrWorkflowStore, dir, probe);
   await store.read();
   assert.deepEqual(noReviewRepoList(), ["example/app"]);
   assert.deepEqual(asks(workspace({ mainAgentId: "main-agent", prs: [greenUnreviewed()] })), [], "the first tick is already quiet");
@@ -105,7 +106,7 @@ test("a-no-review-repo-never-asks-for-review-or-merge: after a restart the set i
 test("set_pr_workflow review: none saves, team clears back to the default, and every save updates the set", async t => {
   fresh(t);
   const dir = await mkdtemp(join(tmpdir(), "review-mode-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new PrWorkflowStore(dir, probe);
+  const store = testStore(PrWorkflowStore, dir, probe);
   await store.mutate(c => { c.repos["example/app"] = { review: "none" }; });
   assert.equal(repoReview("example/app"), "none");
   assert.equal(store.agentWorkflow("example/app").noReview, true);
@@ -230,7 +231,7 @@ test("public-code-carries-no-host-identifiers: set_pr_workflow deploy saves, cle
   const { ACME_DEPLOY } = await import("./fixtures");
   const { RPC_TOOLS } = await import("../server/agent-parity");
   const dir = await mkdtemp(join(tmpdir(), "deploy-config-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new PrWorkflowStore(dir, probe);
+  const store = testStore(PrWorkflowStore, dir, probe);
   assert.equal((await store.view(["acme/acme-poc"])).repos[0].deploy, null, "empty install: no deploy check");
   await store.mutate(c => { c.repos["acme/acme-poc"] = { deploy: ACME_DEPLOY }; });
   assert.deepEqual((await store.view(["acme/acme-poc"])).repos[0].deploy, ACME_DEPLOY, "pr_workflow returns the whole config");

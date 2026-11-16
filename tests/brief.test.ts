@@ -1,7 +1,8 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { briefStep, collapsedLine, nothingNeededLine, extrasFit, isTight, FALLBACK_ASK, matchOption, NEEDS_YOU_INSTRUCTION, NEEDS_YOU_NUDGE, pickBrief, prState, validateNeedsYou, type Brief, type BriefContent, type NeedsYouCall, type NeedsYouRecord, type PrState } from "../shared/brief";
@@ -209,7 +210,7 @@ async function service(agents: AgentInfo[], o: { tails?: Record<string, unknown[
     async agent(id) { return agents.find(a => a.id === id) ?? null; }, async tail(id) { return o.tails?.[id] ?? []; }, async clearAttention() {},
   };
   let now = o.now ?? (() => Date.parse(at(1)));
-  const inbox: Inbox = new Inbox(dir, {
+  const inbox: Inbox = testStore(Inbox, dir, {
     enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory,
     sources: { ledger: o.ledger ?? (async () => (await inbox.store.snapshot()).ledger), defer: async () => false, session: async () => false, schedule: async () => false },
     guard: async () => o.pauses ?? null, graceMs: 5, permissionSettleMs: o.settleMs ?? 30_000, settleMs: 40, settleStepMs: 5, now: () => now(),

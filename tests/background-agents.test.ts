@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -88,7 +89,7 @@ test("a background agent's turns raise no inbox rows; a root agent's still do", 
     async tail(id) { tails[id] = []; return []; }, async clearAttention() {},
   };
   const none: Sources = { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false };
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, now: () => Date.parse("2026-11-10T00:01:00.000Z") });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, now: () => Date.parse("2026-11-10T00:01:00.000Z") });
   await inbox.store.mutate(s => { s.importedAt = "2026-11-10T00:00:00.000Z"; s.lastSeen = "2026-11-10T00:00:30.000Z"; s.primedAt = "2026-11-10T00:00:00.000Z"; s.notifiedAt = "2026-11-10T00:00:00.000Z"; });
   for (const id of ["helper", "main"]) {
     await inbox.turnStarted({ id, workspaceId: "w1" }, "t1");

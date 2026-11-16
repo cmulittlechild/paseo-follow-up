@@ -1,10 +1,11 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Governor, pressure, workingSet } from "../server/governor";
 import { governorLevel, resourceMeter, resourceText, type Resources } from "../shared/resources";
 import { Engine } from "../server/engine";
 import { Store } from "../server/store";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { workspace } from "./fixtures";
@@ -84,7 +85,7 @@ test("the meter's colour, fill and paused caption follow the governor level", ()
 
 test("a paused engine skips background refresh entirely", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-gov-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(workspace({ enable_auto_sends: true })); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(workspace({ enable_auto_sends: true })); });
   let discovered = 0, observed = 0;
   const engine = new Engine(store, { observe: async () => { observed++; return new Map(); } }, { discover: async () => { discovered++; return []; }, observe: async () => ({ busy: false, reason: null, archived: false }), send: async () => {}, prepareRecovery: async () => ({ agentId: "r", contextPath: "/r" }), label: async () => {} });
   let paused = true; engine.paused = () => paused;

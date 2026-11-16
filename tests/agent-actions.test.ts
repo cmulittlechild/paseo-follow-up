@@ -1,7 +1,8 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Store } from "../server/store";
@@ -25,7 +26,7 @@ const needs = { since: new Date(clock).toISOString(), reasons: [{ reason: "finis
 /** A real store and the real PrActions, with GitHub stubbed at its boundary. */
 async function fixture(t: TestContext, prs = [pr({ snapshot: snapshot({ reviewers: reviewers() }) })]) {
   const directory = await mkdtemp(join(tmpdir(), "follow-agent-actions-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory);
+  const store = testStore(Store, directory);
   await store.mutate(s => { s.workspaces = [workspace({ prs })]; });
   const current = new Map(prs.map(p => [p.key, structuredClone(p.snapshot!)]));
   const writes: { key: string; logins: string[] }[] = [];

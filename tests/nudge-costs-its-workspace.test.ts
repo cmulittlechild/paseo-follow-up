@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine } from "../server/engine";
@@ -61,7 +62,7 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }, live: numb
   const turns = new TurnTimeline(() => now);
   gateway.turnTimeline = turns;
   const directory = daemonDirectory(gateway.directory, connect, turns);
-  const store = new Store(join(dir, "state"));
+  const store = testStore(Store, join(dir, "state"));
   await store.mutate(s => {
     s.migrations = [ACTIVE_SCOPE_MIGRATION];
     for (let i = 0; i < N; i++) s.workspaces.push(workspace({ id: `w${i}`, title: `Workspace w${i}`, mainAgentId: `a${i}`, prs: [pr({ key: `example/app#${1000 + i}`, number: 1000 + i })] }));

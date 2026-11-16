@@ -1,3 +1,4 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ListCache } from "../server/list-cache";
@@ -32,12 +33,12 @@ test("follow.list answers with only what changed since the client's revision", (
 // touched, 23 MB of garbage every 5 minutes. The store keeps an unchanged workspace's frozen object, so only a
 // workspace whose object changed is serialised again.
 test("a-list-answer-serializes-only-what-changed: a change to 1 of 150 workspaces stringifies one workspace", async t => {
-  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { mkdtemp } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { Store } = await import("../server/store");
   const root = await mkdtemp(join(tmpdir(), "follow-list-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => { for (let i = 0; i < 150; i++) s.workspaces.push(workspace({ id: `w${i}`, title: `Workspace ${i}` })); });
   const cache = new ListCache();
   const first = cache.answer(await store.snapshot());

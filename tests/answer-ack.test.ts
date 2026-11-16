@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { briefStep, type Brief, type BriefContent } from "../shared/brief";
@@ -39,7 +40,7 @@ async function inbox(t: { after(fn: () => unknown): void }) {
   const agent: AgentInfo = { id: "main", workspaceId: "w", parentAgentId: null, title: "Main", status: "idle", archivedAt: null, updatedAt: null, lastUserMessageAt: null, requiresAttention: false, attentionReason: null };
   const directory = { agents: async () => [agent], workspaces: async () => [{ id: "w", name: "W" }], agent: async () => agent, tail: async () => [], clearAttention: async () => {} } as unknown as Directory;
   const rows: Brief[] = [];
-  const box = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never,
+  const box = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never,
     guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async (_a: string, b: Brief) => { rows.push(b); }, call: async () => null, pr: async () => null } } as never);
   const timers = new FakeTimers();
   box.deliveryRetryMs = [15_000, 60_000]; box.deliveryAttemptMs = 120_000; box.timers = timers;
@@ -118,7 +119,7 @@ test("an answer recorded before a reload goes out at the next worker start, unde
   const mutate = box.store.mutate.bind(box.store);
   box.store.mutate = (work => { writesAfterStop++; return mutate(work); }) as typeof box.store.mutate;
   // The worker reloads: a fresh Inbox over the same directory.
-  const next = new Inbox(box.store.directory, box["o"]);
+  const next = testStore(Inbox, box.store.directory, box["o"]);
   next.timers = new FakeTimers();
   const sent: { agentId: string; messageId: string }[] = [];
   await next.resumeAnswers(agentId => async (_text, messageId) => { sent.push({ agentId, messageId }); });
@@ -135,7 +136,7 @@ test("an answer recorded before a reload goes out at the next worker start, unde
 test("answer-question replies within ACK_MS while delivery hangs; the question reads sending until it lands", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-answer-ack-q-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   const w = workspace({ prs: [pr()] });
   askQuestion(w, "main-agent", { title: "Retry window", question: "How long?", options: [{ letter: "A", label: "An hour" }, { letter: "B", label: "A day" }], recommend: "A" } as never, "work-around", clock);
   await store.mutate(s => { s.workspaces.push(w); });

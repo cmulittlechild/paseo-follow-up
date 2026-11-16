@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine } from "../server/engine";
@@ -17,7 +18,7 @@ import { clock, pr, workspace } from "./fixtures";
  */
 async function fixture(t: { after: (f: () => Promise<void>) => void }) {
   const root = await mkdtemp(join(tmpdir(), "follow-nudge-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => { s.workspaces.push(
     workspace({ id: "w1", mainAgentId: "a1", prs: [pr({ key: "example/app#1", number: 1 })] }),
     workspace({ id: "w2", mainAgentId: "a2", prs: [pr({ key: "example/app#2", number: 2 })] }),

@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -37,7 +38,7 @@ for (const action of ["copy", "chat"] as const) {
 
 async function storeWith(t: { after: (fn: () => unknown) => void }, action: "copy" | "chat") {
   const root = await mkdtemp(join(tmpdir(), "follow-answer-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => {
     s.migrations = [ACTIVE_SCOPE_MIGRATION];
     const w = workspace({ id: "w1", questions: [question()] });
