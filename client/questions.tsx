@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { answerQuestionRpc } from "../shared/contracts";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
-import { OTHER, OTHER_LABEL, answerHeading, answerLabel, answerStatus, answerMessage, isOpen, isOther, questionState, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
 import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
@@ -47,13 +47,6 @@ export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAns
       ? { icon: "Hand", color: c => c.statusWarning, text: `Big question: ${q.big}. The agent builds nothing this affects until you answer.` }
       : { icon: "Clock", color: c => c.foregroundMuted, text: "The agent holds what this affects and keeps working on the rest." };
   }
-}
-
-/** The card's resend button for a queued answer: Retry once it failed, Try now while a timer waits. */
-function resendTitle(d: { state: string; nextAt?: string | null }): string | null {
-  if (d.state === "failed") return "Retry";
-  if (d.state === "unconfirmed" || (d.state === "queued" || d.state === "retrying") && d.nextAt) return "Try now";
-  return null;
 }
 
 function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: string; tone: "success" | "warning" | "muted" | "spinner"; text: string } | null {
@@ -270,7 +263,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     </View>}
     {open && !pinned && input}
   </View>;
-  const actions = (open || q.answer && ["queued", "unconfirmed", "copied", "in-chat"].includes(q.answer.delivery.state)) && <View style={{ gap: 6 }}>
+  const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       {open && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending} onPress={() => quick("send")} />}
       {open && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title="Put in chat" accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}

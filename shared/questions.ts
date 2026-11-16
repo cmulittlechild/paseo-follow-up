@@ -354,6 +354,21 @@ export type AnswerStatus = {
   /** The short state, for a card's corner: "Answered", "Copied · not sent yet"… */
   label: string;
 };
+/** The question card's resend button for an answer: Retry once it failed, Try now while a timer waits. Null: none. */
+export function resendTitle(d: { state: string; nextAt?: string | null }): "Retry" | "Try now" | null {
+  if (d.state === "failed") return "Retry";
+  if (d.state === "unconfirmed" || (d.state === "queued" || d.state === "retrying") && d.nextAt) return "Try now";
+  return null;
+}
+/**
+ * Whether an answered card shows its action row: whenever it has a button to offer (Retry, Try now, Send for an answer
+ * that was copied or put in chat). Derived from resendTitle, so a state that gains a button can't lose its row
+ * (2026-11-16: the row's own state list left out failed and retrying, so "Check the agent's chat, then Retry" had no Retry).
+ */
+export function answerHasActions(d: { state: string; nextAt?: string | null }): boolean {
+  return resendTitle(d) !== null || d.state === "copied" || d.state === "in-chat" || d.state === "queued" || d.state === "unconfirmed";
+}
+
 export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {
   const a = q.answer;
   if (!a) return null;
