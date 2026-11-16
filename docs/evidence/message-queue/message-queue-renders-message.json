@@ -1,0 +1,184 @@
+{
+  "script": "scripts/check-message-queue.mjs",
+  "baseline": false,
+  "pack": {
+    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+    "version": "2.1.0-beta.3"
+  },
+  "paseo": "0.15.4",
+  "cases": {
+    "renders": {
+      "timeScale": 0.25,
+      "shots": [
+        {
+          "name": "mq-message-stuck-desktop-light",
+          "surface": "message",
+          "state": "stuck",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-message-stuck-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-message-stuck-desktop-dark",
+          "surface": "message",
+          "state": "stuck",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-message-stuck-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-message-stuck-phone-light",
+          "surface": "message",
+          "state": "stuck",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-message-stuck-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-message-stuck-phone-dark",
+          "surface": "message",
+          "state": "stuck",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-message-stuck-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        }
+      ],
+      "states": {
+        "message": {
+          "state": "queued",
+          "agentTitle": "Stuck forward main"
+        }
+      },
+      "pngs": [
+        "docs/evidence/message-queue/mq-message-stuck-desktop-light.png",
+        "docs/evidence/message-queue/mq-message-stuck-desktop-dark.png",
+        "docs/evidence/message-queue/mq-message-stuck-phone-light.png",
+        "docs/evidence/message-queue/mq-message-stuck-phone-dark.png"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "the worker's daemon connection goes through the proxy",
+      "ok": true,
+      "connections": 1
+    },
+    {
+      "name": "renders: the forward reads as didn't go out",
+      "ok": true,
+      "state": "queued",
+      "agentTitle": "Stuck forward main"
+    },
+    {
+      "name": "render mq-message-stuck-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-message-stuck-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-message-stuck-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-message-stuck-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "no worker crash in the daemon log",
+      "ok": true
+    }
+  ],
+  "timing": null,
+  "mainTiming": {
+    "pack": {
+      "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+      "version": "2.1.0-beta.3"
+    },
+    "rows": [
+      {
+        "action": "answer-question send",
+        "method": "follow.answer-question",
+        "ms": 5,
+        "ok": true
+      },
+      {
+        "action": "answer-question resend (Try now on a queued answer)",
+        "method": "follow.answer-question",
+        "ms": 2,
+        "ok": true
+      },
+      {
+        "action": "brief-action",
+        "method": "follow.brief-action",
+        "ms": 7,
+        "ok": true
+      },
+      {
+        "action": "brief-action Retry on a queued card",
+        "method": "follow.brief-action",
+        "ms": 4,
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "send (manual Send of a repair batch)",
+        "method": "follow.send",
+        "ms": 20013,
+        "ok": false,
+        "error": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action retry",
+        "method": "follow.queue-action",
+        "ms": 3,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action cancel",
+        "method": "follow.queue-action",
+        "ms": 1,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "Overseer forward (send_to_agent)",
+        "method": "follow.overseer-act",
+        "ms": 30002,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "report handed to an agent (report-issue-send)",
+        "method": "follow.report-issue-send",
+        "ms": 30001,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+      }
+    ]
+  },
+  "todo": [],
+  "result": "pass"
+}

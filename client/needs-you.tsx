@@ -4,7 +4,7 @@ import { Pressable, Text } from "./text";
 import { Icon, useToast } from "@getpaseo/plugin/client/ui";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { answerQuestionRpc, checkPrActionRpc, controlRpc, sendRpc } from "../shared/contracts";
+import { answerQuestionRpc, checkPrActionRpc, controlRpc, queueActionRpc, sendRpc } from "../shared/contracts";
 import { agentName, needsYou, workspaceSnoozed, type NeedItem } from "../shared/attention";
 import { laterLabel } from "./inbox";
 import { sameText } from "../shared/home";
@@ -35,6 +35,7 @@ function glyph(item: NeedItem, colors: Colors): { name: string; color: string } 
     case "retry": return { name: "OctagonAlert", color: colors.statusDanger };
     case "capped": return { name: "CircleAlert", color: colors.statusWarning };
     case "check": return { name: "CircleHelp", color: colors.statusWarning };
+    case "message": return { name: "MessageSquareWarning", color: colors.statusWarning };
     case "decision": return { name: "MessageCircleQuestion", color: colors.statusWarning };
     case "question": return { name: item.state === "stopped" ? "CirclePause" : "MessageCircleQuestion", color: colors.statusWarning };
     case "answer": return item.waiting ? { name: item.waiting === "in-chat" ? "MessageSquareText" : "Copy", color: colors.statusWarning } : { name: "TriangleAlert", color: colors.statusWarning };
@@ -57,7 +58,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   useReviewerSettings();
   const toast = useToast();
   const cache = useQueryClient();
-  const control = useRpc(controlRpc); const send = useRpc(sendRpc); const check = useRpc(checkPrActionRpc); const answer = useRpc(answerQuestionRpc);
+  const control = useRpc(controlRpc); const send = useRpc(sendRpc); const check = useRpc(checkPrActionRpc); const answer = useRpc(answerQuestionRpc); const queueAction = useRpc(queueActionRpc);
   const refresh = () => { void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey }); };
   const fail = (error: Error) => { toast.error(errorText(error)); refresh(); };
   const resume = useMutation({ mutationFn: () => control({ workspaceId: w.id, clearHold: true }), onSuccess: () => { toast.show("Follow-up resumed", { variant: "success" }); refresh(); actions.after?.(); }, onError: fail });
@@ -91,11 +92,14 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
     if (!a) throw new Error(`${questionId} has no recorded answer`);
     return answer({ workspaceId: w.id, questionId, choice: a.choice, words: a.words ?? undefined, action: "resend" });
   }, onSuccess: (_result, questionId) => { toast.show(`Sending your ${questionId} answer again`, { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
+  // A forward or report that didn't go out (Workspace.undelivered): Retry or Cancel its queue item, the queue tools' path.
+  const queueAct = useMutation({ mutationFn: (input: { itemId: string; action: "retry" | "cancel" }) => queueAction(input),
+    onSuccess: (_r, input) => { toast.show(input.action === "retry" ? "Sending it again" : "Cancelled; it won't be sent", { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
   const inspect = useMutation({ mutationFn: (actionId: string) => check({ workspaceId: w.id, actionId }), onSuccess: reply => { toast.show(reply.result, { variant: reply.state === "failed" ? "warning" : "info" }); refresh(); }, onError: fail });
   const items = rows ?? needsYou(w, now);
   const mergeControl = useMergeButtons(w);
   if (!items.length) return null;
-  const busy = resume.isPending || retry.isPending || retryTask.isPending || deliver.isPending || sendAnswer.isPending || resendAnswer.isPending || inspect.isPending;
+  const busy = resume.isPending || retry.isPending || retryTask.isPending || deliver.isPending || sendAnswer.isPending || resendAnswer.isPending || queueAct.isPending || inspect.isPending;
   const openMain = actions.openAgent ? () => actions.openAgent!(w.mainAgentId) : undefined;
   const action = (item: NeedItem) => {
     switch (item.kind) {
@@ -111,6 +115,10 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           {openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open agent" accessibilityLabel="Open main agent" onPress={openMain} />}
         </>;
       case "check": return <Button theme={theme} compact={compact} icon="RefreshCw" title="Check state" loading={inspect.isPending} disabled={busy} onPress={() => inspect.mutate(item.actionId)} />;
+      case "message": return <>
+        <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send it again: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "retry"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "retry" })} />
+        <Button theme={theme} compact={compact} kind="ghost" icon="X" title="Cancel" accessibilityLabel={`Don't send it: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "cancel"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "cancel" })} />
+      </>;
       case "decision": return openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Answer in chat" onPress={openMain} />;
       case "question": return actions.openQuestion && <Button theme={theme} compact={compact} icon="MessageCircleReply" title="Answer" accessibilityLabel={`Answer ${item.title}`} onPress={() => actions.openQuestion!(item.questionId)} />;
       case "answer": return item.waiting
@@ -152,7 +160,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {!said && <RichText numberOfLines={2} style={t.label}>{item.title}</RichText>}
-            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
+            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" || item.kind === "message" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
             {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
           </View>
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>

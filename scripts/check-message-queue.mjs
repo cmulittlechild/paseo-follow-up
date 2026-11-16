@@ -26,6 +26,7 @@ import { performance } from "node:perf_hooks";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { createPaseoApi } from "@getpaseo/client";
 import { harness, spawnDaemon, waitUntil } from "./harness.mjs";
+import { fakeGithub } from "./fake-github.mjs";
 import { harnessEnv, harnessConfig, daemonCrashes } from "./harness-env.mjs";
 import { createRequire } from "node:module";
 import { openHome } from "./ui-home.mjs";
@@ -36,14 +37,24 @@ const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i
 const baseline = process.argv.includes("--baseline");
 // --renders: its own daemon (web UI on, FOLLOW_UP_QUEUE_TIME_SCALE so Retrying and Failed come within minutes).
 const renders = process.argv.includes("--renders");
+/** --renders --only message: only Needs you's row for a forward that didn't go out (needs the Overseer path). */
+const rendersOnly = renders ? arg("--only", null) : null;
 /** 0.25: the attempt deadline is 30 s (long enough to shoot Sending), Failed comes ~5 min after an unconfirmed send. */
 const RENDER_TIME_SCALE = 0.25;
-const ALL_CASES = ["unreachable-then-back", "reload-mid-send", "permission-prompt", "card-answer", "reply-timing"];
-// TODO(message-queue, next PR): "busy-agent" (an answer while the agent's turn runs) and "answer-plus-repair" (an
-// answer and a repair batch in one envelope) join here, each as a function in `cases` below.
-const LATER_CASES = ["busy-agent", "answer-plus-repair"];
-const wanted = renders ? ["renders"] : baseline ? ["reply-timing"] : (arg("--cases") ? arg("--cases").split(",") : ALL_CASES);
-for (const c of wanted.filter(c => c !== "renders")) assert.ok(ALL_CASES.includes(c), `unknown case ${c}${LATER_CASES.includes(c) ? " (not written yet)" : ""}; known: ${ALL_CASES.join(", ")}`);
+const ALL_CASES = ["unreachable-then-back", "back-within-20s", "reload-mid-send", "permission-prompt", "card-answer", "reply-timing", "busy-agent", "answer-plus-repair", "reply-timing-b"];
+/**
+ * Cases that run on the scaled clock (FOLLOW_UP_QUEUE_TIME_SCALE): only alone (`--cases forward-stuck`), since the scale
+ * shrinks every attempt deadline and retry, which would change what the other cases see.
+ */
+const SCALED_CASES = ["forward-stuck"];
+/** forward-stuck's scale: stuck after 30 s (MESSAGE_STUCK_MS × scale), an attempt deadline of 6 s, Failed in ~70 s. */
+const STUCK_TIME_SCALE = 0.05;
+/** Cases still to write (recorded in the JSON as todo); none left. */
+const LATER_CASES = [];
+const wanted = renders ? ["renders"] : baseline ? ["reply-timing", "reply-timing-b"] : (arg("--cases") ? arg("--cases").split(",") : ALL_CASES);
+for (const c of wanted.filter(c => c !== "renders")) assert.ok([...ALL_CASES, ...SCALED_CASES].includes(c), `unknown case ${c}; known: ${[...ALL_CASES, ...SCALED_CASES].join(", ")}`);
+const scaled = wanted.some(c => SCALED_CASES.includes(c));
+assert.ok(!scaled || wanted.length === 1, `${SCALED_CASES.join(", ")} run alone (the scaled clock changes every other case)`);
 /** Every answer RPC replies within this while Paseo is slow (an-ack-never-waits-on-paseo). */
 const REPLY_BUDGET_MS = 300;
 /** The slow resume the reply-timing case simulates: every worker→daemon frame waits this long. */
@@ -66,13 +77,18 @@ const check = (name, ok, detail = {}) => { report.checks.push({ name, ok: !!ok, 
  * dropped, so frames are never compressed and a pattern can be matched in them).
  */
 class Proxy {
-  constructor(listenPort, targetPort) { this.listenPort = listenPort; this.targetPort = targetPort; this.conns = new Set(); this.accepted = 0; this.policy = { kind: "pass" }; this.server = null; this.matched = 0; this.acceptedAt = []; }
+  constructor(listenPort, targetPort) { this.listenPort = listenPort; this.targetPort = targetPort; this.conns = new Set(); this.accepted = 0; this.policy = { kind: "pass" }; this.server = null; this.matched = 0; this.acceptedAt = []; this.resetAt = []; this.open = 0; this.maxOpenWhileReset = 0; }
   async listen() {
     if (this.server) return;
     this.server = createServer(socket => this.accept(socket));
     await new Promise((r, j) => { this.server.once("error", j); this.server.listen(this.listenPort, "127.0.0.1", r); });
   }
   accept(client) {
+    if (this.policy.kind === "reset") {
+      // Unreachable, counted: every connection attempt is accepted and reset at once (the worker sees a failed connect).
+      this.resetAt.push(Date.now()); this.open++; this.maxOpenWhileReset = Math.max(this.maxOpenWhileReset, this.open);
+      client.on("close", () => { this.open--; }); client.on("error", () => undefined); client.destroy(); return;
+    }
     this.accepted++; this.acceptedAt.push(Date.now());
     const upstream = connect(this.targetPort, "127.0.0.1");
     const c = { client, upstream, handshake: true, head: Buffer.alloc(0), buf: Buffer.alloc(0), upHeld: false, downHeld: false, upQueue: [], downQueue: [], chain: Promise.resolve(), closed: false };
@@ -127,6 +143,11 @@ class Proxy {
     if (server) await new Promise(r => { server.close(() => r()); for (const c of this.conns) { c.client.destroy(); c.upstream.destroy(); } });
     for (const c of this.conns) { c.client.destroy(); c.upstream.destroy(); }
   }
+  /** Unreachable but counted: the listener stays, every connection is reset on accept (resetAt, maxOpenWhileReset). */
+  async reset() {
+    await this.listen(); this.policy = { kind: "reset" }; this.resetAt = []; this.maxOpenWhileReset = 0;
+    for (const c of this.conns) { c.client.destroy(); c.upstream.destroy(); }
+  }
   /** Every worker→daemon frame (not the upgrade) reaches the daemon `ms` later, in order: a slow resume. */
   async delay(ms) { await this.listen(); this.policy = { kind: "delay", ms }; }
   /** From the first frame matching `match`: "up" holds it (it never reached the daemon), "down" forwards it and holds every reply. */
@@ -156,7 +177,20 @@ function nextFrame(buf) {
 // ---- the daemon ------------------------------------------------------------------------------------------------
 
 const proxy = new Proxy(proxyPort, port);
-let daemon; let client; let failed = false; let browser = null;
+let daemon; let client; let failed = false; let github = null;
+const bin = join(root, "bin");
+/** Fixture `gh`: GraphQL reads answer every requested example/app PR as open and conflicting; everything else `[]`. */
+const FAKE_GH = `#!/usr/bin/env node
+if (process.env.GH_REPO !== "example/app") throw new Error("Missing repository authentication context");
+if (process.argv[3] !== "graphql") { console.log("[]"); process.exit(0); }
+const query = process.argv.find(a => a.startsWith("query=")) || "";
+const repository = { defaultBranchRef: { name: "main" } };
+for (const m of query.matchAll(/(p\\d+):pullRequest\\(number:(\\d+)\\)/g)) {
+  const n = Number(m[2]);
+  repository[m[1]] = { number: n, title: "Export change " + n, url: "https://github.com/example/app/pull/" + n, state: "OPEN", headRefName: "export-" + n, headRefOid: "fixture-head-" + n, baseRefName: "main", isDraft: false, mergeable: "CONFLICTING", mergeStateStatus: "DIRTY", reviewDecision: "APPROVED", baseRef: null, reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } }, commits: { nodes: [] } };
+}
+console.log(JSON.stringify({ data: { repository } }));
+`; let browser = null;
 const queuePath = join(home, "plugin-data/follow-up/queue.json");
 const readQueue = async () => JSON.parse(await fs.readFile(queuePath, "utf8").catch(() => '{"items":[],"recent":[]}'));
 const promptText = r => r.input?.type === "message" ? (r.input.content ?? []).filter(c => c.type === "text").map(c => c.text).join("\n") : "";
@@ -213,6 +247,39 @@ async function exactlyOnce(name, agentId, prefix, extra = {}) {
   return check(name, n.provider === 1 && n.timeline === 1, { ...extra, copies: n });
 }
 
+
+let prNumber = 100;
+/** Registers a fresh example/app PR (conflicting on the fake GitHub) and waits for its repair batch to be pending. */
+async function pendingRepair(w) {
+  const number = ++prNumber;
+  await rpc("follow.register-pr", { agentId: w.agentId, repo: "example/app", number, stack: `Export ${number}` });
+  await rpc("follow.refresh", { workspaceId: w.workspaceId }).catch(() => undefined);
+  const batch = await waitUntil(`a pending repair for example/app#${number}`, async () => (await rpc("follow.get", { workspaceId: w.workspaceId })).workspace?.batches.find(b => b.state === "pending" && b.tasks.some(t => t.kind === "conflict")) ?? null, { baseMs: 90_000, everyMs: 1000 });
+  return { number, batchId: batch.id };
+}
+const batchOf = async (w, batchId) => (await rpc("follow.get", { workspaceId: w.workspaceId })).workspace?.batches.find(b => b.id === batchId) ?? null;
+const batchPrefix = batchId => `Follow-up batch ${batchId}`;
+/** Every prompt the fixture got, for an agent (text only). */
+const allPrompts = async agentId => (await fs.readFile(join(home, "fixture-receipts.jsonl"), "utf8").catch(() => "")).split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(r => r.agentId === agentId).map(promptText);
+/** Parks the agent in a running turn until `release()` (a fixture-scripts gate step). */
+async function busyTurn(agentId, gate) {
+  const prompt = `Fixture: busy ${gate}`;
+  const scriptsPath = join(home, "fixture-scripts.json");
+  const scripts = JSON.parse(await fs.readFile(scriptsPath, "utf8").catch(() => "{}"));
+  scripts[prompt] = [{ item: { type: "assistant_message", text: "Working through the export change." } }, { gate }];
+  await fs.writeFile(scriptsPath, JSON.stringify(scripts));
+  await client.sendMessage(agentId, prompt, { messageId: `busy-${gate}` });
+  await waitUntil("the agent is mid-turn", async () => existsSync(join(home, `fixture-gated-${gate}`)) && (await client.fetchAgent(agentId))?.agent?.status === "running", { baseMs: 20_000 });
+  return { release: () => fs.writeFile(join(home, `fixture-gate-${gate}`), "") };
+}
+/** Makes `agentId` Follow-up's Overseer (overseer.json), so follow.overseer-act runs its send_to_agent as it. */
+async function seedOverseer(agentId, workspaceId) {
+  await fs.writeFile(join(home, "plugin-data/follow-up/overseer.json"), JSON.stringify({ version: 1, agentId, workspaceId, startedAt: new Date().toISOString(), generation: 1, error: null }));
+}
+const forward = (overseerId, agentId, text) => rpc("follow.overseer-act", { agentId: overseerId, tool: "send_to_agent", args: { agentId, text } });
+const messageItems = async agentId => { const q = await readQueue(); return { items: q.items.filter(i => i.kind === "message" && i.ref.agentId === agentId), recent: q.recent.filter(i => i.kind === "message" && i.ref.agentId === agentId) }; };
+const undelivered = async workspaceId => (await rpc("follow.get", { workspaceId })).workspace?.undelivered ?? [];
+
 const cases = {
 
   /**
@@ -243,7 +310,7 @@ const cases = {
       notsent: ["Default page size", "What page size should the listing use by default?", ["Twenty five", "One hundred"]],
       sent: ["Timezone for reports", "Which timezone should weekly reports use?", ["UTC", "The team's local time"]],
     };
-    for (const [key, [title, question, labels]] of Object.entries(QTEXT)) {
+    for (const [key, [title, question, labels]] of Object.entries(rendersOnly === "message" ? {} : QTEXT)) {
       const w = await workspace(`Delivery ${key}`);
       const res = await rpc("follow.ask-question", { agentId: w.agentId, title, question, options: labels.map((label, i) => ({ letter: "AB"[i], label })), recommend: "A" });
       Q[key] = { ...w, title: `Delivery ${key}`, qid: res.question.id, qtitle: title, prompt: `Fixture: start delivery-${key}` };
@@ -291,6 +358,16 @@ const cases = {
         if (words) await page.getByText(words).filter({ visible: true }).first().waitFor();
         await page.getByText(words ?? C[key].ask).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
       },
+      // A forward that didn't go out (Workspace.undelivered): its row says so, with Retry and Cancel.
+      async message(page, key, words) {
+        await openHome(page, { origin, serverId });
+        const row = page.getByText(words).filter({ visible: true }).first();
+        if (!await row.isVisible().catch(() => false)) await page.getByText(M.title, { exact: true }).filter({ visible: true }).first().click().catch(() => {});
+        await row.waitFor();
+        await page.getByText(M.title, { exact: true }).filter({ visible: true }).last().click().catch(() => {});
+        await page.getByText("Cancel", { exact: true }).filter({ visible: true }).first().waitFor();
+        await page.getByText(words).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => {});
+      },
       async needsyou(page, key) {
         await openHome(page, { origin, serverId });
         const row = page.getByText(`Your ${Q[key].qid} answer: Failed`).filter({ visible: true }).first();
@@ -337,6 +414,24 @@ const cases = {
     }
     const shootAll = async (surface, state, key, words) => { for (const combo of COMBOS) await shot(surface, state, key, words, combo); };
     const wait = (what, fn, ms = 60_000) => waitUntil(what, fn, { baseMs: ms, everyMs: 500 });
+
+    // Needs you's message row: a forward that never left (Paseo unreachable) past MESSAGE_STUCK_MS × scale.
+    const M = { title: "Stuck forward" };
+    if (rendersOnly === "message") {
+      const w = await workspace(M.title);
+      const o = await workspace("Overseer stand-in", { track: false });
+      await seedOverseer(o.agentId, o.workspaceId);
+      await proxy.refuse();
+      await forward(o.agentId, w.agentId, "Please rerun the export with the new filter.");
+      const stuck = await wait("the stuck forward shows on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.agentId === w.agentId) ?? null, 400_000).catch(() => null);
+      r.states.message = stuck && { state: stuck.state, agentTitle: stuck.agentTitle };
+      check("renders: the forward reads as didn't go out", !!stuck, r.states.message ?? {});
+      const words = `A message to ${M.title} main didn't go out`;
+      await shootAll("message", "stuck", "message", words);
+      await proxy.pass();
+      r.pngs = r.shots.map(s => s.file);
+      return;
+    }
 
     // Sent and Not sent (Paseo reachable).
     await answerQ("sent"); await answerC("sent");
@@ -395,15 +490,18 @@ const cases = {
     const r = report.cases["unreachable-then-back"] = {};
     const { workspaceId, agentId } = await workspace("Unreachable export");
     const qid = await ask(agentId, "Export format while away");
-    await proxy.refuse();
+    await proxy.reset();
     const answered = Date.now();
     await rpc("follow.answer-question", { workspaceId, questionId: qid, choice: "A", action: "send" });
     await sleep(21_000);
     const item = await queueItem(isAnswer(workspaceId, qid));
     const d = await delivery(workspaceId, qid);
     r.whileRefused = { item: item && { state: item.state, reason: item.reason, attempts: item.attempts, nextAt: item.nextAt }, delivery: d, secondsSinceAnswer: Math.round((Date.now() - answered) / 1000) };
-    check("unreachable: the item waits as queued, Paseo unreachable", item?.state === "queued" && item.reason === "Paseo unreachable" && item.attempts >= 1 && !!item.nextAt, r.whileRefused);
-    check("unreachable: the question reads queued with a retry time", d?.state === "queued" && !!d.nextAt, { delivery: d });
+    // It waits on the outage probe (one connect-only try every 15 s), not the never-left ladder: attempts and nextAt are recorded.
+    r.whileRefused.connectAttempts = proxy.resetAt.length; r.whileRefused.maxConcurrent = proxy.maxOpenWhileReset;
+    check("unreachable: the item waits as queued, Paseo unreachable", item?.state === "queued" && item.reason === "Paseo unreachable", r.whileRefused);
+    check("unreachable: the question reads queued", d?.state === "queued", { delivery: d });
+    check("unreachable: the probe tries one connection at a time, about one per 15 s", proxy.maxOpenWhileReset <= 1 && proxy.resetAt.length <= 4, { attempts: proxy.resetAt.length, maxConcurrent: proxy.maxOpenWhileReset, secondsDown: r.whileRefused.secondsSinceAnswer });
     check("unreachable: nothing reached the agent", (await copies(agentId, answerPrefix(qid))).provider === 0);
     await proxy.pass();
     const back = Date.now();
@@ -481,6 +579,165 @@ const cases = {
     await exactlyOnce("card: the same answerId again sends nothing", agentId, prefix, { late });
   },
 
+
+  async "back-within-20s"() {
+    // The outage probe: with nothing else touching the daemon, an answer that waits as "Paseo unreachable" goes out within
+    // 20 s (real time, scale 1) of Paseo coming back.
+    const r = report.cases["back-within-20s"] = { timeScale: 1 };
+    const { workspaceId, agentId } = await workspace("Probe export");
+    const qid = await ask(agentId, "Export format after an outage");
+    await proxy.reset();
+    const down = Date.now();
+    await rpc("follow.answer-question", { workspaceId, questionId: qid, choice: "A", action: "send" });
+    await waitUntil("the answer waits as Paseo unreachable", async () => { const i = await queueItem(isAnswer(workspaceId, qid)); return i?.state === "queued" && i.reason === "Paseo unreachable"; }, { baseMs: 30_000 });
+    // Long enough for a few probes.
+    await sleep(40_000);
+    r.outage = { seconds: Math.round((Date.now() - down) / 1000), connectAttempts: proxy.resetAt.length, gaps: proxy.resetAt.slice(1).map((t, i) => Math.round((t - proxy.resetAt[i]) / 100) / 10), maxConcurrent: proxy.maxOpenWhileReset, item: await queueItem(isAnswer(workspaceId, qid)).then(i => i && { state: i.state, reason: i.reason, attempts: i.attempts, nextAt: i.nextAt }) };
+    check("probe: about one connect per 15 s during the outage, never two at once", proxy.maxOpenWhileReset <= 1 && r.outage.connectAttempts >= 2 && r.outage.connectAttempts <= Math.ceil(r.outage.seconds / 15) + 1, r.outage);
+    check("probe: nothing reached the agent during the outage", (await copies(agentId, answerPrefix(qid))).provider === 0);
+    await proxy.pass();
+    const back = Date.now();
+    await waitUntil("the answer arrives after Paseo is back", async () => (await receipts(agentId, answerPrefix(qid))).length > 0, { baseMs: 60_000 }).catch(() => undefined);
+    r.arrivedSecondsAfterBack = (await receipts(agentId, answerPrefix(qid))).length ? Math.round((Date.now() - back) / 100) / 10 : null;
+    check("probe: delivered within 20 s of Paseo coming back (no other activity)", r.arrivedSecondsAfterBack !== null && r.arrivedSecondsAfterBack <= 20, { seconds: r.arrivedSecondsAfterBack });
+    await exactlyOnce("probe: exactly once", agentId, answerPrefix(qid));
+  },
+
+  async "busy-agent"() {
+    const r = report.cases["busy-agent"] = {};
+    const w = await workspace("Busy export");
+    await rpc("follow.control", { workspaceId: w.workspaceId, enable_auto_sends: false });
+    const qid = await ask(w.agentId, "Export format while busy");
+    const { batchId } = await pendingRepair(w);
+    const turn = await busyTurn(w.agentId, "busy-export");
+    await rpc("follow.send", { workspaceId: w.workspaceId, batchId });
+    await rpc("follow.answer-question", { workspaceId: w.workspaceId, questionId: qid, choice: "A", action: "send" });
+    await waitUntil("the answer steers into the running turn", async () => (await receipts(w.agentId, answerPrefix(qid))).length > 0, { baseMs: 30_000 });
+    const waiting = await waitUntil("the batch line says why it waits", async () => { const b = await batchOf(w, batchId); return b?.refusal?.reason ? b : null; }, { baseMs: 30_000 }).catch(() => null);
+    r.whileBusy = { batchState: waiting?.state, reason: waiting?.refusal?.reason ?? null, agentStatus: (await client.fetchAgent(w.agentId))?.agent?.status, prompts: (await allPrompts(w.agentId)).map(t => t.split("\n")[0]) };
+    check("busy: the answer went alone (no repair in it)", (await allPrompts(w.agentId)).filter(t => t.includes(answerPrefix(qid))).every(t => !t.includes(batchPrefix(batchId))), r.whileBusy);
+    check("busy: the repair waits while the turn runs", (await receipts(w.agentId, batchPrefix(batchId))).length === 0 && (await allPrompts(w.agentId)).every(t => !t.includes(batchPrefix(batchId))), r.whileBusy);
+    check("busy: the batch line shows the wait reason", /turn to end/.test(r.whileBusy.reason ?? ""), { reason: r.whileBusy.reason });
+    await turn.release();
+    const ended = Date.now();
+    const repairItem = async () => { const q = await readQueue(); const i = [...q.items, ...q.recent].find(i => i.kind === "repair" && i.ref.batchId === batchId); return i && { state: i.state, attempts: i.attempts, nextAt: i.nextAt, reason: i.reason }; };
+    r.repairItemAtRelease = await repairItem();
+    const went = await waitUntil("the repair goes once the turn ends", async () => (await allPrompts(w.agentId)).some(t => t.includes(batchPrefix(batchId))), { baseMs: 90_000, everyMs: 1000 }).then(() => true, () => false);
+    if (!went) {
+      r.stuck = { repairItem: await repairItem(), batch: await batchOf(w, batchId).then(b => b && { state: b.state, refusal: b.refusal ?? null }), agent: (await client.fetchAgent(w.agentId))?.agent?.status };
+      check("busy: the repair goes after the turn ends", false, r.stuck);
+      return;
+    }
+    r.repairSecondsAfterTurnEnd = Math.round((Date.now() - ended) / 100) / 10;
+    await sleep(5_000);
+    const repairs = (await allPrompts(w.agentId)).filter(t => t.includes(batchPrefix(batchId))).length;
+    const answers = (await allPrompts(w.agentId)).filter(t => t.includes(answerPrefix(qid))).length;
+    r.after = { repairs, answers, batch: (await batchOf(w, batchId))?.state };
+    check("busy: the repair goes once after the turn ends, the answer once", repairs === 1 && answers === 1, { ...r.after, seconds: r.repairSecondsAfterTurnEnd });
+  },
+
+  async "answer-plus-repair"() {
+    const r = report.cases["answer-plus-repair"] = {};
+    const w = await workspace("Ride-along export");
+    // Auto is on (first tracking turns it on); the repair waits out its settle window, and the answer takes it along.
+    // A fresh install holds every auto-send until setup is done ("sends once setup finishes"), so skip setup first.
+    await rpc("follow.set-onboarding", { action: "skip" });
+    const qid = await ask(w.agentId, "Export format with a repair due");
+    const { batchId } = await pendingRepair(w);
+    const before = (await rpc("follow.get", { workspaceId: w.workspaceId })).workspace;
+    r.autoOn = before?.enable_auto_sends;
+    // What sendDecision reads, for when the repair doesn't ride along.
+    const why = x => ({ sendWait: x?.sendWait ?? null, dormant: x?.dormant ?? null, runtimeReason: x?.runtimeReason ?? null, runtimeBusy: x?.runtimeBusy ?? null, backgroundBusy: x?.backgroundBusy ?? null, hold: x?.hold ?? null, batch: (b => b && { state: b.state, createdAt: b.createdAt, refusal: b.refusal ?? null })(x?.batches.find(b => b.id === batchId)), prs: x?.prs.map(p => ({ key: p.key, error: p.error ?? null, complete: p.snapshot?.complete ?? null })) });
+    r.beforeAnswer = why(before);
+    await rpc("follow.answer-question", { workspaceId: w.workspaceId, questionId: qid, choice: "B", action: "send" });
+    await waitUntil("the envelope arrives", async () => (await allPrompts(w.agentId)).some(t => t.includes(answerPrefix(qid))), { baseMs: 30_000 });
+    await sleep(5_000);
+    const prompts = (await allPrompts(w.agentId)).filter(t => t.includes(answerPrefix(qid)) || t.includes(batchPrefix(batchId)));
+    const both = prompts.filter(t => t.includes(answerPrefix(qid)) && t.includes(batchPrefix(batchId)));
+    const one = both[0] ?? "";
+    const parts = one.split(/\n---\n/).map(x => x.trim());
+    r.messages = prompts.length; r.parts = parts.map(p => p.split("\n")[0]);
+    r.batch = (await batchOf(w, batchId))?.state; r.answer = (await delivery(w.workspaceId, qid))?.state;
+    r.afterAnswer = why((await rpc("follow.get", { workspaceId: w.workspaceId })).workspace);
+    check("ride-along: Auto is on", r.autoOn === true);
+    check("ride-along: exactly one message holds both parts", prompts.length === 1 && both.length === 1, { messages: prompts.length, firstLines: r.parts });
+    check("ride-along: answer first, then the batch, split by ---", parts.length === 2 && parts[0].startsWith(answerPrefix(qid)) && parts[1].startsWith(batchPrefix(batchId)), { parts: r.parts });
+    check("ride-along: the batch is sent and the answer is sent", r.batch === "sent" && r.answer === "sent", { batch: r.batch, answer: r.answer, beforeAnswer: r.beforeAnswer, afterAnswer: r.afterAnswer });
+    check("ride-along: the timeline shows it once", (await timelineRows(w.agentId, answerPrefix(qid))) === 1);
+  },
+
+  async "reply-timing-b"() {
+    const r = report.cases["reply-timing-b"] = {};
+    const w = await workspace("Timing repairs");
+    await rpc("follow.control", { workspaceId: w.workspaceId, enable_auto_sends: false });
+    const { batchId } = await pendingRepair(w);
+    const o = await workspace("Overseer stand-in", { track: false });
+    await seedOverseer(o.agentId, o.workspaceId);
+    // Two forwards that never left (Paseo unreachable): Retry and Cancel act on them while Paseo is slow.
+    await proxy.refuse();
+    await forward(o.agentId, w.agentId, "Please also export the archive table.").catch(e => { r.forwardError = e.message; });
+    await forward(o.agentId, w.agentId, "And keep the old column names.").catch(e => { r.forwardError = e.message; });
+    let queued = [];
+    if (baseline) await sleep(20_000);
+    else queued = (await waitUntil("two forwards wait as queued", async () => { const m = await messageItems(w.agentId); return m.items.filter(i => i.state === "queued" && i.attempts > 0).length >= 2 ? m.items : null; }, { baseMs: 30_000 })).map(i => i.id);
+    await proxy.delay(RESUME_MS);
+    const rows = [];
+    const time = async (action, method, input) => { const t = await timed(method, input); rows.push({ action, method, ms: t.ms, ok: t.ok, ...(t.ok ? {} : { error: t.error }) }); console.log(`  ${action}: ${t.ms} ms${t.ok ? "" : ` (${t.error})`}`); return t; };
+    await time("send (manual Send of a repair batch)", "follow.send", { workspaceId: w.workspaceId, batchId });
+    await time("queue-action retry", "follow.queue-action", { itemId: queued[0] ?? "message:none", action: "retry" });
+    await time("queue-action cancel", "follow.queue-action", { itemId: queued[1] ?? "message:none", action: "cancel" });
+    await time("Overseer forward (send_to_agent)", "follow.overseer-act", { agentId: o.agentId, tool: "send_to_agent", args: { agentId: w.agentId, text: "One more: the totals row." } });
+    await time("report handed to an agent (report-issue-send)", "follow.report-issue-send", { kind: "bug", text: "The export drops the totals row on the last page.", agentId: w.agentId });
+    r.rows = rows; report.timing = [...(report.timing ?? []), ...rows];
+    if (!baseline) for (const row of rows) check(`timing: ${row.action} replies within ${REPLY_BUDGET_MS} ms while Paseo is slow`, row.ok && row.ms < REPLY_BUDGET_MS, { ms: row.ms, error: row.error });
+    await proxy.pass();
+    if (!baseline) {
+      await waitUntil("the batch, the retried and new forwards and the report arrive", async () => { const p = await allPrompts(w.agentId); return p.some(t => t.includes(batchPrefix(batchId))) && p.some(t => t.includes("archive table")) && p.some(t => t.includes("totals row.")) && p.some(t => t.includes("totals row on the last page")); }, { baseMs: 150_000, everyMs: 1000 });
+      await sleep(5_000);
+      const p = await allPrompts(w.agentId);
+      const count = needle => p.filter(t => t.includes(needle)).length;
+      r.copies = { batch: count(batchPrefix(batchId)), retried: count("archive table"), cancelled: count("old column names"), forward: count("totals row."), report: count("totals row on the last page") };
+      check("timing b: each arrives once, the cancelled forward never", r.copies.batch === 1 && r.copies.retried === 1 && r.copies.cancelled === 0 && r.copies.forward === 1 && r.copies.report === 1, r.copies);
+    }
+  },
+
+  async "forward-stuck"() {
+    const r = report.cases["forward-stuck"] = { timeScale: STUCK_TIME_SCALE };
+    const w = await workspace("Stuck forward");
+    const o = await workspace("Overseer stand-in", { track: false });
+    await seedOverseer(o.agentId, o.workspaceId);
+    const title = `A message to ${"Stuck forward main"} didn't go out`;
+    // Never left: Paseo unreachable past MESSAGE_STUCK_MS (scaled).
+    await proxy.refuse();
+    await forward(o.agentId, w.agentId, "Please rerun the export with the new filter.");
+    const queued = await waitUntil("the stuck forward shows on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.agentId === w.agentId && m.state === "queued") ?? null, { baseMs: 120_000, everyMs: 1000 }).catch(() => null);
+    r.neverLeft = queued;
+    check("stuck (never left): the workspace shows the message that didn't go out", !!queued && queued.agentTitle === "Stuck forward main", { entry: queued, title });
+    if (queued) {
+      await rpc("follow.queue-action", { itemId: queued.id, action: "cancel" });
+      const cleared = await waitUntil("cancel clears it", async () => !(await undelivered(w.workspaceId)).some(m => m.id === queued.id), { baseMs: 20_000 }).then(() => true, () => false);
+      check("stuck (never left): Cancel clears it", cleared);
+    }
+    await proxy.pass();
+    await sleep(3_000);
+    check("stuck (never left): the cancelled forward never reached the agent", (await allPrompts(w.agentId)).every(t => !t.includes("new filter")));
+    // Failed: the send is held past the (scaled) deadline, then every timeline read drops, so no arrival check can tell.
+    await proxy.hold(/"send_agent_message_request"/, "up", "drop");
+    await forward(o.agentId, w.agentId, "Please also check the totals.");
+    await waitUntil("the forward is out and unanswered", async () => (await messageItems(w.agentId)).items.some(i => i.state === "sending"), { baseMs: 20_000 });
+    await waitUntil("it reads uncertain past the deadline", async () => (await messageItems(w.agentId)).items.some(i => i.state === "uncertain"), { baseMs: 30_000 });
+    await proxy.refuse();
+    await proxy.kill(/"fetch_agent_timeline_request"/);
+    const failedEntry = await waitUntil("the forward ends Failed on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.state === "failed") ?? null, { baseMs: 180_000, everyMs: 1000 }).catch(() => null);
+    r.failed = failedEntry;
+    check("stuck (failed): the workspace shows it as failed", !!failedEntry, { entry: failedEntry });
+    if (failedEntry) {
+      await rpc("follow.queue-action", { itemId: failedEntry.id, action: "cancel" });
+      check("stuck (failed): Cancel clears it", await waitUntil("cancel clears it", async () => !(await undelivered(w.workspaceId)).some(m => m.id === failedEntry.id), { baseMs: 20_000 }).then(() => true, () => false));
+    }
+    await proxy.pass();
+  },
+
   async "reply-timing"() {
     const r = report.cases["reply-timing"] = {};
     const { workspaceId, agentId } = await workspace("Timing export");
@@ -512,7 +769,7 @@ const cases = {
     await time("brief-action", "follow.brief-action", { agentId: x.agentId, ...cx, choice: "B", answerId: "harness-timing-card-0001" });
     await time("brief-action Retry on a queued card", "follow.brief-action", { agentId: y.agentId, ...cy, choice: "A", answerId: retryId });
     r.rows = rows; r.budgetMs = REPLY_BUDGET_MS; r.resumeMs = RESUME_MS;
-    report.timing = rows;
+    report.timing = [...(report.timing ?? []), ...rows];
     if (!baseline) for (const row of rows) check(`timing: ${row.action} replies within ${REPLY_BUDGET_MS} ms while Paseo is slow`, row.ok && row.ms < REPLY_BUDGET_MS, { ms: row.ms, error: row.error });
     await proxy.pass();
     if (!baseline) {
@@ -537,8 +794,12 @@ try {
   report.pack.version = JSON.parse(await fs.readFile(join(plugin, "package.json"), "utf8")).version;
   await fs.writeFile(join(fixture, "paseo-plugin.json"), JSON.stringify({ id: "followup-fixture", requirements: { paseo: ">=0.11.0" } }));
   await fs.writeFile(join(fixture, "index.server.ts"), await fs.readFile("scripts/fixture-provider.ts", "utf8"));
+  // A fake GitHub where every example/app PR is open and conflicting, so a registered PR makes a repair batch.
+  await fs.mkdir(bin, { recursive: true });
+  await fs.writeFile(join(bin, "gh"), FAKE_GH); await fs.chmod(join(bin, "gh"), 0o700);
+  github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   // The daemon (and so the plugin worker it starts) reaches Paseo through the proxy; the CLI and this script don't.
-  const daemonEnv = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: `ws://127.0.0.1:${proxyPort}/ws`, PASEO_RELAY_ENABLED: "false", ...(renders ? { PASEO_WEB_UI_ENABLED: "true", FOLLOW_UP_QUEUE_TIME_SCALE: String(RENDER_TIME_SCALE) } : {}) } });
+  const daemonEnv = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: `ws://127.0.0.1:${proxyPort}/ws`, PASEO_RELAY_ENABLED: "false", ...(renders ? { PASEO_WEB_UI_ENABLED: "true", FOLLOW_UP_QUEUE_TIME_SCALE: String(RENDER_TIME_SCALE) } : {}), ...(scaled ? { FOLLOW_UP_QUEUE_TIME_SCALE: String(STUCK_TIME_SCALE) } : {}), PATH: `${bin}:${process.env.PATH}`, ...github.env }, strip: github.strip });
   const env = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: url, PASEO_RELAY_ENABLED: "false" } });
   cli = async (...args) => { try { return JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 180000, maxBuffer: 1 << 20 })).stdout || "null"); } catch (e) { throw new Error(`paseo ${args.join(" ")} failed: ${String(e.stdout ?? "").slice(-1500)} ${String(e.stderr ?? "").slice(-1500)} ${e.killed ? "(timed out)" : ""}`); } };
   daemon = spawnDaemon(["daemon", "run", "--home", home], { env: daemonEnv, stdio: ["ignore", openSync(join(root, "daemon.log"), "a"), openSync(join(root, "daemon.log"), "a")] });
@@ -564,6 +825,7 @@ try {
   check("run", false, { error: error instanceof Error ? error.stack ?? error.message : String(error) });
 } finally {
   await client?.close().catch(() => {});
+  await github?.close().catch(() => {});
   await proxy.close().catch(() => {});
   if (daemon && daemon.exitCode === null) { daemon.kill("SIGTERM"); await sleep(1500); if (daemon.exitCode === null) daemon.kill("SIGKILL"); }
   await browser?.close().catch(() => {});
@@ -572,7 +834,7 @@ try {
   if (report.timing) report.timingTable = (report.timing ?? []).map(row => ({ action: row.action, queueMs: baseline ? null : row.ms, queueOk: baseline ? null : row.ok, mainMs: baseline ? row.ms : report.mainTiming?.rows?.find(m => m.action === row.action)?.ms ?? null, mainError: baseline ? row.error ?? null : report.mainTiming?.rows?.find(m => m.action === row.action)?.error ?? null }));
   failed = report.checks.some(c => !c.ok);
   report.result = baseline ? "recorded" : failed ? "fail" : "pass";
-  const file = renders ? "message-queue-renders.json" : baseline ? "message-queue-main.json" : "message-queue.json";
+  const file = renders ? (rendersOnly ? `message-queue-renders-${rendersOnly}.json` : "message-queue-renders.json") : scaled ? "message-queue-stuck.json" : baseline ? "message-queue-main.json" : "message-queue.json";
   await fs.writeFile(join(out, file), JSON.stringify(report, null, 2) + "\n");
   console.log(`${report.result.toUpperCase()}: ${report.checks.filter(c => c.ok).length}/${report.checks.length} checks; wrote ${join(out, file)}`);
   await fs.rm(root, { recursive: true, force: true });

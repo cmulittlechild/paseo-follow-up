@@ -1,3 +1,4 @@
+import { queueViewSchema } from "./queue";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -180,6 +181,9 @@ export const needsYouRpc = defineRpc({ name: "follow.needs-you", input: z.strict
   links: z.array(z.strictObject({ label: z.string(), url: z.string().optional(), path: z.string().optional(), pr: z.string().optional() })).optional(),
 }), output: z.object({ ok: z.literal(true), briefId: z.string() }) });
 /** Home's detail pane: the full stored brief for one agent (the list carries only its one-liner). */
+// The message queue (server/message-queue.ts): what waits to go to agents, and Retry or Cancel on one item.
+export const queueListRpc = defineRpc({ name: "follow.queue-list", input: z.strictObject({ workspaceId: idSchema.optional(), agentId: idSchema.optional() }), output: z.object({ items: z.array(queueViewSchema), recent: z.array(queueViewSchema) }) });
+export const queueActionRpc = defineRpc({ name: "follow.queue-action", input: z.strictObject({ itemId: z.string().min(1).max(400), action: z.enum(["retry", "cancel"]) }), output: z.object({ item: queueViewSchema }) });
 export const inboxBriefRpc = defineRpc({ name: "follow.inbox-brief", input: z.strictObject({ agentId: idSchema }), output: z.object({ brief: briefSchema.nullable() }) });
 /** An option letter, or "other" (Something else, which needs words). */
 export const briefChoiceSchema = z.string().regex(/^(?:[A-Z]|other)$/);

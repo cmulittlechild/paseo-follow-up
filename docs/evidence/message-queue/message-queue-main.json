@@ -12,8 +12,8 @@
         "q2": {
           "state": "queued",
           "to": null,
-          "messageId": "079a3151-7614-43f0-ac7c-22e0c8ab0cf7",
-          "at": "2026-11-16T15:03:30.257Z",
+          "messageId": "6867cea2-273d-4ee8-86aa-b86f76ecf3af",
+          "at": "2026-11-16T15:30:58.001Z",
           "reason": "Couldn't reach Paseo; the answer goes out on the next check."
         }
       },
@@ -21,31 +21,70 @@
         {
           "action": "answer-question send",
           "method": "follow.answer-question",
-          "ms": 8,
+          "ms": 5,
           "ok": true
         },
         {
           "action": "answer-question resend (Try now on a queued answer)",
           "method": "follow.answer-question",
-          "ms": 3,
+          "ms": 2,
           "ok": true
         },
         {
           "action": "brief-action",
           "method": "follow.brief-action",
-          "ms": 10,
+          "ms": 7,
           "ok": true
         },
         {
           "action": "brief-action Retry on a queued card",
           "method": "follow.brief-action",
-          "ms": 3,
+          "ms": 4,
           "ok": false,
           "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
         }
       ],
       "budgetMs": 300,
       "resumeMs": 60000
+    },
+    "reply-timing-b": {
+      "rows": [
+        {
+          "action": "send (manual Send of a repair batch)",
+          "method": "follow.send",
+          "ms": 20013,
+          "ok": false,
+          "error": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+        },
+        {
+          "action": "queue-action retry",
+          "method": "follow.queue-action",
+          "ms": 3,
+          "ok": false,
+          "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+        },
+        {
+          "action": "queue-action cancel",
+          "method": "follow.queue-action",
+          "ms": 1,
+          "ok": false,
+          "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+        },
+        {
+          "action": "Overseer forward (send_to_agent)",
+          "method": "follow.overseer-act",
+          "ms": 30002,
+          "ok": false,
+          "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+        },
+        {
+          "action": "report handed to an agent (report-issue-send)",
+          "method": "follow.report-issue-send",
+          "ms": 30001,
+          "ok": false,
+          "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+        }
+      ]
     }
   },
   "checks": [
@@ -63,62 +102,129 @@
     {
       "action": "answer-question send",
       "method": "follow.answer-question",
-      "ms": 8,
+      "ms": 5,
       "ok": true
     },
     {
       "action": "answer-question resend (Try now on a queued answer)",
       "method": "follow.answer-question",
-      "ms": 3,
+      "ms": 2,
       "ok": true
     },
     {
       "action": "brief-action",
       "method": "follow.brief-action",
-      "ms": 10,
+      "ms": 7,
       "ok": true
     },
     {
       "action": "brief-action Retry on a queued card",
       "method": "follow.brief-action",
-      "ms": 3,
+      "ms": 4,
       "ok": false,
       "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "send (manual Send of a repair batch)",
+      "method": "follow.send",
+      "ms": 20013,
+      "ok": false,
+      "error": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "queue-action retry",
+      "method": "follow.queue-action",
+      "ms": 3,
+      "ok": false,
+      "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "queue-action cancel",
+      "method": "follow.queue-action",
+      "ms": 1,
+      "ok": false,
+      "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "Overseer forward (send_to_agent)",
+      "method": "follow.overseer-act",
+      "ms": 30002,
+      "ok": false,
+      "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "report handed to an agent (report-issue-send)",
+      "method": "follow.report-issue-send",
+      "ms": 30001,
+      "ok": false,
+      "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
     }
   ],
   "mainTiming": null,
-  "todo": [
-    "busy-agent",
-    "answer-plus-repair"
-  ],
+  "todo": [],
   "timingTable": [
     {
       "action": "answer-question send",
       "queueMs": null,
       "queueOk": null,
-      "mainMs": 8,
+      "mainMs": 5,
       "mainError": null
     },
     {
       "action": "answer-question resend (Try now on a queued answer)",
       "queueMs": null,
       "queueOk": null,
-      "mainMs": 3,
+      "mainMs": 2,
       "mainError": null
     },
     {
       "action": "brief-action",
       "queueMs": null,
       "queueOk": null,
-      "mainMs": 10,
+      "mainMs": 7,
       "mainError": null
     },
     {
       "action": "brief-action Retry on a queued card",
       "queueMs": null,
       "queueOk": null,
-      "mainMs": 3,
+      "mainMs": 4,
       "mainError": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "send (manual Send of a repair batch)",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 20013,
+      "mainError": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "queue-action retry",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 3,
+      "mainError": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "queue-action cancel",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 1,
+      "mainError": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "Overseer forward (send_to_agent)",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 30002,
+      "mainError": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+    },
+    {
+      "action": "report handed to an agent (report-issue-send)",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 30001,
+      "mainError": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
     }
   ],
   "result": "recorded"
