@@ -684,10 +684,11 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.setSpecRpc, async ({ agentId, url, title }, { paseo }) => {
     await requireReady();
     const workspaceId = await callerWorkspaceId(agentId, paseo);
+    const links = await linkedStore.read();
     return store.mutate(state => {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const { applied, message } = agentSetSpec(w, agentId, url, title, Date.now());
-      fillWorkspaceTitles(w, localTitles(state.workspaces));
+      fillWorkspaceTitles(w, localTitles(state.workspaces, links));
       return { workspaceId: w.id, spec: w.spec, applied, message };
     });
   });
@@ -734,11 +735,12 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.workspaceSpecRpc, async (input, context) => {
     await requireReady();
+    const links = await linkedStore.read();
     return store.mutate(state => {
       const w = findWorkspace(state, input.workspaceId);
       if (!w.enable_tracking || w.archived) throw new Error("Follow-up isn't following this workspace. Turn it back on in Follow-up settings, under Workspace exceptions.");
       developerSetSpec(w, input, Date.now(), actorOf(context));
-      fillWorkspaceTitles(w, localTitles(state.workspaces));
+      fillWorkspaceTitles(w, localTitles(state.workspaces, links));
       return w;
     });
   });

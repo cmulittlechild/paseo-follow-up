@@ -40,7 +40,8 @@ export function mergeArtifacts(w: Workspace, scanned: Artifact[], now = Date.now
     const previous = w.artifacts.find(old => titleKey(old.url) === titleKey(a.url));
     if (previous?.title && (!a.title || (previous.titleRank ?? 1) > (a.titleRank ?? 1))) a = { ...a, title: previous.title, ...(previous.titleRank ? { titleRank: previous.titleRank } : {}) };
     const seen = byUrl.get(a.url);
-    byUrl.set(a.url, seen ? { ...seen, publishes: seen.publishes + a.publishes, title: seen.title ?? a.title, firstAt: [seen.firstAt, a.firstAt].filter(Boolean).sort()[0] ?? null, lastAt: [seen.lastAt, a.lastAt].sort(later).at(-1) ?? null, by: a.by === w.mainAgentId ? a.by : seen.by } : a);
+    const named = seen?.title && (!a.title || (seen.titleRank ?? 1) >= (a.titleRank ?? 1)) ? seen : a;
+    byUrl.set(a.url, seen ? { ...seen, publishes: seen.publishes + a.publishes, title: named.title, ...(named.titleRank ? { titleRank: named.titleRank } : {}), firstAt: [seen.firstAt, a.firstAt].filter(Boolean).sort()[0] ?? null, lastAt: [seen.lastAt, a.lastAt].sort(later).at(-1) ?? null, by: a.by === w.mainAgentId ? a.by : seen.by } : a);
   }
   const next = [...byUrl.values(), ...w.artifacts.filter(a => !byUrl.has(a.url))]
     .sort((a, b) => later(b.lastAt, a.lastAt)).slice(0, MAX_ARTIFACTS);

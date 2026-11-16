@@ -126,15 +126,17 @@ export class LinkedService {
       }
     }
     const titles = localTitles(await this.deps.workspaces?.() ?? [], await this.deps.store.read());
-    return this.deps.store.mutate(f => {
+    const result = await this.deps.store.mutate(f => {
       const ws = f.workspaces[workspaceId] ??= emptyWorkspaceLinks();
       const r = upsertItem(ws, {
         key: c.key, kind: c.kind, url: facts?.url ?? c.url, title: facts?.title ?? opts.title ?? ws.items.find(i => i.key === c.key)?.title ?? titles.get(titleKey(c.url ?? c.key))?.title ?? null, origin: opts.origin, by: opts.by, why: opts.why ?? null,
         ...(facts ? { status: facts.state, statusTone: toneOf(facts.state), checkedAt: new Date(now).toISOString() } : {}),
       }, now);
       if (!r.ok) return { ok: false as const, reason: r.reason === "excluded" ? excludedReason(c.key) : LINKED_FULL };
-      return { ok: true as const, pending: false, key: c.key, item: r.item, created: r.created };
+      return { ok: true as const, pending: false as const, key: c.key, item: r.item, created: r.created };
     });
+    await this.backfill();
+    return result;
   }
 
   /** Removes an item and remembers it, so nothing adds it back (only the developer re-adding it, or Undo). */

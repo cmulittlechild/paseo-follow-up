@@ -123,3 +123,25 @@ test("unnamed artifact rows say where and when they were mentioned", () => {
   assert.equal(copy.title, "Claude artifact");
   assert.equal(copy.meta, "Mentioned in this workspace · Nov 16");
 });
+
+test("multiple root receipts retain the strongest evidence regardless of scan order", () => {
+  for (const reverse of [false, true]) {
+    const w = workspace();
+    const artifacts = [
+      { ...publishedArtifacts([receipt({ file_path: "/scratch/release-plan.html" }, `Published page at ${URL}`)], "helper")[0], titleRank: 1 },
+      { ...publishedArtifacts([receipt({ title: "Explicit receipt title" }, `Published page at ${URL}`)], "main-agent")[0], titleRank: 4 },
+    ];
+    mergeArtifacts(w, reverse ? artifacts.reverse() : artifacts);
+    assert.equal(w.artifacts[0].title, "Explicit receipt title");
+    assert.equal(w.artifacts[0].titleRank, 4);
+    assert.equal(w.spec?.title, "Explicit receipt title");
+  }
+});
+
+test("an explicitly named link fills existing unnamed links in other workspaces immediately", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "title-explicit-")); t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = new LinkedStore(dir), service = new LinkedService({ store, sources: { async issue() { return null; }, async teams() { return []; } } });
+  await service.note(new Map([["reader", [{ raw: URL, strong: false }]]]));
+  await service.link("publisher", URL, { origin: "registered", by: "agent", title: "Chosen page name" });
+  assert.equal((await store.read()).workspaces.reader.items[0].title, "Chosen page name");
+});
