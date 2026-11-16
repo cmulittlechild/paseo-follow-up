@@ -19,10 +19,12 @@ export { sameJson, deepFreeze } from "./cow";
  */
 /** Refused once the worker stopped: nothing is saved, and the next start recovers from what was. */
 /** How often lock checks a live owner: every `fast` ms for the first `fastForMs`, then every `slow` ms, with no cap. */
+/** A claim to clear a stale lock older than this was left by a worker that died mid-clear (a clear takes milliseconds). */
+export const RECOVERY_STALE_MS = 10_000;
 export const LOCK_POLL_MS = { fast: 1_000, fastForMs: 60_000, slow: 30_000 };
 export interface LockOptions {
-  /** Called on every check that finds the lock held by a live worker (its pid). */
-  onWait?: (pid: number) => void;
+  /** Called on every wait: the lock, or the claim to clear a stale one, is held by a live worker (its pid, if known). */
+  onWait?: (pid: number | null) => void;
   /** Whether `pid`, named by a lock written at `lockedAt` (ms), is a live Follow-up worker (default: workerOwner). */
   owner?: (pid: number, lockedAt: number) => boolean;
   pollMs?: typeof LOCK_POLL_MS;
@@ -345,10 +347,25 @@ export class Store {
         await this.lockPause(Date.now() - started < pollMs.fastForMs ? pollMs.fast : pollMs.slow);
         continue;
       }
+      // Clearing a stale lock is itself claimed (worker.lock.recovery, holding the clearer's pid), so two starts can't
+      // both clear it. A claim whose holder is gone or isn't a live worker, or that is older than RECOVERY_STALE_MS,
+      // was left by a worker that died mid-clear: it is removed and the clear runs again.
       const recovery = await open(`${path}.recovery`, "wx", 0o600).catch(error => { if ((error as NodeJS.ErrnoException).code === "EEXIST") return null; throw error; });
-      if (!recovery) { await this.lockPause(pollMs.fast); continue; }
-      try { if (await readFile(path, "utf8").catch(() => null) === prior) await unlink(path); }
-      finally { await recovery.close(); await unlink(`${path}.recovery`); }
+      if (!recovery) {
+        const held = await readFile(`${path}.recovery`, "utf8").catch(() => null);
+        const since = await stat(`${path}.recovery`).then(s => s.mtimeMs, () => null);
+        if (held === null || since === null) continue;
+        const holder = Number(held);
+        const young = Date.now() - since < RECOVERY_STALE_MS;
+        const live = Number.isInteger(holder) && holder > 0 ? owner(holder, since) : held === "" && young;
+        if (live && young) { onWait?.(Number.isInteger(holder) && holder > 0 ? holder : null); await this.lockPause(pollMs.fast); continue; }
+        if (await readFile(`${path}.recovery`, "utf8").catch(() => null) === held) await unlink(`${path}.recovery`).catch(() => undefined);
+        continue;
+      }
+      try {
+        await recovery.writeFile(String(process.pid));
+        if (await readFile(path, "utf8").catch(() => null) === prior) await unlink(path);
+      } finally { await recovery.close(); await unlink(`${path}.recovery`); }
     }
     return async () => { if (await readFile(path, "utf8").catch(() => "") === token) await unlink(path); };
   }

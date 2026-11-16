@@ -397,7 +397,7 @@ export default function contribute(server: PluginServerContext) {
   const ready = (async () => {
     // Getting started: fresh or existing is decided from what's on disk before anything below writes state.
     await onboarding.init().catch(() => undefined);
-    unlock = await store.lock({ onWait: pid => { waiting = `Waiting for the previous Follow-up worker to exit (pid ${pid}).`; } });
+    unlock = await store.lock({ onWait: pid => { waiting = `Waiting for the previous Follow-up worker to exit${pid ? ` (pid ${pid})` : ""}.`; } });
     waiting = null;
     // Before anything ticks: which repositories are No review (agentMerges), so the first tick after a restart is already quiet.
     await prWorkflow.read();
