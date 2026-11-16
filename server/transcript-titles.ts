@@ -1,3 +1,4 @@
+import { setImmediate as yieldChunk } from "node:timers/promises";
 import { constants } from "node:fs";
 import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,10 +21,10 @@ export class TranscriptTitleStore extends JsonFileStore<z.infer<typeof cacheSche
 }
 
 /** One pass over local agent metadata, then resolve only agents whose workspace is tracked. Never list transcripts. */
-export async function trackedTitleTranscripts(paseoHome: string, workspaces: readonly Workspace[], roots?: TranscriptRoots): Promise<string[]> {
+export async function trackedTitleTranscripts(paseoHome: string, workspaces: readonly Workspace[], roots?: TranscriptRoots, priorityWorkspaces: ReadonlySet<string> = new Set()): Promise<string[]> {
   const tracked = new Set(workspaces.filter(w => w.enable_tracking).map(w => w.id));
   const knownIds = new Set(workspaces.filter(w => w.enable_tracking).flatMap(w => [w.mainAgentId, ...(w.contributorAgentIds ?? [])]));
-  const records: AgentRecordLite[] = [];
+  const records: { record: AgentRecordLite; priority: boolean }[] = [];
   const root = join(paseoHome, "agents");
   for (const dir of await readdir(root, { withFileTypes: true }).catch(() => [])) {
     if (!dir.isDirectory()) continue;
@@ -32,13 +33,18 @@ export async function trackedTitleTranscripts(paseoHome: string, workspaces: rea
       try {
         const record = JSON.parse(await readFile(join(root, dir.name, name), "utf8"));
         if (record.provider !== "claude" || !(tracked.has(record.workspaceId) || !record.workspaceId && knownIds.has(record.id))) continue;
-        records.push({ id: record.id, provider: record.provider, cwd: record.cwd ?? "", persistence: record.persistence ? { sessionId: record.persistence.sessionId, nativeHandle: record.persistence.nativeHandle } : null });
+        records.push({ priority: priorityWorkspaces.has(record.workspaceId), record: { id: record.id, provider: record.provider, cwd: record.cwd ?? "", persistence: record.persistence ? { sessionId: record.persistence.sessionId, nativeHandle: record.persistence.nativeHandle } : null } });
       } catch { /* unreadable metadata contributes no file */ }
     }
   }
-  const paths = new Set<string>();
-  for (const record of records) { const path = await transcriptFile(record, roots); if (path) paths.add(path); }
-  return [...paths].sort();
+  const paths = new Map<string, { priority: boolean; mtime: number }>();
+  for (const { record, priority } of records) {
+    const path = await transcriptFile(record, roots);
+    if (!path) continue;
+    const info = await stat(path).catch(() => null);
+    if (info) paths.set(path, { priority: priority || paths.get(path)?.priority === true, mtime: info.mtimeMs });
+  }
+  return [...paths].sort(([a, x], [b, y]) => Number(y.priority) - Number(x.priority) || y.mtime - x.mtime || a.localeCompare(b)).map(([path]) => path);
 }
 
 /** A replaced, truncated, or edited-in-place file restarts; an append retains the prior byte offset and pending call. */
@@ -55,7 +61,7 @@ export class TranscriptTitleLookup {
   private paths: string[] = [];
   private scopeKey = "";
   private pathsAt = -Infinity;
-  constructor(private d: { store: TranscriptTitleStore; paths(workspaces: readonly Workspace[]): Promise<string[]>; now?: () => number; budget?: number }) {}
+  constructor(private d: { store: TranscriptTitleStore; paths(workspaces: readonly Workspace[], priorityWorkspaces: ReadonlySet<string>): Promise<string[]>; now?: () => number; budget?: number }) {}
   async tick(workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, found: (titles: TitleIndex) => Promise<void>): Promise<{ bytes: number; attempted: number }> {
     if (this.running) return { bytes: 0, attempted: 0 };
     const tracked = workspaces.filter(w => w.enable_tracking);
@@ -67,9 +73,10 @@ export class TranscriptTitleLookup {
       await found(known);
       // The callback can fill the caller's records; a hit needs no filesystem discovery or scan.
       if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title && !known.has(titleKey(i.url ?? i.key))))) return { bytes: 0, attempted: 0 };
-      const now = (this.d.now ?? Date.now)(), scopeKey = JSON.stringify(tracked.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]));
+      const priorityWorkspaces = new Set(tracked.filter(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title && !known.has(titleKey(i.url ?? i.key)))).map(w => w.id));
+      const now = (this.d.now ?? Date.now)(), scopeKey = JSON.stringify([tracked.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]), [...priorityWorkspaces]]);
       if (scopeKey !== this.scopeKey || now - this.pathsAt >= 5 * 60_000) {
-        this.paths = await this.d.paths(tracked); this.scopeKey = scopeKey; this.pathsAt = now;
+        this.paths = await this.d.paths(tracked, priorityWorkspaces); this.scopeKey = scopeKey; this.pathsAt = now;
       }
       const budget = this.d.budget ?? TITLE_SCAN_BYTES;
       let bytes = 0, attempted = 0;
@@ -109,7 +116,9 @@ export class TranscriptTitleLookup {
               const input = current.pending[part.tool_use_id]; delete current.pending[part.tool_use_id];
               if (!input) continue;
               for (const [url, evidence] of await receiptTitles([{ item: { type: "tool_call", name: "Artifact", status: "completed", detail: { input, output: part.content } } }])) {
-                rememberTitle(learned, url, evidence); locations.set(url, path);
+                const previous = learned.get(url);
+                rememberTitle(learned, url, evidence);
+                if (!previous || previous.rank < evidence.rank) locations.set(url, path);
               }
             }
           }
@@ -118,6 +127,7 @@ export class TranscriptTitleLookup {
           if (suffix.length > 256 * 1024) current.dropping = true;
           else if (!current.dropping) current.partial = suffix.toString("base64");
           updates.set(path, current);
+          await yieldChunk();
         } catch { /* a missing file is a miss, never a worker failure */ }
         finally { await handle?.close().catch(() => undefined); }
       }

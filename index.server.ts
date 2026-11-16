@@ -225,7 +225,7 @@ export default function contribute(server: PluginServerContext) {
       }
     },
   });
-  const transcriptTitles = new TranscriptTitleLookup({ store: new TranscriptTitleStore(directory), paths: workspaces => trackedTitleTranscripts(paseoHome, workspaces) });
+  const transcriptTitles = new TranscriptTitleLookup({ store: new TranscriptTitleStore(directory), paths: (workspaces, priority) => trackedTitleTranscripts(paseoHome, workspaces, undefined, priority) });
   // Extraction rides discovery's own timeline batch (loaded agents only): no extra reads (shared/linked-extract.ts).
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();

@@ -78,3 +78,26 @@ test("only agents of tracked workspaces supply transcript files; no daemon or wa
   }
   assert.deepEqual(await trackedTitleTranscripts(dir, [w], { claude: join(dir, "claude") }), [join(projects, "old-root.jsonl")]);
 });
+
+test("a receipt spanning an append and worker reload keeps only its pending input", async t => {
+  const dir = await temp(t), path = join(dir, "session.jsonl");
+  const parts = receipt("Resumed plan").split("\n");
+  await writeFile(path, parts[0] + "\n"); const s = setup(dir, [path], 4096); await s.tick();
+  const next = new TranscriptTitleLookup({ store: new TranscriptTitleStore(dir), paths: async () => [path], budget: 4096 });
+  await appendFile(path, parts[1] + "\n");
+  const pass = await next.tick([s.w], s.file.workspaces, async titles => { fillLinkedTitles(s.file, titles); });
+  assert.equal(pass.bytes, Buffer.byteLength(parts[1] + "\n"));
+  assert.equal(s.file.workspaces[s.w.id].items[0].title, "Resumed plan");
+});
+
+test("untitled-link workspaces precede other tracked transcripts, newest first within each group", async t => {
+  const { utimes } = await import("node:fs/promises");
+  const dir = await temp(t), agents = join(dir, "agents", "acme-app"), projects = join(dir, "claude", "projects", "acme-app");
+  await mkdir(agents, { recursive: true }); await mkdir(projects, { recursive: true });
+  const priority = workspace({ id: "needs-title" }), other = workspace({ id: "other" });
+  for (const [id, workspaceId, time] of [["priority-old", priority.id, 10], ["priority-new", priority.id, 20], ["other-new", other.id, 30], ["other-old", other.id, 5]] as const) {
+    await writeFile(join(agents, id + ".json"), JSON.stringify({ id, workspaceId, provider: "claude", cwd: "/scratch/acme-app", persistence: { sessionId: id } }));
+    const path = join(projects, id + ".jsonl"); await writeFile(path, "{}\n"); await utimes(path, time, time);
+  }
+  assert.deepEqual((await trackedTitleTranscripts(dir, [priority, other], { claude: join(dir, "claude") }, new Set([priority.id]))).map(p => p.split("/").at(-1)), ["priority-new.jsonl", "priority-old.jsonl", "other-new.jsonl", "other-old.jsonl"]);
+});
