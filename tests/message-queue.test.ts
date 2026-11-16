@@ -83,7 +83,7 @@ test("a send that never left never fails: 15 s, 1 min, then every 5 min, and at 
   assert.deepEqual(waits, [NEVER_LEFT_MS[0], NEVER_LEFT_MS[1], NEVER_LEFT_MS[2], NEVER_LEFT_MS[2], NEVER_LEFT_MS[2], NEVER_LEFT_MS[2]]);
   const d = await f.delivery();
   assert.equal(d.state, "queued", "never Failed: nothing was sent");
-  assert.match(deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt }, () => "12:04").detail, /^Queued: Paseo unreachable, retrying at 12:04\.$/);
+  assert.match(deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt }, () => "12:04").detail, /^Queued: Paseo unreachable\. Next try at 12:04\.$/);
   reachable = true;
   f.queue.reconnected(); await f.engine.idle();
   assert.equal((await f.delivery()).state, "sent", "the daemon came back: sent at once, not at the next 5 min step");
@@ -225,7 +225,7 @@ test("Paseo unreachable: one connect-only probe every 15 s, 60 s after 10 min, n
   assert.equal(sends, 1, "a failed probe sends nothing: it only connects");
   assert.equal(probes, waits.length);
   const d = await f.delivery();
-  assert.equal(d.state, "queued"); assert.equal(Date.parse(d.nextAt!), Date.parse("2026-11-16T09:00:00.000Z") + f.timers.now + PROBE_SLOW_MS, "the card's 'retrying at' is the next probe");
+  assert.equal(d.state, "queued"); assert.equal(Date.parse(d.nextAt!), Date.parse("2026-11-16T09:00:00.000Z") + f.timers.now + PROBE_SLOW_MS, "the card's 'Next try at' is the next probe");
   up = true;
   await f.timers.fire(); await f.engine.idle();
   assert.equal((await f.delivery()).state, "sent", "the probe connected: sent at once");
@@ -259,4 +259,14 @@ test("the probe only connects: it reads no agent, so nothing wakes, and a droppe
   assert.equal(await via("disconnected").probe(), false);
   assert.equal(await via(null).probe(), false);
   assert.deepEqual(touched, [], "no daemon call beyond the connection itself");
+});
+
+test("a waiting item's status line says when the next try is, not the state's own name", () => {
+  const clock = () => "12:04", nextAt = "2026-11-16T12:04:00.000Z";
+  const retrying = deliveryStatus({ state: "retrying", reason: null, nextAt }, clock);
+  assert.equal(retrying.label, "Next try at 12:04");
+  assert.match(retrying.detail, /^Next try at 12:04\. Not confirmed yet\./);
+  assert.equal(deliveryStatus({ state: "queued", reason: "Paseo unreachable", nextAt }, clock).detail, "Queued: Paseo unreachable. Next try at 12:04.");
+  assert.equal(deliveryStatus({ state: "queued", reason: null, nextAt: null }, clock).detail, "Queued.");
+  for (const state of ["queued", "retrying"] as const) assert.doesNotMatch(JSON.stringify(deliveryStatus({ state, reason: "Paseo unreachable", nextAt }, clock)), /retrying at/i);
 });

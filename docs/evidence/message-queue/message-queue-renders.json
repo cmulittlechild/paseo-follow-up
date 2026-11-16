@@ -2,8 +2,8 @@
   "script": "scripts/check-message-queue.mjs",
   "baseline": false,
   "pack": {
-    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
-    "version": "2.1.0-beta.3"
+    "file": "paseo-follow-up-2.1.0-beta.4.tgz",
+    "version": "2.1.0-beta.4"
   },
   "paseo": "0.15.4",
   "cases": {
@@ -179,6 +179,18 @@
           }
         },
         {
+          "name": "mq-dialog-sending-desktop-dark",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
           "name": "mq-dialog-sending-desktop-light",
           "surface": "dialog",
           "state": "sending",
@@ -188,6 +200,18 @@
           "overflow": {
             "scrollWidth": 1280,
             "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-sending-phone-dark",
+          "surface": "card",
+          "state": "sending",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
           }
         },
         {
@@ -203,36 +227,12 @@
           }
         },
         {
-          "name": "mq-dialog-sending-desktop-dark",
-          "surface": "dialog",
-          "state": "sending",
-          "form": "desktop",
-          "theme": "dark",
-          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
-          "overflow": {
-            "scrollWidth": 1280,
-            "innerWidth": 1280
-          }
-        },
-        {
           "name": "mq-dialog-sending-phone-light",
           "surface": "dialog",
           "state": "sending",
           "form": "phone",
           "theme": "light",
           "file": "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
-          "overflow": {
-            "scrollWidth": 390,
-            "innerWidth": 390
-          }
-        },
-        {
-          "name": "mq-card-sending-phone-dark",
-          "surface": "card",
-          "state": "sending",
-          "form": "phone",
-          "theme": "dark",
-          "file": "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
           "overflow": {
             "scrollWidth": 390,
             "innerWidth": 390
@@ -602,7 +602,7 @@
         "failed": {
           "question": "failed",
           "card": "failed",
-          "timelineReadsDropped": 9
+          "timelineReadsDropped": 10
         }
       },
       "pngs": [
@@ -620,11 +620,11 @@
         "docs/evidence/message-queue/mq-dialog-notsent-phone-dark.png",
         "docs/evidence/message-queue/mq-card-sending-desktop-light.png",
         "docs/evidence/message-queue/mq-card-sending-desktop-dark.png",
-        "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
-        "docs/evidence/message-queue/mq-card-sending-phone-light.png",
         "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
-        "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
         "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-sending-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
         "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
         "docs/evidence/message-queue/mq-dialog-queued-desktop-light.png",
         "docs/evidence/message-queue/mq-dialog-queued-desktop-dark.png",
@@ -743,8 +743,18 @@
       "ok": true
     },
     {
+      "name": "render mq-dialog-sending-desktop-dark",
+      "ok": true
+    },
+    {
       "name": "render mq-dialog-sending-desktop-light",
       "ok": true
+    },
+    {
+      "name": "render mq-card-sending-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
     },
     {
       "name": "render mq-card-sending-phone-light: no horizontal overflow at 390",
@@ -753,17 +763,7 @@
       "innerWidth": 390
     },
     {
-      "name": "render mq-dialog-sending-desktop-dark",
-      "ok": true
-    },
-    {
       "name": "render mq-dialog-sending-phone-light: no horizontal overflow at 390",
-      "ok": true,
-      "scrollWidth": 390,
-      "innerWidth": 390
-    },
-    {
-      "name": "render mq-card-sending-phone-dark: no horizontal overflow at 390",
       "ok": true,
       "scrollWidth": 390,
       "innerWidth": 390
@@ -934,33 +934,65 @@
       {
         "action": "answer-question send",
         "method": "follow.answer-question",
-        "ms": 8,
+        "ms": 5,
         "ok": true
       },
       {
         "action": "answer-question resend (Try now on a queued answer)",
         "method": "follow.answer-question",
-        "ms": 3,
+        "ms": 2,
         "ok": true
       },
       {
         "action": "brief-action",
         "method": "follow.brief-action",
-        "ms": 10,
+        "ms": 7,
         "ok": true
       },
       {
         "action": "brief-action Retry on a queued card",
         "method": "follow.brief-action",
-        "ms": 3,
+        "ms": 4,
         "ok": false,
         "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "send (manual Send of a repair batch)",
+        "method": "follow.send",
+        "ms": 20013,
+        "ok": false,
+        "error": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action retry",
+        "method": "follow.queue-action",
+        "ms": 3,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action cancel",
+        "method": "follow.queue-action",
+        "ms": 1,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "Overseer forward (send_to_agent)",
+        "method": "follow.overseer-act",
+        "ms": 30002,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "report handed to an agent (report-issue-send)",
+        "method": "follow.report-issue-send",
+        "ms": 30001,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
       }
     ]
   },
-  "todo": [
-    "busy-agent",
-    "answer-plus-repair"
-  ],
+  "todo": [],
   "result": "pass"
 }
