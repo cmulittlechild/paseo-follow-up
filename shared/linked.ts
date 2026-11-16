@@ -124,7 +124,7 @@ export function upsertItem(ws: WorkspaceLinks, input: ItemInput, now: number): U
   if (prior) {
     const upgrade = TRUST[input.origin] > TRUST[prior.origin];
     prior.url = input.url ?? prior.url;
-    prior.title = input.title ?? prior.title;
+    prior.title = (input.origin === "extracted" ? prior.title ?? input.title : input.title ?? prior.title) ?? null;
     if (input.status !== undefined) { prior.status = input.status; prior.statusTone = input.statusTone ?? null; }
     if (input.checkedAt !== undefined) prior.checkedAt = input.checkedAt;
     if (upgrade) { prior.origin = input.origin; prior.by = input.by ?? prior.by; prior.why = input.why ?? prior.why; }
@@ -292,7 +292,7 @@ export function migrateAboutLinks(file: LinkedFile, about: Record<string, { link
 // ---------- extraction: what passive sources saw ----------
 
 /** One reference seen in text Follow-up already reads. `strong`: a tool receipt, the developer's words, the goal or a PR. */
-export type LinkRef = { raw: string; strong: boolean; title?: string | null };
+export type LinkRef = { raw: string; strong: boolean; title?: string | null; titleRank?: number };
 
 /**
  * Passive sightings into the file. Linear keys become candidates (weak ones need a second sighting); Slack threads,

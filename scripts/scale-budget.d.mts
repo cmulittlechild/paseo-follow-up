@@ -30,4 +30,7 @@ export function peakBudgetMb(value: string | undefined | null): number;
 export const ENGINE_TICK_MS: number;
 export const DRAIN_QUIET_MS: number;
 export const DRAIN_BOUND_MS: number;
-export function drainState(polls: readonly { atMs: number; running: number; reads: number; relisted?: boolean }[], options?: { quietMs?: number; boundMs?: number }): { settled: boolean; expired: boolean; atMs?: number };
+export function drainState(polls: readonly { atMs: number; running: number; reads: number; lists?: number; relisted?: boolean }[], options?: { quietMs?: number; boundMs?: number; awaitRelist?: boolean }): { settled: boolean; expired: boolean; atMs?: number };
+export const DIRTY_REFRESH_MS: number;
+export const SEND_DRAIN_QUIET_MS: number;
+export function drainPlan(phase: { busyMs: number }): { quietMs: number; awaitRelist: boolean };

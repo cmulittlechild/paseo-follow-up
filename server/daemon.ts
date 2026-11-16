@@ -14,6 +14,7 @@ import { defaultTracking, followsEvery, optedOut, projectSetting, type Project }
 import { recoveryHandoff } from "./recovery-handoff";
 import { applyRecoveryRole, recoveryConfig, type RecoveryRole } from "./recovery-config";
 import { submittedPrs, type Submission } from "./submissions";
+import { receiptTitles } from "./local-titles";
 import { publishedArtifacts } from "./spec";
 import type { Artifact } from "../shared/spec";
 import { extractHistory, inMainCooldown, type History, type DiscoveredWorkspace } from "./discovery";
@@ -413,13 +414,14 @@ export class PaseoGateway implements Gateway {
           const read = kept ?? (cached?.cursor && cached.history.complete && !cached.history.error ? this.turnTimeline?.since(agent.id, cached.cursor, OVERLAP) ?? await readSince(client!, agent.id, cached.cursor) : null) ?? await readAll(client!, agent.id);
           end = read.end;
           const items = read.entries.map(e => e.item);
+          const titles = await receiptTitles(read.entries);
           // Linked items ride this read. Best-effort: a throw here must never mark the history unreadable.
           if (this.linkRefs) try {
             const after = cached?.cursor && read.end && cached.cursor.epoch === read.end.epoch ? cached.cursor.seq : -1;
-            const found = timelineRefs(read.entries, after);
+            const found = [...timelineRefs(read.entries, after), ...[...titles].map(([raw, evidence]) => ({ raw, strong: true, title: evidence.title, titleRank: evidence.rank }))];
             if (found.length) refs.set(dueRow.id, [...refs.get(dueRow.id) ?? [], ...found]);
           } catch { /* skipped for this batch */ }
-          const fresh = { artifacts: publishedArtifacts(read.entries, agent.id), history: extractHistory(items, read.complete, read.complete ? null : "History exceeds the recovery window; inspect older transcripts during inventory"), submissions: submittedPrs(items, agent.id, repo) };
+          const fresh = { artifacts: publishedArtifacts(read.entries, agent.id, titles), history: extractHistory(items, read.complete, read.complete ? null : "History exceeds the recovery window; inspect older transcripts during inventory"), submissions: submittedPrs(items, agent.id, repo) };
           if (read.incremental && cached) {
             this.incrementalReads++;
             history = { candidates: [...new Set([...cached.history.candidates, ...fresh.history.candidates])].sort(), goal: cached.history.goal ?? fresh.history.goal, complete: true, error: null };

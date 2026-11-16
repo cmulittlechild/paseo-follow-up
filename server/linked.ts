@@ -1,3 +1,5 @@
+import type { Workspace } from "../shared/model";
+import { fillLinkedTitles, localTitles, titleKey, type TitleIndex } from "../shared/local-titles";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -42,6 +44,8 @@ export type LinkedDeps = {
   sources: LinkedSources;
   /** The resource governor's background threshold: no checks while the VM is short of room. */
   roomForBackground?(): Promise<boolean>;
+  workspaces?: () => Promise<readonly Workspace[]>;
+  titlesChanged?: (titles: TitleIndex) => Promise<void>;
   now?: () => number;
 };
 
@@ -81,6 +85,16 @@ export class LinkedService {
     return { checked, skipped: null };
   }
 
+  /** All title lookups share this index; filling blanks is idempotent and never changes link ownership. */
+  async backfill(): Promise<number> {
+    const workspaces = await this.deps.workspaces?.() ?? [];
+    const file = await this.deps.store.read();
+    const titles = localTitles(workspaces, file);
+    const filled = await this.deps.store.mutate(f => fillLinkedTitles(f, titles));
+    await this.deps.titlesChanged?.(titles);
+    return filled;
+  }
+
   /**
    * An explicit link: an agent's link_item (origin registered, by its id) or the developer's Add link (manual). A Linear
    * key is confirmed with Linear first: unknown keys and non-team prefixes are refused, not stored. When Linear can't be
@@ -111,15 +125,18 @@ export class LinkedService {
         facts = result.found;
       }
     }
-    return this.deps.store.mutate(f => {
+    const titles = localTitles(await this.deps.workspaces?.() ?? [], await this.deps.store.read());
+    const result = await this.deps.store.mutate(f => {
       const ws = f.workspaces[workspaceId] ??= emptyWorkspaceLinks();
       const r = upsertItem(ws, {
-        key: c.key, kind: c.kind, url: facts?.url ?? c.url, title: facts?.title ?? opts.title ?? null, origin: opts.origin, by: opts.by, why: opts.why ?? null,
+        key: c.key, kind: c.kind, url: facts?.url ?? c.url, title: facts?.title ?? opts.title ?? ws.items.find(i => i.key === c.key)?.title ?? titles.get(titleKey(c.url ?? c.key))?.title ?? null, origin: opts.origin, by: opts.by, why: opts.why ?? null,
         ...(facts ? { status: facts.state, statusTone: toneOf(facts.state), checkedAt: new Date(now).toISOString() } : {}),
       }, now);
       if (!r.ok) return { ok: false as const, reason: r.reason === "excluded" ? excludedReason(c.key) : LINKED_FULL };
-      return { ok: true as const, pending: false, key: c.key, item: r.item, created: r.created };
+      return { ok: true as const, pending: false as const, key: c.key, item: r.item, created: r.created };
     });
+    await this.backfill();
+    return result;
   }
 
   /** Removes an item and remembers it, so nothing adds it back (only the developer re-adding it, or Undo). */
@@ -139,6 +156,7 @@ export class LinkedService {
   }
 
   async view(workspaceId: string, derived: Parameters<typeof linkedView>[2]): Promise<LinkedView> {
+    await this.backfill();
     return linkedView(workspaceId, (await this.deps.store.read()).workspaces[workspaceId], derived);
   }
 
@@ -148,13 +166,17 @@ export class LinkedService {
   }
 
   /** Passive sightings (shared/linked-extract.ts), one write for the whole batch. Nothing to note costs nothing. */
-  note(batch: ReadonlyMap<string, readonly LinkRef[]>): Promise<{ items: number; candidates: number }> {
+  async note(batch: ReadonlyMap<string, readonly LinkRef[]>): Promise<{ items: number; candidates: number }> {
     if (![...batch.values()].some(r => r.length)) return Promise.resolve({ items: 0, candidates: 0 });
-    return this.deps.store.mutate(f => {
+    const titles = localTitles(await this.deps.workspaces?.() ?? [], await this.deps.store.read(), [...batch.values()].flat());
+    const result = await this.deps.store.mutate(f => {
       let items = 0, candidates = 0;
-      for (const [workspaceId, refs] of batch) { const n = noteRefs(f, workspaceId, refs, this.now()); items += n.items; candidates += n.candidates; }
+      for (const [workspaceId, refs] of batch) { const n = noteRefs(f, workspaceId, refs.map(ref => ({ ...ref, title: titles.get(titleKey(ref.raw))?.title ?? ref.title })), this.now()); items += n.items; candidates += n.candidates; }
+      fillLinkedTitles(f, titles);
       return { items, candidates };
     });
+    await this.deps.titlesChanged?.(titles);
+    return result;
   }
 
   /** One-time carry-over of verified Summary links (shared/linked.ts migrateAboutLinks). */

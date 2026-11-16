@@ -6,6 +6,7 @@ import { useWorkspace } from "./workspace-data";
 import type { LiveStore } from "./live";
 import { Button, Card, CardRow, errorText, text } from "./kit";
 import { Skeleton } from "./motion";
+import { FOLLOW_UP_ICON } from "./follow-up-icon";
 import { PanelTop, WorkspaceView, useSessionFolds, type PanelLinks } from "./panel";
 
 export const LARGE_SCREEN = "follow-up-workspace";
@@ -44,7 +45,7 @@ export function FollowLarge(props: PluginScreenProps & PanelLinks & { live?: Liv
   </View>;
   const w = query.workspace;
   if (!w) return <View style={{ flex: 1, backgroundColor: c.surface0, padding: layout.compact ? 16 : 24 }}>
-    <Card theme={theme} compact={layout.compact} icon="GitPullRequest" title="Nothing to show here" style={{ marginHorizontal: 0, marginTop: 0, maxWidth: 520 }}>
+    <Card theme={theme} compact={layout.compact} icon={FOLLOW_UP_ICON} title="Nothing to show here" style={{ marginHorizontal: 0, marginTop: 0, maxWidth: 520 }}>
       <CardRow theme={theme}>
         <Text style={[text(c).meta, { marginBottom: 10 }]}>{query.error ? `Couldn't read Follow-up: ${errorText(query.error)}` : "Follow-up has nothing on this workspace yet, or it no longer exists."}</Text>
         {navigation && workspaceId ? <Button theme={theme} icon="ArrowLeft" title="Back to the workspace" onPress={back} /> : null}

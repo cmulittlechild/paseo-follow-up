@@ -126,7 +126,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      with live-sized timelines), plus **busy-window growth** under `BUSY_GROWTH_BUDGET_MB` (`scripts/scale-budget.mjs`).
      The idle window starts drained (`drainState`): no awake agent running, no worker timeline read for a tick plus a
      margin (`DRAIN_QUIET_MS`) and the directory's due re-read done (at most `DRAIN_BOUND_MS`), so the busy window's
-     tail doesn't land in the idle rate.
+     tail doesn't land in the idle rate. Plain `test:scale` drains after its send phase the same way (`drainPlan`): no
+     agent it sent to running, and no timeline read or directory re-read for `SEND_DRAIN_QUIET_MS` (a dirty re-read's
+     whole wait, `DIRTY_REFRESH_MS` plus a tick), because nothing marks when that re-read is due. 2026-11-16: a late
+     send's turn and reads landed in its idle window, 5.3 requests a minute against 2.
      It runs with `--budgets-report-only` (budgets print as `[report]` lines; dormant wakes and unsettled sends still
      fail) until its derived budgets land: 2026-11-13 the busy window sat at 322–352 MB idle on beta.4, main and the
      memory fix alike, ~100 MB JS heap and ~220 MB native. Never loosen a `test:scale` budget to pass it.
@@ -491,6 +494,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    list is about 400 px and a row's chips were drawn over its age. Guarded by `tests/row-chips.test.ts` and
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
+35. **Follow-up has one mark** (`follow-up-has-one-mark`). Every surface that stands for Follow-up itself (the
+   sidebar row, the header button, the workspace panel tab, Settings, the "open for this workspace" command and the
+   larger view's empty state) draws `FOLLOW_UP_ICON` (`client/follow-up-icon.ts`): one 24-unit glyph in
+   `currentColor`, valid for `findSvgIconProblem`. `assets/icon.svg` (and `assets/icon.png` rendered from it) is the
+   same mark on the app tile. Lucide GitPullRequest stays for pull requests only (PR chips, the stacks card, briefs,
+   the PR sheet, reviewers). The header button's Needs-you dot sits on the glyph's end dot, clamped inside the icon box
+   (`needDotBox`): Paseo clips a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot
+   drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
+   inside every clipping box, and its amber box as tall as wide within 1 px).
 37. **A new worker starts once the old one exits** (`a-new-worker-starts-once-the-old-one-exits`). A worker that
    starts while the previous one is still shutting down waits for it and starts the moment it exits; a transient
    start-up failure never becomes a permanent load error. `Store.lock` (`server/store.ts`) waits while
@@ -506,6 +518,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    daemon worker, which exited at its own 10 s force-exit before stopping any plugin, and its tree kill missed them;
    the orphaned worker kept the lock, the new one threw "Another follow-up worker is running.", and Follow-up stayed
    down until a reload. Guarded by `tests/worker-lock.test.ts`.
+
+38. **A linked item uses every known local title** (`a-linked-item-uses-every-known-local-title`). Resolve artifact
+   and Claude Docs names from completed receipts and every tracked workspace's stored artifacts. Fill missing names
+   in linked items and specs at worker start and when evidence arrives; preserve developer and agent choices.
+   Read at most 8 KB of an artifact's source HTML asynchronously, and treat unreadable files as misses. Never fetch
+   remote page metadata or wake an agent for a name. Unnamed artifacts may use a lazy local transcript lookup:
+   one shared receipt index, at most 2 MB per 30-second background tick (4 MB only for an unnamed backlog),
+   in 1 MB chunks with yields, only tracked workspaces' recorded agents,
+   with per-file offsets so each byte is read once plus appends. Stop when every artifact is named; otherwise park after catch-up until links/scope change or a 30-minute
+   recheck. Prefilter transcript bytes before decoding. Guarded by `tests/transcript-titles.test.ts`, `tests/local-titles.test.ts` and
+   `shared/status-invariants.ts`.
 
 39. **Flush test stores before removing their directory** (`flush-test-stores-before-removal`). Tests construct
    every queued writer through `tests/support/store-temp-dir.ts` (`testStore`, or `trackPersistence` for a direct

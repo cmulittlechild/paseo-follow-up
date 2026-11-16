@@ -1,0 +1,1 @@
+- Follow-up has its own icon now, in the sidebar, the workspace header button and the panel tab, instead of the pull request icon. While a workspace needs you, the icon's dot turns amber.

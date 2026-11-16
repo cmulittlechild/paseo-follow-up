@@ -37,6 +37,14 @@ const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w
 
 export const INVARIANTS: Invariant[] = [
   {
+    id: "a-linked-item-uses-every-known-local-title",
+    why: "Artifact receipt titles must reach the spec and linked views; explicit names stay chosen. Cross-workspace and linked-store coverage lives in tests/local-titles.test.ts.",
+    check(w) {
+      if (!w.spec?.url || w.spec.title) return null;
+      return w.artifacts.some(a => a.url === w.spec!.url && a.title) ? "spec has no title despite a locally titled artifact" : null;
+    },
+  },
+  {
     id: "an-answer-leaves-needs-you-only-when-delivered",
     why: "2026-11-13: Copy recorded the developer's answer and the question left Needs you at once, though nothing had been sent; an answer forgotten on the clipboard left the agent waiting with nothing asking for it. A copied answer, or one put in the agent's chat (Paseo 0.16), stays in Needs you as waiting to be sent until a turn's tail shows the developer's message carrying its marker (\"Follow-up answer Qn (\"), or the developer signs that agent's row off (shared/questions.ts awaitingSend).",
     check(w, now) {
