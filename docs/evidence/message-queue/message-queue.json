@@ -1,0 +1,497 @@
+{
+  "script": "scripts/check-message-queue.mjs",
+  "baseline": false,
+  "pack": {
+    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+    "version": "2.1.0-beta.3"
+  },
+  "paseo": "0.15.4",
+  "cases": {
+    "unreachable-then-back": {
+      "whileRefused": {
+        "item": {
+          "state": "queued",
+          "reason": "Paseo unreachable",
+          "attempts": 2,
+          "nextAt": "2026-11-16T15:06:44.156Z"
+        },
+        "delivery": {
+          "state": "queued",
+          "to": null,
+          "messageId": "22b55f1c-1a62-4f06-bace-75417039240a",
+          "at": "2026-11-16T15:05:44.157Z",
+          "reason": "Paseo unreachable",
+          "nextAt": "2026-11-16T15:06:44.156Z"
+        },
+        "secondsSinceAnswer": 21
+      },
+      "arrivedSecondsAfterBack": 37.5,
+      "workerConnectsAfterBack": [
+        37.4
+      ],
+      "reconnectSecondsAfterBack": 37.4,
+      "arrivedSecondsAfterReconnect": 0.1,
+      "settled": {
+        "id": "answer:wks_4ce0d43d5ffa006a:Q1:22b55f1c-1a62-4f06-bace-75417039240a",
+        "kind": "answer",
+        "key": "wks_4ce0d43d5ffa006a",
+        "ref": {
+          "workspaceId": "wks_4ce0d43d5ffa006a",
+          "questionId": "Q1"
+        },
+        "messageId": "22b55f1c-1a62-4f06-bace-75417039240a",
+        "text": "",
+        "priority": "now",
+        "state": "sent",
+        "attempts": 2,
+        "unknowns": 0,
+        "nextAt": null,
+        "reason": null,
+        "envelope": {
+          "messageId": "22b55f1c-1a62-4f06-bace-75417039240a",
+          "to": "bc4dea0a-f68c-4a71-b6bb-42f505de3c57",
+          "at": "2026-11-16T15:06:25.592Z"
+        },
+        "to": "bc4dea0a-f68c-4a71-b6bb-42f505de3c57",
+        "createdAt": "2026-11-16T15:05:27.133Z",
+        "settledAt": "2026-11-16T15:06:25.647Z"
+      }
+    },
+    "reload-mid-send": {
+      "landed": {
+        "beforeReload": {
+          "provider": 1,
+          "timeline": 1,
+          "state": "sending"
+        },
+        "settled": {
+          "id": "answer:wks_7b2396d717619af1:Q1:a25e4b8b-804f-4800-a0c4-0800d6857708",
+          "kind": "answer",
+          "key": "wks_7b2396d717619af1",
+          "ref": {
+            "workspaceId": "wks_7b2396d717619af1",
+            "questionId": "Q1"
+          },
+          "messageId": "a25e4b8b-804f-4800-a0c4-0800d6857708",
+          "text": "",
+          "priority": "now",
+          "state": "sent",
+          "attempts": 0,
+          "unknowns": 0,
+          "nextAt": null,
+          "reason": null,
+          "envelope": {
+            "messageId": "a25e4b8b-804f-4800-a0c4-0800d6857708",
+            "to": null,
+            "at": "2026-11-16T15:06:34.026Z"
+          },
+          "to": "2cdd8e43-8dd7-40a4-b3fa-2f95a298e9f1",
+          "createdAt": "2026-11-16T15:06:32.026Z",
+          "settledAt": "2026-11-16T15:07:35.613Z"
+        }
+      },
+      "lost": {
+        "beforeReload": {
+          "provider": 0,
+          "timeline": 0,
+          "state": "sending"
+        },
+        "settled": {
+          "id": "answer:wks_78a4b45ece104219:Q1:ef50f606-4a79-42b5-90a6-c89b94ce0681",
+          "kind": "answer",
+          "key": "wks_78a4b45ece104219",
+          "ref": {
+            "workspaceId": "wks_78a4b45ece104219",
+            "questionId": "Q1"
+          },
+          "messageId": "ef50f606-4a79-42b5-90a6-c89b94ce0681",
+          "text": "",
+          "priority": "now",
+          "state": "sent",
+          "attempts": 0,
+          "unknowns": 0,
+          "nextAt": null,
+          "reason": null,
+          "envelope": {
+            "messageId": "ef50f606-4a79-42b5-90a6-c89b94ce0681",
+            "to": "67d7d53d-ed9f-467c-a6f0-590a2c678e89",
+            "at": "2026-11-16T15:09:23.448Z"
+          },
+          "to": "67d7d53d-ed9f-467c-a6f0-590a2c678e89",
+          "createdAt": "2026-11-16T15:07:43.216Z",
+          "settledAt": "2026-11-16T15:09:23.673Z"
+        }
+      }
+    },
+    "permission-prompt": {
+      "deferred": {
+        "state": "queued",
+        "to": null,
+        "messageId": "cc04eeee-f50a-43c8-b6f9-ec6dad0eff4b",
+        "at": "2026-11-16T15:09:33.561Z",
+        "reason": "waiting for the agent's permission prompt",
+        "nextAt": "2026-11-16T15:09:48.561Z"
+      },
+      "arrivedSecondsAfterPermission": 15.2
+    },
+    "card-answer": {
+      "doubleClick": {
+        "ok": true,
+        "state": "answered",
+        "answerId": "harness-card-answer-0001"
+      },
+      "lateRetry": {
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      }
+    },
+    "reply-timing": {
+      "beforeSlow": {
+        "q2": {
+          "state": "queued",
+          "to": null,
+          "messageId": "9c164cc2-fdcf-4d1e-bf74-94087908b418",
+          "at": "2026-11-16T15:10:13.346Z",
+          "reason": "Paseo unreachable",
+          "nextAt": "2026-11-16T15:10:28.346Z"
+        }
+      },
+      "rows": [
+        {
+          "action": "answer-question send",
+          "method": "follow.answer-question",
+          "ms": 3,
+          "ok": true
+        },
+        {
+          "action": "answer-question resend (Try now on a queued answer)",
+          "method": "follow.answer-question",
+          "ms": 4,
+          "ok": true
+        },
+        {
+          "action": "brief-action",
+          "method": "follow.brief-action",
+          "ms": 3,
+          "ok": true
+        },
+        {
+          "action": "brief-action Retry on a queued card",
+          "method": "follow.brief-action",
+          "ms": 8,
+          "ok": true
+        }
+      ],
+      "budgetMs": 300,
+      "resumeMs": 60000
+    }
+  },
+  "checks": [
+    {
+      "name": "the worker's daemon connection goes through the proxy",
+      "ok": true,
+      "connections": 1
+    },
+    {
+      "name": "unreachable: the item waits as queued, Paseo unreachable",
+      "ok": true,
+      "item": {
+        "state": "queued",
+        "reason": "Paseo unreachable",
+        "attempts": 2,
+        "nextAt": "2026-11-16T15:06:44.156Z"
+      },
+      "delivery": {
+        "state": "queued",
+        "to": null,
+        "messageId": "22b55f1c-1a62-4f06-bace-75417039240a",
+        "at": "2026-11-16T15:05:44.157Z",
+        "reason": "Paseo unreachable",
+        "nextAt": "2026-11-16T15:06:44.156Z"
+      },
+      "secondsSinceAnswer": 21
+    },
+    {
+      "name": "unreachable: the question reads queued with a retry time",
+      "ok": true,
+      "delivery": {
+        "state": "queued",
+        "to": null,
+        "messageId": "22b55f1c-1a62-4f06-bace-75417039240a",
+        "at": "2026-11-16T15:05:44.157Z",
+        "reason": "Paseo unreachable",
+        "nextAt": "2026-11-16T15:06:44.156Z"
+      }
+    },
+    {
+      "name": "unreachable: nothing reached the agent",
+      "ok": true
+    },
+    {
+      "name": "unreachable: arrives within 15 s of the worker's connection reopening",
+      "ok": true,
+      "secondsAfterReconnect": 0.1,
+      "reconnectSecondsAfterBack": 37.4,
+      "secondsAfterBack": 37.5
+    },
+    {
+      "name": "unreachable: exactly once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "unreachable: the item settles as sent",
+      "ok": true,
+      "settled": {
+        "state": "sent",
+        "to": "bc4dea0a-f68c-4a71-b6bb-42f505de3c57"
+      }
+    },
+    {
+      "name": "reload landed: settles as sent",
+      "ok": true,
+      "beforeReload": {
+        "provider": 1,
+        "timeline": 1,
+        "state": "sending"
+      },
+      "settled": {
+        "state": "sent",
+        "reason": null
+      }
+    },
+    {
+      "name": "reload landed: exactly once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "reload lost: settles as sent",
+      "ok": true,
+      "beforeReload": {
+        "provider": 0,
+        "timeline": 0,
+        "state": "sending"
+      },
+      "settled": {
+        "state": "sent",
+        "reason": null
+      }
+    },
+    {
+      "name": "reload lost: exactly once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "permission: queued with a permission reason",
+      "ok": true,
+      "delivery": {
+        "state": "queued",
+        "to": null,
+        "messageId": "cc04eeee-f50a-43c8-b6f9-ec6dad0eff4b",
+        "at": "2026-11-16T15:09:33.561Z",
+        "reason": "waiting for the agent's permission prompt",
+        "nextAt": "2026-11-16T15:09:48.561Z"
+      }
+    },
+    {
+      "name": "permission: nothing sent while the prompt is open",
+      "ok": true
+    },
+    {
+      "name": "permission: exactly once",
+      "ok": true,
+      "seconds": 15.2,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "card: a double click returns the recorded answer",
+      "ok": true,
+      "state": "answered",
+      "answerId": "harness-card-answer-0001"
+    },
+    {
+      "name": "card: exactly once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "card: the same answerId again sends nothing",
+      "ok": true,
+      "late": {
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "timing: answer-question send replies within 300 ms while Paseo is slow",
+      "ok": true,
+      "ms": 3
+    },
+    {
+      "name": "timing: answer-question resend (Try now on a queued answer) replies within 300 ms while Paseo is slow",
+      "ok": true,
+      "ms": 4
+    },
+    {
+      "name": "timing: brief-action replies within 300 ms while Paseo is slow",
+      "ok": true,
+      "ms": 3
+    },
+    {
+      "name": "timing: brief-action Retry on a queued card replies within 300 ms while Paseo is slow",
+      "ok": true,
+      "ms": 8
+    },
+    {
+      "name": "timing: the answer arrives once after the slow window",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "timing: the tried-now answer arrives once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "timing: the card arrives once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "timing: the retried card arrives once",
+      "ok": true,
+      "copies": {
+        "provider": 1,
+        "timeline": 1
+      }
+    },
+    {
+      "name": "no worker crash in the daemon log",
+      "ok": true
+    }
+  ],
+  "timing": [
+    {
+      "action": "answer-question send",
+      "method": "follow.answer-question",
+      "ms": 3,
+      "ok": true
+    },
+    {
+      "action": "answer-question resend (Try now on a queued answer)",
+      "method": "follow.answer-question",
+      "ms": 4,
+      "ok": true
+    },
+    {
+      "action": "brief-action",
+      "method": "follow.brief-action",
+      "ms": 3,
+      "ok": true
+    },
+    {
+      "action": "brief-action Retry on a queued card",
+      "method": "follow.brief-action",
+      "ms": 8,
+      "ok": true
+    }
+  ],
+  "mainTiming": {
+    "pack": {
+      "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+      "version": "2.1.0-beta.3"
+    },
+    "rows": [
+      {
+        "action": "answer-question send",
+        "method": "follow.answer-question",
+        "ms": 8,
+        "ok": true
+      },
+      {
+        "action": "answer-question resend (Try now on a queued answer)",
+        "method": "follow.answer-question",
+        "ms": 3,
+        "ok": true
+      },
+      {
+        "action": "brief-action",
+        "method": "follow.brief-action",
+        "ms": 10,
+        "ok": true
+      },
+      {
+        "action": "brief-action Retry on a queued card",
+        "method": "follow.brief-action",
+        "ms": 3,
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      }
+    ]
+  },
+  "todo": [
+    "busy-agent",
+    "answer-plus-repair"
+  ],
+  "timingTable": [
+    {
+      "action": "answer-question send",
+      "queueMs": 3,
+      "queueOk": true,
+      "mainMs": 8,
+      "mainError": null
+    },
+    {
+      "action": "answer-question resend (Try now on a queued answer)",
+      "queueMs": 4,
+      "queueOk": true,
+      "mainMs": 3,
+      "mainError": null
+    },
+    {
+      "action": "brief-action",
+      "queueMs": 3,
+      "queueOk": true,
+      "mainMs": 10,
+      "mainError": null
+    },
+    {
+      "action": "brief-action Retry on a queued card",
+      "queueMs": 8,
+      "queueOk": true,
+      "mainMs": 3,
+      "mainError": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+    }
+  ],
+  "result": "pass"
+}

@@ -1,0 +1,125 @@
+{
+  "script": "scripts/check-message-queue.mjs",
+  "baseline": true,
+  "pack": {
+    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+    "version": "2.1.0-beta.3"
+  },
+  "paseo": "0.15.4",
+  "cases": {
+    "reply-timing": {
+      "beforeSlow": {
+        "q2": {
+          "state": "queued",
+          "to": null,
+          "messageId": "079a3151-7614-43f0-ac7c-22e0c8ab0cf7",
+          "at": "2026-11-16T15:03:30.257Z",
+          "reason": "Couldn't reach Paseo; the answer goes out on the next check."
+        }
+      },
+      "rows": [
+        {
+          "action": "answer-question send",
+          "method": "follow.answer-question",
+          "ms": 8,
+          "ok": true
+        },
+        {
+          "action": "answer-question resend (Try now on a queued answer)",
+          "method": "follow.answer-question",
+          "ms": 3,
+          "ok": true
+        },
+        {
+          "action": "brief-action",
+          "method": "follow.brief-action",
+          "ms": 10,
+          "ok": true
+        },
+        {
+          "action": "brief-action Retry on a queued card",
+          "method": "follow.brief-action",
+          "ms": 3,
+          "ok": false,
+          "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+        }
+      ],
+      "budgetMs": 300,
+      "resumeMs": 60000
+    }
+  },
+  "checks": [
+    {
+      "name": "the worker's daemon connection goes through the proxy",
+      "ok": true,
+      "connections": 1
+    },
+    {
+      "name": "no worker crash in the daemon log",
+      "ok": true
+    }
+  ],
+  "timing": [
+    {
+      "action": "answer-question send",
+      "method": "follow.answer-question",
+      "ms": 8,
+      "ok": true
+    },
+    {
+      "action": "answer-question resend (Try now on a queued answer)",
+      "method": "follow.answer-question",
+      "ms": 3,
+      "ok": true
+    },
+    {
+      "action": "brief-action",
+      "method": "follow.brief-action",
+      "ms": 10,
+      "ok": true
+    },
+    {
+      "action": "brief-action Retry on a queued card",
+      "method": "follow.brief-action",
+      "ms": 3,
+      "ok": false,
+      "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+    }
+  ],
+  "mainTiming": null,
+  "todo": [
+    "busy-agent",
+    "answer-plus-repair"
+  ],
+  "timingTable": [
+    {
+      "action": "answer-question send",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 8,
+      "mainError": null
+    },
+    {
+      "action": "answer-question resend (Try now on a queued answer)",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 3,
+      "mainError": null
+    },
+    {
+      "action": "brief-action",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 10,
+      "mainError": null
+    },
+    {
+      "action": "brief-action Retry on a queued card",
+      "queueMs": null,
+      "queueOk": null,
+      "mainMs": 3,
+      "mainError": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+    }
+  ],
+  "result": "recorded"
+}
