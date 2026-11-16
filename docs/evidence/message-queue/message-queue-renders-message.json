@@ -2,8 +2,8 @@
   "script": "scripts/check-message-queue.mjs",
   "baseline": false,
   "pack": {
-    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
-    "version": "2.1.0-beta.3"
+    "file": "paseo-follow-up-2.1.0-beta.4.tgz",
+    "version": "2.1.0-beta.4"
   },
   "paseo": "0.15.4",
   "cases": {
