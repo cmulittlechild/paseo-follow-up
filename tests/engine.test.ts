@@ -345,6 +345,23 @@ test("a fourteen-day merge trigger queues at its due time and dispatches only on
   const restarted = new Engine(f.store, f.github, f.gateway, () => clock + delay + 61_000);
   await restarted.recover(); await restarted.tick(); assert.equal(f.sends.length, 1);
 });
+// 2026-11-16: an untouched workspace skips its observation pass for up to OBSERVE_FULL_MS, and time-based task triggers
+// ran only on full passes, so a task due inside that minute queued up to 60 s late. The two fourteen-day tests above
+// passed only because each commit happened to hand the engine a new workspace object; with the store's own frozen copies
+// (committed-workspaces-are-owned) an unchanged workspace keeps its object, so the skip held. The skip now ends at the
+// earliest task due time (nextDue).
+test("a task due inside the quiet minute queues on the tick at its due time, not at the next full pass", async t => {
+  const f = await fixture(t, workspace({ enable_auto_sends: true, obligations: [{ id: "soon", title: "Recheck behavior", status: "waiting", afterPrs: ["example/app#1"], evidence: "", enable_follow_up: true, revision: 0, trigger: { event: "merge", delayDays: 1 } }] }));
+  f.observe("example/app#1", snapshot({ state: "MERGED", mergedAt: new Date(clock).toISOString() }));
+  await f.engine.tick();
+  f.advance(86_400_000 - 20_000); await f.engine.tick(); await f.engine.tick();
+  assert.equal((await f.get()).batches.length, 0, "20 s before it is due");
+  const passes = f.engine.observationWrites;
+  f.advance(15_000); await f.engine.tick();
+  assert.equal(f.engine.observationWrites, passes, "a quiet tick before the due time still skips the pass");
+  f.advance(5_000); await f.engine.tick();
+  assert.equal((await f.get()).batches[0]?.state, "pending", "queued at its due time, 20 s into the quiet minute");
+});
 test("a fourteen-day deploy task keeps its clock through engine recovery and releases on the latched deployment", async t => {
   const delay = 14 * 86_400_000;
   const deployed = (at: number) => snapshot({ state: "MERGED", mergeCommit: "squash-commit", deployment: { state: "deployed", environment: "production", commits: ["serving-commit"], evidence: "Current serving images contain the merge", observedAt: new Date(at).toISOString() } });

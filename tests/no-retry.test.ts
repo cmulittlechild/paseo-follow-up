@@ -76,6 +76,18 @@ test("still open: rides the next message; after two sends that one task waits fo
   assert.equal(f.sends.length, 4); assert.match(f.sends[3].text, /Resolve merge conflicts on example\/app#1/);
 });
 
+// 2026-11-16: the engine skips an untouched workspace's pass for up to a minute and ignored a read that only moved
+// observedAt, so an acknowledged repair waited up to that minute for the read newer than its acknowledgment. The test
+// above passed only because each commit happened to hand the engine a new workspace object.
+test("one cap: an acknowledged repair GitHub still shows goes out again on the first read after the acknowledgment", async t => {
+  const f = await fixture(t, conflicted());
+  await f.engine.tick(); f.advance(61_000); await f.engine.tick(); assert.equal(f.sends.length, 1);
+  await f.engine.acknowledge("main-agent", (await f.get()).batches.find(b => b.state === "sent")!.id, "completed", "Rebased and pushed");
+  await f.engine.tick(); await f.engine.tick();
+  assert.equal((await f.get()).batches.filter(b => b.state === "pending").length, 0, "no read after the acknowledgment yet");
+  f.advance(1_000); await f.engine.tick();
+  assert.equal((await f.get()).batches.filter(b => b.state === "pending").length, 1, "the first newer read queues it, inside the quiet minute");
+});
 test("one cap: a key acknowledged twice with no change on GitHub caps, and the queue keeps moving (no 3-strike block)", async t => {
   const f = await fixture(t, conflicted());
   const ackSent = async () => f.engine.acknowledge("main-agent", (await f.get()).batches.find(b => b.state === "sent")!.id, "completed", "Rebased and pushed");

@@ -1,3 +1,5 @@
+import { followUpObligations } from "../shared/follow-up";
+import { taskSchedule } from "../shared/task-trigger";
 import { STOP_WAIT_MS, settleWithin, type Deadline } from "./teardown";
 import { DEVELOPER, type Actor } from "../shared/actor";
 import { randomUUID } from "node:crypto";
@@ -153,7 +155,7 @@ export class Engine {
   /** Per workspace: the state object its last tick left, that tick's runtime (JSON) and when it last observed in full. */
   /** The discovery rows (JSON) the last tick applied, and the state that write left. */
   private lastDiscovery: { rows: string; state: State; at: number } | null = null;
-  private observedPass = new Map<string, { w: Workspace; runtime: string; at: number }>();
+  private observedPass = new Map<string, { w: Workspace; runtime: string; at: number; dueAt: number }>();
   /** How many full per-workspace observation writes ran (tests). */
   observationWrites = 0;
   /**
@@ -248,8 +250,9 @@ export class Engine {
       // rules, like the 120 s acknowledgement, run on that pass). The checks cost a ~200-byte JSON and a shallow compare per PR.
       const runtimeKey = JSON.stringify(runtime);
       const last = this.observedPass.get(original.id);
-      const untouched = !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && o.workspaceId !== original.id &&
-        original.prs.every(p => { const seen = observations.get(p.key); return !seen || seen.error === p.error && sameSnapshot(seen.snapshot, p.snapshot, !isHot(original)); });
+      // A scheduled task due since the last pass makes it a full pass, so a trigger fires at its time, not up to a minute late.
+      const untouched = !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && this.now() < last.dueAt && o.workspaceId !== original.id &&
+        original.prs.every(p => { const seen = observations.get(p.key); return !seen || seen.error === p.error && sameSnapshot(seen.snapshot, p.snapshot, !isHot(original) && !awaitsRead(original)); });
       if (!untouched) this.observationWrites++;
       if (!untouched) await this.store.mutateWorkspace(original.id, w => {
         w.runtimeBusy = runtime.busy; w.runtimeReason = runtime.reason; w.taskAgents = runtime.taskAgents;
@@ -340,7 +343,7 @@ export class Engine {
         if (!done) await this.store.mutateWorkspace(current.id, w => { w.managedDoneLabel = false; });
       }
       const after = findWorkspace(await this.store.snapshot(), original.id);
-      this.observedPass.set(original.id, { w: after, runtime: runtimeKey, at: untouched ? last!.at : this.now() });
+      this.observedPass.set(original.id, { w: after, runtime: runtimeKey, at: untouched ? last!.at : this.now(), dueAt: nextDue(after, this.now()) });
       await this.statusCheck(after, this.now(), runtimeKey).catch(() => undefined);
     }
     this.error = null;
@@ -649,6 +652,24 @@ export class Engine {
 export type DoneResult = { workspace: Workspace; blockers: string[]; unconfirmed: string[]; alreadyDone: boolean; next: string };
 /** The declare_done reply in words: what's missing, who can move it, and whether calling again could help. */
 /** Done answers every open Done check: a queued one is cancelled, a sent one counts as acknowledged. */
+/**
+ * An acknowledged repair waits for a GitHub read newer than its acknowledgment (readSince, One cap). Until that read
+ * lands, a read that only moves observedAt is a change: it is what lets the condition go out again.
+ */
+function awaitsRead(w: Workspace): boolean {
+  return w.batches.some(b => b.state === "completed" && !b.unacknowledged && !!b.settledAt &&
+    b.tasks.some(t => isRepair(t) && !!w.prs.find(p => p.key === t.target)?.snapshot && !readSince(w, t, b.settledAt)));
+}
+/** The earliest scheduled task due after `now` (Infinity when none): the untouched-pass skip ends there. */
+function nextDue(w: Workspace, now: number): number {
+  let next = Infinity;
+  for (const o of followUpObligations(w)) {
+    const due = o.trigger && o.enable_follow_up ? taskSchedule(o, w, now).dueAt : null;
+    const at = due ? Date.parse(due) : NaN;
+    if (at > now && at < next) next = at;
+  }
+  return next;
+}
 function settleDoneChecks(w: Workspace, now: number): void {
   for (const b of w.batches.filter(b => completionCheck(b) && ["pending", "sending", "sent", "blocked", "uncertain"].includes(b.state))) {
     const sent = b.state !== "pending";
