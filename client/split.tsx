@@ -114,16 +114,20 @@ export function ResizableSplit({ theme, main, side, fraction, defaultFraction, m
     setFocus(true);
   };
 
-  const active = dragging || focus;
-  const lineColor = active ? withAlpha(c.foreground, 0.7) : hover ? withAlpha(c.foreground, 0.28) : c.border;
-  const lineWidth = active || hover ? 2 : 1;
-  const grip = dragging ? c.foreground : focus ? c.foreground : hover ? withAlpha(c.foreground, 0.4) : "transparent";
+  // Too narrow for both minimums: the divider has nowhere to go, so it is a plain border with no handle.
+  const fixed = total > 0 && maxW - minW < 2;
+  // Dragging into a bound eases the grip back to its hover weight: the pane stopped, the drag didn't break.
+  const atBound = dragging && (width <= minW || width >= maxW);
+  // Keyboard focus keeps the line at hover weight; the accent ring on the grip carries it.
+  const lineColor = dragging ? withAlpha(c.foreground, 0.7) : hover || focus ? withAlpha(c.foreground, 0.28) : c.border;
+  const lineWidth = dragging || hover || focus ? 2 : 1;
+  const grip = atBound ? withAlpha(c.foreground, 0.4) : dragging || focus ? c.foreground : hover ? withAlpha(c.foreground, 0.4) : "transparent";
   const percent = total ? Math.round((width / total) * 100) : Math.round(chosen * 100);
   const web = Platform.OS === "web";
   const a11y = web
     ? { role: "separator", "aria-orientation": "vertical", "aria-label": label, "aria-valuenow": percent, "aria-valuemin": total ? Math.round((minW / total) * 100) : 0, "aria-valuemax": total ? Math.round((maxW / total) * 100) : 100,
       "aria-valuetext": `${percent}% of the width`, tabIndex: 0, onKeyDown, onFocus: (e: { target?: { matches?(selector: string): boolean } }) => setFocus(!!e.target?.matches?.(":focus-visible")), onBlur: () => setFocus(false),
-      onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false), onDoubleClick: reset, title: "Drag to resize · double-click to reset" }
+      onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false), onDoubleClick: reset, title: "Drag to resize · ← → move it · Enter or double-click resets" }
     : { accessible: true, accessibilityRole: "adjustable", accessibilityLabel: label, accessibilityValue: { text: `${percent}% of the width` },
       accessibilityActions: [{ name: "increment" }, { name: "decrement" }, { name: "activate", label: "Reset" }],
       onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => { const n = e.nativeEvent.actionName; if (n === "increment") step(1, false); else if (n === "decrement") step(-1, false); else if (n === "activate") reset(); } };
@@ -132,12 +136,15 @@ export function ResizableSplit({ theme, main, side, fraction, defaultFraction, m
     <View style={{ flex: 1, minWidth: 0 }}>{main}</View>
     {/* The divider: a 1px border at rest; the hit area is wider than the line and sits on top of both edges. */}
     <View style={{ width: 0, zIndex: 3 }}>
-      <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: lineWidth === 2 ? -1 : 0, width: lineWidth, backgroundColor: lineColor }} />
+      {/* A 2px line straddles the column (-1..+1); the hit area is centred on it, so the line sits in its middle. */}
+      <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: lineWidth === 2 ? -1 : 0, width: lineWidth, backgroundColor: fixed ? c.border : lineColor }} />
+      {!fixed && <>
       <View pointerEvents="none" style={{ position: "absolute", top: "50%", left: -2, marginTop: -16, width: 5, height: 32, borderRadius: 3, backgroundColor: grip,
         ...(web && focus ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: c.accent, outlineOffset: 2 } as object : null) }} />
       <View {...responder.panHandlers} {...(a11y as object)} testID={testID ? `${testID}-handle` : undefined}
         style={{ position: "absolute", top: 0, bottom: 0, left: -Math.floor(HIT / 2), width: HIT, ...(web ? { cursor: "col-resize", outlineStyle: "none" } as object : null) }} />
+      </>}
     </View>
-    <View style={{ width, minWidth: 0 }}>{side}</View>
+    <View testID={testID ? `${testID}-side` : undefined} style={{ width, minWidth: 0 }}>{side}</View>
   </View>;
 }

@@ -1665,7 +1665,7 @@ async function splitShots({ shoot, seeded, call, out }) {
   }
   for (const theme of ["dark"]) {
     await shoot(`split-min-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); await page.keyboard.press("Home"); await page.waitForTimeout(300); const b = await box(page); check("Home on the handle takes the pane to its minimum", Math.abs(b.pane - 360) <= 2, { pane: b.pane }); await page.mouse.move(b.x, b.y); page.keepPointer = true; });
-    await shoot(`split-max-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); await page.keyboard.press("End"); await page.waitForTimeout(300); const b = await box(page); check("End on the handle takes the pane to its maximum, leaving the list its minimum", Math.abs(b.total - b.pane - 420) <= 2, { pane: b.pane, total: b.total }); await page.mouse.move(b.x, b.y); page.keepPointer = true; });
+    await shoot(`split-max-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); await page.keyboard.press("End"); await page.waitForTimeout(300); const b = await box(page); check("End on the handle takes the pane to its maximum, leaving the list its minimum", Math.abs(b.total - b.pane - 480) <= 2, { pane: b.pane, total: b.total }); await page.mouse.move(b.x, b.y); page.keepPointer = true; });
   }
   await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
 
@@ -1674,11 +1674,11 @@ async function splitShots({ shoot, seeded, call, out }) {
     const before = await ready(page);
     check("default share drawn", Math.abs(before.pane - Math.round(0.42 * before.total)) <= 3, { pane: before.pane, total: before.total });
     await page.mouse.move(before.x, before.y); await page.mouse.down();
-    for (let i = 1; i <= 10; i++) await page.mouse.move(before.x - i * 20, before.y, { steps: 3 });
+    for (let i = 1; i <= 10; i++) await page.mouse.move(before.x - i * 15, before.y, { steps: 3 });
     await page.mouse.up();
     await page.waitForTimeout(300);
     const dragged = await box(page);
-    check("a drag widens the pane by what it moved", Math.abs(dragged.pane - before.pane - 200) <= 4, { before: before.pane, after: dragged.pane });
+    check("a drag widens the pane by what it moved", Math.abs(dragged.pane - before.pane - 150) <= 4, { before: before.pane, after: dragged.pane });
     const want = Math.round(dragged.pane / dragged.total * 1000) / 1000;
     let saved; for (let i = 0; i < 20; i++) { saved = (await display()).home_detail_fraction; if (Math.abs(saved - want) <= 0.002) break; await new Promise(r => setTimeout(r, 250)); }
     check("the drag saved its share once, on release", Math.abs(saved - want) <= 0.002, { saved, want });
@@ -1692,16 +1692,19 @@ async function splitShots({ shoot, seeded, call, out }) {
     const reset = await box(page);
     check("Enter resets to the default share", Math.abs(reset.pane - Math.round(0.42 * reset.total)) <= 3, { pane: reset.pane });
   });
-  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.6 } });
+  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.55 } });
   await shoot("split-agent-set", DESKTOP, "dark", async page => {
     const b = await ready(page);
-    check("an agent's set_display reaches Home", Math.abs(b.pane - Math.round(0.6 * b.total)) <= 3, { pane: b.pane, total: b.total });
+    check("an agent's set_display reaches Home", Math.abs(b.pane - Math.round(0.55 * b.total)) <= 3, { pane: b.pane, total: b.total });
   });
   // A narrow desktop window keeps both minimums; a phone draws no handle.
   await shoot("split-narrow-dark", { width: 1024, height: 760 }, "dark", async page => {
-    await page.setViewportSize({ width: 1024, height: 760 }); const b = await ready(page);
-    // 704 px can't hold both minimums (360 + 420): the shortfall is shared, so the list keeps 420/780 of the split.
-    check("a narrow window keeps the list usable", b.total - b.pane >= Math.floor(b.total * 420 / 780) - 1, { pane: b.pane, total: b.total });
+    await page.setViewportSize({ width: 1024, height: 760 }); await openHome(page); await page.waitForTimeout(600);
+    const split = await page.locator('[data-testid="follow-up-home-split"]').boundingBox();
+    const side = await page.locator('[data-testid="follow-up-home-split-side"]').boundingBox();
+    // 704 px can't hold both minimums (360 + 480): the shortfall is shared and the divider has no handle.
+    check("a narrow window shares the shortfall and keeps the list's share", split.width - side.width >= Math.floor(split.width * 480 / 840) - 1, { pane: side.width, total: split.width });
+    check("a divider with nowhere to go draws no handle", (await handle(page).count()) === 0, {});
   });
   await shoot("split-phone-dark", PHONE, "dark", async page => {
     await openHome(page); await page.setViewportSize(PHONE); await page.waitForTimeout(500);

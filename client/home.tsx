@@ -261,9 +261,9 @@ function HomeSplit({ theme, main, detail }: { theme: Theme; main: ReactNode; det
     minSide={HOME_DETAIL_MIN_PX} minMain={HOME_LIST_MIN_PX} onCommit={commit} />;
 }
 
-/** The right pane is never narrower than this, and the list keeps at least HOME_LIST_MIN_PX. */
+/** The right pane is never narrower than this, and the list keeps at least HOME_LIST_MIN_PX (its rows keep their reason line). */
 const HOME_DETAIL_MIN_PX = 360;
-const HOME_LIST_MIN_PX = 420;
+const HOME_LIST_MIN_PX = 480;
 
 function ListHeader({ theme, compact, onSettings }: { theme: Theme; compact: boolean; onSettings: () => void }) {
   const c = theme.colors;
