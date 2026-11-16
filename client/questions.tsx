@@ -242,10 +242,11 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {(open || isOther(q.answer?.choice)) && <OptionCard theme={theme} compact={compact} dense={dense} own label={OTHER_LABEL} consequence={open && !dense ? "Write your own answer" : undefined} recommended={false}
         selected={(open ? choice : q.answer?.choice) === OTHER} disabled={!open || run.isPending} onPress={() => { setChoice(OTHER); if (pinned) setNoteOpen(true); }} />}
     </View>}
-    {/* Not sent yet (copied, or in the agent's message box) never reads as answered: no check, no green (answerHeading). */}
-    {heading && <View style={{ gap: 6, padding: 10, borderRadius: 8, backgroundColor: heading.waiting ? c.surface1 : tint(c.statusSuccess, c) }}>
+    {/* Not sent yet (copied, or in the agent's message box) never reads as answered: no check, no green. Only a
+        delivered answer is green; queued, retrying or failed keeps the check but stays neutral (answerHeading). */}
+    {heading && <View style={{ gap: 6, padding: 10, borderRadius: 8, backgroundColor: heading.delivered ? tint(c.statusSuccess, c) : c.surface1 }}>
       <View style={{ flexDirection: "row", gap: 6 }}>
-        <View style={{ paddingTop: 2 }}><Icon name={heading.waiting ? "CircleDashed" : "CircleCheck"} size={13} color={heading.waiting ? c.foregroundMuted : c.statusSuccess} /></View>
+        <View style={{ paddingTop: 2 }}><Icon name={heading.waiting ? "CircleDashed" : "CircleCheck"} size={13} color={heading.delivered ? c.statusSuccess : c.foregroundMuted} /></View>
         <RichText selectable style={[t.label, { flex: 1 }]}>{heading.text}</RichText>
       </View>
       {!!q.answer?.words && <RichText selectable style={[t.meta, { color: c.foreground, paddingLeft: 19 }]}>{q.answer.words}</RichText>}
