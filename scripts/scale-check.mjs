@@ -31,7 +31,7 @@ import { harness, spawnDaemon } from "./harness.mjs";
 import { harnessEnv, harnessConfig } from "./harness-env.mjs";
 import { fakeGithub } from "./fake-github.mjs";
 import { scaleGh } from "./scale-github.mjs";
-import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainState, idleBudgetMb, idleVerdict, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
+import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, BURST_RETURN_BUDGET_MB, burstReturnVerdict, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainState, idleBudgetMb, idleVerdict, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
 
 const exec = promisify(execFile);
 // The check drives a real Paseo daemon, so it needs the paseo CLI (CI installs @getpaseo/cli). Without it, local
@@ -57,7 +57,7 @@ const shape = DATA_FROM ? await liveShape(DATA_FROM) : null;
 const N = shape ? shape.workspaces.length : Number(arg("workspaces", "120")); const AWAKE = Number(arg("awake", "5")); const POLLS = 3; const POLL_MS = 15_000;
 /** Agents per workspace: live has ~300 listed agents at 141 workspaces, so --realistic makes two. */
 const PER = Number(arg("agents-per-workspace", REALISTIC ? "2" : "1")); const IDLE_MS = Number(arg("idle", "30")) * 1000;
-const budget = { busyGrowthMb: Number(arg("busy-growth-budget", String(BUSY_GROWTH_BUDGET_MB))), idleRssMb: idleBudgetMb(arg("idle-rss-budget", "0")), rssMb: Number(arg("rss-budget", "0")), cpuPct: Number(arg("cpu-budget", "0")), requestsPerMin: Number(arg("request-budget", "0")) };
+const budget = { burstReturnMb: Number(arg("burst-return-budget", String(BURST_RETURN_BUDGET_MB))), busyGrowthMb: Number(arg("busy-growth-budget", String(BUSY_GROWTH_BUDGET_MB))), idleRssMb: idleBudgetMb(arg("idle-rss-budget", "0")), rssMb: Number(arg("rss-budget", "0")), cpuPct: Number(arg("cpu-budget", "0")), requestsPerMin: Number(arg("request-budget", "0")) };
 const root = await mkdtemp(join(tmpdir(), "follow-scale-"));
 const home = join(root, "home"); const fixture = join(root, "fixture"); let plugin = arg("plugin", null);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -79,7 +79,7 @@ const traceFile = arg("request-trace", null);
 let github = null;
 if (REALISTIC) { await mkdir(join(root, "bin"), { recursive: true }); await writeFile(join(root, "bin/gh"), scaleGh()); const { chmod } = await import("node:fs/promises"); await chmod(join(root, "bin/gh"), 0o700); if (shape) { await writeFile(join(root, "pr-states.json"), JSON.stringify(shape.prStates)); process.env.SCALE_GH_STATES = join(root, "pr-states.json"); }
   github = await fakeGithub({ dir: root, gh: join(root, "bin/gh"), owners: shape ? shape.owners : ["example"], gzip: process.argv.includes("--gh-gzip") }); }
-const env = harnessEnv(root, { home, strip: github?.strip ?? [], set: { ...(traceFile ? { FOLLOW_UP_REQUEST_TRACE: traceFile } : {}), ...(heapDir || cpuDir || allocDir ? { NODE_OPTIONS: [heapDir && `--heapsnapshot-signal=SIGUSR2 --diagnostic-dir=${heapDir}`, cpuDir && `--cpu-prof --cpu-prof-dir=${cpuDir}`, allocDir && `--require ${join(dirname(fileURLToPath(import.meta.url)), "alloc-prof.cjs")}`].filter(Boolean).join(" ") } : {}), ...(allocDir ? { FOLLOW_UP_ALLOC_PROF: allocDir, ...(process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS ? { FOLLOW_UP_ALLOC_PROF_WINDOWS: process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS } : {}) } : {}), PASEO_DAEMON_URL: counted, PASEO_RELAY_ENABLED: "false", ...(github?.env ?? {}) } });
+const env = harnessEnv(root, { home, strip: github?.strip ?? [], set: { ...(traceFile ? { FOLLOW_UP_REQUEST_TRACE: traceFile } : {}), ...(heapDir || cpuDir || allocDir ? { NODE_OPTIONS: [heapDir && `--heapsnapshot-signal=SIGUSR2 --diagnostic-dir=${heapDir}`, cpuDir && `--cpu-prof --cpu-prof-dir=${cpuDir}`, allocDir && `--require ${join(dirname(fileURLToPath(import.meta.url)), "alloc-prof.cjs")}`].filter(Boolean).join(" ") } : {}), ...(allocDir ? { FOLLOW_UP_ALLOC_PROF: allocDir, ...(process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS ? { FOLLOW_UP_ALLOC_PROF_WINDOWS: process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS } : {}) } : {}), ...(arg("cycles", null) ? { SCALE_GH_EPOCH: join(root, "gh-epoch") } : {}), PASEO_DAEMON_URL: counted, PASEO_RELAY_ENABLED: "false", ...(github?.env ?? {}) } });
 const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120_000, maxBuffer: 8 << 20 })).stdout);
 let daemon = null; let client = null;
 const start = async () => {
@@ -237,6 +237,39 @@ try {
       }
       if (!drain.settled) over(`The busy window didn't drain within ${DRAIN_BOUND_MS / 1000} s (awake agents running, the worker still reading timelines, or no directory re-read); the idle window starts anyway`);
     }
+    // --cycles <n>,<burstS>,<gapS> (memory-returns-after-a-burst): n bursts, each followed by a gap. A burst is live's
+    // busy afternoon at once: awake agents end turns at twice the busy window's rate, an open app reads at 4 RPCs a
+    // second (follow.list with its revision, as client/live.tsx does), PR heads, checks and review threads move (the fake
+    // gh's epoch), and one agent asks (a permission prompt, answered in the gap). RSS is sampled every 5 s; the worker's
+    // CPU seconds per burst are reported. The last gap's median is judged against BURST_RETURN_BUDGET_MB.
+    const cycleSpec = arg("cycles", null)?.split(",").map(Number) ?? null; let cycles = null;
+    if (cycleSpec) {
+      const { writeFileSync } = await import("node:fs"); const epochFile = join(root, "gh-epoch"); writeFileSync(epochFile, "0");
+      const [n, burstS, gapS] = cycleSpec; const askAgent = created[Math.max(1, AWAKE) - 1].agentId; const turnAgents = created.slice(0, Math.max(1, AWAKE - 1));
+      let listRevision; const RPCS = [["follow.list", () => listRevision === undefined ? {} : { since: listRevision }], ["follow.inbox-list", () => ({})], ["follow.get", k => ({ workspaceId: created[k % created.length].workspaceId })], ["follow.workspace-about", k => ({ workspaceId: created[k % created.length].workspaceId })], ["follow.priorities", () => ({})], ["follow.usage", () => ({})], ["follow.inbox-brief", k => ({ agentId: created[k % created.length].agentId })]];
+      let turnN = 0, rpcN = 0; cycles = [];
+      for (let k = 1; k <= n; k++) {
+        writeFileSync(epochFile, String(k));
+        const c = { k, turns: 0, rpcs: 0, rpcFailed: 0, asked: false, answered: false, burstSamplesMb: [], gapSamplesMb: [], burstCpuS: 0, gapCpuS: 0 };
+        const from = Date.now(); const cpuFrom = await ticks(); let nextTurn = from, nextRpc = from, nextSample = from;
+        while (Date.now() - from < burstS * 1000) {
+          await sleep(100);
+          while (nextTurn <= Date.now()) { nextTurn += 60_000 / (BUSY_TURNS_PER_MIN * 2); const a = turnAgents[turnN++ % turnAgents.length].agentId; c.turns++; void client.sendMessage(a, `Fixture: busy turn ${BUSY_TURN_ITEMS} ${BUSY_ITEM_BYTES}`, { messageId: `cycle-${k}-${turnN}` }).catch(() => undefined); }
+          while (nextRpc <= Date.now()) { nextRpc += 250; const [m, input] = RPCS[rpcN % RPCS.length]; const q = rpcN++; c.rpcs++; void client.invokePluginRpc("follow-up", m, input(q)).then(out => { if (m === "follow.list" && out?.revision !== undefined) listRevision = out.revision; }, () => { c.rpcFailed++; }); }
+          if (!c.asked && Date.now() - from > burstS * 500) { c.asked = true; void client.sendMessage(askAgent, "Fixture: permission tool Bash", { messageId: `cycle-ask-${k}` }).catch(() => undefined); }
+          if (Date.now() >= nextSample) { nextSample += 5_000; c.burstSamplesMb.push(Math.round(await rss())); }
+        }
+        const gapFrom = Date.now(); const cpuMid = await ticks(); nextSample = gapFrom;
+        while (Date.now() - gapFrom < gapS * 1000) {
+          await sleep(500);
+          if (!c.answered && Date.now() - gapFrom > 30_000) { const p = (await agents().catch(() => [])).find(a => a.id === askAgent)?.pendingPermissions?.[0]; if (p) { await client.respondToPermission(askAgent, p.id, { behavior: "allow" }).catch(() => undefined); c.answered = true; } }
+          if (Date.now() >= nextSample) { nextSample += 5_000; c.gapSamplesMb.push(Math.round(await rss())); }
+        }
+        const hzC = Number((await exec("getconf", ["CLK_TCK"])).stdout.trim()) || 100; const cpuTo = await ticks();
+        c.burstCpuS = Math.round((cpuMid - cpuFrom) / hzC * 10) / 10; c.gapCpuS = Math.round((cpuTo - cpuMid) / hzC * 10) / 10;
+        cycles.push(c);
+      }
+    }
     const t0 = await ticks(); const started = Date.now(); const requestsBefore = counter.snapshot();
     const idleSamples = [await rss()];
     // --live-mix <turns/min>,<rpcs/min>: the idle window carries live's load instead of none: awake agents end turns
@@ -277,7 +310,7 @@ try {
     const tree = new Set([daemon.pid]);
     for (let grew = true; grew;) { grew = false; for (const r of rows) if (!tree.has(r.pid) && tree.has(r.ppid)) { tree.add(r.pid); grew = true; } }
     const hostRss = rows.filter(r => tree.has(r.pid) && r.pid !== pid && /plugin-process/.test(r.args)).map(r => r.rssMb);
-    worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) }, drain } : {}), ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
+    worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) }, drain } : {}), ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), ...(cycles ? { cycles: { spec: arg("cycles"), each: cycles.map(c => ({ k: c.k, turns: c.turns, rpcs: c.rpcs, rpcFailed: c.rpcFailed, asked: c.asked, answered: c.answered, burstPeakMb: Math.max(...c.burstSamplesMb), gapMedianMb: idleVerdict(c.gapSamplesMb, 0).medianMb, burstCpuS: c.burstCpuS, gapCpuS: c.gapCpuS, burstSamplesMb: c.burstSamplesMb, gapSamplesMb: c.gapSamplesMb })), ...burstReturnVerdict(cycles.map(c => c.gapSamplesMb), budget.burstReturnMb) } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
   }
   tracing = false; await tracer;
   if (worker) worker.trace = { ...trace, githubRequests: github?.requests.length ?? 0 };
@@ -291,6 +324,8 @@ try {
   if (budget.idleRssMb && worker && idleVerdict(worker.idleSamplesMb, budget.idleRssMb).over) { over(`Worker idle RSS median ${worker.idleMedianRssMb} MB (peak ${worker.idlePeakRssMb}), over ${budget.idleRssMb} MB`); }
   // The busy window's growth (2026-11-13: live stepped 315 → 405 MB under agent turns while an idle check passed).
   if (worker?.busy && budget.busyGrowthMb && busyVerdict(worker.busy.samplesMb, budget.busyGrowthMb).over) { over(`Worker RSS grew ${worker.busy.growthMb} MB across the ${worker.busy.seconds} s busy window (${worker.busy.firstMb} → ${worker.busy.lastMb}), over ${budget.busyGrowthMb} MB`); }
+  // Derived and enforced even with --budgets-report-only (scripts/scale-budget.mjs BURST_RETURN_BUDGET_MB).
+  if (worker?.cycles?.over) { console.error(`Worker RSS stayed at ${worker.cycles.lastMb} MB (median) in the gap after the last burst, over ${budget.burstReturnMb} MB: memory a burst grows didn't come back (gaps: ${worker.cycles.gapMediansMb.join(", ")} MB)`); process.exitCode = 1; }
   if (budget.rssMb && worker && worker.lifetimePeakRssMb > budget.rssMb) { over(`Worker RSS peaked at ${worker.lifetimePeakRssMb} MB (idle peak ${worker.idlePeakRssMb}), over ${budget.rssMb} MB`); }
   if (budget.requestsPerMin && worker && worker.daemonRequestsPerMin.total > budget.requestsPerMin) { over(`Worker sent ${worker.daemonRequestsPerMin.total} daemon requests/min while idle, over ${budget.requestsPerMin}: ${JSON.stringify(worker.daemonRequestsPerMin.byType)}`); }
   if (budget.cpuPct && worker && worker.cpuPct > budget.cpuPct) { over(`Worker CPU ${worker.cpuPct}% exceeds ${budget.cpuPct}% while idle`); }

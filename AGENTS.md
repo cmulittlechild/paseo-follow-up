@@ -435,6 +435,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    inside a Modal is the kit's TextInput, which keeps it above the keyboard. 2026-11-15: on a phone, Send to showed
    about six agents and nothing below them, "A new agent" included, could be reached. Guarded by
    `tests/sheet-scroll.test.ts` and `tests/report-send.test.ts`.
+30. **Memory returns after a burst** (`memory-returns-after-a-burst`). What a busy period grows comes back once the
+   worker is quiet again. Under a burst V8 grows its young generation to its cap (128 MB on Node 24) and keeps it, or
+   its pages pooled, while anything allocates, and a plain `gc()` returns none of it. `watchMemory`'s `HeapSettler`
+   (`server/memory.ts`) runs one memory-reducing collection (`compactHeap`, 60–100 ms) when RSS is 48 MB over where
+   the last one left it and the worker has had a quiet minute (mean event-loop utilization under 1 %), at most every
+   2 minutes. `heartbeat.json`'s `memory` reports RSS, heap, external, array buffers and the last settles every minute.
+   2026-11-15: the live worker stepped 232 → 325 → 376 MB over busy periods and never came down. Guarded by
+   `tests/memory-settle.test.ts` and `test:scale:live`'s `--cycles` (`BURST_RETURN_BUDGET_MB`, enforced).
 
 ## Bugs
 

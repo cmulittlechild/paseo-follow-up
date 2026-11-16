@@ -67,6 +67,7 @@ const EXEMPT: Record<string, string> = {
   "server/daemon.ts": "a recovery context file, written once per recovery batch",
   "server/history-cache.ts": "one write per discovery pass that found new history (tens of KB), not per mutation",
   "server/job-agent.ts": "an AI job's prompt file, once per job",
+  "server/memory.ts": "heartbeat.json's memory field (under 1 KB), once a minute",
   "server/onboarding.ts": "onboarding flags (bytes), on the developer's click",
   "server/overseer.ts": "overseer.json (bytes) on lifecycle changes; the digest is derived output written on change",
   "server/plugin-move.ts": "the one-time 1.x move record",

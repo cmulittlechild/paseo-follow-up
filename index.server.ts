@@ -97,7 +97,7 @@ import type { LoadSignals } from "./shared/agent-load";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount } from "./server/onboarding";
 import { updatesConsent } from "./shared/onboarding";
 import { execFile, spawn } from "node:child_process";
-import { compactHeap } from "./server/memory";
+import { compactHeap, watchMemory } from "./server/memory";
 import { UpdatesStore } from "./server/updates";
 import { Updater } from "./server/updater";
 import { RegistryChecker, registryUrl, type RegistrySnapshot } from "./server/update-registry";
@@ -454,14 +454,15 @@ export default function contribute(server: PluginServerContext) {
     }
     return withSessionMcp({ ...request, env: { ...request.env, FOLLOW_UP_TOOLS: "stdio", FOLLOW_UP_PROVIDER: request.provider } }, directory, clientEntry(), paseoHome, recovery, process.env, brief, root, overseer, providers) as R;
   };
-  let compacted = false;
+  let compacted = false; let memoryWatch: { stop(): void } | null = null;
   const loop = async () => {
     await ready;
     if (stopped || loadError) return;
     await engine.tick({ background: true });
     feeds.workspaces();
-    // Startup is done once the first tick is: release what it grew (see server/memory.ts).
-    if (!compacted) { compacted = true; compactHeap(); }
+    // Startup is done once the first tick is: release what it grew, then return what each later burst grows
+    // (memory-returns-after-a-burst, server/memory.ts) and report the worker's memory in heartbeat.json.
+    if (!compacted) { compacted = true; compactHeap(); if (!stopped) memoryWatch = watchMemory({ heartbeatFile: join(directory, "heartbeat.json") }); }
     if (!stopped) timer = setTimeout(() => void loop(), TICK_MS);
   };
   void loop();
@@ -1474,7 +1475,7 @@ export default function contribute(server: PluginServerContext) {
   ];
   return async () => {
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.

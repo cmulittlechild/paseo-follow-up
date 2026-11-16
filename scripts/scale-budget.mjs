@@ -64,6 +64,21 @@ export function busyVerdict(samplesMb, budgetMb) {
   return { firstMb, lastMb, growthMb, peakMb, over: !!budgetMb && growthMb > budgetMb };
 }
 
+/**
+ * Memory returns after a burst (memory-returns-after-a-burst, server/memory.ts): test:scale:live's --cycles end each
+ * burst (agent turns, an open app's reads, PR and check updates, an ask) with a gap, and the last gap's median RSS must
+ * be at most this. Enforced even with --budgets-report-only: derived, not pending. Harness 2026-11-16, live-sized seed,
+ * 3-minute bursts: 2.1.0-beta.2 held 320–369 MB after every burst (V8's young generation at its 128 MB cap, its pages
+ * kept); with the settler the gaps were 195–208 MB. 260 sits between the two with ~50 MB to spare on either side.
+ */
+export const BURST_RETURN_BUDGET_MB = 260;
+/** The burst-return verdict: each gap's median RSS; the last one is judged. */
+export function burstReturnVerdict(gapsMb, budgetMb) {
+  const medians = gapsMb.map(g => Math.round(median(g)));
+  const lastMb = medians.length ? medians[medians.length - 1] : 0;
+  return { gapMediansMb: medians, lastMb, over: !!budgetMb && medians.length > 0 && lastMb > budgetMb };
+}
+
 /** The idle verdict: the window's median against the budget. The peak is reported, never judged. */
 export function idleVerdict(samplesMb, budgetMb) {
   const medianMb = Math.round(median(samplesMb)); const peakMb = Math.round(samplesMb.length ? Math.max(...samplesMb) : 0);
