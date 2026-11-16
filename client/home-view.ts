@@ -43,7 +43,7 @@ export function createHomeExtras(client: PluginClientContext) {
   let rank: RpcOutput<typeof rankStatusRpc> | null = null;
   const agents = new Map<string, AgentLite>();
   let version = 0;
-  let focusToken = 0;
+  let focusToken = 0; let focusPending = false;
   let stopped = false;
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -222,9 +222,15 @@ export function createHomeExtras(client: PluginClientContext) {
     /** Settings → Agents changed: a new Overseer on the configured agent, handed the old one's last steps. */
     async restartOverseer() { overseer = await client.rpc(overseerRestartRpc, {}); emit(); return overseer; },
     agents: () => [...agents.values()],
-    /** Bumped by ⌘K "Follow-up: Search"; the visible search field focuses when it changes. */
+    /** Bumped by ⌘K "Follow-up: Search" and the search key; the visible search field focuses when it changes. */
     focusToken: () => focusToken,
-    focusSearch() { focusToken++; emit(); },
+    /**
+     * Asks Home's search to take the cursor: now if Home is mounted, else as soon as it mounts (a Home opened by this
+     * very request mounts after the call, so a bare token bump would be missed).
+     */
+    focusSearch() { focusToken++; focusPending = true; emit(); },
+    /** True once per focusSearch: the search field that takes it focuses. */
+    takeFocus() { const was = focusPending; focusPending = false; return was; },
     /** Calls `listener` when an agent's status, attention or permissions change (see above). */
     onActivity(listener: () => void) { activity.add(listener); return () => { activity.delete(listener); }; },
     /** Each update Paseo sends about one agent (null when it's removed). */

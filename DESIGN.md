@@ -25,6 +25,14 @@ The hit area is 11px over the line, and its tooltip names the keys. The pane kee
 480px, so a row keeps its reason line. A window too narrow for both shares the shortfall and draws the divider as a
 plain border, with no grip or handle. Accent stays off the divider except for that focus ring: a divider is a control's state, not an action.
 
+## Search from anywhere
+
+One key opens Home with the cursor in its search (⌘/ by default; Ctrl+/ off a Mac). Home's search field shows that
+key as its chip, in the platform's own spelling, because it works on Home too; plain / still focuses the search there,
+and the chip falls back to / when the key is None. The chip's hover title names both ("⌘/ from anywhere · / on
+Home"). Inside a code editor the editor keeps the key. The ⌘K row reads "Follow-up: Search (⌘/)". Settings → Inbox &
+display → Keyboard holds the one select, "Search from anywhere", with None last.
+
 ## Phones
 
 `layout.compact` is the phone signal. Desktop keeps the values above; phones use the same tokens through size-aware helpers in `client/kit.tsx`, never forked components.

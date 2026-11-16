@@ -1,6 +1,7 @@
 import { defineSettings, settingsRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { DEFAULT_SORT, isSortMode, SORT_MODES, type SortMode } from "./sort";
+import { SEARCH_SHORTCUTS } from "./search-key";
 
 /** Home's right pane as a share of Home's width: the default and the range set_display and the divider accept. */
 export const HOME_DETAIL_DEFAULT = 0.42;
@@ -34,7 +35,10 @@ export const displayPreferences = defineSettings({
     home_sort: z.enum(SORT_MODES).optional(),
     // 2.1: the share of Home's width the right pane (the brief or the selected item) takes, set by dragging the divider
     // (client/split.tsx). A fraction, so it carries across window sizes; absent means HOME_DETAIL_DEFAULT.
-    home_detail_fraction: z.number().min(HOME_DETAIL_MIN).max(HOME_DETAIL_MAX).optional() }),
+    home_detail_fraction: z.number().min(HOME_DETAIL_MIN).max(HOME_DETAIL_MAX).optional(),
+    // 2.1: the key that opens Home with the cursor in its search from anywhere in Paseo (shared/search-key.ts).
+    // Absent means DEFAULT_SEARCH_SHORTCUT (⌘/ or Ctrl+/); "none" turns it off.
+    search_shortcut: z.enum(SEARCH_SHORTCUTS).optional() }),
 });
 
 /** Every Display key, set or not: what set_display accepts. */

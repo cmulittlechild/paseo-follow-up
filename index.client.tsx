@@ -1,5 +1,6 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
+import { createSearchKey, installSearchShortcut } from "./client/search-key";
 import { withButtonVisibility } from "./client/button-visibility";
 import { openExternalUrl, type PluginClientContext, type PluginButtonRegistration, type PluginScreenProps, type PluginSurfaceProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { Dimensions } from "react-native";
@@ -74,6 +75,7 @@ export default function contribute(host: PluginClientContext) {
   };
   const paseoWorkspaces = createPaseoWorkspaces(client, { onAdd: register, onRemove: id => { headers.get(id)?.remove(); headers.delete(id); } });
   const extras = createHomeExtras(client);
+  const searchKey = createSearchKey();
   const sources = { inbox, live: store, paseo: paseoWorkspaces, extras };
   const offActivity = extras.onActivity(() => { inbox.nudge(); store.nudge(); });
   // "Sign off & next" from a pill or ⌘K: the screen relays it to the host's navigation.
@@ -88,7 +90,7 @@ export default function contribute(host: PluginClientContext) {
     noteDone: (agentId, cancel) => inbox.noteDone(agentId, cancel), endDone: agentId => inbox.endDone(agentId),
   };
   const openItem = (key: string, extra: { question?: string } = {}) => client.openScreen({ screenId: OVERVIEW, params: { item: key, ...(extra.question ? { question: extra.question } : {}) } });
-  const homeDeps = { sources, openSettings, openPanel, openLog, openHome: openOverview, openItem, briefDeps };
+  const homeDeps = { sources, openSettings, openPanel, openLog, openHome: openOverview, openItem, briefDeps, searchKey };
   const Overview = (props: PluginScreenProps) => <><FollowHome {...props} deps={homeDeps} />{reportHost(props)}</>;
   const Panel = (props: PluginWorkspacePanelProps) => <><FollowPanel {...props} openSettings={openSettings} openOverview={openOverview} openLarge={openLarge} inbox={inbox} live={store} briefDeps={briefDeps} sources={sources} />{reportHost(props)}</>;
   const Large = (props: PluginScreenProps) => <FollowLarge {...props} openSettings={openSettings} openOverview={openOverview} live={store} />;
@@ -109,8 +111,6 @@ export default function contribute(host: PluginClientContext) {
       // The dialog lives in Follow-up's surfaces: open the panel, which mounts a host, then ask.
       openPanel(PANEL, { location: location() }); setTimeout(() => openRename({ workspaceId: workspace.id }), 0); } }),
     client.addCommandCenterItem({ id: "follow-up-overview", title: "Follow-up: Home", icon: "House", keywords: ["home", "workspaces", "needs you", "inbox", "attention", "brief", "overview"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); } }),
-    // Opens Home and focuses its search field (also `/` while Home is on screen).
-    client.addCommandCenterItem({ id: "follow-up-search", title: "Follow-up: Search", icon: "Search", keywords: ["search", "find", "workspace", "branch", "PR", "omnibox"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); setTimeout(() => extras.focusSearch(), 150); } }),
     client.addCommandCenterItem({ id: "follow-up-log", title: "Follow-up: Done while you were away", icon: "History", keywords: ["log", "overnight", "away", "repairs", "activity"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { view: "log" } }); } }),
     client.addCommandCenterItem({ id: "follow-up-settings", title: "Follow-up: settings", icon: "Settings", keywords: ["default", "following", "project", "display", "sidebar", "pill", "header", "inbox", "questions"], context: "global", onSelect() { openSettings(); } }),
     // "Set up Follow-up again": the setup flow from the top, on Home.
@@ -138,6 +138,17 @@ export default function contribute(host: PluginClientContext) {
     else if (!on && removeAsk) { void removeAsk(); removeAsk = null; }
   };
   removers.push(extras.subscribe(syncAsk), () => removeAsk?.());
+  // ⌘K "Follow-up: Search" opens Home and focuses its search; its title names the search-from-anywhere key
+  // (Settings → Display), re-listed when that key changes. The key itself is one global listener.
+  let removeSearch: (() => unknown) | null = null;
+  const syncSearch = () => {
+    void removeSearch?.();
+    const label = searchKey.label();
+    removeSearch = client.addCommandCenterItem({ id: "follow-up-search", title: label ? `Follow-up: Search (${label})` : "Follow-up: Search", icon: "Search", keywords: ["search", "find", "workspace", "branch", "PR", "omnibox", "shortcut"], context: "global",
+      onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); extras.focusSearch(); } });
+  };
+  syncSearch();
+  removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: () => extras.focusSearch() }));
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);
   if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
