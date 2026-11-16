@@ -3,6 +3,7 @@ import { agentActor, onBehalfLine } from "./actor";
 // "big question" test are adapted from Progress (@stevecastaneda/paseo-progress,
 // MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
 import { z } from "zod";
+import { deliveryStatus } from "./queue";
 import { defineSettings } from "@getpaseo/plugin";
 
 export const QUESTION_MODES = ["stop", "work-around", "keep-building"] as const;
@@ -59,11 +60,18 @@ export const answerSchema = z.object({
   agentId: z.string().optional(),
   agentTitle: z.string().nullable().optional(),
   delivery: z.object({
-    state: z.enum(["sending", "sent", "queued", "unconfirmed", "copied", "in-chat", "signed-off", "recorded"]),
+    /**
+     * The queue's states (shared/queue.ts deliveryOf: queued, sending, sent, retrying, failed, cancelled), the
+     * developer's own (copied, in-chat, signed-off) and the agent's (recorded). `unconfirmed` is 2.0's, read once and
+     * moved onto the queue as retrying (Engine.adoptAnswers).
+     */
+    state: z.enum(["sending", "sent", "queued", "retrying", "failed", "cancelled", "unconfirmed", "copied", "in-chat", "signed-off", "recorded"]),
     to: z.string().nullable(),
     messageId: z.string().nullable(),
     at: z.string(),
     reason: z.string().nullable().default(null),
+    /** When the queue tries again (queued after a send that never left, retrying). */
+    nextAt: z.string().nullable().optional(),
   }),
 });
 export const questionSchema = z.object({
@@ -346,6 +354,21 @@ export type AnswerStatus = {
   /** The short state, for a card's corner: "Answered", "Copied · not sent yet"… */
   label: string;
 };
+/** The question card's resend button for an answer: Retry once it failed, Try now while a timer waits. Null: none. */
+export function resendTitle(d: { state: string; nextAt?: string | null }): "Retry" | "Try now" | null {
+  if (d.state === "failed") return "Retry";
+  if (d.state === "unconfirmed" || (d.state === "queued" || d.state === "retrying") && d.nextAt) return "Try now";
+  return null;
+}
+/**
+ * Whether an answered card shows its action row: whenever it has a button to offer (Retry, Try now, Send for an answer
+ * that was copied or put in chat). Derived from resendTitle, so a state that gains a button can't lose its row
+ * (2026-11-16: the row's own state list left out failed and retrying, so "Check the agent's chat, then Retry" had no Retry).
+ */
+export function answerHasActions(d: { state: string; nextAt?: string | null }): boolean {
+  return resendTitle(d) !== null || d.state === "copied" || d.state === "in-chat" || d.state === "queued" || d.state === "unconfirmed" || d.state === "cancelled";
+}
+
 export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {
   const a = q.answer;
   if (!a) return null;
@@ -353,20 +376,25 @@ export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {
   switch (a.delivery.state) {
     case "in-chat": return { delivered: false, waiting: mine ? "in-chat" : null, label: "In your message box · not sent yet" };
     case "copied": return { delivered: false, waiting: mine ? "copied" : null, label: "Copied · not sent yet" };
-    case "sending": return { delivered: false, waiting: null, label: "Sending…" };
-    case "queued": return { delivered: false, waiting: null, label: "Waiting for the agent" };
-    case "unconfirmed": return { delivered: false, waiting: null, label: "Not confirmed" };
+    case "sending": case "queued": case "retrying": case "failed": case "cancelled":
+      return { delivered: false, waiting: null, label: deliveryStatus({ state: a.delivery.state, reason: a.delivery.reason, nextAt: a.delivery.nextAt }).label };
+    case "unconfirmed": return { delivered: false, waiting: null, label: "Retrying" };
     case "signed-off": return { delivered: false, waiting: null, label: "Signed off" };
     case "sent": case "recorded": return { delivered: true, waiting: null, label: "Answered" };
   }
 }
 /** The answer block's first line in the question dialog: "You answered B · …", or "Your answer, not sent yet: B · …". */
-export function answerHeading(q: Pick<Question, "answer" | "options">): { text: string; waiting: boolean } | null {
+/**
+ * The answer block's heading. `delivered` is the only thing that turns it green: an answer still queued, retrying or
+ * failed is the developer's answer (a check) but never reads as received (2026-11-16 harness renders: a Failed answer
+ * sat in a green block under "Check the agent's chat, then Retry").
+ */
+export function answerHeading(q: Pick<Question, "answer" | "options">): { text: string; waiting: boolean; delivered: boolean } | null {
   const a = q.answer, s = answerStatus(q);
   if (!a || !s) return null;
   const label = isOther(a.choice) ? OTHER_LABEL : answerLabel(q, a.choice);
-  if (s.waiting) return { text: `Your answer, not sent yet: ${label}`, waiting: true };
-  return { text: `${a.by === "agent" ? "Answered in chat: " : "You answered "}${label}`, waiting: false };
+  if (s.waiting) return { text: `Your answer, not sent yet: ${label}`, waiting: true, delivered: false };
+  return { text: `${a.by === "agent" ? "Answered in chat: " : "You answered "}${label}`, waiting: false, delivered: s.delivered };
 }
 /** A brief card over questions (its decisions): the least delivered of their answers, so it never reads Answered early. */
 export function briefAnswerStatus(questionIds: readonly string[], questions: readonly Pick<Question, "id" | "answer">[]): AnswerStatus | null {

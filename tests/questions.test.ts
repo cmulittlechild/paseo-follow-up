@@ -11,6 +11,7 @@ import { askQuestion, developerAnswer, recordAnswer, syncTaskQuestions, withdraw
 import { answerMessage, parseAnswerMessage, questionState, replyText, nextQuestionId } from "../shared/questions";
 import { completionBlockers, stateSchema, summary, type Obligation } from "../shared/model";
 import { clock, workspace, pr } from "./fixtures";
+import { testQueue } from "./support/queue";
 
 const options = [{ letter: "A", label: "Retry for an hour", consequence: "Slower failures" }, { letter: "B", label: "Retry for a day" }];
 const ask = (w = workspace(), patch: Record<string, unknown> = {}, mode: "stop" | "work-around" | "keep-building" = "work-around", agent = "main-agent") =>
@@ -87,7 +88,8 @@ test("developer answers: copy records it, send may follow a copy, resend only re
   question.answer!.delivery.state = "queued";
   const messageId = question.answer!.delivery.messageId;
   developerAnswer(w, question.id, "B", undefined, "resend", clock);
-  assert.equal(question.answer!.delivery.state, "sending"); assert.equal(question.answer!.delivery.messageId, messageId, "a resend keeps the message id so Paseo can deduplicate it");
+  assert.equal(question.answer!.delivery.state, "queued", "the queue item keeps its state; Resend moves it on the queue");
+  assert.equal(question.answer!.delivery.messageId, messageId, "a resend keeps the message id, so the chat check finds an earlier send");
   const withdrawn = ask(w).question; withdrawQuestion(w, "main-agent", withdrawn.id, "No longer needed", clock);
   assert.throws(() => developerAnswer(w, withdrawn.id, "A", undefined, "send", clock), /withdrawn: No longer needed/);
   const open = ask(w, { options: [], recommend: undefined }).question;
@@ -140,17 +142,20 @@ test("blocked tasks become questions without losing the task; unblocking closes 
   assert.equal(syncTaskQuestions(lifecycle, clock), false, "PR lifecycle tasks are not developer questions");
 });
 
-async function fixture(t: any, deliver: Gateway["deliver"]) {
+type Deliver = (w: unknown, recipients: string[], text: string, messageId: string) => Promise<string>;
+async function fixture(t: any, deliver: Deliver, arrived: () => Promise<boolean | null> = async () => false) {
   const root = await mkdtemp(join(tmpdir(), "follow-questions-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const store = testStore(Store, root);
   const w = workspace({ prs: [pr()] }); ask(w);
   await store.mutate(s => { s.workspaces.push(w); });
   const runtime: Runtime = { busy: false, reason: null, archived: false };
-  const gateway: Gateway = { observe: async () => runtime, send: async () => undefined, label: async () => undefined, prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }), deliver };
+  const gateway: Gateway = { observe: async () => runtime, send: async () => undefined, label: async () => undefined, prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }) };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { snapshot: { ...p.snapshot, observedAt: new Date(clock).toISOString() }, error: null }])) };
+  const q = await testQueue(root, { deliver: (target, text, messageId) => deliver(w, target.recipients, text, messageId), arrived, start: clock });
   const engine = new Engine(store, github, gateway, () => clock);
-  return { store, engine, question: async () => (await store.snapshot()).workspaces[0].questions[0] };
+  engine.attachQueue(q.queue);
+  t.after(async () => { q.queue.stop(); await q.queue.writer.flush().catch(() => undefined); await store.flush().catch(() => undefined); await rm(root, { recursive: true, force: true }); });
+  return { store, engine, timers: q.timers, queue: q.queue, question: async () => (await store.snapshot()).workspaces[0].questions[0] };
 }
 
 test("Send delivers the answer to the asking agent with steer semantics and records who got it", async t => {
@@ -171,25 +176,26 @@ test("an answer the agent can't take yet is queued and goes out on a later check
   const f = await fixture(t, async (_w, recipients) => { if (!ready) throw new DeliveryDeferred("Waiting for Session Guard to resume the agent."); sends++; return recipients[0]; });
   await f.engine.answer("workspace", "Q1", "A", undefined, "send"); await f.engine.idle();
   assert.deepEqual({ state: (await f.question()).answer!.delivery.state, reason: (await f.question()).answer!.delivery.reason }, { state: "queued", reason: "Waiting for Session Guard to resume the agent." });
+  assert.equal((await f.question()).answer!.delivery.nextAt, new Date(clock + 15_000).toISOString(), "it says when it tries again");
   await f.engine.tick(); assert.equal(sends, 0);
-  ready = true; await f.engine.tick();
+  ready = true; await f.timers.fire(); await f.engine.idle();
   assert.equal((await f.question()).answer!.delivery.state, "sent"); assert.equal(sends, 1);
 });
 
-test("an unconfirmed send is never retried automatically; Copy never sends; reloads mark interrupted sends unconfirmed", async t => {
+test("an ambiguous send is never resent blind; Copy never sends; a reload mid-send is read back before it goes again", async t => {
   let sends = 0;
-  const f = await fixture(t, async () => { sends++; throw new Error("socket closed"); });
+  const f = await fixture(t, async () => { sends++; throw new Error("socket closed"); }, async () => null);
   await f.engine.answer("workspace", "Q1", "A", undefined, "send"); await f.engine.idle();
-  assert.equal((await f.question()).answer!.delivery.state, "unconfirmed");
-  await f.engine.tick(); assert.equal(sends, 1, "ambiguous sends wait for an explicit Resend");
-  await f.engine.answer("workspace", "Q1", "A", undefined, "resend"); await f.engine.idle(); assert.equal(sends, 2);
+  assert.equal((await f.question()).answer!.delivery.state, "retrying");
+  await f.engine.tick(); assert.equal(sends, 1, "a tick never resends; the queue reads the chat first");
 
   const copy = await fixture(t, async () => { throw new Error("must not send"); });
   const copied = await copy.engine.answer("workspace", "Q1", "B", undefined, "copy");
   assert.equal(copied.question.answer!.delivery.state, "copied");
 
-  const reload = await fixture(t, async () => "main-agent");
+  const reload = await fixture(t, async () => "main-agent", async () => true);
   await reload.store.mutate(s => { developerAnswer(s.workspaces[0], "Q1", "A", undefined, "send", clock); });
-  await reload.engine.recover();
-  assert.equal((await reload.question()).answer!.delivery.state, "unconfirmed");
+  await reload.engine.recover(); await reload.engine.adoptAnswers();
+  reload.queue.start(); await reload.engine.idle();
+  assert.equal((await reload.question()).answer!.delivery.state, "sent", "it had arrived, so it reads Sent without a second send");
 });

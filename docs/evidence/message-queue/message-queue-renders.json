@@ -1,0 +1,966 @@
+{
+  "script": "scripts/check-message-queue.mjs",
+  "baseline": false,
+  "pack": {
+    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+    "version": "2.1.0-beta.3"
+  },
+  "paseo": "0.15.4",
+  "cases": {
+    "renders": {
+      "timeScale": 0.25,
+      "shots": [
+        {
+          "name": "mq-dialog-sent-desktop-light",
+          "surface": "dialog",
+          "state": "sent",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-sent-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-sent-desktop-dark",
+          "surface": "dialog",
+          "state": "sent",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sent-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-sent-phone-light",
+          "surface": "dialog",
+          "state": "sent",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-sent-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-sent-phone-dark",
+          "surface": "dialog",
+          "state": "sent",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sent-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-sent-desktop-light",
+          "surface": "card",
+          "state": "sent",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-sent-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-sent-desktop-dark",
+          "surface": "card",
+          "state": "sent",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sent-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-sent-phone-light",
+          "surface": "card",
+          "state": "sent",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-sent-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-sent-phone-dark",
+          "surface": "card",
+          "state": "sent",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sent-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-notsent-desktop-light",
+          "surface": "dialog",
+          "state": "notsent",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-notsent-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-notsent-desktop-dark",
+          "surface": "dialog",
+          "state": "notsent",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-notsent-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-notsent-phone-light",
+          "surface": "dialog",
+          "state": "notsent",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-notsent-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-notsent-phone-dark",
+          "surface": "dialog",
+          "state": "notsent",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-notsent-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-sending-desktop-light",
+          "surface": "card",
+          "state": "sending",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-sending-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-sending-desktop-dark",
+          "surface": "card",
+          "state": "sending",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sending-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-sending-desktop-light",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-sending-phone-light",
+          "surface": "card",
+          "state": "sending",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-sending-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-sending-desktop-dark",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-sending-phone-light",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-sending-phone-dark",
+          "surface": "card",
+          "state": "sending",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-sending-phone-dark",
+          "surface": "dialog",
+          "state": "sending",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-queued-desktop-light",
+          "surface": "dialog",
+          "state": "queued",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-queued-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-queued-desktop-dark",
+          "surface": "dialog",
+          "state": "queued",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-queued-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-queued-phone-light",
+          "surface": "dialog",
+          "state": "queued",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-queued-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-queued-phone-dark",
+          "surface": "dialog",
+          "state": "queued",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-queued-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-queued-desktop-light",
+          "surface": "card",
+          "state": "queued",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-queued-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-queued-desktop-dark",
+          "surface": "card",
+          "state": "queued",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-queued-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-queued-phone-light",
+          "surface": "card",
+          "state": "queued",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-queued-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-queued-phone-dark",
+          "surface": "card",
+          "state": "queued",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-queued-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-retrying-desktop-light",
+          "surface": "dialog",
+          "state": "retrying",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-retrying-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-retrying-desktop-dark",
+          "surface": "dialog",
+          "state": "retrying",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-retrying-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-retrying-phone-light",
+          "surface": "dialog",
+          "state": "retrying",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-retrying-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-retrying-phone-dark",
+          "surface": "dialog",
+          "state": "retrying",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-retrying-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-retrying-desktop-light",
+          "surface": "card",
+          "state": "retrying",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-retrying-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-retrying-desktop-dark",
+          "surface": "card",
+          "state": "retrying",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-retrying-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-retrying-phone-light",
+          "surface": "card",
+          "state": "retrying",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-retrying-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-retrying-phone-dark",
+          "surface": "card",
+          "state": "retrying",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-retrying-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-failed-desktop-light",
+          "surface": "dialog",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-failed-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-failed-desktop-dark",
+          "surface": "dialog",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-failed-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-dialog-failed-phone-light",
+          "surface": "dialog",
+          "state": "failed",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-dialog-failed-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-dialog-failed-phone-dark",
+          "surface": "dialog",
+          "state": "failed",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-dialog-failed-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-failed-desktop-light",
+          "surface": "card",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-failed-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-failed-desktop-dark",
+          "surface": "card",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-failed-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-card-failed-phone-light",
+          "surface": "card",
+          "state": "failed",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-card-failed-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-card-failed-phone-dark",
+          "surface": "card",
+          "state": "failed",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-card-failed-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-needsyou-failed-desktop-light",
+          "surface": "needsyou",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-needsyou-failed-desktop-light.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-needsyou-failed-desktop-dark",
+          "surface": "needsyou",
+          "state": "failed",
+          "form": "desktop",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-needsyou-failed-desktop-dark.png",
+          "overflow": {
+            "scrollWidth": 1280,
+            "innerWidth": 1280
+          }
+        },
+        {
+          "name": "mq-needsyou-failed-phone-light",
+          "surface": "needsyou",
+          "state": "failed",
+          "form": "phone",
+          "theme": "light",
+          "file": "docs/evidence/message-queue/mq-needsyou-failed-phone-light.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        },
+        {
+          "name": "mq-needsyou-failed-phone-dark",
+          "surface": "needsyou",
+          "state": "failed",
+          "form": "phone",
+          "theme": "dark",
+          "file": "docs/evidence/message-queue/mq-needsyou-failed-phone-dark.png",
+          "overflow": {
+            "scrollWidth": 390,
+            "innerWidth": 390
+          }
+        }
+      ],
+      "states": {
+        "notsentReason": "Follow-up stopped following this workspace, so the answer wasn't sent.",
+        "sent": {
+          "question": "sent",
+          "card": "sent"
+        },
+        "notsent": {
+          "question": "cancelled",
+          "card": "cancelled"
+        },
+        "cardNotSent": "cancelled (the agent is archived, so its chat card can't be opened to shoot)",
+        "sendingShotSeconds": 12,
+        "failed": {
+          "question": "failed",
+          "card": "failed",
+          "timelineReadsDropped": 9
+        }
+      },
+      "pngs": [
+        "docs/evidence/message-queue/mq-dialog-sent-desktop-light.png",
+        "docs/evidence/message-queue/mq-dialog-sent-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sent-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-sent-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-sent-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-sent-desktop-dark.png",
+        "docs/evidence/message-queue/mq-card-sent-phone-light.png",
+        "docs/evidence/message-queue/mq-card-sent-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-notsent-desktop-light.png",
+        "docs/evidence/message-queue/mq-dialog-notsent-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-notsent-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-notsent-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-sending-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-sending-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-sending-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-sending-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-phone-light.png",
+        "docs/evidence/message-queue/mq-card-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-sending-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-queued-desktop-light.png",
+        "docs/evidence/message-queue/mq-dialog-queued-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-queued-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-queued-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-queued-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-queued-desktop-dark.png",
+        "docs/evidence/message-queue/mq-card-queued-phone-light.png",
+        "docs/evidence/message-queue/mq-card-queued-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-retrying-desktop-light.png",
+        "docs/evidence/message-queue/mq-dialog-retrying-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-retrying-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-retrying-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-retrying-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-retrying-desktop-dark.png",
+        "docs/evidence/message-queue/mq-card-retrying-phone-light.png",
+        "docs/evidence/message-queue/mq-card-retrying-phone-dark.png",
+        "docs/evidence/message-queue/mq-dialog-failed-desktop-light.png",
+        "docs/evidence/message-queue/mq-dialog-failed-desktop-dark.png",
+        "docs/evidence/message-queue/mq-dialog-failed-phone-light.png",
+        "docs/evidence/message-queue/mq-dialog-failed-phone-dark.png",
+        "docs/evidence/message-queue/mq-card-failed-desktop-light.png",
+        "docs/evidence/message-queue/mq-card-failed-desktop-dark.png",
+        "docs/evidence/message-queue/mq-card-failed-phone-light.png",
+        "docs/evidence/message-queue/mq-card-failed-phone-dark.png",
+        "docs/evidence/message-queue/mq-needsyou-failed-desktop-light.png",
+        "docs/evidence/message-queue/mq-needsyou-failed-desktop-dark.png",
+        "docs/evidence/message-queue/mq-needsyou-failed-phone-light.png",
+        "docs/evidence/message-queue/mq-needsyou-failed-phone-dark.png"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "the worker's daemon connection goes through the proxy",
+      "ok": true,
+      "connections": 1
+    },
+    {
+      "name": "renders: Not sent reached on the question",
+      "ok": true,
+      "question": "cancelled",
+      "card": "cancelled"
+    },
+    {
+      "name": "render mq-dialog-sent-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-sent-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-sent-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-sent-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-sent-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-sent-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-sent-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-sent-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-notsent-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-notsent-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-notsent-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-notsent-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "renders: Not sent reached on the card (state only)",
+      "ok": true,
+      "card": "cancelled"
+    },
+    {
+      "name": "render mq-card-sending-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-sending-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-sending-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-sending-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-sending-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-sending-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-sending-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-sending-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "renders: the Sending shots finished inside the attempt deadline",
+      "ok": true,
+      "seconds": 12
+    },
+    {
+      "name": "render mq-dialog-queued-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-queued-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-queued-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-queued-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-queued-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-queued-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-queued-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-queued-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-retrying-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-retrying-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-retrying-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-retrying-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-retrying-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-retrying-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-retrying-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-retrying-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-failed-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-failed-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-dialog-failed-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-dialog-failed-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-failed-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-failed-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-card-failed-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-card-failed-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-needsyou-failed-desktop-light",
+      "ok": true
+    },
+    {
+      "name": "render mq-needsyou-failed-desktop-dark",
+      "ok": true
+    },
+    {
+      "name": "render mq-needsyou-failed-phone-light: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "render mq-needsyou-failed-phone-dark: no horizontal overflow at 390",
+      "ok": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    },
+    {
+      "name": "no worker crash in the daemon log",
+      "ok": true
+    }
+  ],
+  "timing": null,
+  "mainTiming": {
+    "pack": {
+      "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+      "version": "2.1.0-beta.3"
+    },
+    "rows": [
+      {
+        "action": "answer-question send",
+        "method": "follow.answer-question",
+        "ms": 8,
+        "ok": true
+      },
+      {
+        "action": "answer-question resend (Try now on a queued answer)",
+        "method": "follow.answer-question",
+        "ms": 3,
+        "ok": true
+      },
+      {
+        "action": "brief-action",
+        "method": "follow.brief-action",
+        "ms": 10,
+        "ok": true
+      },
+      {
+        "action": "brief-action Retry on a queued card",
+        "method": "follow.brief-action",
+        "ms": 3,
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      }
+    ]
+  },
+  "todo": [
+    "busy-agent",
+    "answer-plus-repair"
+  ],
+  "result": "pass"
+}

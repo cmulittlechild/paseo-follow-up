@@ -4,12 +4,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WriteBehind } from "./write-behind";
-import { realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
+import { stableMessageId, withDeadline } from "./delivery";
+import type { MessageQueue, Resolution } from "./message-queue";
+import { deliveryOf, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { BackgroundAgents } from "./background-agents";
 import { deepFreeze } from "./store";
 import { copyOnAccess, detach, peek, type Changes } from "./cow";
 import { z } from "zod";
-import { BRIEF_ORIGINS_MAX, briefOriginSchema, emptyInbox, entrySchema, expired, inboxStateSchema, type OutboxEntry, newEntry, reduce, StaleSignOff, type Entry, type InboxEvent, type InboxRow, type InboxState, type Reason, liveFlag, withoutRunState, FACT_REASONS, prEndEvent, reviewersBriefPr, markNotified, notifiedBefore, prNotice, pruneNotified } from "../shared/inbox";
+import { BRIEF_ORIGINS_MAX, briefOriginSchema, emptyInbox, entrySchema, expired, inboxStateSchema, newEntry, reduce, StaleSignOff, type Entry, type InboxEvent, type InboxRow, type InboxState, type Reason, liveFlag, withoutRunState, FACT_REASONS, prEndEvent, reviewersBriefPr, markNotified, notifiedBefore, prNotice, pruneNotified } from "../shared/inbox";
 import type { State as FollowState, Workspace as FollowWorkspace } from "../shared/model";
 import { asksForReviewers } from "../shared/attention";
 import { followUpObligations } from "../shared/follow-up";
@@ -569,10 +571,8 @@ export class Inbox {
   private pending = new Set<string>();
   pendingPermissions(): string[] { return [...this.pending]; }
 
-  /** Stop pending grace timers when the worker stops. */
-  /** Stop pending grace timers and answer retries when the worker stops. An attempt still in flight writes nothing after
-   * this: the next worker owns the outbox (resumeAnswers), and a stopped one must not overwrite what it records. */
-  stop(): void { this.stopped = true; for (const { timer, done } of this.grace.values()) { clearTimeout(timer); done(); } this.grace.clear(); for (const t of this.retryTimers.values()) this.timers.clear(t); this.retryTimers.clear(); }
+  /** Stop pending grace timers when the worker stops. Answers in flight belong to the message queue, which stops itself. */
+  stop(): void { this.stopped = true; for (const { timer, done } of this.grace.values()) { clearTimeout(timer); done(); } this.grace.clear(); }
   private stopped = false;
 
   async closed(agent: { id: string; workspaceId: string | null; parentAgentId?: string | null }): Promise<void> {
@@ -621,6 +621,8 @@ export class Inbox {
   /** Written before Follow-up sends, so the classifier recognises its own messages. */
   async noteDelivery(agentId: string, messageId: string | null, by?: "developer" | `agent:${string}`): Promise<void> {
     const at = this.iso();
+    // One entry per message: a resend (or the send after the click noted it) keeps the first, which says who sent it.
+    if (messageId && (await this.store.snapshot()).ledger.some(l => l.agentId === agentId && l.messageId === messageId)) return;
     await this.store.mutate(state => { state.ledger = [...state.ledger.filter(l => this.now() - Date.parse(l.at) < 3_600_000), { agentId, messageId, at, ...(by ? { by } : {}) }].slice(-200); });
   }
 
@@ -642,13 +644,13 @@ export class Inbox {
    * recorded answer instead of sending it twice. The messageId is derived from it, so Paseo's own receipts also make a
    * resend a no-op.
    */
-  async briefAction(agentId: string, input: { briefId: string; decisionId?: string; choice?: string; words?: string; choices?: { decisionId: string; choice: string; words?: string }[]; move?: "retry" | "done"; answerId?: string }, send: Send, actor: Actor = DEVELOPER): Promise<Brief> {
+  async briefAction(agentId: string, input: { briefId: string; decisionId?: string; choice?: string; words?: string; choices?: { decisionId: string; choice: string; words?: string }[]; move?: "retry" | "done"; answerId?: string }, actor: Actor = DEVELOPER): Promise<Brief> {
     const state = await this.store.snapshot();
     const b = state.entries[agentId]?.brief;
     // The same answer again (Retry after a lost reply, a double click): what was recorded, and delivery resumed if it had failed.
     if (input.answerId && b?.id === input.briefId && b.answerId === input.answerId) {
-      const queued = state.outbox.find(o => o.answerId === input.answerId && o.agentId === agentId);
-      if (queued?.state === "failed") return this.resend(queued, send);
+      const queued = this.queue?.get(briefItemId(agentId, input.answerId));
+      if (queued && ["failed", "queued", "uncertain"].includes(queued.state)) { await this.queue!.retry(queued.id); return (await this.store.snapshot()).entries[agentId]?.brief ?? b; }
       return b;
     }
     if (!b || b.id !== input.briefId) throw new Error(STALE_BRIEF.replaced);
@@ -685,10 +687,10 @@ export class Inbox {
     // The developer's click counts as their message (F6); another agent's brief_action is that agent's, never theirs.
     const byline = onBehalfLine(actor);
     if (byline) text = `${text}\n${byline}`;
+    // The click is the developer's (or that agent's) message from now on, whatever the send's timing.
     await this.noteDelivery(agentId, messageId, ledgerBy(actor));
     const appends: { agentId: string; brief: Brief }[] = [];
     const at = this.iso();
-    const entry: OutboxEntry = { answerId, agentId, briefId: b.id, messageId, text, at, attempts: 0, state: "sending", error: null };
     const result = await this.store.mutate(s => {
       const current = s.entries[agentId]?.brief;
       // Another answer won the race between the check above and this write: refuse rather than send both.
@@ -705,11 +707,17 @@ export class Inbox {
         }
         for (const a of appends) if (a.brief.id === b.id) Object.assign(a.brief, { answeredBy: brief.answeredBy, answeredByTitle: brief.answeredByTitle, outcome: brief.outcome, answerId, delivery: brief.delivery });
       }
-      s.outbox = [...s.outbox.filter(o => o.answerId !== answerId), entry];
       return s.entries[agentId]?.brief ?? b;
     });
-    // Recorded: everything that talks to Paseo (the timeline row, the message itself) runs after the reply.
-    this.after(async () => { await this.flush(appends); await this.deliverAnswer(entry, send); });
+    // Recorded: the message goes through the queue (server/message-queue.ts), saved before it is sent. The timeline row
+    // runs after the reply.
+    const by = ledgerBy(actor);
+    if (this.queue) {
+      // The reply path calls no Paseo: the workspace comes from the inbox's cached directory (the partition only groups sends).
+      const key = this.cache?.agents.find(a => a.id === agentId)?.workspaceId ?? `agent:${agentId}`;
+      this.queue.enqueue({ id: briefItemId(agentId, answerId), kind: "brief", key, ref: { agentId, briefId: b.id, answerId }, messageId, text, ...(by ? { by } : {}), priority: "now", state: "queued" });
+    }
+    this.after(() => this.flush(appends));
     return result;
   }
 
@@ -720,61 +728,50 @@ export class Inbox {
     const p = work().catch(error => console.warn(`[follow-up] background inbox work failed: ${error instanceof Error ? error.message : String(error)}`)).finally(() => this.running.delete(p));
     this.running.add(p);
   }
-  async idle(): Promise<void> { while (this.running.size) await Promise.allSettled([...this.running]); }
+  async idle(): Promise<void> { while (this.running.size) await Promise.allSettled([...this.running]); await this.queue?.idle(); while (this.running.size) await Promise.allSettled([...this.running]); }
 
-  /** Retry delays for an answer Paseo didn't confirm. Each attempt is capped; the same messageId makes a retry safe. */
-  deliveryRetryMs = [15_000, 60_000, 300_000];
-  deliveryAttemptMs = 120_000;
-  /** Retry delays and attempt deadlines run on this; tests inject fake timers (see Timers). */
-  timers: Timers = realTimers;
-  private retryTimers = new Map<string, unknown>();
-
-  /** One attempt to get a recorded answer to its agent; on failure, a later retry, then `failed` on the brief with the reason. */
-  private async deliverAnswer(entry: OutboxEntry, send: Send): Promise<void> {
-    const outcome = await withDeadline(send(entry.text, entry.messageId), this.deliveryAttemptMs, "Paseo didn't confirm the answer in time", this.timers)
-      .then(() => null, (error: unknown) => error instanceof Error ? error.message : String(error));
-    if (this.stopped) return;
-    const attempts = entry.attempts + 1;
-    const retryIn = outcome === null ? null : this.deliveryRetryMs[attempts - 1] ?? null;
+  /** The queue that carries brief answers; the worker attaches it. */
+  private queue: MessageQueue | null = null;
+  attachQueue(queue: MessageQueue): void {
+    this.queue = queue;
+    queue.register("brief", { resolve: item => this.resolveBrief(item), project: item => this.projectBrief(item) });
+  }
+  private async resolveBrief(item: QueueItem): Promise<Resolution> {
+    const agent = await this.o.directory.agent(item.ref.agentId!).catch(() => undefined);
+    if (agent === undefined) return { defer: "Paseo unreachable" };
+    if (!agent || agent.archivedAt) return { cancel: "The agent was archived, so the answer wasn't sent." };
+    return { target: { workspaceId: null, recipients: [item.ref.agentId!] } };
+  }
+  /** The card's mirror of its queue item: null once sent, else the queue's state; the chat row is updated with it. */
+  private async projectBrief(item: QueueItem): Promise<void> {
+    const { agentId, briefId, answerId } = item.ref as { agentId: string; briefId: string; answerId: string };
+    const state = deliveryOf(item);
+    const next = state === "sent" ? null : { state, error: item.reason, ...(item.nextAt ? { nextAt: item.nextAt } : {}) };
+    const before = (await this.store.snapshot()).entries[agentId]?.brief;
+    if (before?.id !== briefId || before.answerId !== answerId || JSON.stringify(before.delivery ?? null) === JSON.stringify(next)) return;
     await this.store.mutate(s => {
-      const queued = s.outbox.find(o => o.answerId === entry.answerId);
-      if (!queued) return;
-      const brief = s.entries[entry.agentId]?.brief;
-      const own = brief?.id === entry.briefId && brief.answerId === entry.answerId ? brief : null;
-      if (outcome === null) {
-        s.outbox = s.outbox.filter(o => o.answerId !== entry.answerId);
-        if (own) own.delivery = null;
-      } else {
-        queued.attempts = attempts; queued.error = outcome; queued.state = retryIn === null ? "failed" : "sending";
-        if (own) own.delivery = { state: queued.state, error: retryIn === null ? outcome : null };
-      }
+      const own = s.entries[agentId]?.brief;
+      if (own?.id === briefId && own.answerId === answerId) own.delivery = next;
     });
-    if (outcome !== null) console.warn(`[follow-up] answer ${entry.answerId} to ${entry.agentId} not confirmed (attempt ${attempts}): ${outcome}`);
-    const brief = (await this.store.snapshot()).entries[entry.agentId]?.brief;
-    if (brief?.id === entry.briefId) await this.o.briefs?.sink(entry.agentId, brief).catch(() => undefined);
-    if (retryIn !== null && !this.stopped) {
-      if (this.retryTimers.has(entry.answerId)) this.timers.clear(this.retryTimers.get(entry.answerId));
-      const timer = this.timers.set(() => { this.retryTimers.delete(entry.answerId); this.after(() => this.deliverAnswer({ ...entry, attempts }, send)); }, retryIn);
-      this.retryTimers.set(entry.answerId, timer);
-    }
+    const brief = (await this.store.snapshot()).entries[agentId]?.brief;
+    if (brief?.id === briefId) await this.o.briefs?.sink(agentId, brief).catch(() => undefined);
   }
-
-  /** A failed answer, sent again on the developer's Retry: back to sending, same messageId. */
-  private async resend(entry: OutboxEntry, send: Send): Promise<Brief> {
-    const brief = await this.store.mutate(s => {
-      const queued = s.outbox.find(o => o.answerId === entry.answerId);
-      if (queued) { queued.state = "sending"; queued.attempts = 0; queued.error = null; }
-      const b = s.entries[entry.agentId]?.brief;
-      if (b?.answerId === entry.answerId) b.delivery = { state: "sending", error: null };
-      return b!;
-    });
-    this.after(() => this.deliverAnswer({ ...entry, attempts: 0 }, send));
-    return brief;
-  }
-
-  /** At worker start: answers recorded before a reload that Paseo never confirmed go out again (same messageId). */
-  async resumeAnswers(send: (agentId: string) => Send): Promise<void> {
-    for (const entry of (await this.store.snapshot()).outbox) if (entry.state === "sending") this.after(() => this.deliverAnswer(entry, send(entry.agentId)));
+  /**
+   * Once, on the upgrade from 2.0's per-answer outbox: its entries move into queue.json (a sending one is `uncertain`,
+   * so its chat is read before it goes again), and the outbox empties only after queue.json holds them.
+   */
+  async adoptOutbox(): Promise<void> {
+    if (!this.queue) return;
+    const outbox = (await this.store.snapshot()).outbox;
+    if (this.queue.migrated("inbox-outbox-v1") && !outbox.length) return;
+    const now = this.iso();
+    const keyOf = async (agentId: string) => (await this.o.directory.agent(agentId).catch(() => null))?.workspaceId ?? `agent:${agentId}`;
+    const inputs: QueueItemInput[] = [];
+    for (const o of outbox) inputs.push({ id: briefItemId(o.agentId, o.answerId), kind: "brief", key: await keyOf(o.agentId), ref: { agentId: o.agentId, briefId: o.briefId, answerId: o.answerId },
+      messageId: o.messageId, text: o.text, priority: "now", state: o.state === "failed" ? "failed" : "uncertain", reason: o.error, nextAt: o.state === "failed" ? null : now,
+      envelope: { messageId: o.messageId, to: o.agentId, at: o.at }, createdAt: o.at });
+    await this.queue.adopt("inbox-outbox-v1", inputs);
+    if (outbox.length) await this.store.mutate(s => { s.outbox = []; });
   }
 
   /** #7: Session Guard pauses that need a decision flag; waiting ones show on the Running row. */
@@ -1222,3 +1219,6 @@ export function followUpEvents(follow: FollowState, enablePrClosed: boolean): { 
   }
   return events;
 }
+
+/** A brief answer's queue item: one per answer, so Retry and a double click are the same item. */
+export const briefItemId = (agentId: string, answerId: string) => `brief:${agentId}:${answerId}`;

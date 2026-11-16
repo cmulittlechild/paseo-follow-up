@@ -26,6 +26,7 @@ import { PrLinksProvider, RichText } from "./rich-text";
 import { useMergeButtons } from "./merge-button";
 import { mergeScope } from "../shared/merge-click";
 import { prLinksByNumber } from "../shared/presentation";
+import { deliveryStatus } from "../shared/queue";
 export { overviewKey, workspaceKey };
 
 function glyph(item: NeedItem, colors: Colors): { name: string; color: string } {
@@ -80,15 +81,21 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   }, onSuccess: (result, questionId) => {
     const d = result.question.answer?.delivery;
     if (d?.state === "sent") toast.show(`Sent your ${questionId} answer to ${agentName(w)}`, { variant: "success" });
-    else if (d?.state === "queued") toast.show(`Answer saved; ${agentName(w)} gets it when it can`, { variant: "info" });
-    else toast.show("Paseo didn't confirm the message. Check the agent's chat before resending.", { variant: "warning" });
+    else if (d?.state === "failed" || d?.state === "cancelled") toast.show(deliveryStatus({ state: d.state, reason: d.reason }).detail, { variant: "warning" });
+    else toast.show(`Sending your ${questionId} answer to ${agentName(w)}`, { variant: "info" });
     refresh(); actions.after?.();
   }, onError: fail });
+  // Retry on a failed answer: the developer checked the chat, so the queue resends it now (shared/queue.ts).
+  const resendAnswer = useMutation({ mutationFn: (questionId: string) => {
+    const a = w.questions.find(q => q.id === questionId)?.answer;
+    if (!a) throw new Error(`${questionId} has no recorded answer`);
+    return answer({ workspaceId: w.id, questionId, choice: a.choice, words: a.words ?? undefined, action: "resend" });
+  }, onSuccess: (_result, questionId) => { toast.show(`Sending your ${questionId} answer again`, { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
   const inspect = useMutation({ mutationFn: (actionId: string) => check({ workspaceId: w.id, actionId }), onSuccess: reply => { toast.show(reply.result, { variant: reply.state === "failed" ? "warning" : "info" }); refresh(); }, onError: fail });
   const items = rows ?? needsYou(w, now);
   const mergeControl = useMergeButtons(w);
   if (!items.length) return null;
-  const busy = resume.isPending || retry.isPending || retryTask.isPending || deliver.isPending || sendAnswer.isPending || inspect.isPending;
+  const busy = resume.isPending || retry.isPending || retryTask.isPending || deliver.isPending || sendAnswer.isPending || resendAnswer.isPending || inspect.isPending;
   const openMain = actions.openAgent ? () => actions.openAgent!(w.mainAgentId) : undefined;
   const action = (item: NeedItem) => {
     switch (item.kind) {
@@ -111,7 +118,10 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <Button theme={theme} compact={compact} icon="Send" title="Send" accessibilityLabel={`Send your ${item.questionId} answer to ${agentName(w)}`} loading={sendAnswer.isPending} disabled={busy} onPress={() => sendAnswer.mutate(item.questionId)} />
           {actions.openQuestion && !compact && <Button theme={theme} compact={compact} kind="ghost" title="Open" accessibilityLabel={`Open ${item.questionId}`} onPress={() => actions.openQuestion!(item.questionId)} />}
         </>
-        : actions.openQuestion && <Button theme={theme} compact={compact} icon="Eye" title="Check" accessibilityLabel={`Check the ${item.questionId} answer`} onPress={() => actions.openQuestion!(item.questionId)} />;
+        : <>
+          <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send your ${item.questionId} answer again`} loading={resendAnswer.isPending} disabled={busy} onPress={() => resendAnswer.mutate(item.questionId)} />
+          {actions.openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" accessibilityLabel={`Open the agent's chat to check for your ${item.questionId} answer`} onPress={() => { const q = w.questions.find(x => x.id === item.questionId); actions.openAgent!(q?.askedBy ?? w.mainAgentId); }} />}
+        </>;
       case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : `Send ${item.tasks.length} task${item.tasks.length === 1 ? "" : "s"}`} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.tasks.length} task${item.tasks.length === 1 ? "" : "s"} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
       // One click merges what the button names (a-click-on-merge-merges); the sheet's confirm only when the scope can't be known.
       case "merge": return mergeControl(item.prKey, { theme, compact, fallback: actions.openPr ? () => actions.openPr!(item.prKey, "merge") : undefined }).button;
@@ -142,7 +152,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {!said && <RichText numberOfLines={2} style={t.label}>{item.title}</RichText>}
-            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={1} style={t.meta}>{item.detail}</RichText>}
+            {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
             {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
           </View>
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>

@@ -1,0 +1,3 @@
+- Your answers reach the agent on their own. If Paseo is busy or unreachable, Follow-up keeps the answer and retries until it lands, and the card says when it tries next. Once Paseo is back, the answer goes out within about 15 seconds.
+- Fixed: an answer card could reach the agent twice when Paseo was slow to confirm it. Follow-up now checks the agent's chat before sending anything again.
+- An answer that can't be confirmed after several tries shows Failed with Retry, instead of waiting silently for you to resend it.

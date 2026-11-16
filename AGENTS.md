@@ -76,7 +76,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | --- | --- | --- |
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
-| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
+| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
@@ -503,6 +503,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`needDotBox`): Paseo clips a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot
    drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
    inside every clipping box, and its amber box as tall as wide within 1 px).
+36. **A message is saved before it is sent and reaches its agent exactly once**
+   (`a-message-is-saved-before-sent-and-arrives-once`). Every message Follow-up sends an agent for the developer (Q and
+   brief answers today) is a `queue.json` item before anything talks to Paseo (`server/message-queue.ts`). The action
+   replies once it is saved, never after a Paseo call. The sender waits for the write that marks it `sending`, then
+   sends. A send that never left (Paseo unreachable, no agent, a permission prompt, Session Guard) never fails: it
+   retries 15 s, 1 min, then every 5 min (Paseo unreachable: a connect-only probe every 15 s, so it goes out within
+   about 15 s of Paseo coming back), and at once on worker start and whenever the worker's connection reopens. Paseo does not refuse a
+   resend by messageId (it skips only the timeline row; the provider runs the prompt again), so a send that may have
+   left is never repeated blind: the agent's chat is read for its messageId first (an unloaded agent's transcript on
+   disk, never waking it), and only a ladder of unknowns (15 s, 1 min, 5 min, 15 min) ends in Failed with Retry. The
+   recipient is resolved when it goes out. Every card words it one way (`deliveryStatus`, `shared/queue.ts`).
+   2026-11-16: an unconfirmed Q answer was never retried, and a card answer that timed out but arrived went out twice.
+   Guarded by `tests/message-queue.test.ts`, `tests/answer-ack.test.ts` and `INVARIANTS`
+   ([docs/workspaces.md](docs/workspaces.md#the-message-queue)).
 37. **A new worker starts once the old one exits** (`a-new-worker-starts-once-the-old-one-exits`). A worker that
    starts while the previous one is still shutting down waits for it and starts the moment it exits; a transient
    start-up failure never becomes a permanent load error. `Store.lock` (`server/store.ts`) waits while

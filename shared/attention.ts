@@ -1,4 +1,5 @@
 import { batchView, FINISH_LINE, perSnapshot, stuckLine, unconfirmedRefs } from "./status";
+import { deliveryStatus } from "./queue";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summary, type Task, type Status } from "./model";
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { IDLE_REASON, NO_PROGRESS_CAP } from "./send-decision";
@@ -192,9 +193,10 @@ function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
     const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");
     items.push({ kind: "check", key: `check:${a.id}`, actionId: a.id, ...(a.prs.length === 1 ? linkFor(a.prs[0]) : {}), title: `Check the ${a.kind === "merge" ? "merge" : a.kind === "request_reviewers" ? "reviewer request" : "merge-when-ready change"} on ${numbers}`, detail: a.result });
   }
-  // Answers Paseo didn't confirm need a look before anything is sent again.
-  for (const q of questions.filter(q => q.answer?.delivery.state === "unconfirmed"))
-    items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Check that the agent got your ${q.id} answer`, detail: q.answer!.delivery.reason ?? "Paseo didn't confirm the message." });
+  // The queue's rare loud case (a-message-is-saved-before-sent-and-arrives-once): the chat couldn't confirm the answer
+  // after the whole retry ladder, so it is the developer's to check and Retry. Everything else retries on its own.
+  for (const q of questions.filter(q => q.answer?.delivery.state === "failed"))
+    items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Your ${q.id} answer: Failed`, detail: deliveryStatus({ state: "failed", reason: q.answer!.delivery.reason }).detail });
   // Copied or put in the agent's chat: the developer's to send, so it stays here until it is
   // (an-answer-leaves-needs-you-only-when-delivered, shared/questions.ts awaitingSend).
   for (const q of questions.filter(awaitingSend)) {
