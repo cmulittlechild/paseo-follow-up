@@ -57,17 +57,33 @@ function cursorFor(saved: Cursor | undefined, info: { ino: number; size: number;
     : { ...saved, size: info.size, mtime: info.mtimeMs, pending: { ...saved.pending } };
 }
 
+export const TITLE_PARK_RECHECK_MS = 30 * 60_000;
+const ARTIFACT_BYTES = Buffer.from("rtifact");
+/** Reject ordinary transcript lines before UTF-8 decoding or JSON allocation. */
+export function parseArtifactLine(line: Buffer): any {
+  if (line.indexOf(ARTIFACT_BYTES) < 0) return null;
+  try { return JSON.parse(line.toString("utf8")); } catch { return null; }
+}
+const unnamedKey = (workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, known?: TitleIndex) => JSON.stringify([
+  workspaces.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]),
+  workspaces.flatMap(w => (items[w.id]?.items ?? []).filter(i => i.kind === "artifact" && !i.title && !known?.has(titleKey(i.url ?? i.key))).map(i => [w.id, i.key])).sort(),
+]);
+
 /** One shared, append-only receipt index. No per-URL scans, timeline reads or daemon dependencies. */
 export class TranscriptTitleLookup {
   private running = false;
   private paths: string[] = [];
   private scopeKey = "";
   private pathsAt = -Infinity;
-  constructor(private d: { store: TranscriptTitleStore; paths(workspaces: readonly Workspace[], priorityWorkspaces: ReadonlySet<string>): Promise<string[]>; now?: () => number; budget?: number }) {}
+  private parked: { key: string; at: number } | null = null;
+  constructor(private d: { store: TranscriptTitleStore; paths(workspaces: readonly Workspace[], priorityWorkspaces: ReadonlySet<string>): Promise<string[]>; now?: () => number; budget?: number; parseLine?: typeof parseArtifactLine; statFile?: typeof stat }) {}
   async tick(workspaces: readonly Workspace[], items: Readonly<Record<string, { items: readonly LinkedItem[] }>>, found: (titles: TitleIndex) => Promise<void>): Promise<{ bytes: number; attempted: number }> {
     if (this.running) return { bytes: 0, attempted: 0 };
     const tracked = workspaces.filter(w => w.enable_tracking);
     if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title))) return { bytes: 0, attempted: 0 };
+    const now = (this.d.now ?? Date.now)(), key = unnamedKey(tracked, items);
+    if (this.parked && this.parked.key === key && now - this.parked.at < TITLE_PARK_RECHECK_MS) return { bytes: 0, attempted: 0 };
+    if (this.parked) { this.parked = null; this.pathsAt = -Infinity; }
     this.running = true;
     try {
       const cache = await this.d.store.read();
@@ -76,7 +92,7 @@ export class TranscriptTitleLookup {
       // The callback can fill the caller's records; a hit needs no filesystem discovery or scan.
       if (!tracked.some(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title && !known.has(titleKey(i.url ?? i.key))))) return { bytes: 0, attempted: 0 };
       const priorityWorkspaces = new Set(tracked.filter(w => items[w.id]?.items.some(i => i.kind === "artifact" && !i.title && !known.has(titleKey(i.url ?? i.key)))).map(w => w.id));
-      const now = (this.d.now ?? Date.now)(), scopeKey = JSON.stringify([tracked.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]), [...priorityWorkspaces]]);
+      const scopeKey = JSON.stringify([tracked.map(w => [w.id, w.mainAgentId, w.contributorAgentIds]), [...priorityWorkspaces]]);
       if (scopeKey !== this.scopeKey || now - this.pathsAt >= 5 * 60_000) {
         this.paths = await this.d.paths(tracked, priorityWorkspaces); this.scopeKey = scopeKey; this.pathsAt = now;
       }
@@ -89,8 +105,8 @@ export class TranscriptTitleLookup {
         if (caughtUp.has(path)) continue;
         let handle;
         try {
-          const info = await stat(path);
-          if (!info.isFile()) continue;
+          const info = await (this.d.statFile ?? stat)(path);
+          if (!info.isFile()) { caughtUp.add(path); continue; }
           const cursor = cursorFor(updates.get(path) ?? cache.files[path], info);
           if (cursor.offset >= info.size) { caughtUp.add(path); continue; }
           handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
@@ -104,9 +120,9 @@ export class TranscriptTitleLookup {
           current.partial = "";
           let start = 0;
           for (let end = chunk.indexOf(10); end >= 0; end = chunk.indexOf(10, start)) {
-            const line = chunk.subarray(start, end).toString("utf8"); start = end + 1;
+            const line = chunk.subarray(start, end); start = end + 1;
             if (current.dropping) { current.dropping = false; continue; }
-            let row: any; try { row = JSON.parse(line); } catch { continue; }
+            const row = (this.d.parseLine ?? parseArtifactLine)(line);
             const content = row?.message?.content;
             if (!Array.isArray(content)) continue;
             for (const part of content) {
@@ -131,8 +147,9 @@ export class TranscriptTitleLookup {
           if (suffix.length > 256 * 1024) current.dropping = true;
           else if (!current.dropping) current.partial = suffix.toString("base64");
           updates.set(path, current);
+          if (current.offset >= actual.size) caughtUp.add(path);
           await yieldChunk();
-        } catch { /* a missing file is a miss, never a worker failure */ }
+        } catch { caughtUp.add(path); /* a missing file is retried on the next slow recheck */ }
         finally { await handle?.close().catch(() => undefined); }
       }
       if (updates.size || learned.size) await this.d.store.mutate(file => {
@@ -141,6 +158,7 @@ export class TranscriptTitleLookup {
       });
       for (const [url, evidence] of learned) rememberTitle(known, url, evidence);
       if (learned.size) await found(known);
+      if (this.paths.every(path => caughtUp.has(path))) this.parked = { key: unnamedKey(tracked, items, known), at: now };
       return { bytes, attempted };
     } finally { this.running = false; }
   }

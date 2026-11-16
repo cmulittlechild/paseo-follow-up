@@ -517,7 +517,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    remote page metadata or wake an agent for a name. Unnamed artifacts may use a lazy local transcript lookup:
    one shared receipt index, at most 2 MB per 30-second background tick (4 MB only for an unnamed backlog),
    in 1 MB chunks with yields, only tracked workspaces' recorded agents,
-   with per-file offsets so each byte is read once plus appends. Stop when every artifact is named. Guarded by `tests/transcript-titles.test.ts`, `tests/local-titles.test.ts` and
+   with per-file offsets so each byte is read once plus appends. Stop when every artifact is named; otherwise park after catch-up until links/scope change or a 30-minute
+   recheck. Prefilter transcript bytes before decoding. Guarded by `tests/transcript-titles.test.ts`, `tests/local-titles.test.ts` and
    `shared/status-invariants.ts`.
 
 ## Bugs

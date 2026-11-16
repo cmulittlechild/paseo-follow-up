@@ -129,7 +129,10 @@ passes read only appends. Replaced, truncated or edited-in-place files restart. 
 negative result until it changes, so a missing title never causes another per-URL scan. All publish receipts met
 along the way contribute their best title using the same resolver; an index hit fills any tracked workspace's link.
 When every artifact is named, no transcript discovery, stat or read occurs. If untitled artifacts remain but all
-in-scope files are caught up, only append detection runs, without reading transcript content. Oversized individual
+in-scope files are caught up, the index parks with no filesystem work. A changed unnamed-link set, a changed
+tracked scope, or the 30-minute recheck wakes it; that slow recheck rediscovers agent records and checks appends.
+Five-minute rediscovery is used only during active backfill. Transcript lines are prefiltered for the bytes
+`rtifact` before UTF-8 decoding and JSON parsing. Oversized individual
 lines are skipped rather than retained without bound. Raw transcript prose is never persisted in this index.
 
 Run `scripts/screenshots.mjs --only local-titles --scheme dark` and the light variant for linked rows and the spec chip.
