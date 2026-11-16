@@ -5,6 +5,7 @@ import type { PluginClientContext, PluginTimelineItemProps } from "@getpaseo/plu
 import { Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { answerCardSchema, answerCardWhose, batchCardSchema, createMomentLedger, followTimelineItem, parseBatchPrompt, toolRowSchema, type AnswerCard, type BatchCard, type ToolRow } from "../shared/chat";
 import { parseAnswerMessage, parseAnswersMessage } from "../shared/questions";
+import { envelopeParts } from "../shared/queue";
 import { CREATED_KIND, CREATED_VERSION, createdCard } from "../shared/created";
 import { timelineSupported } from "./created";
 import { unconfirmedNote, unconfirmedRefs } from "../shared/status";
@@ -138,6 +139,16 @@ function AnswerCardView({ item, theme }: PluginTimelineItemProps<AnswerCard>) {
   </View>;
 }
 
+/** One Follow-up part of a user message as its chat card: an answer (one or several decisions) or a repair batch. */
+function promptCard(text: string) {
+  const several = parseAnswersMessage(text);
+  if (several) return { type: "plugin" as const, kind: ANSWER_KIND, version: 1, data: { id: several.answers.map(a => a.id).join(", "), title: several.title, choice: "", label: null, words: null, text, answers: several.answers } as Record<string, unknown> };
+  const answer = parseAnswerMessage(text);
+  if (answer) return { type: "plugin" as const, kind: ANSWER_KIND, version: 1, data: { ...answer, text } as Record<string, unknown> };
+  const card = parseBatchPrompt(text);
+  return card ? { type: "plugin" as const, kind: BATCH_KIND, version: 1, data: card as Record<string, unknown> } : null;
+}
+
 export function contributeChat(client: PluginClientContext) {
   // A host whose client API has no timeline transformers or renderers keeps every plain row.
   if (!timelineSupported(client)) return () => {};
@@ -159,12 +170,10 @@ export function contributeChat(client: PluginClientContext) {
     client.addTimelineTransformer({
       id: "follow-batch-prompts", query: { itemType: "user_message" },
       transform({ item }) {
-        const several = parseAnswersMessage(item.text);
-        if (several) return { items: [{ type: "plugin" as const, kind: ANSWER_KIND, version: 1, data: { id: several.answers.map(a => a.id).join(", "), title: several.title, choice: "", label: null, words: null, text: item.text, answers: several.answers } }] };
-        const answer = parseAnswerMessage(item.text);
-        if (answer) return { items: [{ type: "plugin" as const, kind: ANSWER_KIND, version: 1, data: { ...answer, text: item.text } }] };
-        const card = parseBatchPrompt(item.text);
-        return card ? { items: [{ type: "plugin" as const, kind: BATCH_KIND, version: 1, data: card }] } : undefined;
+        // One message can carry several parts (an answer and the repairs that rode along, shared/queue.ts): a card each,
+        // in order. A part no card recognises keeps the whole message as Paseo's plain row.
+        const cards = envelopeParts(item.text).map(promptCard);
+        return cards.every(Boolean) ? { items: cards as never } : undefined;
       },
     }),
     client.addTimelineRenderer({ kind: TOOL_KIND, version: 1, schema: toolRowSchema, Component: ToolRowView }),

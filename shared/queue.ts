@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 
 /**
  * The message queue (server/message-queue.ts): every message Follow-up sends to an agent is saved here before anything
@@ -8,7 +9,7 @@ import { z } from "zod";
  * runs the prompt (agent-manager recordSubmittedPrompt). So a send that left without a confirmation is never resent
  * blind: the agent's chat is read for it first.
  */
-export const QUEUE_KINDS = ["answer", "brief"] as const;
+export const QUEUE_KINDS = ["answer", "brief", "repair", "recovery", "message"] as const;
 export type QueueKind = typeof QUEUE_KINDS[number];
 
 /**
@@ -46,6 +47,8 @@ export const queueItemSchema = z.object({
   reason: z.string().max(400).nullable().default(null),
   /** The last send that left or may have: the arrival check reads the chat for this messageId. */
   envelope: z.object({ messageId: z.string(), to: z.string().nullable(), at: z.string() }).nullable().default(null),
+  /** The agent whose provider conversation is gone (a send's ConversationGone), so its channel can say so. */
+  gone: z.string().nullable().default(null),
   /** Who got it, once sent. */
   to: z.string().nullable().default(null),
   createdAt: z.string(),
@@ -65,6 +68,20 @@ export const queueFileSchema = z.object({
   migrations: z.array(z.string()).default([]),
 });
 export type QueueFile = z.infer<typeof queueFileSchema>;
+
+/**
+ * One message can carry several parts for the same agent (an answer and the repairs that ride along): each part keeps its
+ * own header line (Follow-up answer …, Follow-up batch …) and contract, separated by a line holding only `---`.
+ */
+export const ENVELOPE_SEPARATOR = "\n\n---\n\n";
+/** The headers a part starts with, any version's spelling (shared/legacy.ts keeps 1.x's). */
+export const PART_HEADERS: readonly string[] = ["Follow-up answer ", ...BATCH_PREFIXES.map(p => `${p} `), ...RECOVERY_TITLES.map(t => `${t} `), "From the developer via Overseer:"];
+export const envelopeText = (parts: readonly string[]) => parts.join(ENVELOPE_SEPARATOR);
+/** A message's parts: split only where `---` is followed by a part header, so a part's own `---` stays in it. */
+export function envelopeParts(text: string): string[] {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.split(new RegExp(`\\n\\n---\\n\\n(?=${PART_HEADERS.map(escape).join("|")})`));
+}
 
 /** Settled items kept for the read; everything older is dropped, so queue.json stays a few KB. */
 export const QUEUE_RECENT = 20;
@@ -139,4 +156,18 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
     case "cancelled": return { label: "Not sent", detail: d.reason ?? "Follow-up didn't send it.", tone: "muted", action: null, pending: false };
     case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };
   }
+}
+
+/** A message Follow-up couldn't deliver that has no card of its own (an Overseer forward, a report) raises Needs you after this long queued, or at once when Failed. */
+export const MESSAGE_STUCK_MS = 10 * 60_000;
+/** An item as follow.queue-list and follow_queue_list show it: no message text, only its first line. */
+export const queueViewSchema = z.object({
+  id: z.string(), kind: z.enum(QUEUE_KINDS), workspaceId: z.string().nullable(), agentId: z.string().nullable(),
+  state: z.enum(DELIVERY_STATES), reason: z.string().nullable(), nextAt: z.string().nullable(), to: z.string().nullable(),
+  createdAt: z.string(), settledAt: z.string().nullable(), preview: z.string(),
+});
+export type QueueView = z.infer<typeof queueViewSchema>;
+export function queueView(item: QueueItem): QueueView {
+  return { id: item.id, kind: item.kind, workspaceId: item.ref.workspaceId ?? (item.key.startsWith("agent:") ? null : item.key), agentId: item.to ?? item.envelope?.to ?? item.ref.agentId ?? null,
+    state: deliveryOf(item), reason: item.reason, nextAt: item.nextAt, to: item.to, createdAt: item.createdAt, settledAt: item.settledAt, preview: item.text.split("\n")[0]!.slice(0, 160) };
 }

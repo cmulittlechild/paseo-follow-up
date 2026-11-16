@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
-import { ConversationGone, DeliveryDeferred, realTimers, withDeadline, type Timers } from "./delivery";
+import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
+import { ConversationGone, DeliveryDeferred, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
+import type { Workspace } from "../shared/model";
 
 /**
  * a-message-is-saved-before-sent-and-arrives-once: one durable outbox (queue.json) and one sender per workspace.
@@ -29,8 +30,13 @@ export type Resolution = { target: Target } | { cancel: string } | { settled: "s
 /** One kind of message: where it goes now and how its record shows the item's state. */
 export interface Channel {
   resolve(item: QueueItem): Promise<Resolution>;
-  /** Writes the record's mirror of the item (Q answer delivery, brief delivery). Never throws to the queue. */
+  /** Writes the record's mirror of the item (Q answer delivery, brief delivery, batch state). Never throws to the queue. */
   project(item: QueueItem): Promise<void>;
+  /**
+   * Ride-along: when an answer goes to an idle agent, items of this kind that may join its envelope now (a pending
+   * repair that only waits on its settle window). Called only for envelopes holding a `now` item.
+   */
+  companions?(key: string, target: Target): Promise<NewQueueItem[]>;
 }
 /** How messages reach Paseo. PaseoGateway in the worker; fakes in tests. */
 export interface Courier {
@@ -210,37 +216,63 @@ export class MessageQueue {
       .finally(() => { this.draining.delete(key); if (this.again.delete(key)) this.drainSoon(key); else this.arm(key); });
     this.draining.set(key, run);
   }
+  /**
+   * One workspace's due items: each resolves its recipient now; one that may have left is checked against the chat
+   * first; the rest go out as one envelope per recipient (answers first, then repairs), with any repair that may ride
+   * along (Channel.companions).
+   */
   private async drain(key: string): Promise<void> {
     const now = this.now();
     const due = [...this.items.values()].filter(i => i.key === key && (this.dueAt(i) ?? Infinity) <= now);
+    const ready: { item: QueueItem; target: Target }[] = [];
     for (const item of due) {
       if (this.stopped) return;
-      await this.one(item);
+      const target = await this.prepare(item);
+      if (target) ready.push({ item, target });
+    }
+    const groups = new Map<string, { items: QueueItem[]; target: Target }>();
+    for (const { item, target } of ready) {
+      const id = target.recipients.join(",");
+      const group = groups.get(id) ?? { items: [], target };
+      group.items.push(item); groups.set(id, group);
+    }
+    for (const group of groups.values()) {
+      if (this.stopped) return;
+      if (group.items.some(i => i.priority === "now")) for (const [kind, channel] of this.channels) {
+        if (!channel.companions) continue;
+        for (const extra of await channel.companions(key, group.target).catch(() => [])) {
+          if (group.items.some(i => i.id === extra.id)) continue;
+          const item = this.items.get(extra.id) ?? queueItemSchema.parse({ ...extra, kind, createdAt: extra.createdAt ?? this.iso() });
+          this.items.set(item.id, item);
+          group.items.push(item);
+        }
+      }
+      group.items.sort((x, y) => (x.priority === y.priority ? 0 : x.priority === "now" ? -1 : 1) || x.createdAt.localeCompare(y.createdAt));
+      await this.send(group.items, group.target);
     }
   }
-  /** One item: resolve its recipient now, check the chat if a send may have left, then send. */
-  private async one(item: QueueItem): Promise<void> {
+  /** Resolves one item. Returns where it goes, or null when it settled, was cancelled, waits, or arrived already. */
+  private async prepare(item: QueueItem): Promise<Target | null> {
     const channel = this.channels.get(item.kind);
-    if (!channel) return;
+    if (!channel) return null;
     let r: Resolution;
     try { r = await channel.resolve(item); }
     catch (error) { r = { defer: error instanceof Error ? error.message : String(error) }; }
-    if ("settled" in r) return this.settle(item, r.settled, r.reason ?? null, item.to);
-    if ("cancel" in r) return this.settle(item, "cancelled", r.cancel, null);
-    if ("defer" in r) return this.neverLeft(item, r.defer);
-    const { target } = r;
+    if ("settled" in r) { await this.settle(item, r.settled, r.reason ?? null, item.to); return null; }
+    if ("cancel" in r) { await this.settle(item, "cancelled", r.cancel, null); return null; }
+    if ("defer" in r) { await this.neverLeft(item, r.defer); return null; }
     if (item.state === "uncertain" && item.envelope) {
-      const arrived = await this.check(item, target);
-      if (arrived.found) return this.settle(item, "sent", null, arrived.found);
+      const arrived = await this.check(item, r.target);
+      if (arrived.found) { await this.settle(item, "sent", null, arrived.found); return null; }
       if (arrived.unknown) {
         item.unknowns++;
         if (item.unknowns >= AMBIGUOUS_MS.length) { item.state = "failed"; item.nextAt = null; item.reason = "Follow-up couldn't confirm the agent got it."; }
         else item.nextAt = this.iso(AMBIGUOUS_MS[item.unknowns] * this.scale);
         await this.project(item); this.save();
-        return;
+        return null;
       }
     }
-    await this.send(item, target);
+    return r.target;
   }
   private async check(item: QueueItem, target: Target): Promise<{ found: string | null; unknown: boolean }> {
     const env = item.envelope!;
@@ -253,27 +285,35 @@ export class MessageQueue {
     }
     return { found: null, unknown };
   }
-  private async send(item: QueueItem, target: Target): Promise<void> {
-    const messageId = item.messageId;
-    Object.assign(item, { state: "sending", envelope: { messageId, to: null, at: this.iso() }, nextAt: null });
-    // Saved before Paseo hears of it: a reload from here on reads the chat before resending.
+  /**
+   * One envelope: every part saved as `sending` under the envelope's messageId before Paseo hears of it, then one send.
+   * A lone item keeps its own messageId; several share one derived from their ids (stableMessageId), so a resend after
+   * the chat showed it missing is the same message again.
+   */
+  private async send(items: QueueItem[], target: Target): Promise<void> {
+    const messageId = items.length === 1 ? items[0]!.messageId : stableMessageId(`envelope:${items.map(i => i.id).join("|")}`);
+    const at = this.iso();
+    for (const item of items) Object.assign(item, { state: "sending", envelope: { messageId, to: null, at }, nextAt: null });
     await this.saveNow();
-    await this.project(item);
+    for (const item of items) await this.project(item);
     if (this.stopped) return;
+    const by = items.find(i => i.by === "developer")?.by ?? items.find(i => i.by)?.by;
     try {
       this.sends++;
-      const to = await withDeadline(this.courier.deliverTo(target, item.text, messageId, item.by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
+      const to = await withDeadline(this.courier.deliverTo(target, envelopeText(items.map(i => i.text)), messageId, by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
       // A stopped worker writes nothing: the next one owns queue.json and reads this send back as uncertain.
       if (this.stopped) return;
-      if (item.envelope) item.envelope.to = to;
-      await this.settle(item, "sent", null, to);
+      for (const item of items) { if (item.envelope) item.envelope.to = to; await this.settle(item, "sent", null, to); }
     } catch (error) {
       if (this.stopped) return;
-      if (error instanceof DeliveryDeferred) { item.envelope = null; return this.neverLeft(item, error.message); }
-      if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, reason: "The agent's conversation is gone, so it can't take messages." }); await this.project(item); this.save(); return; }
-      Object.assign(item, { state: "uncertain", reason: "Paseo didn't confirm it", nextAt: this.iso(AMBIGUOUS_MS[Math.min(item.unknowns, AMBIGUOUS_MS.length - 1)] * this.scale) });
-      console.warn(`[follow-up] ${item.kind} ${item.id} not confirmed: ${error instanceof Error ? error.message : String(error)}`);
-      await this.project(item); this.save();
+      for (const item of items) {
+        if (error instanceof DeliveryDeferred) { item.envelope = null; await this.neverLeft(item, error.message); continue; }
+        if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, gone: error.agentId, reason: "The agent's conversation is gone, so it can't take messages." }); await this.project(item); continue; }
+        Object.assign(item, { state: "uncertain", reason: "Paseo didn't confirm it", nextAt: this.iso(AMBIGUOUS_MS[Math.min(item.unknowns, AMBIGUOUS_MS.length - 1)] * this.scale) });
+        await this.project(item);
+      }
+      if (!(error instanceof DeliveryDeferred)) console.warn(`[follow-up] message to ${target.recipients.join(", ")} not confirmed: ${error instanceof Error ? error.message : String(error)}`);
+      this.save();
     }
   }
   private async neverLeft(item: QueueItem, reason: string): Promise<void> {
@@ -330,4 +370,15 @@ export class MessageQueue {
   private save(): void { if (this.loaded) this.writer.set(this.snapshot()); }
   private async saveNow(): Promise<void> { this.writer.set(this.snapshot()); await this.writer.flush(); }
   private iso(delta = 0): string { return new Date(this.now() + delta).toISOString(); }
+}
+
+/**
+ * The Needs-you entry (Workspace.undelivered) for a message with no card of its own (kind `message`): one that is
+ * Failed, or still waiting MESSAGE_STUCK_MS (times the harness time scale) after it was queued. Null: it shows nothing (sent, cancelled, or not stuck yet).
+ */
+export function undeliveredEntry(item: QueueItem, now: number, agentTitle: string | null, since: string | null, scale = 1): NonNullable<Workspace["undelivered"]>[number] | null {
+  const waiting = item.state === "queued" || item.state === "uncertain" || item.state === "sending";
+  const stuck = item.state === "failed" || waiting && Date.parse(item.createdAt) + MESSAGE_STUCK_MS * scale <= now;
+  if (!stuck || !item.ref.agentId) return null;
+  return { id: item.id, agentId: item.ref.agentId, agentTitle, state: item.state === "failed" ? "failed" : "queued", reason: item.reason, since: since ?? new Date(now).toISOString() };
 }

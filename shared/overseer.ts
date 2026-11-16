@@ -1,5 +1,6 @@
 import { sendingOf, type Sending } from "./sending";
 import { parseAnswersMessage } from "./questions";
+import { envelopeParts } from "./queue";
 import { z } from "zod";
 import { HOME_GROUPS, buildHome, type HomeGroupId, type PaseoWorkspaceLite, type Workstream } from "./home";
 import type { InboxRow } from "./inbox";
@@ -286,6 +287,8 @@ export function branchFor(title: string): string {
  */
 /** "Follow-up answer D1 (Which agent?): C — New workspace\nContinue…" as the developer sees it: "Answered: C · New workspace". */
 export function answerLine(text: string): string | null {
+  // A message carrying several parts (shared/queue.ts) previews by its first, the answer.
+  text = envelopeParts(text)[0] ?? text;
   const m = /^Follow-up answer [A-Z]*\d+(?: \([^)]*\))?: ([A-Z])\s*[—-]\s*([^\n]+)/.exec(text.trim());
   if (m) return `Answered: ${m[1]} · ${m[2].trim()}`;
   // Several decisions answered together: each pick by its label, so the preview says what was decided.

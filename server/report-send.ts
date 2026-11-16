@@ -14,7 +14,8 @@ import { reportWorkspaceTitle, type ReportKind } from "../shared/report-send";
  * workspace through the project's normal follow settings; nothing here enrolls it.
  */
 export type ReportSendInput = { kind: ReportKind; text: string; error?: string | null; agentId?: string; newAgentWorkspaceId?: string; newWorkspaceProjectId?: string };
-export type ReportSendResult = { agentId: string; title: string; started: boolean; workspaceId?: string };
+/** `queued`: handed to an existing agent through the message queue (sent in the background, retried until it lands). */
+export type ReportSendResult = { agentId: string; title: string; started: boolean; workspaceId?: string; queued?: boolean };
 type AgentHandle = { id: string };
 type AgentCreate = { config: unknown; title?: string; prompt?: string };
 export type ReportSendDeps = {
@@ -49,7 +50,7 @@ export async function sendReport(d: ReportSendDeps, input: ReportSendInput): Pro
   const prompt = reportPrompt(kind, text, error);
   if (agentId) {
     await d.sendTo(agentId, prompt, randomUUID());
-    return { agentId, title: (await d.agentTitle(agentId).catch(() => null)) ?? "the agent", started: false };
+    return { agentId, title: (await d.agentTitle(agentId).catch(() => null)) ?? "the agent", started: false, queued: true };
   }
   if (newWorkspaceProjectId) {
     const project = (await d.rows())?.projects.find(p => p.projectId === newWorkspaceProjectId);

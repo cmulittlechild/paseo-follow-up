@@ -1,0 +1,3 @@
+- Sending repairs answers at once, even when Paseo is slow. Follow-up queues the message and sends it as soon as the agent is free; the message line says why it's waiting.
+- An answer and the repairs waiting for the same agent now go together as one message, so the agent wakes up once instead of twice.
+- Overseer forwards and reports handed to an agent are kept and retried until they arrive.

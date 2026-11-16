@@ -1,3 +1,4 @@
+import { queueViewSchema } from "./queue";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -180,6 +181,9 @@ export const needsYouRpc = defineRpc({ name: "follow.needs-you", input: z.strict
   links: z.array(z.strictObject({ label: z.string(), url: z.string().optional(), path: z.string().optional(), pr: z.string().optional() })).optional(),
 }), output: z.object({ ok: z.literal(true), briefId: z.string() }) });
 /** Home's detail pane: the full stored brief for one agent (the list carries only its one-liner). */
+// The message queue (server/message-queue.ts): what waits to go to agents, and Retry or Cancel on one item.
+export const queueListRpc = defineRpc({ name: "follow.queue-list", input: z.strictObject({ workspaceId: idSchema.optional(), agentId: idSchema.optional() }), output: z.object({ items: z.array(queueViewSchema), recent: z.array(queueViewSchema) }) });
+export const queueActionRpc = defineRpc({ name: "follow.queue-action", input: z.strictObject({ itemId: z.string().min(1).max(400), action: z.enum(["retry", "cancel"]) }), output: z.object({ item: queueViewSchema }) });
 export const inboxBriefRpc = defineRpc({ name: "follow.inbox-brief", input: z.strictObject({ agentId: idSchema }), output: z.object({ brief: briefSchema.nullable() }) });
 /** An option letter, or "other" (Something else, which needs words). */
 export const briefChoiceSchema = z.string().regex(/^(?:[A-Z]|other)$/);
@@ -259,7 +263,7 @@ export const reportTargetsRpc = defineRpc({ name: "follow.report-issue-targets",
     newWorkspace: z.object({ projectId: idSchema, title: z.string() }).nullable().optional() }) });
 /** Send to agent: the report prompt goes to `agentId`, a new agent in `newAgentWorkspaceId`, or a new workspace in `newWorkspaceProjectId`. */
 export const reportSendRpc = defineRpc({ name: "follow.report-issue-send", input: z.object({ kind: reportKindSchema, text: z.string().max(8000), error: z.string().max(2000).nullable().optional(), agentId: z.string().max(200).optional(), newAgentWorkspaceId: z.string().max(200).optional(), newWorkspaceProjectId: z.string().max(200).optional() }),
-  output: z.object({ agentId: idSchema, title: z.string(), started: z.boolean(), workspaceId: z.string().optional() }) });
+  output: z.object({ agentId: idSchema, title: z.string(), started: z.boolean(), workspaceId: z.string().optional(), queued: z.boolean().optional() }) });
 /** Open on GitHub (no agent to send to): a prefilled new-issue link carrying the redacted versions block. */
 export const reportLinkRpc = defineRpc({ name: "follow.report-issue-link", input: z.object({ kind: reportKindSchema, text: z.string().max(8000) }), output: z.object({ url: z.string() }) });
 

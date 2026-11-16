@@ -321,7 +321,24 @@ transport detail leaks. The reason goes into the PR's evidence line and `lastErr
 
 `a-message-is-saved-before-sent-and-arrives-once` (`server/message-queue.ts`, `shared/queue.ts`). Every message
 Follow-up sends an agent for the developer goes through one durable outbox, `queue.json`, and one sender per workspace.
-Today that is Q answers (`Engine.answer`, kind `answer`) and brief answers (`Inbox.briefAction`, kind `brief`).
+Kinds: Q answers (`Engine.answer`, `answer`), brief answers (`Inbox.briefAction`, `brief`), repair batches and Done
+checks (`Engine.sendPending` and auto-send, `repair`), recovery (`recovery`, its agent made when it goes out), and
+Overseer forwards and reports handed to an agent (`message`).
+
+- **One message per agent.** Everything due for one agent goes as one envelope, answers first, each part with its own
+  header and contract, separated by a line holding only `---` (`ENVELOPE_SEPARATOR`, `envelopeParts` in
+  `shared/queue.ts`). A lone part keeps its own messageId; several share one derived from their ids. The chat splits an
+  envelope back into a card per part (`client/chat.tsx`), and the hook's SessionStart text tells agents the format
+  (`ENVELOPE_GUIDANCE`, `server/agent-hook.mjs`; `tests/message-envelope.test.ts` holds the two together).
+- **Priorities.** Answers and forwards (`now`) never wait behind repairs and steer into a running turn. Repairs
+  (`idle`) go only to an idle main agent: `resolveRepair` reads the agent when it goes out and defers while it is busy;
+  the engine's tick retries a deferred repair as soon as it sees the agent idle. **Ride-along:** an answer going to an
+  idle main agent takes the pending repair with it when `sendDecision` would send it but for its settle window (and the
+  idle-agent wait, since the answer resumes the agent anyway); never the Done check, a hold, Auto off, an open message
+  or unread PRs. One turn instead of two.
+- **No Paseo call on the reply.** Send on a message, Retry, a Q or card answer, an Overseer forward and a report handed
+  to an agent reply once the item is saved. What needs fresh state (the agent idle, tasks still due, the recovery
+  agent made) runs in the sender; a refusal lands on the batch (`refusal`, "didn't send: …").
 
 - **Saved before sent.** An action records its answer, adds a queue item and replies; it never waits on Paseo. The
   sender marks the item `sending` with the envelope's messageId and waits for that one write before Paseo hears of it.

@@ -63,7 +63,8 @@ import { Inbox, INBOX_WRITE_MS, type GuardPause } from "./server/inbox";
 import { daemonDirectory, guardPath } from "./server/inbox-directory";
 import { fileSources } from "./server/inbox-classifier";
 import { onBeforeSend, onDaemonReconnect } from "./server/daemon";
-import { MessageQueue } from "./server/message-queue";
+import { MessageQueue, undeliveredEntry } from "./server/message-queue";
+import { queueView } from "./shared/queue";
 import { copyFile, readFile, rename, stat } from "node:fs/promises";
 import { HistoryCache } from "./server/history-cache";
 import { Governor } from "./server/governor";
@@ -246,11 +247,6 @@ export default function contribute(server: PluginServerContext) {
     if (!api) { unsent.set(`${agentId}|${brief.id}`, { agentId, brief }); return; }
     await api.agents.ref(agentId).timeline.append({ type: "plugin", id: brief.id, kind: BRIEF_KIND, version: BRIEF_VERSION, data: brief });
   };
-  /** A message to one agent: through the plugin session once a handler has seen one, else a daemon connection (worker start). */
-  const sendTo = (agentId: string) => async (text: string, messageId: string) => {
-    if (api) await api.agents.ref(agentId).send(text, { messageId, activeTurnBehavior: "steer" });
-    else await withDaemon(client => client.sendMessage(agentId, text, { messageId, activeTurnBehavior: "steer" }));
-  };
   const seen = (paseo: PaseoApi) => {
     api = paseo;
     for (const [key, row] of unsent) { unsent.delete(key); void append(row.agentId, row.brief).catch(() => undefined); }
@@ -315,6 +311,34 @@ export default function contribute(server: PluginServerContext) {
   const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth });
   engine.attachQueue(queue);
   inbox.attachQueue(queue);
+  // Overseer forwards and reports handed to an agent: no record of their own, so the queue item is their status
+  // (follow_queue_list). Archived agents cancel, with the reason on the item.
+  queue.register("message", {
+    async resolve(item) {
+      const rows = await gateway.directory.read().catch(() => null);
+      if (!rows) return { defer: "Paseo unreachable" };
+      const agent = rows.agents.find(r => r.agent.id === item.ref.agentId)?.agent;
+      if (!agent || agent.archivedAt) return { cancel: "The agent was archived, so the message wasn't sent." };
+      return { target: { workspaceId: null, recipients: [item.ref.agentId!] } };
+    },
+    // No card of its own: one that didn't go out (Failed, or Queued past MESSAGE_STUCK_MS) shows in its workspace's
+    // Needs you with Retry and Cancel, and leaves it once sent or cancelled.
+    async project(item) {
+      const w = (await store.snapshot()).workspaces.find(w => w.id === item.key && w.enable_tracking && !w.archived);
+      if (!w) return;
+      const has = w.undelivered?.find(m => m.id === item.id);
+      const entry = undeliveredEntry(item, Date.now(), gateway.directory.cached(item.ref.agentId!)?.title ?? null, has?.since ?? null, queue.scale);
+      if (!entry && !has || entry && has && JSON.stringify(entry) === JSON.stringify(has)) return;
+      await store.mutateWorkspace(w.id, x => {
+        const rest = (x.undelivered ?? []).filter(m => m.id !== item.id);
+        x.undelivered = entry ? [...rest, entry].slice(-20) : rest;
+      });
+    },
+  });
+  const enqueueMessage = (agentId: string, text: string, messageId: string, by?: string) => {
+    const key = gateway.directory.cached(agentId)?.workspaceId ?? `agent:${agentId}`;
+    queue.enqueue({ id: `message:${agentId}:${messageId}`, kind: "message", key, ref: { agentId }, messageId, text, ...(by ? { by } : {}), priority: "now", state: "queued" });
+  };
   onDaemonReconnect(() => queue.reconnected());
   /** What the bridge and the Stop hook read: is the inbox on, may agents be nudged, who has a prompt showing. */
   const writeBriefState = async () => {
@@ -444,6 +468,7 @@ export default function contribute(server: PluginServerContext) {
     // a send a reload cut off is read back from the agent's chat before it goes again, and everything due goes now.
     await queue.load();
     await engine.adoptAnswers().catch(error => console.warn(`[follow-up] couldn't move answers onto the queue: ${error instanceof Error ? error.message : String(error)}`));
+    await engine.adoptBatches().catch(error => console.warn(`[follow-up] couldn't move batches onto the queue: ${error instanceof Error ? error.message : String(error)}`));
     await inbox.adoptOutbox().catch(error => console.warn(`[follow-up] couldn't move the answer outbox onto the queue: ${error instanceof Error ? error.message : String(error)}`));
     queue.start();
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
@@ -877,7 +902,7 @@ export default function contribute(server: PluginServerContext) {
       branch: w.gitRuntime?.currentBranch ?? null, pr: w.githubRuntime?.pullRequest?.title ? { number: w.githubRuntime.pullRequest.number ?? null, title: w.githubRuntime.pullRequest.title } : null }));
   };
   const overseerOn = async () => (await inboxSettings()).enable_overseer !== false;
-  overseer = new Overseer({ directory, store, inbox, sources: senderSources, priorities: priorityStore, workspaces: paseoWorkspaces, enabled: overseerOn, paseoHome, tight: async () => !governor.allowsBackground(),
+  overseer = new Overseer({ directory, store, inbox, enqueue: enqueueMessage, sources: senderSources, priorities: priorityStore, workspaces: paseoWorkspaces, enabled: overseerOn, paseoHome, tight: async () => !governor.allowsBackground(),
     windowMs: async () => activeWindowMs(await store.snapshot()), agent: () => agentSettings.role("overseer"),
     // Harness override only (isolated test daemons): "provider/model" wins over Settings → Agents.
     provider: process.env.FOLLOW_UP_OVERSEER_PROVIDER || undefined,
@@ -1214,7 +1239,7 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.reportSendRpc, async (input, { paseo }) => {
     seen(paseo);
     return sendReport({
-      rows: () => gateway.directory.read().catch(() => null), multiplicity: hostMultiplicity, sendTo: (agentId, prompt, messageId) => sendTo(agentId)(prompt, messageId),
+      rows: () => gateway.directory.read().catch(() => null), multiplicity: hostMultiplicity, sendTo: async (agentId, prompt, messageId) => enqueueMessage(agentId, prompt, messageId, "developer"),
       agentTitle: async agentId => (await gateway.directory.read().catch(() => null))?.agents.find(r => r.agent.id === agentId)?.agent.title ?? null,
       provider: async () => ({ provider: await providerModel(paseo as unknown as OverseerPaseo, (await agentSettings.role("overseer").catch(() => null))?.provider?.split("/")[0] ?? "claude") }),
       paseo: paseo as unknown as ReportSendDeps["paseo"],
@@ -1241,6 +1266,17 @@ export default function contribute(server: PluginServerContext) {
   // Home, the sidebar badge and the pills poll this; an unchanged list answers in a few bytes (see inboxAnswer).
   handle(rpc.inboxListRpc, async ({ etag }) => { await requireReady(); const handedBack = noReviewRepoList().length ? (await store.snapshot()).workspaces.flatMap(w => w.prs.filter(handsMergeBack).map(p => p.key)) : [];
     return inboxAnswer({ ...await inbox.list(), error: inboxError, ...(handedBack.length ? { handedBack } : {}) }, etag); });
+  handle(rpc.queueListRpc, async ({ workspaceId, agentId }) => {
+    await requireReady();
+    const { items, recent } = queue.list({ ...(workspaceId ? { key: workspaceId } : {}), ...(agentId ? { agentId } : {}) });
+    return { items: items.map(queueView), recent: recent.map(queueView) };
+  });
+  // Retry or Cancel one item: the card's buttons, Needs you's message row and follow_queue_action run this.
+  handle(rpc.queueActionRpc, async ({ itemId, action }) => {
+    await requireReady();
+    const item = action === "retry" ? await queue.retry(itemId) : await queue.cancel(itemId, "Cancelled; it won't be sent.");
+    return { item: queueView(item) };
+  });
   handle(rpc.inboxBriefRpc, async ({ agentId }) => { await requireReady(); return { brief: await inbox.brief(agentId) }; });
   handle(rpc.inboxActRpc, async (input, context) => {
     await requireReady();

@@ -373,7 +373,7 @@ test("routing to an unloaded agent is Tom's ask: it may wake it, and the reply s
   const f = await overseerFixture(t, [row("a1", { workspaceId: "w1" }), row("a2", { workspaceId: "w2" })]);
   f.agents.a2.loaded = false;
   const r = await f.overseer.act(f.paseo, f.ov, "send_to_agent", { agentId: "a2", text: "look at the export" }) as { woke: boolean; next: string };
-  assert.equal(r.woke, true); assert.match(r.next, /\(woke Main\)/);
+  assert.equal(r.woke, true); assert.match(r.next, /\(waking Main\)/);
   const live = await f.overseer.act(f.paseo, f.ov, "send_to_agent", { agentId: "a1", text: "and the sync" }) as { woke: boolean; next: string };
   assert.equal(live.woke, false); assert.doesNotMatch(live.next, /woke/);
 });
