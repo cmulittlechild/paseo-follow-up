@@ -43,7 +43,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["split", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -553,7 +553,7 @@ function makeShooter({ browser, port, out, scheme: forced, optimiser, results, c
       await page.goto(`http://127.0.0.1:${port}/`);
       await page.getByText("Follow-up", { exact: true }).first().waitFor();
       const clip = await drive(page);
-      await page.mouse.move(1, viewport.height - 1);
+      if (!page.keepPointer) await page.mouse.move(1, viewport.height - 1);
       // A focused field draws a focus ring only some of the time (it depends on how the last key event landed).
       // The keyboard walk's shots keep it: their focus ring is the point (page.keepFocus, set by the drive).
       if (!page.keepFocus) await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
@@ -1545,6 +1545,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
+  if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1625,6 +1626,92 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
  * pr-link (a-row-that-names-a-pr-opens-it-in-one-click): Search filters' "#151 is approved" merge row and Audit log export's
  * reviewers row, each with its Open #N link; the panel on desktop, Home's detail pane on desktop and phone.
  */
+/**
+ * split (side-panes-are-resizable): Home's divider idle, on hover, mid-drag, keyboard-focused, at the pane's minimum and
+ * at its maximum (dark; light for idle, drag and focus), and the drag check: a real mouse drag (down, moves, up) on
+ * the handle must widen the pane by what it moved, the share must survive a reload and a fresh browser, the arrow keys
+ * must move it, and an agent's set_display must reach Home. Writes split.json to --out; any failed check fails the run.
+ */
+async function splitShots({ shoot, seeded, call, out }) {
+  const checks = [];
+  const check = (name, okay, detail) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`split: ${name}`); log(`split check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const handle = page => page.getByRole("separator", { name: "Resize the detail pane" });
+  const box = async page => {
+    const split = await page.locator('[data-testid="follow-up-home-split"]').boundingBox();
+    const h = await handle(page).boundingBox();
+    return { total: split.width, pane: Math.round(split.x + split.width - (h.x + h.width / 2)), x: h.x + h.width / 2, y: h.y + h.height / 2 };
+  };
+  const ready = async page => { await openHome(page); await handle(page).waitFor(); await page.waitForTimeout(400); return box(page); };
+  const agent = seeded.workspaces.find(w => w.key === "audit").agentId;
+  const display = async () => (await actPlanned(call, agent, "display_settings", {})).values;
+  // Starts from the default share.
+  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
+  for (const theme of ["dark", "light"]) {
+    await shoot(`split-idle-${theme}`, DESKTOP, theme, async page => { await ready(page); });
+    await shoot(`split-hover-${theme}`, DESKTOP, theme, async page => { const b = await ready(page); await page.mouse.move(b.x, b.y); await page.waitForTimeout(200); page.keepPointer = true; });
+    await shoot(`split-focus-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); page.keepFocus = true; await page.waitForTimeout(200); });
+    // Mid-drag: the frame is taken with the button still down.
+    await shoot(`split-dropped-${theme}`, DESKTOP, theme, async page => {
+      const b = await ready(page);
+      await page.mouse.move(b.x, b.y); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(b.x - i * 20, b.y, { steps: 2 });
+      await page.waitForTimeout(150);
+      await shoot.now(`split-drag-${theme}`, page, theme);
+      await page.mouse.up();
+      // Back to the default for the next theme's shots.
+      await page.waitForTimeout(800);
+      await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
+    });
+  }
+  for (const theme of ["dark"]) {
+    await shoot(`split-min-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); await page.keyboard.press("Home"); await page.waitForTimeout(300); const b = await box(page); check("Home on the handle takes the pane to its minimum", Math.abs(b.pane - 360) <= 2, { pane: b.pane }); await page.mouse.move(b.x, b.y); page.keepPointer = true; });
+    await shoot(`split-max-${theme}`, DESKTOP, theme, async page => { await ready(page); await handle(page).focus(); await page.keyboard.press("End"); await page.waitForTimeout(300); const b = await box(page); check("End on the handle takes the pane to its maximum, leaving the list its minimum", Math.abs(b.total - b.pane - 420) <= 2, { pane: b.pane, total: b.total }); await page.mouse.move(b.x, b.y); page.keepPointer = true; });
+  }
+  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
+
+  // The drag check, in one browser: drag, reload, then a fresh context.
+  await shoot("split-check", DESKTOP, "dark", async page => {
+    const before = await ready(page);
+    check("default share drawn", Math.abs(before.pane - Math.round(0.42 * before.total)) <= 3, { pane: before.pane, total: before.total });
+    await page.mouse.move(before.x, before.y); await page.mouse.down();
+    for (let i = 1; i <= 10; i++) await page.mouse.move(before.x - i * 20, before.y, { steps: 3 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    const dragged = await box(page);
+    check("a drag widens the pane by what it moved", Math.abs(dragged.pane - before.pane - 200) <= 4, { before: before.pane, after: dragged.pane });
+    const want = Math.round(dragged.pane / dragged.total * 1000) / 1000;
+    let saved; for (let i = 0; i < 20; i++) { saved = (await display()).home_detail_fraction; if (Math.abs(saved - want) <= 0.002) break; await new Promise(r => setTimeout(r, 250)); }
+    check("the drag saved its share once, on release", Math.abs(saved - want) <= 0.002, { saved, want });
+    await page.reload();
+    const reloaded = await ready(page);
+    check("the share survives a reload", Math.abs(reloaded.pane - dragged.pane) <= 3, { dragged: dragged.pane, reloaded: reloaded.pane });
+    await handle(page).focus(); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(300);
+    const key = await box(page);
+    check("ArrowRight narrows the pane by 2%", Math.abs(reloaded.pane - key.pane - Math.round(0.02 * key.total)) <= 3, { before: reloaded.pane, after: key.pane });
+    await page.keyboard.press("Enter"); await page.waitForTimeout(600);
+    const reset = await box(page);
+    check("Enter resets to the default share", Math.abs(reset.pane - Math.round(0.42 * reset.total)) <= 3, { pane: reset.pane });
+  });
+  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.6 } });
+  await shoot("split-agent-set", DESKTOP, "dark", async page => {
+    const b = await ready(page);
+    check("an agent's set_display reaches Home", Math.abs(b.pane - Math.round(0.6 * b.total)) <= 3, { pane: b.pane, total: b.total });
+  });
+  // A narrow desktop window keeps both minimums; a phone draws no handle.
+  await shoot("split-narrow-dark", { width: 1024, height: 760 }, "dark", async page => {
+    await page.setViewportSize({ width: 1024, height: 760 }); const b = await ready(page);
+    // 704 px can't hold both minimums (360 + 420): the shortfall is shared, so the list keeps 420/780 of the split.
+    check("a narrow window keeps the list usable", b.total - b.pane >= Math.floor(b.total * 420 / 780) - 1, { pane: b.pane, total: b.total });
+  });
+  await shoot("split-phone-dark", PHONE, "dark", async page => {
+    await openHome(page); await page.setViewportSize(PHONE); await page.waitForTimeout(500);
+    check("phones draw no handle", (await handle(page).count()) === 0, {});
+  });
+  await actPlanned(call, agent, "set_display", { values: { home_detail_fraction: 0.42 } });
+  await fs.writeFile(join(out, "split.json"), JSON.stringify(checks, null, 2));
+  log(`split: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
+
 async function prLinkShots({ shoot, billing }) {
   const rows = [
     // Billing's #143 sits on #142, whose checks fail, so it has no Merge row (one Merge per ready stack): Search filters' #151.

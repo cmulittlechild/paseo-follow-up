@@ -2,6 +2,11 @@ import { defineSettings, settingsRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { DEFAULT_SORT, isSortMode, SORT_MODES, type SortMode } from "./sort";
 
+/** Home's right pane as a share of Home's width: the default and the range set_display and the divider accept. */
+export const HOME_DETAIL_DEFAULT = 0.42;
+export const HOME_DETAIL_MIN = 0.2;
+export const HOME_DETAIL_MAX = 0.8;
+
 export const displayPreferences = defineSettings({
   id: "display",
   scope: "host",
@@ -26,7 +31,10 @@ export const displayPreferences = defineSettings({
     // 2.1: Home's and the sidebar view's order, one setting for both, on the host so it follows the developer across
     // devices and set_display covers it. Absent until first chosen: the first client to load writes the order it kept
     // per device before (client/home-view.ts), then everyone reads it from here.
-    home_sort: z.enum(SORT_MODES).optional() }),
+    home_sort: z.enum(SORT_MODES).optional(),
+    // 2.1: the share of Home's width the right pane (the brief or the selected item) takes, set by dragging the divider
+    // (client/split.tsx). A fraction, so it carries across window sizes; absent means HOME_DETAIL_DEFAULT.
+    home_detail_fraction: z.number().min(HOME_DETAIL_MIN).max(HOME_DETAIL_MAX).optional() }),
 });
 
 /** Every Display key, set or not: what set_display accepts. */
@@ -45,7 +53,23 @@ export function trustCountText(stats: { today: number; recent: { summary: string
 }
 
 /** Anything that calls plugin RPCs (the client context; a fake in tests). */
-type DisplayClient = { rpc: (contract: never, input: never) => Promise<unknown> };
+export type DisplayClient = { rpc: (contract: never, input: never) => Promise<unknown> };
+
+/**
+ * Merges `patch` into the Display document, re-reading once when another write got there first. Every client write
+ * of a Display field goes through here (Home's order, Home's pane width), so one never drops another's field.
+ * True when it saved.
+ */
+export async function writeDisplay(client: DisplayClient, patch: Record<string, unknown>): Promise<boolean> {
+  const call = (contract: unknown, input: unknown) => client.rpc(contract as never, input as never);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const doc = await call(displayRpc.read, {}) as { status: string; revision: string; values: unknown };
+    if (doc.status !== "ready") return false;
+    const out = await call(displayRpc.write, { revision: doc.revision, values: { ...(doc.values as Record<string, unknown>), ...patch } }) as { status: string };
+    if (out.status !== "conflict") return out.status === "saved";
+  }
+  return false;
+}
 /**
  * Home's order against the Display setting `home_sort`. `read` takes the host's order (true when it changed this
  * device's); with none stored yet, this device's old per-device choice becomes everyone's, once. `write` saves an
@@ -53,14 +77,7 @@ type DisplayClient = { rpc: (contract: never, input: never) => Promise<unknown> 
  */
 export function homeSortSync(client: DisplayClient, current: () => SortMode, adopt: (sort: SortMode) => void) {
   const call = (contract: unknown, input: unknown) => client.rpc(contract as never, input as never);
-  const write = async (next: SortMode) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const doc = await call(displayRpc.read, {}) as { status: string; revision: string; values: unknown };
-      if (doc.status !== "ready") return;
-      const out = await call(displayRpc.write, { revision: doc.revision, values: { ...(doc.values as Record<string, unknown>), home_sort: next } }) as { status: string };
-      if (out.status !== "conflict") return;
-    }
-  };
+  const write = async (next: SortMode) => { await writeDisplay(client, { home_sort: next }); };
   /** Applies a Display document (read, or pushed by follow.display-feed): true when this device's order changed. */
   const apply = async (doc: { status: string; values?: unknown }): Promise<boolean> => {
     if (doc.status !== "ready") return false;

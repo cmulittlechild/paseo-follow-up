@@ -17,6 +17,10 @@
 - **Home's order** is the Display field `home_sort` (absent until first chosen, read as Priority). The sort menu on
   Home and in the sidebar view writes it, so the order is the same on every device, and `set_display` sets it with
   `{ values: { home_sort: "recent" } }`.
+- **Home's right pane width** is the Display field `home_detail_fraction`: the pane's share of Home's width, 0.2 to
+  0.8, absent until first dragged (read as 0.42). Dragging the divider (or moving it with the keyboard) writes it once,
+  on release, through `writeDisplay` (`shared/display.ts`); `set_display` sets it with
+  `{ values: { home_detail_fraction: 0.5 } }`, and the Display feed brings an agent's change to an open Home.
 - **Display fields** are read and written by agents through `display_settings` and `set_display`
   (`DISPLAY_TOOLS` in `server/agent-parity.ts`, PARITY key `settings.display`).
 - **View state is per device; settings are per host** (invariant 22, `view-state-is-per-device-settings-are-per-host`).
