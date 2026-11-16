@@ -150,8 +150,8 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
   const at = d.nextAt ? clock(d.nextAt) : "";
   switch (d.state) {
     case "sending": return { label: "Sending…", detail: "Sending to the agent…", tone: "spinner", action: null, pending: true };
-    case "queued": return { label: "Queued", detail: `Queued${d.reason ? `: ${d.reason}` : ""}${at ? `, retrying at ${at}` : ""}.`, tone: "muted", action: d.nextAt ? "try-now" : null, pending: true };
-    case "retrying": return { label: at ? `Retrying at ${at}` : "Retrying", detail: at ? `Retrying at ${at}. ${RETRYING_DETAIL}` : RETRYING_DETAIL, tone: "muted", action: "try-now", pending: true };
+    case "queued": return { label: "Queued", detail: `Queued${d.reason ? `: ${d.reason}` : ""}.${at ? ` Next try at ${at}.` : ""}`, tone: "muted", action: d.nextAt ? "try-now" : null, pending: true };
+    case "retrying": return { label: at ? `Next try at ${at}` : "Retrying", detail: at ? `Next try at ${at}. ${RETRYING_DETAIL}` : RETRYING_DETAIL, tone: "muted", action: "try-now", pending: true };
     case "failed": return { label: "Failed", detail: d.reason ? `${d.reason} Check the agent's chat, then Retry.` : FAILED_DETAIL, tone: "warning", action: "retry", pending: false };
     case "cancelled": return { label: "Not sent", detail: d.reason ?? "Follow-up didn't send it.", tone: "muted", action: null, pending: false };
     case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };

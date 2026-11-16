@@ -349,7 +349,7 @@ Overseer forwards and reports handed to an agent (`message`).
   Q answer): an answer whose asker was archived or replaced reaches the workspace's main agent. A workspace archived or
   no longer followed cancels it, with the reason on the card ("Not sent").
 - **Never left: never fails.** Paseo unreachable, no agent available, a permission prompt or Session Guard: nothing
-  was sent, so it waits as Queued ("Queued: Paseo unreachable, retrying at 12:04") and goes at once on worker start.
+  was sent, so it waits as Queued ("Queued: Paseo unreachable. Next try at 12:04.") and goes at once on worker start.
   Paseo unreachable: it goes out within about 15 s of Paseo coming back. While anything waits so, one connect-only
   probe (`PaseoGateway.probe`: the worker's one connection, no agent read, so nothing wakes) runs every `PROBE_MS`
   (15 s), every `PROBE_SLOW_MS` (60 s) once the outage passes 10 min, and stops the moment nothing waits; a probe that
@@ -363,7 +363,7 @@ Overseer forwards and reports handed to an agent (`message`).
 - **A reload mid-send** reads `sending` back as `uncertain`, so the chat is checked before it goes again.
 - **Small file.** Sent and cancelled items leave `queue.json` once their record shows it; the newest `QUEUE_RECENT`
   stay, without text.
-- **One vocabulary.** `deliveryStatus` words every card: Sending…, Queued (with when), Retrying at, Failed with
+- **One vocabulary.** `deliveryStatus` words every card: Sending…, Queued (with when), Retrying ("Next try at 12:04"), Failed with
   Retry, Not sent, Sent. Records keep a mirror of their item (`deliveryOf`): `answer.delivery` on a question,
   `brief.delivery` on a card.
 - **Upgrade.** `Engine.adoptAnswers` (every start, idempotent) and `Inbox.adoptOutbox` (once) move 2.0's in-flight
