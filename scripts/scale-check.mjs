@@ -31,7 +31,7 @@ import { harness, spawnDaemon } from "./harness.mjs";
 import { harnessEnv, harnessConfig } from "./harness-env.mjs";
 import { fakeGithub } from "./fake-github.mjs";
 import { scaleGh } from "./scale-github.mjs";
-import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, BURST_RETURN_BUDGET_MB, burstReturnVerdict, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainState, idleBudgetMb, idleVerdict, peakBudgetMb, REALISTIC_PEAK_BUDGET_MB, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
+import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, BURST_RETURN_BUDGET_MB, burstReturnVerdict, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainPlan, drainState, idleBudgetMb, idleVerdict, peakBudgetMb, REALISTIC_PEAK_BUDGET_MB, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
 
 const exec = promisify(execFile);
 // The check drives a real Paseo daemon, so it needs the paseo CLI (CI installs @getpaseo/cli). Without it, local
@@ -262,20 +262,22 @@ try {
         while (nextBusy <= Date.now()) { nextBusy += 60_000 / BUSY_TURNS_PER_MIN; const a = created[busyTurns++ % Math.max(1, AWAKE)].agentId; void client.sendMessage(a, `Fixture: busy turn ${BUSY_TURN_ITEMS} ${BUSY_ITEM_BYTES}`, { messageId: `busy-${busyTurns}` }).catch(() => undefined); }
       }
     }
-    // Drain the busy window before the idle window starts (drainState): turns still running, their turn-end reads and
-    // the rescan after them would otherwise land in the idle window, a different amount each run.
+    // Drain before the idle window starts (drainState, drainPlan): after the busy window, or after the send phase alone.
+    // Turns still running, their turn-end reads and the directory re-read after them would otherwise land in the idle
+    // window, a different amount each run (2026-11-14 busy, 2026-11-16 a late send in plain test:scale).
+    const plan = drainPlan({ busyMs: BUSY_MS });
     let drain = null;
-    if (BUSY_MS > 0) {
-      const from = Date.now(); const polls = []; const listed = () => counter.snapshot().requests["follow-up-worker"]?.fetch_workspaces_request ?? 0; const listedAtEnd = listed(); const awakeIds = new Set(created.slice(0, Math.max(1, AWAKE)).map(c => c.agentId));
+    {
+      const from = Date.now(); const polls = []; const count = type => counter.snapshot().requests["follow-up-worker"]?.[type] ?? 0; const listedAtEnd = count("fetch_workspaces_request"); const ids = new Set(created.map(c => c.agentId));
       for (;;) {
         await sleep(2_000);
-        const reads = counter.snapshot().requests["follow-up-worker"]?.fetch_agent_timeline_request ?? 0;
-        const running = (await agents().catch(() => [])).filter(a => awakeIds.has(a.id) && a.status === "running").length;
-        polls.push({ atMs: Date.now() - from, running, reads, relisted: listed() > listedAtEnd });
-        const state = drainState(polls);
-        if (state.settled || state.expired) { drain = { settled: state.settled, seconds: Math.round(state.atMs / 1000), quietSeconds: DRAIN_QUIET_MS / 1000, boundSeconds: DRAIN_BOUND_MS / 1000 }; break; }
+        const lists = count("fetch_workspaces_request");
+        const running = (await agents().catch(() => [])).filter(a => ids.has(a.id) && a.status === "running").length;
+        polls.push({ atMs: Date.now() - from, running, reads: count("fetch_agent_timeline_request"), lists, relisted: lists > listedAtEnd });
+        const state = drainState(polls, plan);
+        if (state.settled || state.expired) { drain = { after: BUSY_MS > 0 ? "busy" : "send", settled: state.settled, seconds: Math.round(state.atMs / 1000), quietSeconds: plan.quietMs / 1000, boundSeconds: DRAIN_BOUND_MS / 1000 }; break; }
       }
-      if (!drain.settled) over(`The busy window didn't drain within ${DRAIN_BOUND_MS / 1000} s (awake agents running, the worker still reading timelines, or no directory re-read); the idle window starts anyway`);
+      if (!drain.settled) over(`The ${drain.after === "busy" ? "busy window" : "send phase"} didn't drain within ${DRAIN_BOUND_MS / 1000} s (agents running, the worker still reading timelines or re-reading the directory${plan.awaitRelist ? ", or no directory re-read" : ""}); the idle window starts anyway`);
     }
     // --cycles <n>,<burstS>,<gapS> (memory-returns-after-a-burst): n bursts, each followed by a gap. A burst is live's
     // busy afternoon at once: awake agents end turns at twice the busy window's rate, an open app reads at 4 RPCs a
@@ -350,7 +352,7 @@ try {
     const tree = new Set([daemon.pid]);
     for (let grew = true; grew;) { grew = false; for (const r of rows) if (!tree.has(r.pid) && tree.has(r.ppid)) { tree.add(r.pid); grew = true; } }
     const hostRss = rows.filter(r => tree.has(r.pid) && r.pid !== pid && /plugin-process/.test(r.args)).map(r => r.rssMb);
-    worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) }, drain } : {}), ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), ...(cycles ? { cycles: { spec: arg("cycles"), each: cycles.map(c => ({ k: c.k, turns: c.turns, rpcs: c.rpcs, rpcFailed: c.rpcFailed, asked: c.asked, answered: c.answered, burstPeakMb: Math.max(...c.burstSamplesMb), gapMedianMb: idleVerdict(c.gapSamplesMb, 0).medianMb, burstCpuS: c.burstCpuS, gapCpuS: c.gapCpuS, burstSamplesMb: c.burstSamplesMb, gapSamplesMb: c.gapSamplesMb })), ...burstReturnVerdict(cycles.map(c => c.gapSamplesMb), budget.burstReturnMb) } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
+    worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) } } : {}), drain, ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), ...(cycles ? { cycles: { spec: arg("cycles"), each: cycles.map(c => ({ k: c.k, turns: c.turns, rpcs: c.rpcs, rpcFailed: c.rpcFailed, asked: c.asked, answered: c.answered, burstPeakMb: Math.max(...c.burstSamplesMb), gapMedianMb: idleVerdict(c.gapSamplesMb, 0).medianMb, burstCpuS: c.burstCpuS, gapCpuS: c.gapCpuS, burstSamplesMb: c.burstSamplesMb, gapSamplesMb: c.gapSamplesMb })), ...burstReturnVerdict(cycles.map(c => c.gapSamplesMb), budget.burstReturnMb) } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
   }
   tracing = false; await tracer;
   if (worker) worker.trace = { ...trace, githubRequests: github?.requests.length ?? 0 };
