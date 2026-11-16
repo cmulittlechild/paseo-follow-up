@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LinkedService, LinkedStore } from "../server/linked";
@@ -14,7 +15,7 @@ for (const publisher of ["reader", "another-workspace"]) test(`prose links inher
   const dir = await mkdtemp(join(tmpdir(), "local-titles-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const artifacts = publishedArtifacts([receipt({ title: "Release plan" }, `Published page at ${URL}`)], "main-agent");
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const service = new LinkedService({ store, sources: { async issue() { return null; }, async teams() { return []; } }, workspaces: async () => [workspace({ id: publisher, artifacts })] });
   await service.note(new Map([["reader", timelineRefs([{ seqStart: 2, item: { type: "assistant_message", text: `See ${URL}` } }])]]));
   assert.equal((await store.read()).workspaces.reader.items[0].title, "Release plan");
@@ -67,7 +68,7 @@ test("publish and read output survives projection as strings, MCP blocks and str
 test("backfill is idempotent, fills late titles across workspaces, and never overwrites chosen names", async t => {
   const dir = await mkdtemp(join(tmpdir(), "title-backfill-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new LinkedStore(dir);
+  const store = testStore(LinkedStore, dir);
   const w = workspace();
   const service = new LinkedService({ store, workspaces: async () => [w], sources: { async issue() { return null; }, async teams() { return []; } } });
   await service.note(new Map([["reader", [{ raw: URL, strong: false }]]]));
@@ -140,7 +141,7 @@ test("multiple root receipts retain the strongest evidence regardless of scan or
 
 test("an explicitly named link fills existing unnamed links in other workspaces immediately", async t => {
   const dir = await mkdtemp(join(tmpdir(), "title-explicit-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new LinkedStore(dir), service = new LinkedService({ store, sources: { async issue() { return null; }, async teams() { return []; } } });
+  const store = testStore(LinkedStore, dir), service = new LinkedService({ store, sources: { async issue() { return null; }, async teams() { return []; } } });
   await service.note(new Map([["reader", [{ raw: URL, strong: false }]]]));
   await service.link("publisher", URL, { origin: "registered", by: "agent", title: "Chosen page name" });
   assert.equal((await store.read()).workspaces.reader.items[0].title, "Chosen page name");

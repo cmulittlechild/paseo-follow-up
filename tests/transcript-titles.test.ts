@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, appendFile, rm, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TranscriptTitleLookup, TranscriptTitleStore, trackedTitleTranscripts, TITLE_PARK_RECHECK_MS, parseArtifactLine } from "../server/transcript-titles";
@@ -14,7 +15,7 @@ async function temp(t: any) { const dir = await mkdtemp(join(tmpdir(), "transcri
 function setup(dir: string, paths: string[], budget = 256) {
   const file = emptyLinkedFile(), w = workspace();
   noteRefs(file, w.id, [{ raw: URL, strong: true }], 0);
-  const store = new TranscriptTitleStore(dir);
+  const store = testStore(TranscriptTitleStore, dir);
   let discoveries = 0, now = 1000;
   const lookup = new TranscriptTitleLookup({ store, paths: async () => { discoveries++; return paths; }, budget, now: () => now });
   const tick = () => lookup.tick([w], file.workspaces, async titles => { fillLinkedTitles(file, titles); });
@@ -37,7 +38,7 @@ test("completed misses persist offsets; reload and appends read only new bytes",
   await writeFile(path, initial); const s = setup(dir, [path], 4096);
   assert.equal((await s.tick()).bytes, Buffer.byteLength(initial));
   let now = 1000;
-  const reloaded = new TranscriptTitleLookup({ store: new TranscriptTitleStore(dir), paths: async () => [path], budget: 4096, now: () => now });
+  const reloaded = new TranscriptTitleLookup({ store: testStore(TranscriptTitleStore, dir), paths: async () => [path], budget: 4096, now: () => now });
   const tick = () => reloaded.tick([s.w], s.file.workspaces, async titles => { fillLinkedTitles(s.file, titles); });
   assert.equal((await tick()).bytes, 0);
   const appended = receipt("Appended plan"); await appendFile(path, appended); now += TITLE_PARK_RECHECK_MS;
@@ -84,7 +85,7 @@ test("a receipt spanning an append and worker reload keeps only its pending inpu
   const dir = await temp(t), path = join(dir, "session.jsonl");
   const parts = receipt("Resumed plan").split("\n");
   await writeFile(path, parts[0] + "\n"); const s = setup(dir, [path], 4096); await s.tick();
-  const next = new TranscriptTitleLookup({ store: new TranscriptTitleStore(dir), paths: async () => [path], budget: 4096 });
+  const next = new TranscriptTitleLookup({ store: testStore(TranscriptTitleStore, dir), paths: async () => [path], budget: 4096 });
   await appendFile(path, parts[1] + "\n");
   const pass = await next.tick([s.w], s.file.workspaces, async titles => { fillLinkedTitles(s.file, titles); });
   assert.equal(pass.bytes, Buffer.byteLength(parts[1] + "\n"));
