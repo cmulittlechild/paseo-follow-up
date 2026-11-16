@@ -349,7 +349,7 @@ export class MessageQueue {
     const waiting = [...this.items.values()].filter(i => this.waitsForPaseo(i));
     if (!waiting.length) { this.outageSince = null; return; }
     if (await this.courier.probe!().catch(() => false)) { this.reconnected(); return; }
-    // Still down: the cards' "retrying at" moves to the next probe.
+    // Still down: the cards' "Next try at" moves to the next probe.
     const next = this.iso(this.probeDelay());
     for (const item of waiting) { item.nextAt = next; await this.project(item); }
     this.save();
