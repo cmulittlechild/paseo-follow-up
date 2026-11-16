@@ -116,10 +116,12 @@ no model session starts to recover a name. Tests: `tests/local-titles.test.ts`, 
 `tests/linked-ui.test.ts` and the `a-linked-item-uses-every-known-local-title` status invariant.
 
 `server/transcript-titles.ts` maintains one local receipt index for artifacts still unnamed after the cheap index.
-A background tick runs only with untitled artifacts, is gated by the resource governor, and reads at most 2 MB in
-1 MB chunks. Scope is every Claude agent whose local agent record belongs to a tracked workspace, including
+A background tick runs only with untitled artifacts, is gated by the resource governor, and reads in 1 MB chunks, yielding between chunks. The usual cap is 2 MB; while unnamed artifacts and unread
+bytes remain, the initial backlog uses at most 4 MB per 30-second tick. An ordered live-shaped replay still put
+p90 beyond two hours at 2 MB, so the backlog boost is bounded and verified by the scale check. Scope is every Claude agent whose local agent record belongs to a tracked workspace, including
 historical sessions. Agent metadata is listed once per scope change or five minutes; only the resulting session
-files are opened. No timeline read or agent wake is possible through this service.
+files are opened. Transcripts from workspaces with unnamed links go first, newest mtime first, then the
+remaining tracked transcripts, newest first. Every file still reads front to back. No timeline read or agent wake is possible through this service.
 
 `title-index.json` stores one cursor per transcript (inode, size, mtime, byte offset, a bounded partial line and at
 most 64 pending Artifact inputs) and URL/title evidence with its source path. Each byte is indexed once, and later
@@ -129,3 +131,7 @@ along the way contribute their best title using the same resolver; an index hit 
 When every artifact is named, no transcript discovery, stat or read occurs. If untitled artifacts remain but all
 in-scope files are caught up, only append detection runs, without reading transcript content. Oversized individual
 lines are skipped rather than retained without bound. Raw transcript prose is never persisted in this index.
+
+Run `scripts/screenshots.mjs --only local-titles --scheme dark` and the light variant for linked rows and the spec chip.
+`node scripts/scale-check.mjs --realistic --workspaces 140 --awake 5 --title-index --rss-budget realistic` seeds
+synthetic transcript appends and verifies two boosted ticks, realistic peak RSS, and reply latency below 300 ms.

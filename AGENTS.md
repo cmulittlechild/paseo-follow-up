@@ -512,7 +512,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    in linked items and specs at worker start and when evidence arrives; preserve developer and agent choices.
    Read at most 8 KB of an artifact's source HTML asynchronously, and treat unreadable files as misses. Never fetch
    remote page metadata or wake an agent for a name. Unnamed artifacts may use a lazy local transcript lookup:
-   one shared receipt index, at most 2 MB per background tick, only tracked workspaces' recorded agents,
+   one shared receipt index, at most 2 MB per 30-second background tick (4 MB only for an unnamed backlog),
+   in 1 MB chunks with yields, only tracked workspaces' recorded agents,
    with per-file offsets so each byte is read once plus appends. Stop when every artifact is named. Guarded by `tests/transcript-titles.test.ts`, `tests/local-titles.test.ts` and
    `shared/status-invariants.ts`.
 

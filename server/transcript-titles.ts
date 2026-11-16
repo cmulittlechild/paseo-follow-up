@@ -11,6 +11,8 @@ import { JsonFileStore } from "./json-file-store";
 import { transcriptFile, type AgentRecordLite, type TranscriptRoots } from "./transcript";
 
 export const TITLE_SCAN_BYTES = 2 * 1024 * 1024;
+/** Ordered replay still puts p90 beyond two hours; boost only while an unnamed backlog has unread bytes. */
+export const TITLE_BACKLOG_BYTES = 4 * 1024 * 1024;
 const pendingSchema = z.record(z.string(), z.object({ title: z.string().optional(), file_path: z.string().optional(), description: z.string().optional(), action: z.string().optional() }));
 const cursorSchema = z.object({ offset: z.number().int().nonnegative(), inode: z.string(), size: z.number(), mtime: z.number(), dropping: z.boolean(), partial: z.string().default(""), pending: pendingSchema });
 type Cursor = z.infer<typeof cursorSchema>;
@@ -78,10 +80,10 @@ export class TranscriptTitleLookup {
       if (scopeKey !== this.scopeKey || now - this.pathsAt >= 5 * 60_000) {
         this.paths = await this.d.paths(tracked, priorityWorkspaces); this.scopeKey = scopeKey; this.pathsAt = now;
       }
-      const budget = this.d.budget ?? TITLE_SCAN_BYTES;
+      const budget = this.d.budget ?? TITLE_BACKLOG_BYTES;
       let bytes = 0, attempted = 0;
       const updates = new Map<string, Cursor>(), learned: TitleIndex = new Map(), locations = new Map<string, string>();
-      for (const path of this.paths.flatMap(path => [path, path])) {
+      for (const path of this.paths.flatMap(path => Array.from({ length: Math.ceil(budget / (1024 * 1024)) }, () => path))) {
         if (bytes >= budget) break;
         let handle;
         try {
