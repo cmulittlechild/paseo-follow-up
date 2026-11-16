@@ -1,4 +1,5 @@
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,6 +21,7 @@ async function fixture(t: any, w = workspace()) {
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "recovery-agent", contextPath: "/fixture/recovery.json" }), observe: async () => state, send: async (_w, _b, text) => { sends.push(text); if (failSend) throw new Error("lost ack"); }, label: async (_w, assigned) => { labels.push(assigned); } };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, failGithub ? { snapshot: null, error: "offline" } : { snapshot: { ...observations.get(p.key)!, observedAt: new Date(now).toISOString() }, error: null }])) };
   const engine = new Engine(store, github, gateway, () => now);
+  await queueEngine(engine, gateway, root);
   return { store, engine, sends, labels, gateway, github, root, send: async () => { const w = (await store.snapshot()).workspaces[0]; const b = w.batches.find(b => b.state === "pending"); if (!b) throw new Error("No pending batch"); return engine.sendPending(w.id, b.id); }, get: async () => (await store.snapshot()).workspaces[0], advance: (ms: number) => { now += ms; }, runtime: (s: Runtime) => { state = s; }, observe: (key: string, s: Snapshot) => observations.set(key, s), failSend: () => { failSend = true; }, offline: () => { failGithub = true; } };
 }
 test("batches several stacks and sends only after an explicit click", async t => {
@@ -49,7 +51,9 @@ test("busy agents, pauses, and background work keep batches queued", async t => 
   await f.engine.tick(); f.advance(61_000);
   f.runtime({ busy: true, reason: null, archived: false, backgroundBusy: true }); await f.engine.tick();
   f.runtime({ busy: false, reason: "Session Guard paused", archived: false }); await f.engine.tick(); assert.equal(f.sends.length, 0);
-  await assert.rejects(f.send(), /paused/); f.runtime({ busy: false, reason: null, archived: false }); await f.engine.tick(); assert.equal(f.sends.length, 0); await f.send(); assert.equal(f.sends.length, 1);
+  // Send replies at once and the queue holds it: the batch line says why it waits, and the next Send (or tick) sends it.
+  await f.send(); assert.equal(f.sends.length, 0); assert.match((await f.get()).batches[0].refusal?.reason ?? "", /paused/);
+  f.runtime({ busy: false, reason: null, archived: false }); await f.send(); assert.equal(f.sends.length, 1);
 });
 test("Auto waits through Session Guard pause and resumed work, then sends the same batch once", async t => {
   const f = await fixture(t, workspace({ enable_auto_sends: true, prs: [pr({ snapshot: snapshot({ conflict: true }) })] }));
@@ -60,15 +64,16 @@ test("Auto waits through Session Guard pause and resumed work, then sends the sa
   f.runtime({ busy: false, reason: null, archived: false }); await f.engine.tick(); await f.engine.tick();
   const delivered = (await f.get()).batches[0]; assert.equal(delivered.id, original.id); assert.equal(delivered.messageId, original.messageId); assert.equal(delivered.state, "sent"); assert.equal(f.sends.length, 1);
 });
-test("a definite preflight deferral stays pending across restart without enabling Auto", async t => {
+test("a Send that couldn't go out yet is kept across a restart and goes once, without enabling Auto", async t => {
   const f = await fixture(t, workspace({ prs: [pr({ snapshot: snapshot({ conflict: true }) })] }));
   await f.engine.tick(); const original = (await f.get()).batches[0];
   f.gateway.send = async () => { throw new DeliveryDeferred("Waiting for Session Guard to resume this workspace"); };
   await f.send(); assert.equal((await f.get()).batches[0].state, "pending"); assert.equal((await f.get()).batches[0].sentAt, null);
   f.gateway.send = async (_w, _b, text) => { f.sends.push(text); };
-  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + 61_000); await restarted.recover(); await restarted.tick();
-  assert.equal(f.sends.length, 0); assert.equal((await f.get()).enable_auto_sends, false);
-  await restarted.sendPending("workspace", original.id); assert.equal(f.sends.length, 1); assert.equal((await f.get()).batches[0].messageId, original.messageId);
+  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + 61_000); await queueEngine(restarted, f.gateway, f.root); await restarted.recover(); await restarted.tick();
+  // The developer's Send is on the queue: the next worker sends it once (nothing had left), and Auto stays off.
+  assert.equal(f.sends.length, 1); assert.equal((await f.get()).enable_auto_sends, false);
+  assert.equal((await f.get()).batches[0].messageId, original.messageId);
 });
 test("a long guard pause preserves delivered receipts and grants a fresh acknowledgment interval after resume", async t => {
   const f = await fixture(t, workspace({ prs: [pr({ snapshot: snapshot({ conflict: true }) })] }));
@@ -121,7 +126,7 @@ test("uncertain delivery and restart never resend automatically", async t => {
   await f.engine.tick(); f.advance(61_000); f.failSend(); await f.send();
   assert.equal((await f.get()).batches[0].state, "uncertain"); await f.engine.tick(); assert.equal(f.sends.length, 1);
   await f.store.mutate(s => { s.workspaces[0].batches[0].state = "sending"; });
-  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + 62_000); await restarted.recover(); await restarted.tick();
+  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + 62_000); await queueEngine(restarted, f.gateway, f.root); await restarted.recover(); await restarted.tick();
   assert.equal(f.sends.length, 1); assert.equal(summary(await f.get(), clock + 62_000).status, "needs-you");
 });
 test("merged PRs retain history and cannot complete outstanding deployment work", async t => {
@@ -244,7 +249,8 @@ test("legacy automatic flags never activate tracking or dispatch on load", async
 test("two simultaneous clicks cannot deliver the same batch twice", async t => {
   const f = await fixture(t, workspace({ prs: [pr({ snapshot: snapshot({ conflict: true }) })] }));
   await f.engine.tick(); const outcomes = await Promise.allSettled([f.send(), f.send()]);
-  assert.equal(outcomes.filter(result => result.status === "fulfilled").length, 1); assert.equal(f.sends.length, 1);
+  // Both replies succeed (one queue item per batch); the agent gets it once.
+  assert.equal(outcomes.filter(result => result.status === "fulfilled").length, 2); assert.equal(f.sends.length, 1);
 });
 
 test("Auto sends after quiet only in the explicitly enabled workspace", async t => {
@@ -342,7 +348,7 @@ test("a fourteen-day merge trigger queues at its due time and dispatches only on
   f.advance(delay - 1); await f.engine.tick(); assert.equal((await f.get()).batches.length, 0);
   f.advance(1); await f.engine.tick(); const queued = (await f.get()).batches[0]; assert.equal(queued.state, "pending");
   f.advance(61_000); await f.engine.tick(); assert.equal(f.sends.length, 1);
-  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + delay + 61_000);
+  const restarted = new Engine(f.store, f.github, f.gateway, () => clock + delay + 61_000); await queueEngine(restarted, f.gateway, f.root);
   await restarted.recover(); await restarted.tick(); assert.equal(f.sends.length, 1);
 });
 // 2026-11-16: an untouched workspace skips its observation pass for up to OBSERVE_FULL_MS, and time-based task triggers

@@ -73,7 +73,7 @@ function Segmented({ value, onChange, theme, compact }: { value: ReportKind; onC
   </View>;
 }
 
-type Phase = { kind: "edit" } | { kind: "sending" } | { kind: "sent"; agentId: string; title: string; started: boolean } | { kind: "failed"; message: string };
+type Phase = { kind: "edit" } | { kind: "sending" } | { kind: "sent"; agentId: string; title: string; started: boolean; queued?: boolean } | { kind: "failed"; message: string };
 
 export function ReportSheet({ request, theme, layout, openAgent, onClose }: { request: ReportRequest; theme: Theme; layout: PluginHostProps["layout"]; openAgent?: (agentId: string) => void; onClose: () => void }) {
   const c = theme.colors; const compact = layout.compact; const t = text(c, compact);
@@ -123,7 +123,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
       <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 8, backgroundColor: tint(c.statusSuccess, c) }}>
         <Icon name="CircleCheck" size={16} color={c.statusSuccess} />
         <View style={{ flex: 1 }}>
-          <Text style={t.label}>{phase.started ? `Started ${phase.title}` : `Sent to ${phase.title}`}</Text>
+          <Text style={t.label}>{phase.started ? `Started ${phase.title}` : phase.queued ? `Sending to ${phase.title}. Follow-up retries until it lands.` : `Sent to ${phase.title}`}</Text>
           <Text style={t.body}>It'll ask you anything it needs in that chat, then show you the issue before filing it.</Text>
         </View>
       </View>

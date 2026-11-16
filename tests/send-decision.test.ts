@@ -1,4 +1,5 @@
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +24,7 @@ async function fixture(t: any, w: Workspace) {
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "recovery", contextPath: "/fixture/recovery.json" }), observe: async (_w, live?: boolean) => live && fresh ? fresh : state, send: async (_w, _b, text) => { sends.push(text); }, label: async () => {} };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, prError && (!errorKey || p.key === errorKey) ? { snapshot: null, error: prError } : { snapshot: { ...observations.get(p.key)!, observedAt: new Date(now).toISOString() }, error: null }])) };
   const engine = new Engine(store, github, gateway, () => now);
+  await queueEngine(engine, gateway, root);
   const get = async () => (await store.snapshot()).workspaces[0];
   return {
     engine, sends, get, now: () => now,

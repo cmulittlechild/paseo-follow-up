@@ -492,8 +492,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
 36. **A message is saved before it is sent and reaches its agent exactly once**
-   (`a-message-is-saved-before-sent-and-arrives-once`). Every message Follow-up sends an agent for the developer (Q and
-   brief answers today) is a `queue.json` item before anything talks to Paseo (`server/message-queue.ts`). The action
+   (`a-message-is-saved-before-sent-and-arrives-once`). Every message Follow-up sends an agent (Q and brief answers,
+   repairs, Done checks, recovery, Overseer forwards, reports handed to an agent) is a `queue.json` item before anything
+   talks to Paseo (`server/message-queue.ts`). Everything due for one agent goes as one message, a part per item, each
+   with its own header, separated by a line holding only `---`; answers first, and repairs only to an idle agent. The action
    replies once it is saved, never after a Paseo call. The sender waits for the write that marks it `sending`, then
    sends. A send that never left (Paseo unreachable, no agent, a permission prompt, Session Guard) never fails: it
    retries 15 s, 1 min, then every 5 min (Paseo unreachable: a connect-only probe every 15 s, so it goes out within

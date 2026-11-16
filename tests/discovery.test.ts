@@ -1,4 +1,5 @@
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -48,13 +49,14 @@ test("installation and reload are inert; activation and every send require separ
   };
   const github = { observe: async () => new Map() };
   const engine = new Engine(store, github, gateway, () => now);
+  await queueEngine(engine, gateway, directory);
   await engine.tick(); assert.equal((await store.snapshot()).workspaces.length, 0); const first = await engine.activate("workspace");
   assert.equal(first.mainAgentId, "main-agent"); assert.equal(first.enable_tracking, true); assert.equal(first.batches.length, 0);
   now += 61_000; await engine.tick(); assert.equal(messages.length, 0); await engine.startRecovery("workspace");
   for (let i = 0; messages.length === 0 && i < 40; i++) await new Promise(r => setTimeout(r, 10));
   assert.equal(messages.length, 1); assert.match(messages[0], /separate inventory agent/);
   await engine.acknowledge("recovery-agent", (await store.snapshot()).workspaces[0].batches[0].id, "completed", "Reconciled conversation, no PRs produced yet");
-  const restarted = new Engine(new Store(directory), github, gateway, () => now); await restarted.recover(); await restarted.tick();
+  const restarted = new Engine(new Store(directory), github, gateway, () => now); await queueEngine(restarted, gateway, directory); await restarted.recover(); await restarted.tick();
   assert.equal(messages.length, 1); assert.equal((await store.snapshot()).workspaces.length, 1);
 });
 
