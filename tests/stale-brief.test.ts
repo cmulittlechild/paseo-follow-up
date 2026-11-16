@@ -162,14 +162,18 @@ test("store.onChanged never awaits a write to the store it runs in (it runs insi
   const { tmpdir } = await import("node:os");
   const { Store } = await import("../server/store");
   const dir = await mkdtemp(join(tmpdir(), "onchanged-"));
+  const store = testStore(Store, dir);
+  let release!: () => void;
+  const released = new Promise<void>(resolve => { release = resolve; });
+  let mutation: Promise<unknown> | undefined;
   try {
-    // Why the rule exists: an awaited write from onChanged never finishes.
-    const store = testStore(Store, dir);
+    // Hold the nested write until the deadlock is proved, then release the hook for cleanup.
     let nested = false;
-    store.onChanged = async () => { if (nested) return; nested = true; await store.mutate(() => undefined); };
-    const outcome = await Promise.race([store.mutate(s => { s.workspaces = []; (s as { importedAt?: string }).importedAt = T0; }).then(() => "done"), new Promise(r => setTimeout(() => r("deadlock"), 1500))]);
+    store.onChanged = async () => { if (nested) return; nested = true; await Promise.race([store.mutate(() => undefined), released]); };
+    mutation = store.mutate(s => { s.workspaces = []; (s as { importedAt?: string }).importedAt = T0; });
+    const outcome = await Promise.race([mutation.then(() => "done"), new Promise(r => setTimeout(() => r("deadlock"), 1500))]);
     assert.equal(outcome, "deadlock", "an awaited nested write deadlocks the store");
-  } finally { await rm(dir, { recursive: true, force: true }); }
+  } finally { release(); await mutation; await rm(dir, { recursive: true, force: true }); }
   const server = await readFile(join(import.meta.dirname, "..", "index.server.ts"), "utf8");
   const hook = server.slice(server.indexOf("store.onChanged = "), server.indexOf("\n", server.indexOf("store.onChanged = ")));
   assert.doesNotMatch(hook, /await inbox\.questionsChanged/, "resolving briefs can write the store (settled), so onChanged starts it without awaiting");
