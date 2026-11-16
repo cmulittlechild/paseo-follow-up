@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { answerHasActions, resendTitle } from "../shared/questions";
+import { answerHasActions, answerHeading, resendTitle } from "../shared/questions";
 import { DELIVERY_STATES } from "../shared/queue";
 
 /**
@@ -23,4 +23,15 @@ test("the dialog gates its action row on answerHasActions, not on a list of its 
   const source = readFileSync(new URL("../client/questions.tsx", import.meta.url), "utf8");
   assert.match(source, /const actions = \(open \|\| q\.answer && answerHasActions\(q\.answer\.delivery\)\)/);
   assert.doesNotMatch(source, /function resendTitle/, "one resendTitle, in shared/questions.ts");
+});
+
+test("only a delivered answer reads green: queued, retrying and failed keep the check but stay neutral", () => {
+  const q = (delivery: Record<string, unknown>) => ({ options: [{ letter: "A", label: "An hour" }], answer: { choice: "A", by: "developer", at: "2026-11-16T09:00:00.000Z", delivery } }) as never;
+  for (const state of ["queued", "sending", "retrying", "failed"]) {
+    const h = answerHeading(q({ state, at: "2026-11-16T09:00:00.000Z" }))!;
+    assert.equal(h.delivered, false, state); assert.equal(h.waiting, false, state);
+  }
+  assert.equal(answerHeading(q({ state: "sent", at: "2026-11-16T09:00:00.000Z" }))!.delivered, true);
+  const source = readFileSync(new URL("../client/questions.tsx", import.meta.url), "utf8");
+  assert.match(source, /backgroundColor: heading\.delivered \? tint\(c\.statusSuccess, c\) : c\.surface1/);
 });

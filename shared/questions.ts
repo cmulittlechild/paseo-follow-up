@@ -384,12 +384,17 @@ export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {
   }
 }
 /** The answer block's first line in the question dialog: "You answered B · …", or "Your answer, not sent yet: B · …". */
-export function answerHeading(q: Pick<Question, "answer" | "options">): { text: string; waiting: boolean } | null {
+/**
+ * The answer block's heading. `delivered` is the only thing that turns it green: an answer still queued, retrying or
+ * failed is the developer's answer (a check) but never reads as received (2026-11-16 harness renders: a Failed answer
+ * sat in a green block under "Check the agent's chat, then Retry").
+ */
+export function answerHeading(q: Pick<Question, "answer" | "options">): { text: string; waiting: boolean; delivered: boolean } | null {
   const a = q.answer, s = answerStatus(q);
   if (!a || !s) return null;
   const label = isOther(a.choice) ? OTHER_LABEL : answerLabel(q, a.choice);
-  if (s.waiting) return { text: `Your answer, not sent yet: ${label}`, waiting: true };
-  return { text: `${a.by === "agent" ? "Answered in chat: " : "You answered "}${label}`, waiting: false };
+  if (s.waiting) return { text: `Your answer, not sent yet: ${label}`, waiting: true, delivered: false };
+  return { text: `${a.by === "agent" ? "Answered in chat: " : "You answered "}${label}`, waiting: false, delivered: s.delivered };
 }
 /** A brief card over questions (its decisions): the least delivered of their answers, so it never reads Answered early. */
 export function briefAnswerStatus(questionIds: readonly string[], questions: readonly Pick<Question, "id" | "answer">[]): AnswerStatus | null {
