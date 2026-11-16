@@ -1,5 +1,6 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -74,6 +75,7 @@ test("communication records survive storage and only a receipt or explicit waive
   const sends: string[] = [];
   const gateway: Gateway = { observe: async () => ({ busy: false, reason: null, archived: false }), send: async (_w, _b, text) => { sends.push(text); }, label: async () => {}, prepareRecovery: async () => { throw new Error("Not a recovery request"); } };
   const engine = new Engine(store, { observe: async () => new Map() }, gateway, () => clock);
+  await queueEngine(engine, gateway, root);
   await engine.tick(); const batch = (await store.snapshot()).workspaces[0].batches[0];
   await engine.sendPending(w.id, batch.id);
   assert.equal(sends[0], `Follow-up batch ${batch.id}\n\n1. Update the requester in Slack`);
@@ -94,6 +96,7 @@ test("an authorized progress update can report unknown PR state; dependent verif
   const sends: string[] = []; let now = clock;
   const gateway: Gateway = { observe: async () => ({ busy: false, reason: null, archived: false }), send: async (_w, _b, text) => { sends.push(text); }, label: async () => {}, prepareRecovery: async () => { throw new Error("Not recovery"); } };
   const engine = new Engine(store, { observe: async () => new Map([[w.prs[0].key, { snapshot: null, error: "Temporarily unavailable" }]]) }, gateway, () => now);
+  await queueEngine(engine, gateway, root);
   await engine.tick(); now += 61_000; await engine.tick();
   assert.equal(sends.length, 1); assert.match(sends[0], /Update the requester in Slack/); assert.doesNotMatch(sends[0], /Verify and update/);
   await engine.stop();

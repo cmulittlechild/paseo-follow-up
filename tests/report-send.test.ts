@@ -119,7 +119,7 @@ test("A new workspace whose agent can't start is archived again, so a retry neve
 
 test("the agent and new-agent paths are unchanged", async () => {
   const a = sendDeps();
-  assert.deepEqual(await sendReport(a.deps, { kind: "bug", text: "x", agentId: "a0" }), { agentId: "a0", title: "Billing retries · main", started: false });
+  assert.deepEqual(await sendReport(a.deps, { kind: "bug", text: "x", agentId: "a0" }), { agentId: "a0", title: "Billing retries · main", started: false, queued: true });
   const b = sendDeps();
   assert.deepEqual(await sendReport(b.deps, { kind: "feature", text: "x", newAgentWorkspaceId: "ws-1" }), { agentId: "agent-2", title: "Follow-up feature request", started: true });
   await assert.rejects(sendReport(b.deps, { kind: "bug", text: "x" }), /Pick an agent/);

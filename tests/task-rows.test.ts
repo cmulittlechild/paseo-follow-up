@@ -1,5 +1,6 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -104,6 +105,7 @@ async function engineFixture(t: any, w: Workspace) {
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }), observe: async (): Promise<Runtime> => ({ busy: false, reason: null, archived: false, mainTitle: "Billing fix" }), send: async (_w, _b, text) => { sends.push(text); }, label: async () => {} };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { snapshot: { ...observations.get(p.key)!, observedAt: new Date(now).toISOString() }, error: null }])) };
   const engine = new Engine(store, github, gateway, () => now);
+  await queueEngine(engine, gateway, root);
   return { engine, store, sends, get: async () => (await store.snapshot()).workspaces[0], advance: (ms: number) => { now += ms; }, observe: (k: string, s: any) => observations.set(k, s), now: () => now };
 }
 

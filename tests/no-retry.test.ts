@@ -1,5 +1,6 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,6 +28,7 @@ async function fixture(t: any, w: Workspace) {
     recoveryRuntime: async () => ({ busy: false, reason: null }) };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { snapshot: { ...observations.get(p.key)!, observedAt: new Date(now).toISOString() }, error: null }])) };
   const engine = new Engine(store, github, gateway, () => now);
+  await queueEngine(engine, gateway, root);
   const get = async () => (await store.snapshot()).workspaces[0];
   return { engine, sends, get, store, now: () => now, advance: (ms: number) => { now += ms; }, observe: (key: string, s: Snapshot) => observations.set(key, s), arrived: (a: boolean | null) => { arrived = a; } };
 }
@@ -142,9 +144,10 @@ test("reload mid-send: the chat decides, and it resends only if the message neve
     const f = await fixture(t, conflicted());
     await f.engine.tick();
     await f.store.mutate(s => { const b = s.workspaces[0].batches[0]; b.state = "sending"; b.recipientAgentId = "main-agent"; });
+    // The worker's start reads the chat at once (the queue's arrival check), before anything is resent.
+    f.arrived(arrived);
     await f.engine.recover();
-    assert.equal((await f.get()).batches[0].state, "uncertain");
-    f.arrived(arrived); f.advance(61_000); await f.engine.tick();
+    f.advance(61_000); await f.engine.tick();
     const w = await f.get(), b = w.batches[0];
     if (expected === "sent") { assert.equal(b.state, "sent"); assert.equal(f.sends.length, 0); }
     if (expected === "resent") { assert.equal(f.sends.length, 1); assert.equal(f.sends[0].messageId, b.messageId, "same messageId"); assert.equal(b.state, "sent"); }

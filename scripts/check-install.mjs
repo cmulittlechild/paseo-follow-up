@@ -261,7 +261,10 @@ try {
   await cli("plugin", "reload", "follow-up");
   record = (await call("follow.get", { workspaceId: w.id })).workspace;
   assert.equal(record.batches.find(b => b.id === guardedBatch.id).state, "pending");
-  await assert.rejects(call("follow.send", { workspaceId: w.id, batchId: guardedBatch.id }), /Session Guard/);
+  // The developer's Send replies once queued, never after a Paseo call (a-message-is-saved-before-sent-and-arrives-once):
+  // while Session Guard owns the pause it waits, the batch line says why, and nothing reaches the agent.
+  await call("follow.send", { workspaceId: w.id, batchId: guardedBatch.id });
+  await waitFor(w => w.batches.some(b => b.id === guardedBatch.id && b.state === "pending" && /Session Guard/.test(b.refusal?.reason ?? "")), "the queued Send waits behind Session Guard, with the reason on the batch line");
   guardPause.phase = "resuming"; await saveGuard(); await call("follow.refresh", {});
   assert.equal((await receiptsForBatches()).length, 3);
   guardPause.phase = "resumed"; guardPause.settledAt = new Date().toISOString(); await saveGuard();
