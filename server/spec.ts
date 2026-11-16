@@ -1,12 +1,11 @@
 import { DEVELOPER, type Actor } from "../shared/actor";
 import type { Workspace } from "../shared/model";
-import { MAX_ARTIFACTS, isClaudeArtifact, validSpecUrl, type Artifact } from "../shared/spec";
+import { MAX_ARTIFACTS, validSpecUrl, type Artifact } from "../shared/spec";
 
 import { fillWorkspaceTitles, localTitles, receiptTitle, titleKey, type TitleIndex } from "../shared/local-titles";
-import { resultText } from "./local-titles";
+import { artifactPublishUrl } from "./local-titles";
 
 type Entry = { item: unknown; timestamp?: string };
-const publishReceipt = /^(?:Published \S.*? at|Created a new Artifact at) (https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+)(?=[\s(.,]|$)/;
 
 /**
  * Claude artifacts this session published, from completed Artifact tool receipts only. Reads, lists,
@@ -19,13 +18,13 @@ export function publishedArtifacts(entries: readonly Entry[], agentId: string, t
     if (!v || v.type !== "tool_call" || v.name !== "Artifact" || v.status !== "completed" || v.error) continue;
     const input = (v.detail?.input && typeof v.detail.input === "object" ? v.detail.input : {}) as Record<string, unknown>;
     if ((input.action ?? "publish") !== "publish" || input.asset === true) continue;
-    const match = publishReceipt.exec(resultText(v.detail?.output)?.trimStart() ?? "");
-    if (!match || !isClaudeArtifact(match[1])) continue;
+    const url = artifactPublishUrl(v.detail?.output);
+    if (!url) continue;
     const at = typeof entry.timestamp === "string" ? entry.timestamp : null;
-    const previous = found.get(match[1]);
-    found.set(match[1], {
-      url: match[1], title: titles?.get(titleKey(match[1]))?.title ?? receiptTitle(input)?.title ?? previous?.title ?? null, by: agentId,
-      ...(titles?.get(titleKey(match[1])) ? { titleRank: titles.get(titleKey(match[1]))!.rank } : {}),
+    const previous = found.get(url);
+    found.set(url, {
+      url: url, title: titles?.get(titleKey(url))?.title ?? receiptTitle(input)?.title ?? previous?.title ?? null, by: agentId,
+      ...(titles?.get(titleKey(url)) ? { titleRank: titles.get(titleKey(url))!.rank } : {}),
       firstAt: previous?.firstAt ?? at, lastAt: at ?? previous?.lastAt ?? null, publishes: (previous?.publishes ?? 0) + 1,
     });
   }

@@ -1,4 +1,5 @@
-import { fillWorkspaceTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
+import { TranscriptTitleLookup, TranscriptTitleStore, titleTranscriptPaths } from "./server/transcript-titles";
+import { fillWorkspaceTitles, localTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
 import { stopWorker } from "./server/teardown";
 import { WriteHealth } from "./server/write-behind";
 import { actorBy, actorOf, type Actor } from "./shared/actor";
@@ -224,6 +225,7 @@ export default function contribute(server: PluginServerContext) {
       }
     },
   });
+  const transcriptTitles = new TranscriptTitleLookup({ store: new TranscriptTitleStore(directory), paths: (w, item) => titleTranscriptPaths(paseoHome, w, item) });
   // Extraction rides discovery's own timeline batch (loaded agents only): no extra reads (shared/linked-extract.ts).
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();
@@ -679,6 +681,7 @@ export default function contribute(server: PluginServerContext) {
     return store.mutate(state => {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const { applied, message } = agentSetSpec(w, agentId, url, title, Date.now());
+      fillWorkspaceTitles(w, localTitles(state.workspaces));
       return { workspaceId: w.id, spec: w.spec, applied, message };
     });
   });
@@ -729,6 +732,7 @@ export default function contribute(server: PluginServerContext) {
       const w = findWorkspace(state, input.workspaceId);
       if (!w.enable_tracking || w.archived) throw new Error("Follow-up isn't following this workspace. Turn it back on in Follow-up settings, under Workspace exceptions.");
       developerSetSpec(w, input, Date.now(), actorOf(context));
+      fillWorkspaceTitles(w, localTitles(state.workspaces));
       return w;
     });
   });
@@ -1130,6 +1134,21 @@ export default function contribute(server: PluginServerContext) {
     if (!stopped) linkedTimer = setTimeout(() => void linkedLoop(), 10 * 60_000);
   };
   linkedTimer = setTimeout(() => void linkedLoop(), 90_000);
+  // Local title recovery is independent of a panel/RPC response and scans one URL, at most 1 MB, per tick.
+  let titleTimer: ReturnType<typeof setTimeout> | null = null;
+  const titleLoop = async () => {
+    await ready;
+    if (stopped || loadError) return;
+    if (governor.allowsBackground()) try {
+      const state = await store.snapshot(), file = await linkedStore.read();
+      await transcriptTitles.tick(state.workspaces, file.workspaces, async (raw, evidence) => {
+        const workspaceId = state.workspaces.find(w => w.enable_tracking && file.workspaces[w.id]?.items.some(i => i.url === raw))?.id;
+        if (workspaceId) await linked.note(new Map([[workspaceId, [{ raw, strong: true, title: evidence.title, titleRank: evidence.rank }]]]));
+      });
+    } catch { /* a local miss never prevents following work */ }
+    if (!stopped) titleTimer = setTimeout(() => void titleLoop(), 30_000);
+  };
+  titleTimer = setTimeout(() => void titleLoop(), 30_000);
   // Developer RPCs as agent tools (server/agent-parity.ts): the same handler the button's RPC runs.
   const rpcBridge = {
     async validate(method: string, input: unknown) { const h = handlers.get(method); if (!h) throw new Error(`Unknown Follow-up method ${method}.`); return h.input.parseAsync(input); },
@@ -1485,7 +1504,7 @@ export default function contribute(server: PluginServerContext) {
   ];
   return async () => {
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.

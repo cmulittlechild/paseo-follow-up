@@ -114,3 +114,11 @@ When no local evidence exists, the artifact row says **Claude artifact**, with i
 and calendar date beneath it. The spec uses the same Claude artifact fallback. No request goes to claude.ai, and
 no model session starts to recover a name. Tests: `tests/local-titles.test.ts`, `tests/spec.test.ts`,
 `tests/linked-ui.test.ts` and the `a-linked-item-uses-every-known-local-title` status invariant.
+
+`server/transcript-titles.ts` adds a second, lazy local lookup for artifacts still unnamed after the cheap index.
+One URL per 30-second background tick, gated by the resource governor, reads at most 1 MB of its workspace's
+recorded Claude agents' transcripts, then its recorded publisher's transcript if different. Agent membership comes
+from local agent records; archived workspace sessions are eligible. It never asks for a timeline or wakes an agent.
+`title-lookups.json` keeps byte offsets, at most 64 pending Artifact inputs, and positive or negative results.
+Incomplete scans resume; complete misses retry after seven days. The cache is capped at 256 URLs. Oversized
+individual lines are skipped rather than buffered without bound. No transcript prose is persisted in this cache.

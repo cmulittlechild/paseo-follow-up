@@ -169,7 +169,7 @@ export class LinkedService {
     const titles = localTitles(await this.deps.workspaces?.() ?? [], await this.deps.store.read(), [...batch.values()].flat());
     const result = await this.deps.store.mutate(f => {
       let items = 0, candidates = 0;
-      for (const [workspaceId, refs] of batch) { const n = noteRefs(f, workspaceId, refs, this.now()); items += n.items; candidates += n.candidates; }
+      for (const [workspaceId, refs] of batch) { const n = noteRefs(f, workspaceId, refs.map(ref => ({ ...ref, title: titles.get(titleKey(ref.raw))?.title ?? ref.title })), this.now()); items += n.items; candidates += n.candidates; }
       fillLinkedTitles(f, titles);
       return { items, candidates };
     });

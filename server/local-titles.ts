@@ -22,18 +22,22 @@ export function resultText(output: unknown): string {
   if (output && typeof output === "object") return resultText((output as { text?: unknown }).text);
   return "";
 }
+export function artifactPublishUrl(output: unknown): string | null {
+  const url = /^(?:Published \S.*? at|Created a new Artifact at) (https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+)(?=[\s(.,]|$)/.exec(resultText(output).trimStart())?.[1];
+  return url && isClaudeArtifact(url) ? url : null;
+}
 const object = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 /** The projected unknown-tool detail preserves input and output, including MCP text blocks. Never fetch URLs. */
 export async function receiptTitles(entries: readonly { item: unknown }[], readHtml = readTitleHtml): Promise<TitleIndex> {
   const titles: TitleIndex = new Map();
   for (const entry of entries) {
     const v = object(entry.item), detail = object(v.detail), input = object(detail.input);
-    if (v.type !== "tool_call" || v.status !== "completed" || v.error) continue;
+    if (v.type !== "tool_call" || v.status !== "completed" || v.error || object(detail.output).isError === true) continue;
     const output = resultText(detail.output);
     if (v.name === "Artifact") {
       const action = input.action ?? "publish";
       if (input.asset === true || !["publish", "read"].includes(String(action))) continue;
-      const url = action === "read" ? input.url : /^(?:Published \S.*? at|Created a new Artifact at) (https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+)/.exec(output.trimStart())?.[1];
+      const url = action === "read" ? input.url : artifactPublishUrl(detail.output);
       if (typeof url !== "string" || !isClaudeArtifact(url)) continue;
       let html: string | null = null;
       if (!shortTitle(input.title) && action === "publish" && typeof input.file_path === "string") html = await readHtml(input.file_path).catch(() => null);
