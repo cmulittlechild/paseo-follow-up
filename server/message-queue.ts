@@ -374,11 +374,11 @@ export class MessageQueue {
 
 /**
  * The Needs-you entry (Workspace.undelivered) for a message with no card of its own (kind `message`): one that is
- * Failed, or still waiting MESSAGE_STUCK_MS after it was queued. Null: it shows nothing (sent, cancelled, or not stuck yet).
+ * Failed, or still waiting MESSAGE_STUCK_MS (times the harness time scale) after it was queued. Null: it shows nothing (sent, cancelled, or not stuck yet).
  */
-export function undeliveredEntry(item: QueueItem, now: number, agentTitle: string | null, since: string | null): NonNullable<Workspace["undelivered"]>[number] | null {
+export function undeliveredEntry(item: QueueItem, now: number, agentTitle: string | null, since: string | null, scale = 1): NonNullable<Workspace["undelivered"]>[number] | null {
   const waiting = item.state === "queued" || item.state === "uncertain" || item.state === "sending";
-  const stuck = item.state === "failed" || waiting && Date.parse(item.createdAt) + MESSAGE_STUCK_MS <= now;
+  const stuck = item.state === "failed" || waiting && Date.parse(item.createdAt) + MESSAGE_STUCK_MS * scale <= now;
   if (!stuck || !item.ref.agentId) return null;
   return { id: item.id, agentId: item.ref.agentId, agentTitle, state: item.state === "failed" ? "failed" : "queued", reason: item.reason, since: since ?? new Date(now).toISOString() };
 }

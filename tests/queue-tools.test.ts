@@ -66,3 +66,10 @@ test("queueView never carries the message text, only its first line", async t =>
   assert.equal(view.preview, "From the developer via Overseer: line one");
   assert.ok(!JSON.stringify(view).includes("secret detail"));
 });
+
+test("a harness time scale shortens the wait before a stuck message shows, like every other queue wait", () => {
+  const item = { id: "m", kind: "message", key: "ws", ref: { agentId: "a" }, messageId: "x", text: "t", priority: "now", state: "queued", attempts: 2, unknowns: 0, nextAt: null, reason: "Paseo unreachable", envelope: null, gone: null, to: null, createdAt: "2026-11-16T09:00:00.000Z", settledAt: null } as const;
+  const at = Date.parse(item.createdAt) + MESSAGE_STUCK_MS / 4;
+  assert.equal(undeliveredEntry(item as never, at, null, null), null);
+  assert.ok(undeliveredEntry(item as never, at, null, null, 0.25));
+});
