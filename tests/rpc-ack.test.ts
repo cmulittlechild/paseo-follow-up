@@ -40,7 +40,6 @@ const MUST_SUCCEED = new Set(Object.keys(INPUT));
 
 const EXEMPT: Record<string, string> = {
   // Workspaces and PRs. Nothing changes until the developer confirms, or the change is GitHub's own request.
-  "follow.send": "Sending a repair batch first asks Paseo whether the agents are busy, then dispatches; the batch stays queued on a timeout.",
   "follow.prepare-pr-action": "A merge or reviewer plan reads the PR's live state from GitHub; nothing changes until confirm.",
   "follow.check-pr-action": "Re-checks a PR action against GitHub; read-only.",
   "follow.request-reviewers": "Requests reviewers on GitHub; with Remember on, the list is saved before the request.",
