@@ -98,7 +98,7 @@ test("never on yourself: an agent can't answer its own brief or act on its own i
 
 test("set_display: trust bypass and the other Display switches, planned, merged into the current document", async () => {
   const f = rpcFixture();
-  assert.deepEqual((await f.agent.run("a", "display_settings", {}) as { values: unknown }).values, { home_sort: "priority", enable_trust_bypass: true, enable_inbox: true });
+  assert.deepEqual((await f.agent.run("a", "display_settings", {}) as { values: unknown }).values, { home_sort: "priority", home_detail_fraction: 0.42, enable_trust_bypass: true, enable_inbox: true });
   await assert.rejects(f.agent.run("a", "set_display", { values: { enable_everything: true } }), /unknown setting/);
   const same = await f.agent.run("a", "set_display", { values: { enable_inbox: true } }) as { planId: string | null };
   assert.equal(same.planId, null, "nothing changes, nothing to confirm");
@@ -124,4 +124,21 @@ test("home_sort round-trips through set_display and display_settings", async () 
   await f.agent.run("a", "set_display", { confirm: true, planId: plan.planId });
   assert.deepEqual(f.writes.at(-1), { revision: "r1", values: { enable_trust_bypass: true, enable_inbox: true, home_sort: "recent" } });
   assert.equal((await f.agent.run("a", "display_settings", {}) as { values: { home_sort: string } }).values.home_sort, "recent");
+});
+
+/**
+ * Home's divider (side-panes-are-resizable): the width the developer drags is the Display setting
+ * home_detail_fraction, so an agent reads it with display_settings and sets it with set_display (planned, bounded).
+ */
+test("home_detail_fraction round-trips through set_display and display_settings", async () => {
+  const f = rpcFixture();
+  await assert.rejects(f.agent.run("a", "set_display", { values: { home_detail_fraction: 0.95 } }), /home_detail_fraction/);
+  const same = await f.agent.run("a", "set_display", { values: { home_detail_fraction: 0.42 } }) as { planId: string | null };
+  assert.equal(same.planId, null, "unset reads as the default share, so choosing it changes nothing");
+  const plan = await f.agent.run("a", "set_display", { values: { home_detail_fraction: 0.55 } }) as { planId: string; changes: unknown };
+  assert.deepEqual(plan.changes, [{ key: "home_detail_fraction", from: 0.42, to: 0.55 }]);
+  assert.deepEqual(f.writes, [], "a dry run first");
+  await f.agent.run("a", "set_display", { confirm: true, planId: plan.planId });
+  assert.deepEqual(f.writes.at(-1), { revision: "r1", values: { enable_trust_bypass: true, enable_inbox: true, home_detail_fraction: 0.55 } });
+  assert.equal((await f.agent.run("a", "display_settings", {}) as { values: { home_detail_fraction: number } }).values.home_detail_fraction, 0.55);
 });

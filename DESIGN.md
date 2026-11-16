@@ -14,6 +14,17 @@ Colour carries meaning and nothing else. Purple is merged. Green is approved, do
 
 Type is the system sans: 15/21 semibold panel titles, 13/18 body, 12/17 supporting text, 11/15 small labels, tabular numerals for every count and time. Controls are 32px on desktop with a hit slop and 44px in compact layouts. Panel padding is 12px, 16px in compact layouts. Motion is 140–300ms ease-out, opacity and transform only, and every animation checks reduced motion: press scale, icon cross-fades when a state changes, and one rise-in for the Shipped card.
 
+## Home's divider
+
+Home's list and its right pane (the brief, or the selected item) share the width through one divider
+(`side-panes-are-resizable`). At rest it is the 1px border. On hover the line grows to 2px at foreground 28% and a
+5×32 grip at foreground 40% appears at mid-height; while dragging, the line goes to foreground 70% and the grip to the foreground, the whole page
+shows the col-resize cursor and text can't be selected. Dragging into either end eases the grip back to 40%: the pane
+stopped, the drag didn't break. Keyboard focus keeps the line at hover weight and gives the grip the accent focus ring.
+The hit area is 11px over the line, and its tooltip names the keys. The pane keeps at least 360px and the list at least
+480px, so a row keeps its reason line. A window too narrow for both shares the shortfall and draws the divider as a
+plain border, with no grip or handle. Accent stays off the divider except for that focus ring: a divider is a control's state, not an action.
+
 ## Phones
 
 `layout.compact` is the phone signal. Desktop keeps the values above; phones use the same tokens through size-aware helpers in `client/kit.tsx`, never forked components.

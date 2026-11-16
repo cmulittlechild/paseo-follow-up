@@ -49,8 +49,9 @@ export function useListKeys(options: ListKeysOptions): void {
       const target = e.target as Target;
       const typing = !!target && (!!target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName ?? ""));
       if (typing && !target?.closest?.("[data-list-keys]")) return;
-      // A row menu or a dialog over the list keeps its own keys.
-      if (target?.closest?.('[role="menu"],[role="dialog"],[aria-modal="true"]')) return;
+      // A row menu or a dialog over the list keeps its own keys, and so does a control whose keys move it (Home's
+      // divider: arrows, Home and End resize the pane, never walk the list).
+      if (target?.closest?.('[role="menu"],[role="dialog"],[aria-modal="true"],[role="separator"],[role="slider"]')) return;
       const root = scope();
       const onBody = !target || target === doc.body;
       if (!ownsKey({ inside: !!target && !!root?.contains(target), onBody, claimBody: !!claimBody,

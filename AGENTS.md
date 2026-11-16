@@ -88,7 +88,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
@@ -457,6 +457,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    unsaved workspace was a fresh draft object, so `follow.list` rebuilt it on every call until the next save (about
    200 MB/min under a burst). Guarded by `tests/store-owned.test.ts`, `tests/engine.test.ts` (a task due inside the
    quiet minute) and `tests/no-retry.test.ts` (the first read after an acknowledgment).
+32. **Side panes are resizable** (`side-panes-are-resizable`). Every desktop layout that puts a pane beside a
+   flexible one draws it through `ResizableSplit` (`client/split.tsx`): a divider the developer drags (or moves with
+   the arrow keys; Enter or double-click resets), clamped so both sides stay usable, its width a fraction of the split
+   so it carries across window sizes. Home's right pane is the Display field `home_detail_fraction`, so
+   `display_settings` reads it and `set_display` sets it (agent parity). A drag updates the width locally and saves
+   once, on release. Phones keep their stacked layout and draw no handle. A fixed layout stays only in
+   `client/pane-allowlist.ts`, with why it isn't a pane (the wide workspace view's two columns scroll together).
+   2026-11-16: Home's right pane was 42 % capped at 680 px, so it couldn't grow on a wide window and nothing let the
+   developer drag it. Guarded by `tests/side-panes.test.ts`, `tests/agent-parity.test.ts` and
+   `scripts/screenshots.mjs --only split` (a real drag in the harness, kept across a reload; writes `split.json`).
 
 ## Bugs
 

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { browserKey } from "./keys";
 import { Platform, TextInput, useWindowDimensions, View } from "react-native";
 import { Pressable, Text } from "./text";
-import { usePaseo, useRpc, type PluginScreenProps } from "@getpaseo/plugin/client";
+import { usePaseo, useRpc, useSettings, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, Modal, useToast } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import { browserStatusRpc, controlRpc, inboxBriefRpc, sendRpc } from "../shared/contracts";
@@ -34,6 +34,9 @@ import { withAlpha, isLight, mergedColor, type Colors } from "./theme";
 import { UpdateNotice, VersionMark } from "./updates";
 import { WhatsNewGate } from "./release-notes";
 import { ViewSync } from "./view-store";
+import { ResizableSplit } from "./split";
+import { displayPreferences, displayRpc, writeDisplay, HOME_DETAIL_DEFAULT, HOME_DETAIL_MAX, HOME_DETAIL_MIN, type DisplayClient } from "../shared/display";
+import { subscribeDisplay } from "./display";
 import { useRowMenu } from "./row-actions";
 import { laterChoices } from "../shared/row-menu";
 import { PrLinksProvider, RichText } from "./rich-text";
@@ -225,14 +228,42 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     <View style={{ position: "absolute", left: 12, right: 12, bottom: bottomGap(true) + (current || selected === OVERSEER_KEY ? 132 : 0) }}><UndoBar store={inbox} theme={theme} touch /></View>
   </View>;
   return <View ref={homeRef} style={{ flex: 1, flexDirection: "row", backgroundColor: c.surface0 }}>
-    <View style={{ flex: 1, minWidth: 0, borderRightWidth: 1, borderRightColor: c.border }}>
+    <HomeSplit theme={theme} detail={detail} main={<View style={{ flex: 1, minWidth: 0 }}>
       {list}
       {updateSheets}
       <View style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}><UndoBar store={inbox} theme={theme} touch={false} /></View>
-    </View>
-    <View style={{ width: "42%", minWidth: 380, maxWidth: 680 }}>{detail}</View>
+    </View>} />
   </View>;
 }
+
+/**
+ * Home's list beside its right pane (the brief, or the selected item), with the divider between them
+ * (side-panes-are-resizable). The pane's share is the Display setting `home_detail_fraction`, so set_display reaches it.
+ */
+function HomeSplit({ theme, main, detail }: { theme: Theme; main: ReactNode; detail: ReactNode }) {
+  const settings = useSettings(displayPreferences);
+  const readDisplay = useRpc(displayRpc.read); const saveDisplay = useRpc(displayRpc.write);
+  const toast = useToast();
+  // The host's settings read paints first; the Display feed (an agent's set_display, another device) and this
+  // device's own saves replace it. undefined = never set (the default); null = nothing pushed yet.
+  const [pushed, setPushed] = useState<number | undefined | null>(null);
+  useEffect(() => subscribeDisplay(values => setPushed(values.home_detail_fraction)), []);
+  const fraction = pushed !== null ? pushed : settings.status === "ready" ? settings.values.home_detail_fraction : undefined;
+  const commit = (next: number) => {
+    setPushed(next);
+    const client: DisplayClient = { rpc: (contract, input) => (contract as unknown) === displayRpc.read ? readDisplay(input as never) : saveDisplay(input as never) };
+    void writeDisplay(client, { home_detail_fraction: next })
+      .then(ok => { if (!ok) toast.error("Couldn't save the pane's width. It resets when Home reopens."); })
+      .catch(e => toast.error(errorText(e)));
+  };
+  return <ResizableSplit theme={theme} main={main} side={detail} testID="follow-up-home-split" label="Resize the detail pane"
+    fraction={fraction} defaultFraction={HOME_DETAIL_DEFAULT} range={[HOME_DETAIL_MIN, HOME_DETAIL_MAX]}
+    minSide={HOME_DETAIL_MIN_PX} minMain={HOME_LIST_MIN_PX} onCommit={commit} />;
+}
+
+/** The right pane is never narrower than this, and the list keeps at least HOME_LIST_MIN_PX (its rows keep their reason line). */
+const HOME_DETAIL_MIN_PX = 360;
+const HOME_LIST_MIN_PX = 480;
 
 function ListHeader({ theme, compact, onSettings }: { theme: Theme; compact: boolean; onSettings: () => void }) {
   const c = theme.colors;

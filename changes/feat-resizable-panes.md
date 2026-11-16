@@ -1,0 +1,1 @@
+- Drag the line between Home's list and the right-hand pane to make the pane wider or narrower. Follow-up keeps the width you pick, and on a keyboard you can move it with the arrow keys.
