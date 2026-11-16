@@ -164,17 +164,30 @@ export const DRAIN_QUIET_MS = ENGINE_TICK_MS + 5_000;
 export const DRAIN_BOUND_MS = 120_000;
 
 /**
- * Where the drain stands, from polls since the busy window ended (`atMs`, `running` awake agents, `reads`: the worker's
- * cumulative timeline reads, `relisted`: the worker has listed workspaces since the busy window ended): settled once
- * the directory has re-read, nothing runs and `reads` hasn't moved for `quietMs`; expired past the bound.
+ * Where the drain stands, from polls since the phase before the idle window ended (`atMs`, `running` agents, `reads`:
+ * the worker's cumulative timeline reads, `lists`: its cumulative directory re-reads, `relisted`: it has listed
+ * workspaces since the phase ended): settled once nothing runs and neither `reads` nor `lists` has moved for `quietMs`
+ * (and, with `awaitRelist`, the directory has re-read); expired past the bound.
  */
-export function drainState(polls, { quietMs = DRAIN_QUIET_MS, boundMs = DRAIN_BOUND_MS } = {}) {
+export function drainState(polls, { quietMs = DRAIN_QUIET_MS, boundMs = DRAIN_BOUND_MS, awaitRelist = true } = {}) {
   let since = 0;
   for (let i = 0; i < polls.length; i++) {
     const p = polls[i];
-    if (p.running > 0 || (i > 0 && p.reads !== polls[i - 1].reads)) since = p.atMs;
-    if (p.running === 0 && p.relisted !== false && p.atMs - since >= quietMs) return { settled: true, expired: false, atMs: p.atMs };
+    if (p.running > 0 || (i > 0 && (p.reads !== polls[i - 1].reads || p.lists !== polls[i - 1].lists))) since = p.atMs;
+    if (p.running === 0 && (!awaitRelist || p.relisted !== false) && p.atMs - since >= quietMs) return { settled: true, expired: false, atMs: p.atMs };
     if (p.atMs > boundMs) return { settled: false, expired: true, atMs: p.atMs };
   }
   return { settled: false, expired: false };
 }
+
+/** DIRTY_REFRESH_MS (server/directory.ts): a dirty directory re-reads at most once a minute. tests/scale-budget.test.ts checks this copy. */
+export const DIRTY_REFRESH_MS = 60_000;
+/**
+ * Plain test:scale's send phase ends when Follow-up's batches settle, not when the agents it sent to do: 2026-11-16
+ * (#211, local) a late 7th send's turn, its turn-end reads and the directory re-read after them landed in the idle
+ * window (5.3 requests a minute against 2). Nothing marks when that re-read is due, so the quiet span outlasts one: a
+ * dirty directory re-reads within DIRTY_REFRESH_MS of its last read, on the next engine tick.
+ */
+export const SEND_DRAIN_QUIET_MS = DIRTY_REFRESH_MS + ENGINE_TICK_MS + 5_000;
+/** The drain before the idle window: after a busy window, its known re-read plus a tick of quiet; after the send phase alone, a re-read's whole wait. */
+export const drainPlan = ({ busyMs }) => busyMs > 0 ? { quietMs: DRAIN_QUIET_MS, awaitRelist: true } : { quietMs: SEND_DRAIN_QUIET_MS, awaitRelist: false };
