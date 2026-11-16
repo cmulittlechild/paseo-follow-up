@@ -27,7 +27,7 @@ loaded for an hour.
   - `tests/daemon-load.test.ts` covers the directory and polling.
   - `npm run test:scale` (`scripts/scale-check.mjs`) runs an isolated daemon on the realistic seed (140 workspaces,
     ~280 agents, 5 awake, a live-shaped state and a fake GitHub) and fails if the loaded-agent count grows. Budgets
-    (reasoning in AGENTS.md, invariant 2): 300 MB peak RSS from the worker's start, 240 MB idle RSS, 3 % CPU, 2 idle
+    (reasoning in AGENTS.md, invariant 2): peak RSS from the worker's start and idle RSS each derived from CI's own readings (`scripts/scale-budget.mjs`), 3 % CPU, 2 idle
     daemon requests a minute. `scripts/daemon-counter.mjs` counts the requests, `scripts/heap-summary.mjs` and
     `scripts/heap-retainers.mjs` read a heap snapshot, and `--cpu-prof` / `--alloc-prof` attribute CPU and garbage
     ([docs/testing.md](testing.md)).

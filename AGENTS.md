@@ -111,8 +111,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      (Paseo's cgroup working set ≥ 75 %, or pressure).
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
-     three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **300 MB peak RSS** from the
-     worker's start (VmHWM, so the cold-start tick counts), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (250: CI's median 220 plus 4 standard deviations of CI's own readings, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`; the old 240 sat inside the runner's noise and flaked on a no-op PR), **3 %
+     three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
+     from the worker's start (VmHWM, so the cold-start tick counts; 321: CI's median 278 plus 4 standard deviations of
+     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`; the old 300 sat 2 deviations up and main itself
+     read 313 on 2026-11-16), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (250: CI's median 220 plus 4 standard deviations of CI's own readings, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`; the old 240 sat inside the runner's noise and flaked on a no-op PR), **3 %
      idle CPU**, **2 idle daemon requests a minute**. Measured 2026-11-12 (two runs): peak 262–264 MB (a ~2 s cold-start
      tick that changes and validates every workspace once), idle 198–200 MB and flat, CPU 1.3–1.4 %, 1.3 requests a
      minute; the bare plugin process is ~120 MB. Headroom (~15 % peak, ~20 % idle) covers live's extras the seed lacks
@@ -130,7 +132,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      memory fix alike, ~100 MB JS heap and ~220 MB native. Never loosen a `test:scale` budget to pass it.
    - **Budgets judge the typical cost** (`scale-budgets-judge-the-typical-cost`): an idle budget reads the idle window's
      median, because RSS there is a GC sawtooth (main swung 17 MB between runs; CI once peaked at 279 MB over a ~215 MB
-     median). One sample decides nothing except the lifetime cap (VmHWM ≤ 300 MB). The idle peak is still reported.
+     median). One sample decides nothing except the lifetime cap (VmHWM ≤ `REALISTIC_PEAK_BUDGET_MB`). The idle peak is still reported.
      The send phase's bound comes from the worker's send schedule (`SETTLE_MS`, `POLL_IDLE_MS`, `NO_PROGRESS_CAP`) plus
      a named margin, timed from the worker loading the seed, never a literal that equals a normal run's length.
      Guarded by `tests/scale-budget.test.ts`.
@@ -288,7 +290,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    starts) and every wait what is left of it: start-up, hooks, `PrActions.close`, `closeConnections`, `Engine.stop` and
    the store's queue; bounds per wait added up to about 45 s. `Store.close` refuses new mutations at once, commits one
    already accepted if it finishes inside the deadline, and drops (with the "stopping" error, writing nothing) one that
-   finishes after it. Guarded by `tests/worker-stop.test.ts`.
+   finishes after it. `STOP_WAIT_MS` (1.5 s) fits inside Paseo's own stop window: a plugin still running 2 s after
+   `shutdown` gets SIGTERM. Guarded by `tests/worker-stop.test.ts`.
 11. **Reporting an issue costs no standing context and posts nothing without a yes**
    (`report-issue-costs-no-standing-context`, `report-issue-files-only-after-confirm`,
    `report-issue-never-carries-secrets`). `report_issue`'s description is one line of at most 150 chars; its procedure
@@ -488,6 +491,21 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    list is about 400 px and a row's chips were drawn over its age. Guarded by `tests/row-chips.test.ts` and
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
+37. **A new worker starts once the old one exits** (`a-new-worker-starts-once-the-old-one-exits`). A worker that
+   starts while the previous one is still shutting down waits for it and starts the moment it exits; a transient
+   start-up failure never becomes a permanent load error. `Store.lock` (`server/store.ts`) waits while
+   `worker.lock`'s owner is a live worker (`workerOwner`: a running pid whose /proc cmdline is Paseo's plugin process
+   and that started no later than the lock was written, so a pid reused by anything, another plugin's worker
+   included, is stale): every second for the first minute, then every 30 s, with no cap, and `close()` ends the wait.
+   Clearing a stale lock is claimed too (`worker.lock.recovery`, holding the clearer's pid); a claim whose holder
+   isn't a live worker, or older than `RECOVERY_STALE_MS` (10 s), is removed, so a worker that died mid-clear can't
+   block every later start. Every wait is reported. Meanwhile RPCs answer at once with "Waiting for the previous
+   Follow-up worker to exit" (`follow.list` keeps the client's last list). Only a lock with no valid owner or
+   unreadable state stays an error. The old side: a worker whose host IPC channel closes without a stop
+   (`disconnect`) stops within its deadline, frees the lock and exits. 2026-11-16: Paseo's self-update restarted its
+   daemon worker, which exited at its own 10 s force-exit before stopping any plugin, and its tree kill missed them;
+   the orphaned worker kept the lock, the new one threw "Another follow-up worker is running.", and Follow-up stayed
+   down until a reload. Guarded by `tests/worker-lock.test.ts`.
 
 38. **A linked item uses every known local title** (`a-linked-item-uses-every-known-local-title`). Resolve artifact
    and Claude Docs names from completed receipts and every tracked workspace's stored artifacts. Fill missing names

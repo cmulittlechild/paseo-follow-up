@@ -98,8 +98,9 @@ test("worker stop: PrActions.close is bounded by a PR action whose gh/gt call ne
 
 test("worker stop: the worker's teardown routes every wait through one deadline", async () => {
   const source = await readFile(join(import.meta.dirname, "..", "index.server.ts"), "utf8");
-  const stop = source.slice(source.lastIndexOf("  return async () => {"));
-  const awaits = [...stop.slice(0, stop.indexOf("\n  };")).matchAll(/await ([^;]+);/g)].map(m => m[1]!.trim());
+  // The worker's stop: one run however often it is called (Paseo's shutdown, or the host going away).
+  const stop = source.slice(source.lastIndexOf("  const stop = () => stopping ??= (async () => {"));
+  const awaits = [...stop.slice(0, stop.indexOf("\n  })();")).matchAll(/await ([^;]+);/g)].map(m => m[1]!.trim());
   assert.ok(awaits.length > 0, "found the worker's stop function");
   assert.ok(awaits.some(a => a.startsWith("stopWorker(")), "the worker's stop doesn't go through stopWorker: each wait gets its own bound, one after another");
   for (const a of awaits) assert.match(a, /^stopWorker\(|^settleWithin\(|^(engine\.stop|actions\.close|closeConnections|store\.close)\(|^unlock\?\.\(\)$/, `unbounded wait in the worker's stop: await ${a}`);

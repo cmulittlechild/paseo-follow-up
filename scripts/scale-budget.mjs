@@ -41,6 +41,31 @@ export function idleBudgetMb(value) {
 }
 
 /**
+ * test:scale's worker peak budget (lifetime VmHWM, realistic seed), derived from CI's own distribution the same way.
+ * It was a typed-in 300 MB: 2026-11-16 main itself read 313 (74fdcdf, #210's merge) and #211, which adds nothing the
+ * worker holds on a normal start, read 310; locally main and #211 peaked alike (286/285 vs 284/280 MB). 51 readings
+ * (tests/fixtures/ci-peak-rss.txt): the last 50 main CI runs' test:scale peaks since the seed's last level shift
+ * (2026-11-14, ~245 → ~275 MB), plus #211's 310. Two clusters, ~273-279 and ~290-299: the peak is one high-water
+ * mark, so whether a collection lands just before the heaviest moment moves it by ~20 MB run to run.
+ *   CI_PEAK_P50_MB: the median of those readings. CI_PEAK_SD_MB: their standard deviation. SPREAD_SDS as above.
+ * What it catches: a regression that adds 43 MB puts the median at the budget and fails about half the runs; one that
+ * adds 55 MB fails every run (even the lowest reading, 268, would read 323). tests/scale-budget.test.ts checks these
+ * constants against the fixture (drift over 1 MB fails).
+ */
+export const CI_PEAK_P50_MB = 278;
+export const CI_PEAK_SD_MB = 10.8;
+export const REALISTIC_PEAK_BUDGET_MB = CI_PEAK_P50_MB + SPREAD_SDS * CI_PEAK_SD_MB;
+/** A named budget for scale-check's --rss-budget: `realistic` (test:scale) or a number of MB. */
+export const PEAK_BUDGETS = { realistic: REALISTIC_PEAK_BUDGET_MB };
+export function peakBudgetMb(value) {
+  if (value === undefined || value === null || value === "" || value === "0") return 0;
+  if (Object.hasOwn(PEAK_BUDGETS, value)) return PEAK_BUDGETS[value];
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new Error(`Unknown peak budget "${value}": a number of MB or one of ${Object.keys(PEAK_BUDGETS).join(", ")}`);
+  return n;
+}
+
+/**
  * The busy window (test:scale --busy <s>): live's load while agents work, before the idle window. 2026-11-13 live
  * (2.0.1-beta.4, 153-PR workspace): RSS stepped 315 → 405 MB while agents were busy and never came back, with an idle
  * check passing. Each awake agent ends BUSY_TURNS_PER_MIN turns a minute between them, each with BUSY_TURN_ITEMS

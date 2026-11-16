@@ -10,16 +10,39 @@ import { join } from "node:path";
 // Invariant memory-returns-after-a-burst (AGENTS.md): what a burst of work grows comes back once it ends. V8 grows its
 // young generation to its cap under a burst and keeps it (or its pages, pooled) while anything allocates; only a
 // memory-reducing collection returns it. 2026-11-15: the live worker stepped 232 → 325 → 376 MB over busy periods.
-test("the worker's compaction returns what a burst of garbage grew", async () => {
-  const { stdout } = await promisify(execFile)(process.execPath, ["--import", "tsx", "tests/fixtures/burst-child.ts"], { timeout: 30_000 });
-  const r = JSON.parse(stdout.trim().split("\n").pop()!) as { before: number; burst: number; after: number; compacted: boolean };
+// The child's young generation is pinned (--max-semi-space-size), so a burst grows it to the same cap on every machine:
+// V8's default size moves with the machine's memory. Its new_space is two semi-spaces at the cap.
+const SEMI_SPACE_MB = 32;
+async function runBurst(extra: string[] = []) {
+  const { stdout } = await promisify(execFile)(process.execPath, [`--max-semi-space-size=${SEMI_SPACE_MB}`, ...extra, "--import", "tsx", "tests/fixtures/burst-child.ts", ...extra.includes("--expose-gc") ? ["plain"] : []], { timeout: 60_000 });
+  return JSON.parse(stdout.trim().split("\n").pop()!) as { before: number; burst: number; after: number; youngBefore: number; youngBurst: number; youngAfter: number; compacted: boolean };
+}
+
+function checkBurst(r: Awaited<ReturnType<typeof runBurst>>) {
   assert.ok(r.compacted, "compaction ran");
-  // Ratios, not MB: the child's base RSS moves with the runtime. Measured (Node 24.20, 5 runs): the burst grew RSS
-  // 1.55-1.8x and compaction returned 97-104 % of it; a plain gc() returns none of it.
-  assert.ok(r.burst >= r.before * 1.3, `the burst grew RSS (${r.before} → ${r.burst} MB), or the test measures nothing`);
+  const seen = `RSS ${r.before} → ${r.burst} → ${r.after} MB, young generation ${r.youngBefore} → ${r.youngBurst} → ${r.youngAfter} MB`;
+  // The burst is sized by allocation, so it reaches the cap however contended the CPU is (a time-boxed burst stopped at
+  // 32 of 64 MB under load and the RSS ratio fell to 1.34x against 1.3x: the flake this replaced).
+  assert.equal(r.youngBurst, 2 * SEMI_SPACE_MB, `the burst grew the young generation to its cap, or the test measures nothing (${seen})`);
+  // Ratios, not MB: the child's base RSS moves with the runtime. Measured (Node 24.20): the burst grows RSS 1.6-1.8x.
+  assert.ok(r.burst >= r.before * 1.3, `the burst grew RSS (${seen})`);
+  // A runtime that ignores the memory-reducing flavor (Node 20) runs a plain collection: it keeps the young generation
+  // at its cap and returns ~0 % of the RSS, and fails both checks below, loudly.
+  assert.ok(r.youngAfter <= r.youngBefore * 2, `compaction shrank the young generation (${seen})`);
   const returned = (r.burst - r.after) / (r.burst - r.before);
-  // A runtime that ignores the memory-reducing flavor (Node 20) runs a plain collection and fails here, loudly.
-  assert.ok(returned >= 0.8, `compaction returned ${Math.round(returned * 100)} % of the burst's growth (before ${r.before}, burst ${r.burst}, after ${r.after} MB); a runtime that ignores gc's memory-reducing flavor returns ~0 %`);
+  assert.ok(returned >= 0.8, `compaction returned ${Math.round(returned * 100)} % of the burst's growth (${seen}); a runtime that ignores gc's memory-reducing flavor returns ~0 %`);
+}
+
+// Invariant memory-returns-after-a-burst (AGENTS.md): what a burst of work grows comes back once it ends. V8 grows its
+// young generation to its cap under a burst and keeps it (or its pages, pooled) while anything allocates; only a
+// memory-reducing collection returns it. 2026-11-15: the live worker stepped 232 → 325 → 376 MB over busy periods.
+test("the worker's compaction returns what a burst of garbage grew", async () => {
+  checkBurst(await runBurst());
+});
+
+test("a plain collection, what a runtime that ignores the memory-reducing flavor runs, fails the burst check", async () => {
+  const r = await runBurst(["--expose-gc"]);
+  assert.throws(() => checkBurst(r), /compaction shrank the young generation|compaction returned/);
 });
 
 test("the settler compacts once RSS is over its baseline and the worker has been quiet for a minute, at most once per gap", () => {
