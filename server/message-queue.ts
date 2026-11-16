@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
+import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
 import { ConversationGone, DeliveryDeferred, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
+import type { Workspace } from "../shared/model";
 
 /**
  * a-message-is-saved-before-sent-and-arrives-once: one durable outbox (queue.json) and one sender per workspace.
@@ -369,4 +370,15 @@ export class MessageQueue {
   private save(): void { if (this.loaded) this.writer.set(this.snapshot()); }
   private async saveNow(): Promise<void> { this.writer.set(this.snapshot()); await this.writer.flush(); }
   private iso(delta = 0): string { return new Date(this.now() + delta).toISOString(); }
+}
+
+/**
+ * The Needs-you entry (Workspace.undelivered) for a message with no card of its own (kind `message`): one that is
+ * Failed, or still waiting MESSAGE_STUCK_MS after it was queued. Null: it shows nothing (sent, cancelled, or not stuck yet).
+ */
+export function undeliveredEntry(item: QueueItem, now: number, agentTitle: string | null, since: string | null): NonNullable<Workspace["undelivered"]>[number] | null {
+  const waiting = item.state === "queued" || item.state === "uncertain" || item.state === "sending";
+  const stuck = item.state === "failed" || waiting && Date.parse(item.createdAt) + MESSAGE_STUCK_MS <= now;
+  if (!stuck || !item.ref.agentId) return null;
+  return { id: item.id, agentId: item.ref.agentId, agentTitle, state: item.state === "failed" ? "failed" : "queued", reason: item.reason, since: since ?? new Date(now).toISOString() };
 }

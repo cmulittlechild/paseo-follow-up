@@ -157,3 +157,17 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
     case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };
   }
 }
+
+/** A message Follow-up couldn't deliver that has no card of its own (an Overseer forward, a report) raises Needs you after this long queued, or at once when Failed. */
+export const MESSAGE_STUCK_MS = 10 * 60_000;
+/** An item as follow.queue-list and follow_queue_list show it: no message text, only its first line. */
+export const queueViewSchema = z.object({
+  id: z.string(), kind: z.enum(QUEUE_KINDS), workspaceId: z.string().nullable(), agentId: z.string().nullable(),
+  state: z.enum(DELIVERY_STATES), reason: z.string().nullable(), nextAt: z.string().nullable(), to: z.string().nullable(),
+  createdAt: z.string(), settledAt: z.string().nullable(), preview: z.string(),
+});
+export type QueueView = z.infer<typeof queueViewSchema>;
+export function queueView(item: QueueItem): QueueView {
+  return { id: item.id, kind: item.kind, workspaceId: item.ref.workspaceId ?? (item.key.startsWith("agent:") ? null : item.key), agentId: item.to ?? item.envelope?.to ?? item.ref.agentId ?? null,
+    state: deliveryOf(item), reason: item.reason, nextAt: item.nextAt, to: item.to, createdAt: item.createdAt, settledAt: item.settledAt, preview: item.text.split("\n")[0]!.slice(0, 160) };
+}

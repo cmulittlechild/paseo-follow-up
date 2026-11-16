@@ -1,5 +1,6 @@
 import { batchView, FINISH_LINE, perSnapshot, stuckLine, unconfirmedRefs } from "./status";
 import { deliveryStatus } from "./queue";
+import { sentence } from "./errors";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summary, type Task, type Status } from "./model";
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { IDLE_REASON, NO_PROGRESS_CAP } from "./send-decision";
@@ -112,6 +113,8 @@ type NeedItemBase =
   | { kind: "question"; key: string; questionId: string; title: string; detail: string; state: QuestionState; big: string | null }
   | { kind: "answer"; key: string; questionId: string; title: string; detail: string; waiting?: "copied" | "in-chat" }
   | { kind: "check"; key: string; actionId: string; title: string; detail: string }
+  /** A forward or report to an agent that didn't go out (Workspace.undelivered): Retry or Cancel its queue item. */
+  | { kind: "message"; key: string; itemId: string; title: string; detail: string }
   | { kind: "merge"; key: string; prKey: string; number: number; title: string; detail: string }
   | { kind: "reviewers"; key: string; prKey: string; number: number; /** Whom Follow-up suggests (reviewerLabel). */ suggested: string[]; title: string; detail: string };
 /**
@@ -197,6 +200,10 @@ function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
   // after the whole retry ladder, so it is the developer's to check and Retry. Everything else retries on its own.
   for (const q of questions.filter(q => q.answer?.delivery.state === "failed"))
     items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Your ${q.id} answer: Failed`, detail: deliveryStatus({ state: "failed", reason: q.answer!.delivery.reason }).detail });
+  // A message with no card of its own that didn't go out (a-message-is-saved-before-sent-and-arrives-once).
+  for (const m of w.undelivered ?? [])
+    items.push({ kind: "message", key: `message:${m.id}`, itemId: m.id, title: `A message to ${m.agentTitle?.trim() || "an agent"} didn't go out`,
+      detail: m.state === "failed" ? deliveryStatus({ state: "failed", reason: m.reason }).detail : `${m.reason ? `${sentence(m.reason)} ` : ""}Follow-up keeps retrying; Retry tries now, Cancel drops it.` });
   // Copied or put in the agent's chat: the developer's to send, so it stays here until it is
   // (an-answer-leaves-needs-you-only-when-delivered, shared/questions.ts awaitingSend).
   for (const q of questions.filter(awaitingSend)) {

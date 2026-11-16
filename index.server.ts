@@ -61,7 +61,8 @@ import { Inbox, INBOX_WRITE_MS, type GuardPause } from "./server/inbox";
 import { daemonDirectory, guardPath } from "./server/inbox-directory";
 import { fileSources } from "./server/inbox-classifier";
 import { onBeforeSend, onDaemonReconnect } from "./server/daemon";
-import { MessageQueue } from "./server/message-queue";
+import { MessageQueue, undeliveredEntry } from "./server/message-queue";
+import { queueView } from "./shared/queue";
 import { copyFile, readFile, rename, stat } from "node:fs/promises";
 import { HistoryCache } from "./server/history-cache";
 import { Governor } from "./server/governor";
@@ -309,7 +310,19 @@ export default function contribute(server: PluginServerContext) {
       if (!agent || agent.archivedAt) return { cancel: "The agent was archived, so the message wasn't sent." };
       return { target: { workspaceId: null, recipients: [item.ref.agentId!] } };
     },
-    async project() {},
+    // No card of its own: one that didn't go out (Failed, or Queued past MESSAGE_STUCK_MS) shows in its workspace's
+    // Needs you with Retry and Cancel, and leaves it once sent or cancelled.
+    async project(item) {
+      const w = (await store.snapshot()).workspaces.find(w => w.id === item.key && w.enable_tracking && !w.archived);
+      if (!w) return;
+      const has = w.undelivered?.find(m => m.id === item.id);
+      const entry = undeliveredEntry(item, Date.now(), gateway.directory.cached(item.ref.agentId!)?.title ?? null, has?.since ?? null);
+      if (!entry && !has || entry && has && JSON.stringify(entry) === JSON.stringify(has)) return;
+      await store.mutateWorkspace(w.id, x => {
+        const rest = (x.undelivered ?? []).filter(m => m.id !== item.id);
+        x.undelivered = entry ? [...rest, entry].slice(-20) : rest;
+      });
+    },
   });
   const enqueueMessage = (agentId: string, text: string, messageId: string, by?: string) => {
     const key = gateway.directory.cached(agentId)?.workspaceId ?? `agent:${agentId}`;
@@ -1222,6 +1235,17 @@ export default function contribute(server: PluginServerContext) {
   // Home, the sidebar badge and the pills poll this; an unchanged list answers in a few bytes (see inboxAnswer).
   handle(rpc.inboxListRpc, async ({ etag }) => { await requireReady(); const handedBack = noReviewRepoList().length ? (await store.snapshot()).workspaces.flatMap(w => w.prs.filter(handsMergeBack).map(p => p.key)) : [];
     return inboxAnswer({ ...await inbox.list(), error: inboxError, ...(handedBack.length ? { handedBack } : {}) }, etag); });
+  handle(rpc.queueListRpc, async ({ workspaceId, agentId }) => {
+    await requireReady();
+    const { items, recent } = queue.list({ ...(workspaceId ? { key: workspaceId } : {}), ...(agentId ? { agentId } : {}) });
+    return { items: items.map(queueView), recent: recent.map(queueView) };
+  });
+  // Retry or Cancel one item: the card's buttons, Needs you's message row and follow_queue_action run this.
+  handle(rpc.queueActionRpc, async ({ itemId, action }) => {
+    await requireReady();
+    const item = action === "retry" ? await queue.retry(itemId) : await queue.cancel(itemId, "Cancelled; it won't be sent.");
+    return { item: queueView(item) };
+  });
   handle(rpc.inboxBriefRpc, async ({ agentId }) => { await requireReady(); return { brief: await inbox.brief(agentId) }; });
   handle(rpc.inboxActRpc, async (input, context) => {
     await requireReady();

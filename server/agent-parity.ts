@@ -70,6 +70,10 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "overseer_restart", rpc: "follow.overseer-restart", kind: "planned", before: { rpc: "follow.overseer-status" }, input: z.strictObject({ ...confirm }) },
   { name: "overseer_ask", rpc: "follow.overseer-ask", kind: "planned", input: z.strictObject({ text: z.string().trim().min(1).max(2000).optional(), ...confirm }) },
   // Needs-you: the brief card and the inbox's other actions
+  // The message queue: what waits to go to agents, and Retry or Cancel on one item (a card's Retry, Needs you's message row).
+  { name: "queue_list", rpc: "follow.queue-list", kind: "read", input: z.strictObject({ workspaceId: id.optional(), agentId: id.optional() }) },
+  { name: "queue_action", rpc: "follow.queue-action", kind: "planned", before: { rpc: "follow.queue-list", input: () => ({}) },
+    input: z.strictObject({ itemId: z.string().min(1).max(400).optional(), action: z.enum(["retry", "cancel"]).optional(), ...confirm }) },
   { name: "inbox_brief", rpc: "follow.inbox-brief", kind: "read", input: z.strictObject({ agentId: id }) },
   { name: "brief_action", rpc: "follow.brief-action", kind: "planned", before: { rpc: "follow.inbox-brief", input: a => ({ agentId: a.agentId }) },
     input: z.strictObject({ agentId: id.optional(), briefId: z.string().max(300).optional(), decisionId: z.string().max(20).optional(), choice: briefChoiceSchema.optional(), words: z.string().trim().max(2000).optional(), move: z.enum(["retry", "done"]).optional(),
@@ -168,6 +172,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.overseer-ask": { tools: ["overseer_ask"] },
   "follow.inbox-list": { tools: ["inbox_list"] },
   "follow.inbox-brief": { tools: ["inbox_brief"] },
+  "follow.queue-action": { tools: ["queue_action"] },
   "follow.inbox-act": { tools: ["sign_off", "snooze", "set_finish_flags", "inbox_act"] },
   "follow.brief-action": { tools: ["brief_action"] },
   "follow.answer-question": { tools: ["answer_question"], note: "The tool sends (action send). Copy and Put in chat (action copy, chat) only move the developer's own words into their clipboard or their composer for them to send; an agent answers by sending, so it has no Put in chat." },
