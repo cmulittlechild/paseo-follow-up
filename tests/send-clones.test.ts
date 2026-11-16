@@ -1,5 +1,6 @@
 import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
+import { queueEngine } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -34,18 +35,20 @@ async function fleet(t: { after: (fn: () => unknown) => void }) {
   return { store, copies: () => wholeCopies };
 }
 
-function engineFor(store: Store, now: () => number) {
+async function engineFor(store: Store, now: () => number, root: string) {
   const sends: string[] = [];
   const runtime: Runtime = { busy: false, reason: null, archived: false, mainLoaded: true, mainRecent: true };
   const gateway: Gateway = { prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }), observe: async () => runtime, send: async (_w, _b, text) => { sends.push(text); }, label: async () => {} };
   const github = { observe: async (prs: { key: string; snapshot: unknown }[]) => new Map(prs.map(p => [p.key, { snapshot: { ...(p.snapshot as object), observedAt: new Date(now()).toISOString() }, error: null }])) };
-  return { engine: new Engine(store, github as never, gateway, now), sends };
+  const engine = new Engine(store, github as never, gateway, now);
+  await queueEngine(engine, gateway, root);
+  return { engine, sends };
 }
 
 test("a-send-never-clones-the-whole-state: an auto-send, its acknowledgment and the turns around it copy one workspace, never the state", async t => {
   const { store, copies } = await fleet(t);
   let now = clock;
-  const { engine, sends } = engineFor(store, () => now);
+  const { engine, sends } = await engineFor(store, () => now, store.directory);
   await engine.tick();
   const before = copies();
   now += 61_000; await engine.tick();
@@ -66,7 +69,7 @@ test("a-send-never-clones-the-whole-state: a developer's Send copies one workspa
   const { store, copies } = await fleet(t);
   await store.mutateWorkspace("w0", w => { w.enable_auto_sends = false; });
   let now = clock;
-  const { engine, sends } = engineFor(store, () => now);
+  const { engine, sends } = await engineFor(store, () => now, store.directory);
   await engine.tick(); now += 61_000; await engine.tick();
   const pending = (await store.snapshot()).workspaces[0].batches.find(b => b.state === "pending")!;
   const before = copies();

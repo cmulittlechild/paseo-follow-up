@@ -259,7 +259,7 @@ export const reportTargetsRpc = defineRpc({ name: "follow.report-issue-targets",
     newWorkspace: z.object({ projectId: idSchema, title: z.string() }).nullable().optional() }) });
 /** Send to agent: the report prompt goes to `agentId`, a new agent in `newAgentWorkspaceId`, or a new workspace in `newWorkspaceProjectId`. */
 export const reportSendRpc = defineRpc({ name: "follow.report-issue-send", input: z.object({ kind: reportKindSchema, text: z.string().max(8000), error: z.string().max(2000).nullable().optional(), agentId: z.string().max(200).optional(), newAgentWorkspaceId: z.string().max(200).optional(), newWorkspaceProjectId: z.string().max(200).optional() }),
-  output: z.object({ agentId: idSchema, title: z.string(), started: z.boolean(), workspaceId: z.string().optional() }) });
+  output: z.object({ agentId: idSchema, title: z.string(), started: z.boolean(), workspaceId: z.string().optional(), queued: z.boolean().optional() }) });
 /** Open on GitHub (no agent to send to): a prefilled new-issue link carrying the redacted versions block. */
 export const reportLinkRpc = defineRpc({ name: "follow.report-issue-link", input: z.object({ kind: reportKindSchema, text: z.string().max(8000) }), output: z.object({ url: z.string() }) });
 

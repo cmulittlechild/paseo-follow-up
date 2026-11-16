@@ -57,6 +57,11 @@ export type OverseerDeps = {
   /** The active window, for workspaces Follow-up doesn't track. */
   windowMs?: () => Promise<number>;
   enabled(): Promise<boolean>;
+  /**
+   * Puts a forward on the message queue (server/message-queue.ts): saved, sent in the background, retried until it
+   * lands. The tool replies once it is queued. Absent (tests), the forward is sent directly.
+   */
+  enqueue?(agentId: string, text: string, messageId: string, by?: "developer"): void;
   /** The "overseer" role from Settings → Agents. Default: Claude, newest Opus, bypass. */
   agent?: () => Promise<OverseerAgentSetting>;
   /** Harness override ("provider/model", from FOLLOW_UP_OVERSEER_PROVIDER): wins over the setting. */
@@ -325,12 +330,16 @@ export class Overseer {
     await this.d.inbox.noteDelivery(args.agentId, messageId, sender === "developer" ? "developer" : undefined);
     // Sending to an unloaded agent wakes it. That's Tom's explicit ask here, so it's allowed, and the reply says so.
     const woke = !isLoaded(agent);
-    try { await paseo.agents.ref(args.agentId).send(forwardText(args.text), { messageId }); }
-    catch (error) { if (conversationGone(error)) throw new Error(`${agent.title ?? args.agentId}'s conversation is gone; it can't take messages. Offer the developer a new workspace instead.`); throw error; }
+    // Queued, not awaited: the forward is saved and goes out in the background, retried until it lands.
+    if (this.d.enqueue) this.d.enqueue(args.agentId, forwardText(args.text), messageId, sender === "developer" ? "developer" : undefined);
+    else {
+      try { await paseo.agents.ref(args.agentId).send(forwardText(args.text), { messageId }); }
+      catch (error) { if (conversationGone(error)) throw new Error(`${agent.title ?? args.agentId}'s conversation is gone; it can't take messages. Offer the developer a new workspace instead.`); throw error; }
+    }
     const lites = await this.d.workspaces().catch(() => []);
     const where = lites.find(l => l.id === agent.workspaceId)?.name ?? agent.title ?? args.agentId;
     const who = agent.title ?? where;
-    return { sent: true, agentId: args.agentId, workspace: where, woke, clearsNeedsYou: sender === "developer", next: `Tell the developer in one line: "Sent to ${where}${woke ? ` (woke ${who})` : ""}."` };
+    return { sent: true, queued: !!this.d.enqueue, agentId: args.agentId, workspace: where, woke, clearsNeedsYou: sender === "developer", next: `Tell the developer in one line: "Sent to ${where}${woke ? ` (waking ${who})` : ""}."` };
   }
 
   /**

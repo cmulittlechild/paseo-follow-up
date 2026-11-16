@@ -47,3 +47,37 @@ export async function quiesce(inbox: { stop(): void; store: { flush?: () => Prom
   await queue?.writer.flush().catch(() => undefined);
   await inbox.store.flush?.().catch(() => undefined);
 }
+
+/**
+ * An Engine on a test queue (server/message-queue.ts): repairs, recovery and answers go through it, and tick(),
+ * sendPending() and startRecovery() wait until the queue has settled what is due, so a test reads the outcome
+ * right after, as it did before the queue. Repairs reach `gateway.send` (by the batch's messageId), answers
+ * `deliver` when given.
+ */
+export async function queueEngine<E extends { attachQueue(q: MessageQueue): void; tick(...a: any[]): Promise<void>; sendPending(...a: any[]): Promise<any>; startRecovery(...a: any[]): Promise<any>; recover(): Promise<void>; store: { snapshot(): Promise<any>; flush?(): Promise<void> } }>(
+  engine: E, gateway: { send(w: any, b: any, text: string): Promise<void>; arrived?(w: any, b: any): Promise<boolean | null> }, directory: string,
+  o: { deliver?: Courier["deliverTo"]; arrived?: Courier["arrived"] } = {},
+) {
+  const find = async (messageId: string) => {
+    for (const w of (await engine.store.snapshot()).workspaces) for (const b of w.batches) if (b.messageId === messageId) return { w, b };
+    return null;
+  };
+  const q = await testQueue(directory, {
+    deliver: async (target, text, messageId, by) => {
+      const hit = await find(messageId);
+      if (hit) { await gateway.send(hit.w, { ...hit.b, recipientAgentId: hit.b.recipientAgentId ?? target.recipients[0] }, text); return target.recipients[0]!; }
+      return o.deliver ? o.deliver(target, text, messageId, by) : target.recipients[0]!;
+    },
+    arrived: o.arrived ?? (async (_agent, messageId) => { const hit = await find(messageId); return hit && gateway.arrived ? gateway.arrived(hit.w, hit.b) : null; }),
+  });
+  engine.attachQueue(q.queue);
+  // As at worker start: batches already on their way join the queue, and what is due goes now.
+  await (engine as unknown as { adoptBatches?(): Promise<void> }).adoptBatches?.();
+  q.queue.start();
+  for (const name of ["tick", "sendPending", "startRecovery", "recover"] as const) {
+    const original = ((engine as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name])?.bind(engine);
+    if (!original) continue;
+    (engine as Record<string, unknown>)[name] = async (...a: unknown[]) => { const r = await original(...a); if (name === "recover") { await (engine as unknown as { adoptBatches?(): Promise<void> }).adoptBatches?.(); q.queue.start(); } await q.queue.idle(); await q.queue.writer.flush().catch(() => undefined); await engine.store.snapshot(); return name === "tick" || name === "recover" ? r : (await engine.store.snapshot()).workspaces.find((w: { id: string }) => w.id === a[0]) ?? r; };
+  }
+  return q;
+}
