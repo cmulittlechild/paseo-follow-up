@@ -288,7 +288,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    starts) and every wait what is left of it: start-up, hooks, `PrActions.close`, `closeConnections`, `Engine.stop` and
    the store's queue; bounds per wait added up to about 45 s. `Store.close` refuses new mutations at once, commits one
    already accepted if it finishes inside the deadline, and drops (with the "stopping" error, writing nothing) one that
-   finishes after it. Guarded by `tests/worker-stop.test.ts`.
+   finishes after it. `STOP_WAIT_MS` (1.5 s) fits inside Paseo's own stop window: a plugin still running 2 s after
+   `shutdown` gets SIGTERM. Guarded by `tests/worker-stop.test.ts`.
 11. **Reporting an issue costs no standing context and posts nothing without a yes**
    (`report-issue-costs-no-standing-context`, `report-issue-files-only-after-confirm`,
    `report-issue-never-carries-secrets`). `report_issue`'s description is one line of at most 150 chars; its procedure
@@ -488,6 +489,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    list is about 400 px and a row's chips were drawn over its age. Guarded by `tests/row-chips.test.ts` and
    `scripts/screenshots.mjs --only rowchips` (CDP box models at list widths 320, 360 and 400; writes
    `rowchips.json`).
+37. **A new worker starts once the old one exits** (`a-new-worker-starts-once-the-old-one-exits`). A worker that
+   starts while the previous one is still shutting down waits for it and starts the moment it exits; a transient
+   start-up failure never becomes a permanent load error. `Store.lock` (`server/store.ts`) waits while
+   `worker.lock`'s owner is a live worker (`workerOwner`: a running pid whose /proc cmdline is Paseo's plugin process
+   and that started no later than the lock was written, so a pid reused by anything, another plugin's worker
+   included, is stale): every second for the first minute, then every 30 s, with no cap, and `close()` ends the wait.
+   Meanwhile RPCs answer at once with "Waiting for the previous Follow-up worker to exit" (`follow.list` keeps the
+   client's last list). Only a lock with no valid owner or unreadable state stays an error. The old side: a worker
+   whose host IPC channel closes without a stop (`disconnect`) stops within its deadline, frees the lock and exits.
+   2026-11-16: Paseo's self-update restarted its daemon worker, which exited at its own 10 s force-exit before
+   stopping any plugin, and its tree kill missed them; the orphaned worker kept the lock, the new one threw "Another
+   follow-up worker is running.", and Follow-up stayed down until a reload. Guarded by `tests/worker-lock.test.ts`.
 
 ## Bugs
 

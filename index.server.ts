@@ -335,6 +335,11 @@ export default function contribute(server: PluginServerContext) {
   let hookTimer: ReturnType<typeof setInterval> | null = null;
   let hooksStarted = false;
   let loadError: string | null = null;
+  /**
+   * a-new-worker-starts-once-the-old-one-exits: set while the previous worker still holds the lock (Store.lock waits
+   * for it). Not an error: RPCs answer with it at once instead of waiting, and the worker starts when the lock frees.
+   */
+  let waiting: string | null = null;
   let hookError: string | null = null;
   /**
    * 1.3.0-beta.2: tracking is invisible. Once, back up state.json, then follow every known workspace with auto-send on.
@@ -392,7 +397,8 @@ export default function contribute(server: PluginServerContext) {
   const ready = (async () => {
     // Getting started: fresh or existing is decided from what's on disk before anything below writes state.
     await onboarding.init().catch(() => undefined);
-    unlock = await store.lock();
+    unlock = await store.lock({ onWait: pid => { waiting = `Waiting for the previous Follow-up worker to exit (pid ${pid}).`; } });
+    waiting = null;
     // Before anything ticks: which repositories are No review (agentMerges), so the first tick after a restart is already quiet.
     await prWorkflow.read();
     await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -420,7 +426,7 @@ export default function contribute(server: PluginServerContext) {
     await inbox.resumeAnswers(sendTo).catch(() => undefined);
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
   for (const file of [store, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
-  const requireReady = async () => { await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
+  const requireReady = async () => { if (waiting) throw new Error(waiting); await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
   // 1.4.0-beta.2: Follow-up's tools per agent: natively through Paseo's MCP when the host serves plugin tools,
   // otherwise the stdio bridge for this launch only. FOLLOW_UP_TOOLS tells the hooks which names the agent has.
   let configCache: { mtimeMs: number; value: unknown } | null = null;
@@ -554,8 +560,8 @@ export default function contribute(server: PluginServerContext) {
     const view = browserWorkspaces(entries);
     return { tracked: true, ...view, workspaces: view.workspaces.map(w => ({ ...w, title: w.title.slice(0, 200), agentStatus: w.agentStatus.slice(0, 40), state: w.state.slice(0, 200) })) };
   });
-  handle(rpc.listRpc, async ({ since }) => { await ready; return { ...listCache.answer(await store.snapshot(), since), error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
-  handle(rpc.getRpc, async ({ workspaceId }) => { await ready; return { workspace: (await store.snapshot()).workspaces.find(w => w.id === workspaceId && w.enable_tracking) ?? null, error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
+  handle(rpc.listRpc, async ({ since }) => { if (waiting) return { workspaces: [], full: false, removed: [], error: waiting }; await ready; return { ...listCache.answer(await store.snapshot(), since), error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
+  handle(rpc.getRpc, async ({ workspaceId }) => { if (waiting) return { workspace: null, error: waiting }; await ready; return { workspace: (await store.snapshot()).workspaces.find(w => w.id === workspaceId && w.enable_tracking) ?? null, error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });
   handle(rpc.syncWorkspaceRpc, async ({ agentId, summary }, { paseo }) => {
     await requireReady();
     const workspaceId = await callerWorkspaceId(agentId, paseo, false);
@@ -1211,7 +1217,7 @@ export default function contribute(server: PluginServerContext) {
   // Subscriptions (Paseo 0.16): every open client used to poll these reads (about 17 a minute for an idle Home); now
   // the worker pushes from state it already holds, one shared serve per topic (server/feeds.ts, invariant
   // idle-client-makes-at-most-one-rpc-a-minute). A 0.15 host serves no subscriptions, and its clients keep polling.
-  const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => loadError ?? hookError ?? writeHealth.message() ?? engine.error);
+  const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => waiting ?? loadError ?? hookError ?? writeHealth.message() ?? engine.error);
   const inboxFeed = new ValueFeed({ read: async () => { await requireReady(); return inboxAnswer({ ...await inbox.list(), error: inboxError }, undefined); }, key: v => v.etag ?? JSON.stringify(v) });
   let usageWatch: { close(): void } | null = null;
   const homeFeed = new ValueFeed({
@@ -1473,12 +1479,21 @@ export default function contribute(server: PluginServerContext) {
     }),
     server.on("workspace.archived", async event => { await ready; if (!loadError && !stopped) await store.mutate(state => { const w = state.workspaces.find(w => w.id === event.workspace.id); if (w) w.archived = true; }); }),
   ];
-  return async () => {
+  // a-new-worker-starts-once-the-old-one-exits, the old side: when Paseo's process goes away without stopping this one
+  // (2026-11-16: the daemon worker exited at its own 10 s force-exit, before it stopped any plugin, and its tree kill
+  // missed the orphaned plugin processes), the IPC channel closes. Stop within the deadline and exit, so the lock frees
+  // and the next worker starts. A normal stop removes the listener first.
+  const hostGone = () => { void stop().finally(() => process.exit(0)); };
+  if (process.connected) process.once("disconnect", hostGone);
+  let stopping: Promise<void> | null = null;
+  const stop = () => stopping ??= (async () => {
+    process.off("disconnect", hostGone);
     restoreConsole();
     stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
     await stopWorker({ files: [reviewerStore, agentSettings, prWorkflow], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
-  };
+  })();
+  return stop;
 }

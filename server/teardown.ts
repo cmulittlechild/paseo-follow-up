@@ -7,7 +7,9 @@
  * Work that outlives the deadline is abandoned and writes nothing (Store.close); the next start recovers from what
  * was saved.
  */
-export const STOP_WAIT_MS = 5_000;
+// Inside Paseo's own window: a plugin that hasn't exited 2 s after "shutdown" gets SIGTERM (runtime.js
+// SOFT_SHUTDOWN_TIMEOUT_MS, 0.15 and 0.16), which ends the process mid-save. A normal stop takes ~20 ms.
+export const STOP_WAIT_MS = 1_500;
 /** The end of the deadline kept for saving what finished in time: work waits stop this much earlier. */
 const SAVE_SHARE = 0.2;
 const SAVE_MAX_MS = 1_000;

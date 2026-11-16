@@ -1,5 +1,6 @@
 import { settleWithin, stopDeadline, type Deadline } from "./teardown";
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stateSchema, workspaceSchema, type State, type Workspace } from "../shared/model";
@@ -17,6 +18,43 @@ export { sameJson, deepFreeze } from "./cow";
  * so a failed mutation leaves the state untouched.
  */
 /** Refused once the worker stopped: nothing is saved, and the next start recovers from what was. */
+/** How often lock checks a live owner: every `fast` ms for the first `fastForMs`, then every `slow` ms, with no cap. */
+export const LOCK_POLL_MS = { fast: 1_000, fastForMs: 60_000, slow: 30_000 };
+export interface LockOptions {
+  /** Called on every check that finds the lock held by a live worker (its pid). */
+  onWait?: (pid: number) => void;
+  /** Whether `pid`, named by a lock written at `lockedAt` (ms), is a live Follow-up worker (default: workerOwner). */
+  owner?: (pid: number, lockedAt: number) => boolean;
+  pollMs?: typeof LOCK_POLL_MS;
+}
+/**
+ * A lock's pid is a live worker only while it runs, is still a Paseo plugin process (a fork of plugin-process.js), and
+ * started no later than the lock was written (`lockedAt`, with OWNER_START_SLACK_MS): after the worker exits its pid
+ * can be reused by anything, another plugin's worker included (a daemon restart starts them all at once), and that
+ * must not block the next start. Where /proc can't be read (not Linux), a running pid counts.
+ */
+export function workerOwner(pid: number, lockedAt = Infinity): boolean {
+  try { process.kill(pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; }
+  let cmdline: string;
+  try { cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT" || !existsProc(); }
+  if (!/plugin-process\.[cm]?[jt]s(\0|$)/.test(cmdline)) return false;
+  const started = processStart(pid);
+  return started === null || started <= lockedAt + OWNER_START_SLACK_MS;
+}
+/** Clock and rounding slack between a process's start time (/proc, 10 ms ticks on a 1 s boot time) and a file's mtime. */
+export const OWNER_START_SLACK_MS = 2_000;
+/** When `pid` started (ms since the epoch), from /proc/<pid>/stat's starttime and /proc/stat's btime; null if unknown. */
+export function processStart(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    // Fields after the command (which may hold spaces or parentheses): field 3 is the first; starttime is field 22.
+    const ticks = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]);
+    const boot = Number(/^btime (\d+)$/m.exec(readFileSync("/proc/stat", "utf8"))?.[1]);
+    // USER_HZ, the unit of starttime, is 100 on every Linux Paseo runs on.
+    return Number.isFinite(ticks) && Number.isFinite(boot) && boot > 0 ? boot * 1_000 + ticks * 10 : null;
+  } catch { return null; }
+}
+const existsProc = () => { try { readFileSync("/proc/self/cmdline"); return true; } catch { return false; } };
 const stopping = () => new Error("Follow-up is stopping; nothing was saved.");
 
 export class Store {
@@ -193,7 +231,7 @@ export class Store {
     let work: Deadline;
     if (within === undefined || typeof within === "number") ({ work, save } = stopDeadline(within));
     else { work = within; save ??= within; }
-    this.closing = true;
+    this.closing = true; this.wakeLock?.();
     await settleWithin(this.tail, work);
     this.sealed = true;
     // Pending read timestamps count too: close writes them (store-writes-only-real-changes).
@@ -276,7 +314,15 @@ export class Store {
     });
     return changed ? { ...next, workspaces } : next;
   }
-  async lock(): Promise<() => Promise<void>> {
+  /**
+   * a-new-worker-starts-once-the-old-one-exits: the lock is this process's claim to be the only writer. While another
+   * live worker holds it (Paseo started this one before the previous one finished stopping, 2026-11-16), lock waits
+   * and claims it the moment that worker exits: every second for the first minute, then every 30 s, with no cap.
+   * `onWait` reports the wait (the worker shows it as its status). Only a lock that names no owner is an error; an
+   * owner that is gone, or whose pid now belongs to something that isn't a Paseo plugin process, left it stale.
+   * close() ends the wait.
+   */
+  async lock({ onWait, owner = workerOwner, pollMs = LOCK_POLL_MS }: LockOptions = {}): Promise<() => Promise<void>> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const path = join(this.directory, "worker.lock");
     const token = `${process.pid}:${randomUUID()}`;
@@ -284,22 +330,37 @@ export class Store {
       const file = await open(path, "wx", 0o600);
       try { await file.writeFile(token); } finally { await file.close(); }
     };
-    try { await claim(); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const prior = await readFile(path, "utf8");
+    const started = Date.now();
+    for (;;) {
+      if (this.closing) throw stopping();
+      try { await claim(); break; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+      const prior = await readFile(path, "utf8").catch(() => null);
+      if (prior === null) continue;
       const pid = Number(prior.split(":")[0]);
       if (!Number.isInteger(pid) || pid < 1) throw new Error("Worker lock has an invalid owner.");
-      try { process.kill(pid, 0); throw new Error("Another follow-up worker is running."); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-      const recovery = await open(`${path}.recovery`, "wx", 0o600);
-      try {
-        if (await readFile(path, "utf8") !== prior) throw new Error("Worker ownership changed. Retry loading.");
-        await unlink(path); await claim();
-      } finally { await recovery.close(); await unlink(`${path}.recovery`); }
+      const lockedAt = await stat(path).then(s => s.mtimeMs, () => Infinity);
+      if (owner(pid, lockedAt)) {
+        onWait?.(pid);
+        await this.lockPause(Date.now() - started < pollMs.fastForMs ? pollMs.fast : pollMs.slow);
+        continue;
+      }
+      const recovery = await open(`${path}.recovery`, "wx", 0o600).catch(error => { if ((error as NodeJS.ErrnoException).code === "EEXIST") return null; throw error; });
+      if (!recovery) { await this.lockPause(pollMs.fast); continue; }
+      try { if (await readFile(path, "utf8").catch(() => null) === prior) await unlink(path); }
+      finally { await recovery.close(); await unlink(`${path}.recovery`); }
     }
     return async () => { if (await readFile(path, "utf8").catch(() => "") === token) await unlink(path); };
   }
+  /** A wait between lock attempts that close() cuts short; it never keeps the process alive on its own. */
+  private lockPause(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.wakeLock = null; resolve(); }, ms);
+      (timer as { unref?: () => void }).unref?.();
+      this.wakeLock = () => { clearTimeout(timer); this.wakeLock = null; resolve(); };
+    });
+  }
+  private wakeLock: (() => void) | null = null;
 }
 
 /**
