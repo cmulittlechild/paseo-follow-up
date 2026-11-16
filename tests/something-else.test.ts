@@ -1,4 +1,5 @@
 import test from "node:test";
+import { attachSent, quiesce } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -101,22 +102,23 @@ test("single-decision delivery from a brief keeps the Q<n> message format", () =
 
 test("the server refuses Something else without words, then records it with the words on the card", async () => {
   const dir = await mkdtemp(join(tmpdir(), "follow-other-"));
+  let inbox: Inbox | null = null;
   try {
     const agent: AgentInfo = { id: "main", workspaceId: "w", parentAgentId: null, title: "Main", status: "idle", archivedAt: null, updatedAt: null, lastUserMessageAt: null, requiresAttention: false, attentionReason: null };
     const directory = { agents: async () => [agent], workspaces: async () => [{ id: "w", name: "W" }], agent: async () => agent, tail: async () => [], clearAttention: async () => {} } as unknown as Directory;
-    const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never, guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async () => {}, call: async () => null, pr: async () => null } } as never);
+    inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never, guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async () => {}, call: async () => null, pr: async () => null } } as never);
     await inbox.store.mutate(s => { s.entries.main = { ...(s.entries.main ?? {}), agentId: "main", brief: open() } as never; });
-    const sent: string[] = [];
-    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "other" }] }, async t => { sent.push(t); }), /Something else needs your answer in words/);
-    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", decisionId: "Q9", choice: "other", words: " " }, async t => { sent.push(t); }), /Something else needs your answer in words/);
+    const sent = await attachSent(inbox, dir);
+    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "other" }] }), /Something else needs your answer in words/);
+    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", decisionId: "Q9", choice: "other", words: " " }), /Something else needs your answer in words/);
     assert.equal(sent.length, 0, "nothing sent");
-    const after = await inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "other", words: "Until the next billing date" }, { decisionId: "Q10", choice: "A" }] }, async t => { sent.push(t); });
+    const after = await inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "other", words: "Until the next billing date" }, { decisionId: "Q10", choice: "A" }] });
     await inbox.idle();
     assert.equal(sent.length, 1);
     assert.deepEqual(after.decisions.map(d => [d.chosen, d.words]), [["other", "Until the next billing date"], ["A", null]]);
     assert.equal(after.outcome, "You picked 1. Something else · 2. A");
     assert.deepEqual(pastRows(after).map(r => r.answer), [`Something else · "Until the next billing date"`, "A · Slack"]);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+  } finally { if (inbox) await quiesce(inbox); await rm(dir, { recursive: true, force: true }); }
 });
 
 // ---------- agent parity ----------

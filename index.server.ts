@@ -60,7 +60,8 @@ import { updateObligation } from "./server/obligations";
 import { Inbox, INBOX_WRITE_MS, type GuardPause } from "./server/inbox";
 import { daemonDirectory, guardPath } from "./server/inbox-directory";
 import { fileSources } from "./server/inbox-classifier";
-import { onBeforeSend } from "./server/daemon";
+import { onBeforeSend, onDaemonReconnect } from "./server/daemon";
+import { MessageQueue } from "./server/message-queue";
 import { copyFile, readFile, rename, stat } from "node:fs/promises";
 import { HistoryCache } from "./server/history-cache";
 import { Governor } from "./server/governor";
@@ -298,7 +299,12 @@ export default function contribute(server: PluginServerContext) {
       catch { return null; }
     },
   });
-  onBeforeSend((agentId, messageId) => inbox.noteDelivery(agentId, messageId));
+  onBeforeSend((agentId, messageId, by) => inbox.noteDelivery(agentId, messageId, by === "developer" || by?.startsWith("agent:") ? by as "developer" | `agent:${string}` : undefined));
+  // a-message-is-saved-before-sent-and-arrives-once: every message to an agent goes through one queue (queue.json).
+  const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker) }, { health: writeHealth });
+  engine.attachQueue(queue);
+  inbox.attachQueue(queue);
+  onDaemonReconnect(() => queue.reconnected());
   /** What the bridge and the Stop hook read: is the inbox on, may agents be nudged, who has a prompt showing. */
   const writeBriefState = async () => {
     const values = await inboxSettings();
@@ -422,8 +428,12 @@ export default function contribute(server: PluginServerContext) {
     await agentHooks.start().catch(() => { hookError = "Automatic sidebar instructions could not be registered for every provider. Check Claude/Codex hook settings; following still works."; });
     hookTimer = setInterval(() => void agentHooks.heartbeat().catch(() => {}), 30_000);
     await writeBriefState().catch(() => undefined);
-    // Brief answers recorded before a reload that Paseo never confirmed go out again, under the same messageId.
-    await inbox.resumeAnswers(sendTo).catch(() => undefined);
+    // The message queue: answers recorded before a reload (or before the upgrade from 2.0's per-answer senders) join it,
+    // a send a reload cut off is read back from the agent's chat before it goes again, and everything due goes now.
+    await queue.load();
+    await engine.adoptAnswers().catch(error => console.warn(`[follow-up] couldn't move answers onto the queue: ${error instanceof Error ? error.message : String(error)}`));
+    await inbox.adoptOutbox().catch(error => console.warn(`[follow-up] couldn't move the answer outbox onto the queue: ${error instanceof Error ? error.message : String(error)}`));
+    queue.start();
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
   for (const file of [store, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
   const requireReady = async () => { if (waiting) throw new Error(waiting); await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
@@ -1299,7 +1309,7 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.briefActionRpc, async ({ agentId, briefId, decisionId, choice, words, choices, move, answerId }, context) => {
     const { paseo } = context;
     await requireReady(); seen(paseo);
-    const brief = await inbox.briefAction(agentId, { briefId, decisionId, choice, words, choices, move, answerId }, sendTo(agentId), actorOf(context));
+    const brief = await inbox.briefAction(agentId, { briefId, decisionId, choice, words, choices, move, answerId }, actorOf(context));
     return { brief };
   });
 
@@ -1489,11 +1499,11 @@ export default function contribute(server: PluginServerContext) {
   const stop = () => stopping ??= (async () => {
     process.off("disconnect", hostGone);
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ files: [reviewerStore, agentSettings, prWorkflow], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   })();
   return stop;
 }

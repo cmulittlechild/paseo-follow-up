@@ -245,8 +245,8 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 - The question mode (Stop, Work around, Keep building) is a host setting, `questionPreferences`.
 - Answers from the UI go through `follow.answer-question`: Send, Copy, Put in chat (`chat`, Paseo 0.16) or Resend.
   Copy and Put in chat record the answer as `copied` or `in-chat` and send nothing; it waits in Needs you until it is
-  delivered ([needs-you.md](needs-you.md#answers-waiting-to-be-sent)). An answer the agent can't take yet
-  queues, and the engine delivers it on a later tick.
+  delivered ([needs-you.md](needs-you.md#answers-waiting-to-be-sent)). Send and Resend go through the message queue
+  (below): an answer the agent can't take yet waits there and goes out on its own.
 - Answers given in chat are recorded with `record_answer`.
 - **Something else on every question with options.** A built-in last choice, recorded as `choice: "other"` with
   required words; agents never add it. The agent gets `Follow-up answer Qn (title): Something else — "words"`, and a
@@ -316,3 +316,34 @@ fresh contrary evidence does.
 else to "gcloud call failed", "gh call failed", "unreadable response", "read timed out" or "lookup failed", so no
 transport detail leaks. The reason goes into the PR's evidence line and `lastError`. A failed read retries on the next
 15 s refresh, and isn't cached for a minute.
+
+## The message queue
+
+`a-message-is-saved-before-sent-and-arrives-once` (`server/message-queue.ts`, `shared/queue.ts`). Every message
+Follow-up sends an agent for the developer goes through one durable outbox, `queue.json`, and one sender per workspace.
+Today that is Q answers (`Engine.answer`, kind `answer`) and brief answers (`Inbox.briefAction`, kind `brief`).
+
+- **Saved before sent.** An action records its answer, adds a queue item and replies; it never waits on Paseo. The
+  sender marks the item `sending` with the envelope's messageId and waits for that one write before Paseo hears of it.
+  The outcome rides the next coalesced write.
+- **Quiet window.** A workspace's items go out once it has been quiet `QUEUE_QUIET_MS` (2 s), at most `QUEUE_CAP_MS`
+  (8 s) after the first, so a stream of clicks can't starve one. A timer exists only while a workspace has an item due.
+- **Recipient at send time.** `Channel.resolve` picks the agent when the envelope goes out (`answerRecipients` for a
+  Q answer): an answer whose asker was archived or replaced reaches the workspace's main agent. A workspace archived or
+  no longer followed cancels it, with the reason on the card ("Not sent").
+- **Never left: never fails.** Paseo unreachable, no agent available, a permission prompt or Session Guard: nothing
+  was sent, so it waits as Queued ("Queued: Paseo unreachable, retrying at 12:04") on `NEVER_LEFT_MS` (15 s, 1 min,
+  then every 5 min), and goes at once on worker start and when the daemon connection comes back (`onDaemonReconnect`).
+- **Left unconfirmed: read the chat first.** An error after the message went out, or the attempt's 2-minute deadline,
+  makes it `uncertain` (Retrying). Paseo doesn't refuse a resend by messageId, so before any resend `arrivedMessage`
+  (`server/daemon.ts`) looks for it: a loaded agent's timeline by clientMessageId, an unloaded agent's provider
+  transcript on disk by its first line (never waking it). Found: Sent. Not there: resent. Unknown: the next
+  `AMBIGUOUS_MS` step (15 s, 1 min, 5 min, 15 min); after the last, Failed with Retry, which resends without asking.
+- **A reload mid-send** reads `sending` back as `uncertain`, so the chat is checked before it goes again.
+- **Small file.** Sent and cancelled items leave `queue.json` once their record shows it; the newest `QUEUE_RECENT`
+  stay, without text.
+- **One vocabulary.** `deliveryStatus` words every card: Sending…, Queued (with when), Retrying at, Failed with
+  Retry, Not sent, Sent. Records keep a mirror of their item (`deliveryOf`): `answer.delivery` on a question,
+  `brief.delivery` on a card.
+- **Upgrade.** `Engine.adoptAnswers` (every start, idempotent) and `Inbox.adoptOutbox` (once) move 2.0's in-flight
+  answers onto the queue: `unconfirmed` and `sending` ones as `uncertain`, so nothing is sent twice across the upgrade.

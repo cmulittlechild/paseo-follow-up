@@ -262,6 +262,20 @@ export const INVARIANTS: Invariant[] = [
     },
   },
   {
+    id: "a-message-is-saved-before-sent-and-arrives-once",
+    why: "2026-11-16: a Q answer Paseo didn't confirm sat \"unconfirmed\" with nothing retrying it, and a card answer that timed out but arrived was sent again (Paseo doesn't refuse a resend by messageId). An answer on its way is a queue item: it keeps its messageId (the chat check looks for it), says when it retries, and a Failed or Not sent one says why (server/message-queue.ts).",
+    check(w) {
+      for (const q of w.questions) {
+        const d = q.answer?.delivery;
+        if (!d || !["queued", "sending", "retrying", "failed", "cancelled"].includes(d.state)) continue;
+        if (!d.messageId) return `${q.id}'s answer is ${d.state} without a messageId, so its chat can't be checked`;
+        if ((d.state === "failed" || d.state === "cancelled") && !d.reason) return `${q.id}'s answer is ${d.state} without saying why`;
+        if (d.state === "retrying" && !d.nextAt) return `${q.id}'s answer is retrying without saying when`;
+      }
+      return null;
+    },
+  },
+  {
     id: "a-pick-note-reaches-the-agent",
     why: "Task 32deeb27, the developer's ask: \"A, but make sure to…\". A note on a lettered pick reaches the agent's message and the record, on a question here and on a brief card (pickNoteViolations).",
     check(w) {

@@ -4,8 +4,9 @@ import { Platform, View, useWindowDimensions } from "react-native";
 import { Pressable, Text } from "./text";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openExternalUrl, useRpc, type PluginClientContext, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import { deliveryStatus } from "../shared/queue";
 import { Icon, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
-import { BRIEF_KIND, BRIEF_VERSION, askedDecisions, cardPicks, notedCount, pickedCount, briefSchema, collapsedLine, extrasFit, hasOriginal, nothingNeededLine, isTight, pastRows, pastTone, selectsFirst, sendBar, shownBrief, pastAsk, liveBrief, newAnswerId, undeliveredReason, type Brief, type BriefDecision, type BriefMove } from "../shared/brief";
+import { BRIEF_KIND, BRIEF_VERSION, askedDecisions, cardPicks, notedCount, pickedCount, briefSchema, collapsedLine, extrasFit, hasOriginal, nothingNeededLine, isTight, pastRows, pastTone, selectsFirst, sendBar, shownBrief, pastAsk, liveBrief, newAnswerId, type Brief, type BriefDecision, type BriefMove } from "../shared/brief";
 import { age } from "../shared/inbox";
 import { noReviewReposVersion, onNoReviewRepos } from "../shared/pr-workflow";
 import { briefKey, HEADLINE_WORD } from "../shared/headline";
@@ -287,17 +288,21 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
   const picked = answered && asked.some(d => d.chosen);
   // The answer is recorded the moment Send is pressed; getting it to the agent can take Paseo a minute or more (a dormant
   // agent resumes first). Until it lands the card reads as in progress, and if every retry failed it says so with Send again.
-  const sending = pending || b.delivery?.state === "sending" || unsent;
+  // The message queue's state, worded as on every card (shared/queue.ts deliveryStatus).
+  const delivery = b.delivery ? deliveryStatus({ state: b.delivery.state, reason: b.delivery.error, nextAt: b.delivery.nextAt }) : null;
+  const sending = pending || !!delivery?.pending || unsent;
   const failed = b.delivery?.state === "failed";
+  const cancelled = b.delivery?.state === "cancelled";
   // Pending reads as in progress (a dashed circle), and becomes the solid check when the send lands.
   const icon = b.state === "superseded" ? "History" : failed ? "CircleAlert" : sending ? "CircleDashed" : "CircleCheck";
   const spoken = pending ? `Done, sending (undo available): ${ask}` : unsent ? `${status!.label}: ${ask}` : failed ? `Answer not delivered: ${ask}` : sending ? `Answered, sending to the agent: ${ask}` : undefined;
   const color = failed ? c.statusDanger : pastTone(b.state, sending) === "success" ? c.statusSuccess : c.foregroundMuted;
   // A Done card already says "Done" as its outcome; its time stands alone rather than repeating it.
-  const right = b.delivery?.state === "sending" && !pending ? "Sending…" : unsent ? status!.label : answered && b.outcomeAt ? (b.outcome === "Done" ? clock(b.outcomeAt) : `Answered ${clock(b.outcomeAt)}`) : age(b.outcomeAt ?? b.at, now);
-  const undelivered = (indent: number) => failed && <View style={{ paddingLeft: indent, gap: 8, alignItems: "flex-start" }}>
-    <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13, lineHeight: 18 }}>{`Not delivered to the agent: ${undeliveredReason(b.delivery?.error)} Your answer is kept.`}</Text>
-    {onResend && <Btn label={resending ? "Sending…" : "Send again"} icon="RotateCcw" onPress={onResend} disabled={resending} c={c} compact={compact} hint="Sends the same answer once more" />}
+  const right = delivery && !pending ? delivery.label : unsent ? status!.label : answered && b.outcomeAt ? (b.outcome === "Done" ? clock(b.outcomeAt) : `Answered ${clock(b.outcomeAt)}`) : age(b.outcomeAt ?? b.at, now);
+  // Failed (the rare loud case) says so with Retry; a timer's wait (Queued, Retrying) offers Try now; Cancelled says why.
+  const undelivered = (indent: number) => delivery && !pending && (failed || cancelled || delivery.action === "try-now") && <View style={{ paddingLeft: indent, gap: 8, alignItems: "flex-start" }}>
+    <Text accessibilityRole={failed ? "alert" : undefined} style={{ color: failed ? c.statusDanger : c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{failed ? `${delivery.detail} Your answer is kept.` : delivery.detail}</Text>
+    {onResend && delivery.action && <Btn label={resending ? "Sending…" : delivery.action === "retry" ? "Retry" : "Try now"} icon="RotateCcw" onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
   </View>;
   const body = expanded && <View style={{ gap: 10, paddingTop: 4 }}>
     <BriefBody b={b} c={c} compact={compact} tight={false} embedded height={height} mode="readonly" picks={{}} onPick={() => undefined} busy={null} />

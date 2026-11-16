@@ -1,4 +1,5 @@
 import test from "node:test";
+import { attachSent, quiesce } from "./support/queue";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -85,19 +86,20 @@ test("a superseded card keeps its previous version to show behind Show original"
 
 test("the server sends every pick in one message and records them all", async () => {
   const dir = await mkdtemp(join(tmpdir(), "follow-card-"));
+  let inbox: Inbox | null = null;
   try {
     const agent: AgentInfo = { id: "main", workspaceId: "w", parentAgentId: null, title: "Main", status: "idle", archivedAt: null, updatedAt: null, lastUserMessageAt: null, requiresAttention: false, attentionReason: null };
     const appended: Brief[] = [];
     const directory = { agents: async () => [agent], workspaces: async () => [{ id: "w", name: "W" }], agent: async () => agent, tail: async () => [], clearAttention: async () => {} } as unknown as Directory;
-    const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never, guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async (_a: string, b: Brief) => { appended.push(b); }, call: async () => null, pr: async () => null } } as never);
+    inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never, guard: async () => null, graceMs: 5, now: () => Date.parse(NOW), briefs: { sink: async (_a: string, b: Brief) => { appended.push(b); }, call: async () => null, pr: async () => null } } as never);
     await inbox.store.mutate(s => { s.entries.main = { ...(s.entries.main ?? {}), agentId: "main", brief: open() } as never; });
-    const sent: string[] = [];
-    const after = await inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "A" }, { decisionId: "Q10", choice: "B" }, { decisionId: "Q11", choice: "A" }] }, async text => { sent.push(text); });
+    const sent = await attachSent(inbox, dir);
+    const after = await inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "A" }, { decisionId: "Q10", choice: "B" }, { decisionId: "Q11", choice: "A" }] });
     await inbox.idle();
     assert.equal(sent.length, 1, "one message, not one per decision");
     assert.match(sent[0], /^Follow-up answer Q9, Q10, Q11 /);
     assert.deepEqual(after.decisions.map(d => d.chosen), ["A", "B", "A"]);
     assert.equal(appended.at(-1)?.state, "answered", "the timeline row is replaced by the answered card, which keeps the question");
-    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "B" }] }, async () => {}), /already answered/);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+    await assert.rejects(inbox.briefAction("main", { briefId: "brief:t1", choices: [{ decisionId: "Q9", choice: "B" }] }), /already answered/);
+  } finally { if (inbox) await quiesce(inbox); await rm(dir, { recursive: true, force: true }); }
 });

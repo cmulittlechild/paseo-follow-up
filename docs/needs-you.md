@@ -170,21 +170,23 @@
 
 ### Answering a brief
 
-`Inbox.briefAction` records the answer and replies; the message goes out after. Recording is one inbox write: the
-ledger entry, the collapsed brief (`answerId`, `delivery: { state: "sending" }`) and an `outbox` entry. Then the RPC
-returns and `deliverAnswer` sends it, capped at 2 minutes per attempt, retried after 15 s, 1 min and 5 min. On success
-the outbox entry and `delivery` are cleared; after the last failure `delivery` is `failed` with the reason, the card
-says "Not delivered to the agent" with **Send again**, and the answer stays in the outbox. A worker start resends
-every `sending` entry.
+`Inbox.briefAction` records the answer and replies; the message goes out through the message queue
+([workspaces.md](workspaces.md#the-message-queue)). Recording is the ledger entry and the collapsed brief (`answerId`,
+`delivery: { state: "sending" }`), then a queue item (`brief:<agent>:<answerId>`). The reply calls no Paseo: the
+item's partition comes from the inbox's cached directory. The card shows the queue's state as it changes (Sending,
+Queued with when it retries, Retrying, Failed with **Retry**, Not sent) and clears `delivery` once sent.
 
 - **Why after.** Sending to a dormant agent makes Paseo resume it and wait for its run to start (up to 60 s; 86 s on
   2026-11-11), longer than the 30 s a plugin RPC gets. Awaiting it made the card say "Your answer wasn't sent" for
   answers that arrived, and Retry sent them twice.
-- **Never twice.** The client makes one `answerId` per Send and the toast's Retry reuses it, so does Send again.
-  The same `answerId` returns the recorded brief (or resends a failed one) instead of a second answer. The messageId is
-  derived from it (`stableMessageId`), so every attempt is the same message to Paseo, whose receipts make a repeat a no-op.
-- **Questions too.** `follow.answer-question` records the answer as `sending` and delivers after the reply
-  (`Engine.answer`); the question shows sending, sent, queued or unconfirmed as before.
+- **Never twice.** The client makes one `answerId` per Send and the toast's Retry reuses it, so does the card's
+  Retry. The same `answerId` returns the recorded brief (and retries its queue item) instead of a second answer. The
+  messageId is derived from it (`stableMessageId`). Paseo does **not** refuse a repeat with the same messageId (it skips
+  only the second timeline row; the provider runs the prompt again), so a send that may have left is never repeated
+  blind: the queue reads the agent's chat for that messageId first. 2.0's per-answer retry resent a timed-out answer
+  that had arrived, so the agent got it twice.
+- **Questions too.** `follow.answer-question` records the answer as `sending` and queues it (`Engine.answer`); the
+  question shows the same states.
 - **A card trusts the live brief, not its row.** A chat card is a timeline row, a snapshot the server re-appends when the
   brief changes (best-effort). `shownBrief` (`shared/brief.ts`) decides what a card shows from `follow.inbox-brief`
   (one query per agent, `liveBriefKey`, only while a row still looks open). A card is actionable only when the live

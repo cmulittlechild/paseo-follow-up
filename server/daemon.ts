@@ -27,6 +27,7 @@ export { ConversationGone } from "./delivery";
 import { compactionDelivered, turnIdOf } from "../shared/status";
 import { activeWindowMs, backgroundCount, isLive, isLoaded, recentlyUsed, workspaceActive, conversationGone, DEFAULT_ACTIVE_WINDOW_DAYS, DAY_MS } from "./agent-load";
 import { HistoryCache } from "./history-cache";
+import { agentRecord, headAndTail, transcriptFile } from "./transcript";
 import { DaemonDirectory, type DirectoryRows } from "./directory";
 import { traceDaemon } from "./request-trace";
 import type { TurnTimeline } from "./turn-timeline";
@@ -100,7 +101,7 @@ export interface Daemon {
 type Module = { DaemonClient: new (input: Record<string, unknown>) => Daemon };
 const clients = new Set<Daemon>();
 /** Called before Follow-up sends a message, so the Needs-you inbox can tell its own sends from the developer's. */
-let beforeSend: (agentId: string, messageId: string) => Promise<void> = async () => {};
+let beforeSend: (agentId: string, messageId: string, by?: string) => Promise<void> = async () => {};
 export function onBeforeSend(note: typeof beforeSend): void { beforeSend = note; }
 let stopped = false;
 export function clientEntry(): string { return createRequire(process.argv[1]).resolve(["@getpaseo", "client", "internal", "daemon-client"].join("/")); }
@@ -137,11 +138,15 @@ export function withDaemon<T>(work: (client: Daemon) => Promise<T>): Promise<T> 
  * a 5 s idle close opened one per tick (39 hellos in 12 min).
  */
 export const SHARED_CLIENT_MAX_MS = 30 * 60_000;
+/** Called when a daemon connection opens after the last one failed or dropped (the message queue retries at once). */
+let reopened: () => void = () => {};
+export function onDaemonReconnect(note: () => void): void { reopened = note; }
 export type SharedConnect = <T>(work: (client: Daemon) => Promise<T>) => Promise<T>;
 type Shared = { client: Promise<Daemon>; opened: number; users: number; retired: boolean };
 export function sharedDaemon(open: () => Promise<Daemon> = openDaemon, o: { maxMs?: number; now?: () => number } = {}): SharedConnect {
   const maxMs = o.maxMs ?? SHARED_CLIENT_MAX_MS, now = o.now ?? Date.now;
   let current: Shared | null = null;
+  let lost = false;
   const close = async (entry: Shared) => {
     if (current === entry) current = null;
     const client = await entry.client.catch(() => null);
@@ -153,10 +158,10 @@ export function sharedDaemon(open: () => Promise<Daemon> = openDaemon, o: { maxM
     if (stopped) throw new Error("Follow-up is stopping");
     if (current && now() - current.opened >= maxMs) { current.retired = true; const old = current; current = null; settle(old); }
     if (!current) {
-      const client = open().then(c => { if (stopped) { void c.close().catch(() => undefined); throw new Error("Follow-up is stopping"); } clients.add(c); return c; });
+      const client = open().then(c => { if (stopped) { void c.close().catch(() => undefined); throw new Error("Follow-up is stopping"); } clients.add(c); if (lost) { lost = false; reopened(); } return c; });
       const entry: Shared = { client, opened: now(), users: 0, retired: false };
       current = entry;
-      void client.catch(() => { if (current === entry) current = null; });
+      void client.catch(() => { lost = true; if (current === entry) current = null; });
     }
     const entry = current;
     entry.users++;
@@ -166,7 +171,7 @@ export function sharedDaemon(open: () => Promise<Daemon> = openDaemon, o: { maxM
       catch (error) {
         // A dropped connection isn't reused: the next call opens a fresh one.
         const status = (client as unknown as { connectionState?: { status?: string } }).connectionState?.status;
-        if (status !== undefined && status !== "connected") { entry.retired = true; if (current === entry) current = null; }
+        if (status !== undefined && status !== "connected") { lost = true; entry.retired = true; if (current === entry) current = null; }
         throw error;
       }
     } finally {
@@ -534,18 +539,7 @@ export class PaseoGateway implements Gateway {
       const recipient = batch.recipientAgentId ?? w.mainAgentId;
       const a = (await client.fetchAgent(recipient))?.agent;
       if (!a || !isLoaded(a)) return null;
-      const since = Date.parse(batch.createdAt);
-      let cursor: Cursor | null = null;
-      for (let pageIndex = 0; pageIndex < 5; pageIndex++) {
-        const page = await client.fetchAgentTimeline(recipient, { direction: cursor ? "before" : "tail", ...(cursor ? { cursor } : {}), limit: 200, projection: "canonical", timeout: 15_000 });
-        if (page.error || page.gap || page.staleCursor) return null;
-        if (page.entries.some(e => { const item = e.item as { messageId?: unknown; clientMessageId?: unknown } | null; return item?.messageId === batch.messageId || item?.clientMessageId === batch.messageId; })) return true;
-        const oldest = page.entries.reduce((min, e) => Math.min(min, e.timestamp ? Date.parse(e.timestamp) : Infinity), Infinity);
-        if (!page.hasOlder || oldest < since) return false;
-        if (!page.startCursor) return null;
-        cursor = page.startCursor;
-      }
-      return null;
+      return timelineHas(client, recipient, batch.messageId, Date.parse(batch.createdAt));
     }).catch(() => null);
   }
   async send(w: Workspace, batch: Batch, text: string): Promise<void> {
@@ -580,31 +574,49 @@ export class PaseoGateway implements Gateway {
     });
   }
   /**
-   * A developer's answer, sent like the developer typing into the agent's chat (it steers an active turn).
-   * Session Guard pauses and pending permission prompts defer it; an unavailable agent falls back to the next.
+   * A queued message (server/message-queue.ts), sent like the developer typing into the agent's chat (it steers an
+   * active turn). Session Guard pauses and pending permission prompts defer it; an unavailable agent falls back to the
+   * next. DeliveryDeferred means nothing was sent (safe to retry); any other error came after the message went out.
    */
-  async deliver(w: Workspace, recipients: string[], text: string, messageId: string): Promise<string> {
-    // Anything that fails before the message goes out is safe to retry; only a failed send itself is ambiguous.
+  async deliverTo(target: { workspaceId: string | null; recipients: string[] }, text: string, messageId: string, by?: string): Promise<string> {
     let attempted = false;
     return this.connect(async client => {
-      for (const id of recipients) {
+      for (const id of target.recipients) {
         const a = (await client.fetchAgent(id))?.agent;
-        if (!a || a.archivedAt || a.workspaceId !== w.id) continue;
+        if (!a || a.archivedAt || (target.workspaceId && a.workspaceId !== target.workspaceId)) continue;
         let guarded: boolean;
         try { guarded = !!this.guard.waiting(await this.guard.read(), { agentIds: [id] }); }
-        catch { throw new DeliveryDeferred("Session Guard state is unavailable; the answer will go out on the next check."); }
-        if (guarded) throw new DeliveryDeferred("Waiting for Session Guard to resume the agent.");
-        if (a.pendingPermissions.length) throw new DeliveryDeferred("The agent is waiting on a permission prompt; the answer goes out after it.");
+        catch { throw new DeliveryDeferred("Session Guard's state is unreadable"); }
+        if (guarded) throw new DeliveryDeferred("waiting for Session Guard to resume the agent");
+        if (a.pendingPermissions.length) throw new DeliveryDeferred("waiting for the agent's permission prompt");
+        if (conversationGone(a.lastError)) throw new ConversationGone(id, a.lastError!);
         attempted = true;
-        await beforeSend(id, messageId).catch(() => undefined);
-        await client.sendMessage(id, text, { messageId, activeTurnBehavior: "steer" });
+        await beforeSend(id, messageId, by).catch(() => undefined);
+        try { await client.sendMessage(id, text, { messageId, activeTurnBehavior: "steer" }); }
+        catch (error) { if (conversationGone(error)) throw new ConversationGone(id, error instanceof Error ? error.message : String(error)); throw error; }
         return id;
       }
-      throw new DeliveryDeferred("No agent in this workspace can take the answer right now.");
+      throw new DeliveryDeferred("no agent in this workspace can take it right now");
     }).catch(error => {
-      if (attempted || error instanceof DeliveryDeferred) throw error;
-      throw new DeliveryDeferred("Couldn't reach Paseo; the answer goes out on the next check.");
+      if (attempted || error instanceof DeliveryDeferred || error instanceof ConversationGone) throw error;
+      throw new DeliveryDeferred("Paseo unreachable");
     });
+  }
+  /**
+   * Whether `messageId` reached the agent since `since`. A loaded agent: its timeline, where Paseo records the message
+   * with its clientMessageId when it accepts it (before the provider runs). An unloaded one is never read (that would
+   * wake it, Invariant 1): its provider transcript on disk is searched for `marker` instead, and only a find counts.
+   * Null: unknown.
+   */
+  async arrivedMessage(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null> {
+    const loaded = await this.connect(async client => {
+      const a = (await client.fetchAgent(agentId))?.agent;
+      if (!a) return null;
+      if (!isLoaded(a)) return "unloaded" as const;
+      return timelineHas(client, agentId, messageId, Date.parse(since) - 60_000);
+    }).catch(() => null);
+    if (loaded !== "unloaded") return loaded;
+    return transcriptHas(paseoHome, agentId, marker);
   }
   async handoff(w: Workspace, callerId: string): Promise<{ batchId: string; fromAgentId: string } | null> {
     return this.connect(async client => {
@@ -712,4 +724,31 @@ export function handBackMainAgent(roots: Agent[], w: { mainAgentId: string; hand
   if (!w.handover || w.handover.worked || w.handover.from === w.mainAgentId) return undefined;
   const original = roots.find(a => a.id === w.handover!.from);
   return original && original.status !== "closed" ? original : undefined;
+}
+
+/** Whether the agent's chat holds `messageId`, read back from the tail to `sinceMs` (at most 5 pages). Null: unknown. */
+async function timelineHas(client: Daemon, agentId: string, messageId: string, sinceMs: number): Promise<boolean | null> {
+  let cursor: Cursor | null = null;
+  for (let pageIndex = 0; pageIndex < 5; pageIndex++) {
+    const page = await client.fetchAgentTimeline(agentId, { direction: cursor ? "before" : "tail", ...(cursor ? { cursor } : {}), limit: 200, projection: "canonical", timeout: 15_000 });
+    if (page.error || page.gap || page.staleCursor) return null;
+    if (page.entries.some(e => { const item = e.item as { messageId?: unknown; clientMessageId?: unknown } | null; return item?.messageId === messageId || item?.clientMessageId === messageId; })) return true;
+    const oldest = page.entries.reduce((min, e) => Math.min(min, e.timestamp ? Date.parse(e.timestamp) : Infinity), Infinity);
+    if (!page.hasOlder || oldest < sinceMs) return false;
+    if (!page.startCursor) return null;
+    cursor = page.startCursor;
+  }
+  return null;
+}
+/** The agent's provider transcript on disk holds `marker` (its last TAIL_BYTES). Never wakes the agent. Only a find counts. */
+async function transcriptHas(home: string, agentId: string, marker: string): Promise<true | null> {
+  if (!marker) return null;
+  try {
+    const record = await agentRecord(home, agentId);
+    const file = record && await transcriptFile(record);
+    if (!file) return null;
+    const { tail } = await headAndTail(file);
+    const needle = JSON.stringify(marker).slice(1, -1);
+    return tail.some(line => line.includes(needle)) ? true : null;
+  } catch { return null; }
 }

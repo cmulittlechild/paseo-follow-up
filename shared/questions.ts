@@ -3,6 +3,7 @@ import { agentActor, onBehalfLine } from "./actor";
 // "big question" test are adapted from Progress (@stevecastaneda/paseo-progress,
 // MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
 import { z } from "zod";
+import { deliveryStatus } from "./queue";
 import { defineSettings } from "@getpaseo/plugin";
 
 export const QUESTION_MODES = ["stop", "work-around", "keep-building"] as const;
@@ -59,11 +60,18 @@ export const answerSchema = z.object({
   agentId: z.string().optional(),
   agentTitle: z.string().nullable().optional(),
   delivery: z.object({
-    state: z.enum(["sending", "sent", "queued", "unconfirmed", "copied", "in-chat", "signed-off", "recorded"]),
+    /**
+     * The queue's states (shared/queue.ts deliveryOf: queued, sending, sent, retrying, failed, cancelled), the
+     * developer's own (copied, in-chat, signed-off) and the agent's (recorded). `unconfirmed` is 2.0's, read once and
+     * moved onto the queue as retrying (Engine.adoptAnswers).
+     */
+    state: z.enum(["sending", "sent", "queued", "retrying", "failed", "cancelled", "unconfirmed", "copied", "in-chat", "signed-off", "recorded"]),
     to: z.string().nullable(),
     messageId: z.string().nullable(),
     at: z.string(),
     reason: z.string().nullable().default(null),
+    /** When the queue tries again (queued after a send that never left, retrying). */
+    nextAt: z.string().nullable().optional(),
   }),
 });
 export const questionSchema = z.object({
@@ -353,9 +361,9 @@ export function answerStatus(q: Pick<Question, "answer">): AnswerStatus | null {
   switch (a.delivery.state) {
     case "in-chat": return { delivered: false, waiting: mine ? "in-chat" : null, label: "In your message box · not sent yet" };
     case "copied": return { delivered: false, waiting: mine ? "copied" : null, label: "Copied · not sent yet" };
-    case "sending": return { delivered: false, waiting: null, label: "Sending…" };
-    case "queued": return { delivered: false, waiting: null, label: "Waiting for the agent" };
-    case "unconfirmed": return { delivered: false, waiting: null, label: "Not confirmed" };
+    case "sending": case "queued": case "retrying": case "failed": case "cancelled":
+      return { delivered: false, waiting: null, label: deliveryStatus({ state: a.delivery.state, reason: a.delivery.reason, nextAt: a.delivery.nextAt }).label };
+    case "unconfirmed": return { delivered: false, waiting: null, label: "Retrying" };
     case "signed-off": return { delivered: false, waiting: null, label: "Signed off" };
     case "sent": case "recorded": return { delivered: true, waiting: null, label: "Answered" };
   }
