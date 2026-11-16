@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -34,7 +35,7 @@ const ghSnapshot = (patch: Partial<Snapshot> = {}) => snapshot({ prWorkflow: "gi
 const probe = (o: { gt: boolean; auth: boolean; init: boolean }): Probe => ({ gtInstalled: async () => o.gt, signedIn: async () => o.auth, initialised: async () => o.init });
 async function storeWith(p: Probe, paths: Record<string, string> = { "example/app": "/src/app" }) {
   const dir = await mkdtemp(join(tmpdir(), "follow-workflow-"));
-  const store = new PrWorkflowStore(dir, p);
+  const store = testStore(PrWorkflowStore, dir, p);
   store.paths = async () => new Map(Object.entries(paths).map(([k, v]) => [k, [v]]));
   return { store, dir, close: () => rm(dir, { recursive: true, force: true }) };
 }
@@ -92,17 +93,17 @@ test("Tom's setup (fakes): gt on PATH, Graphite sign-in, a gt-initialised repo o
     const plain = join(root, "plain"); await mkdir(join(plain, ".git"), { recursive: true });
 
     const environment = { PATH: `/nonexistent:${bin}`, XDG_CONFIG_HOME: join(root, "config"), HOME: root };
-    const store = new PrWorkflowStore(join(root, "data"), fsProbe(environment));
+    const store = testStore(PrWorkflowStore, join(root, "data"), fsProbe(environment));
     store.paths = async () => new Map([["acme/acme-poc", [worktree]], ["tomgrin10/plain", [plain]]]);
     assert.equal(await store.workflow("acme/acme-poc"), "graphite");
     assert.equal(await store.workflow("tomgrin10/plain"), "github");
     // Same machine without gt on PATH: everything is GitHub.
-    const bare = new PrWorkflowStore(join(root, "data2"), fsProbe({ ...environment, PATH: "/nonexistent" }));
+    const bare = testStore(PrWorkflowStore, join(root, "data2"), fsProbe({ ...environment, PATH: "/nonexistent" }));
     bare.paths = store.paths;
     assert.equal(await bare.workflow("acme/acme-poc"), "github");
     // No checkout registered as a Paseo project: a tracked workspace's working directory for that repository is
     // looked at next. The project's plain checkout comes first, the workspace's gt-initialised worktree still wins.
-    const fallback = new PrWorkflowStore(join(root, "data3"), fsProbe(environment));
+    const fallback = testStore(PrWorkflowStore, join(root, "data3"), fsProbe(environment));
     fallback.paths = async () => new Map([["tomgrin10/transcripts", [plain, worktree]], ["tomgrin10/none", []]]);
     assert.equal(await fallback.workflow("tomgrin10/transcripts"), "graphite");
     const view = await fallback.view(["tomgrin10/transcripts", "tomgrin10/none"]);
@@ -118,8 +119,9 @@ test("overrides win over auto, and an unreadable file means the defaults", async
     assert.equal(await f.store.workflow("Example/App"), "graphite");
     await f.store.mutate(c => { c.default = "graphite"; delete c.repos["example/app"]; });
     assert.equal(await f.store.workflow("example/app"), "graphite");
+    await f.store.flush(); // Land the queued save before deliberately corrupting its file.
     await writeFile(join(f.dir, "pr-workflow.json"), "{not json");
-    const fresh = new PrWorkflowStore(f.dir, probe({ gt: false, auth: false, init: false }));
+    const fresh = testStore(PrWorkflowStore, f.dir, probe({ gt: false, auth: false, init: false }));
     assert.equal((await fresh.read()).default, "auto");
   } finally { await f.close(); }
 });
@@ -228,7 +230,7 @@ test("stacks come from base-branch chains, never overriding a registered parent"
 });
 
 async function githubFixture(o: { refuseFirstChildMerge?: boolean } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "follow-gh-actions-")); const store = new Store(root);
+  const root = await mkdtemp(join(tmpdir(), "follow-gh-actions-")); const store = testStore(Store, root);
   const bottom = pr({ snapshot: ghSnapshot({ headBranch: "feat-a", head: "a1" }) });
   const top = pr({ key: "example/app#2", number: 2, parent: bottom.key, snapshot: ghSnapshot({ headBranch: "feat-b", base: "feat-a", head: "b1" }) });
   await store.mutate(s => s.workspaces.push(workspace({ prs: [top, bottom] })));
@@ -451,4 +453,39 @@ test("setup's Auto means inherit, like Settings' Default, so trying Graphite the
     await f.store.mutate(c => { if (setting === null) delete c.repos["example/app"]?.workflow; });
     assert.equal((await f.store.view(["example/app"])).repos[0].inherits, true);
   } finally { await f.close(); }
+});
+
+
+test("workflow cleanup waits for a write already in fsync", async () => {
+  const f = await storeWith(probe({ gt: false, auth: false, init: false }));
+  const handle = await open(join(f.dir, "probe"), "w");
+  const proto = Object.getPrototypeOf(handle) as { sync(): Promise<void> };
+  await handle.close();
+  const real = proto.sync;
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(r => { entered = r; });
+  const gate = new Promise<void>(r => { release = r; });
+  proto.sync = async function () { entered(); await gate; return real.call(this); };
+  let closing: Promise<void> | undefined;
+  try {
+    await f.store.mutate(c => { c.default = "github"; });
+    // Explicit flush starts the pending write without depending on timer scheduling.
+    const writing = f.store.flush(); void writing.catch(() => undefined);
+    await started;
+    closing = f.close();
+    let removed = false;
+    void closing.then(() => { removed = true; });
+    // Let directory removal finish if cleanup forgot the writer.
+    await new Promise(r => setTimeout(r, 50));
+    assert.equal(removed, false, "cleanup removed the directory while its writer was held in fsync");
+    release();
+    await writing;
+    await closing;
+    assert.equal(f.store.persist.dirty, false);
+  } finally {
+    release(); proto.sync = real;
+    await closing?.catch(() => undefined);
+    await f.store.flush();
+    await rm(f.dir, { recursive: true, force: true });
+  }
 });

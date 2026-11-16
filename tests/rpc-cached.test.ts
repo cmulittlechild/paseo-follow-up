@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Inbox, type AgentInfo, type Directory } from "../server/inbox";
@@ -63,7 +64,7 @@ async function aboutService(history: () => Promise<unknown>) {
   const w = workspace({ id: "w1", title: "Vendor query", goal: "Speed up the vendor activity query (ACME-1312)", mainAgentId: "a1", prs: [] });
   const ctx = { history, subagents: async () => [] } as unknown as AboutContext;
   const s = new AboutService({
-    store: new AboutStore(dir), jobs: new AiJobs({ runner: () => hang() }), sources: {} as never,
+    store: testStore(AboutStore, dir), jobs: new AiJobs({ runner: () => hang() }), sources: {} as never,
     workspace: async id => id === w.id ? w : null, context: () => ctx, usage: async () => ({ accounts: [] }), now: () => NOW,
   });
   return { s, done: () => rm(dir, { recursive: true, force: true }) };
@@ -106,7 +107,7 @@ async function inbox(t: { after(fn: () => unknown): void }) {
   let clear: (ids: string[]) => Promise<void> = async ids => { cleared.push(ids); };
   const directory = { agents: () => agents(), workspaces: async () => [{ id: "w", name: "W" }], agent: async () => null, tail: async () => [], clearAttention: (ids: string[]) => clear(ids) } as unknown as Directory;
   let now = NOW;
-  const box = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never,
+  const box = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false } as never,
     guard: async () => null, graceMs: 5, now: () => now } as never);
   await box.store.mutate(s => { const at = new Date(NOW).toISOString(); s.importedAt = at; s.lastSeen = at; s.primedAt = at; s.notifiedAt = at; s.entries.main = reduce(newEntry("main"), { type: "turn_end", outcome: "completed", detail: "Opened PR #815" }, at); });
   t.after(async () => { box.stop(); await rm(dir, { recursive: true, force: true }); });

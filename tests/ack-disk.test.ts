@@ -1,7 +1,8 @@
+import { testStore, trackPersistence, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InboxStore } from "../server/inbox";
@@ -37,7 +38,7 @@ async function timed<T>(work: () => Promise<T>): Promise<{ value: T; ms: number 
 test("an-ack-never-waits-on-the-disk: an inbox read or mutation during a slow inbox.json write answers at once", async t => {
   const d = await dir(t);
   const disk = await slowFsync(SLOW_MS); t.after(() => disk.undo());
-  const store = new InboxStore(d, Date.now, 20);
+  const store = testStore(InboxStore, d, Date.now, 20);
   await store.mutate(s => { s.importedAt = "2026-11-10T00:00:00.000Z"; });
   await until(() => disk.syncs() >= 1); // the window's write is in its fsync now
   const read = await timed(() => store.snapshot());
@@ -55,7 +56,7 @@ test("an-ack-never-waits-on-the-disk: save-reviewers' save returns before the fs
   const d = await dir(t);
   const disk = await slowFsync(SLOW_MS); t.after(() => disk.undo());
   t.after(() => setReviewerConfig(emptyReviewerConfig()));
-  const store = new ReviewerConfigStore(d);
+  const store = testStore(ReviewerConfigStore, d);
   const save = await timed(() => store.save("example/app", [{ login: "ana", name: "Ana" }]));
   assert.ok(save.ms < FAST_MS, `save waited ${Math.round(save.ms)} ms on the disk`);
   assert.deepEqual(reviewerConfig().repos["example/app"]?.map(r => r.login), ["ana"], "the saved list is what Needs you reads at once");
@@ -68,7 +69,7 @@ test("an-ack-never-waits-on-the-disk: save-reviewers' save returns before the fs
 
 test("an-ack-never-waits-on-the-disk: validation still rejects before the reply, and nothing is saved", async t => {
   const d = await dir(t);
-  const store = new AgentSettingsStore(d);
+  const store = testStore(AgentSettingsStore, d);
   await assert.rejects(store.save("about", { provider: "has spaces" }), /isn't valid/);
   assert.equal(store.persist.dirty, false, "a refused change is never queued for the disk");
   assert.equal((await store.role("about")).isDefault, true, "memory keeps the old value");
@@ -78,8 +79,8 @@ test("an-ack-never-waits-on-the-disk: validation still rejects before the reply,
 
 test("an-ack-never-waits-on-the-disk: the worker's stop writes a pending settings save before the lock goes", async t => {
   const d = await dir(t);
-  const agents = new AgentSettingsStore(d);
-  const reviewers = new ReviewerConfigStore(d);
+  const agents = testStore(AgentSettingsStore, d);
+  const reviewers = testStore(ReviewerConfigStore, d);
   t.after(() => setReviewerConfig(emptyReviewerConfig()));
   await agents.setWait(false);
   await reviewers.save(null, [{ login: "lead", name: null }]);
@@ -100,7 +101,7 @@ test("an-ack-never-waits-on-the-disk: a failing write logs, retries with backoff
   const blocked = join(d, "blocked");
   await writeFile(blocked, "a file where the folder should be"); // every write fails (ENOTDIR) until it goes
   const logs: string[] = []; const health = new WriteHealth(); const waits: number[] = [];
-  const file = new WriteBehind<{ n: number }>({ path: join(blocked, "settings.json"), encode: v => JSON.stringify(v), retryMs: attempt => { waits.push(attempt); return 20; }, health, log: line => logs.push(line) });
+  const file = trackPersistence(blocked, new WriteBehind<{ n: number }>({ path: join(blocked, "settings.json"), encode: v => JSON.stringify(v), retryMs: attempt => { waits.push(attempt); return 20; }, health, log: line => logs.push(line) }));
   file.set({ n: 1 });
   await until(() => file.attempts >= SURFACE_AFTER);
   assert.equal(health.message() !== null, true, `after ${SURFACE_AFTER} attempts the worker's error line names it`);
@@ -125,7 +126,7 @@ test("an-ack-never-waits-on-the-disk: the worker shows a save that keeps failing
 
 test("an-ack-never-waits-on-the-disk: a failing state.json write retries, surfaces after SURFACE_AFTER attempts, and clears once it lands", async t => {
   const d = await dir(t);
-  const store = new Store(d, 10);
+  const store = testStore(Store, d, 10);
   const health = new WriteHealth(); const logs: string[] = [];
   store.health = health; store.retryMs = () => 20; store.log = line => logs.push(line);
   await store.mutate(s => { s.projectDefaults = { acme: true }; });

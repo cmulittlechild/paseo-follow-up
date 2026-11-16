@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, agentWorkspace, interruptionHold, type Runtime, type Gateway } from "../server/engine";
@@ -12,7 +13,7 @@ import { clock, workspace, pr, snapshot } from "./fixtures";
 
 async function fixture(t: any, w = workspace()) {
   const root = await mkdtemp(join(tmpdir(), "follow-test-"));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); });
   t.after(() => rm(root, { recursive: true, force: true }));
   let now = clock; let state: Runtime = { busy: false, reason: null, archived: false }; let failSend = false; let failGithub = false;
   const observations = new Map(w.prs.map(p => [p.key, p.snapshot!]));
@@ -210,7 +211,7 @@ test("an active recovery does not time out or block independent Auto repairs", a
 });
 test("serialized atomic writes preserve concurrent updates and survive reconstruction", async t => {
   const f = await fixture(t); await Promise.all(Array.from({ length: 20 }, (_, i) => f.store.mutate(s => { s.workspaces[0].obligations.push({ id: `task-${i}`, title: `Task ${i}`, status: "pending", afterPrs: [], evidence: "", enable_follow_up: false, revision: 0 }); })));
-  const reloaded = new Store(f.root); assert.equal((await reloaded.snapshot()).workspaces[0].obligations.length, 20); assert.equal(JSON.parse(await readFile(join(f.root, "state.json"), "utf8")).version, 1);
+  const reloaded = testStore(Store, f.root); assert.equal((await reloaded.snapshot()).workspaces[0].obligations.length, 20); assert.equal(JSON.parse(await readFile(join(f.root, "state.json"), "utf8")).version, 1);
 });
 test("dependency prompts process the parent before the child", async t => {
   const f = await fixture(t, workspace({ prs: [pr({ key: "example/app#2", number: 2, parent: "example/app#1", snapshot: snapshot({ conflict: true }) }), pr({ snapshot: snapshot({ conflict: true }) })] }));

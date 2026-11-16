@@ -1,3 +1,4 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Github, RULES_TTL_MS } from "../server/github";
@@ -205,10 +206,10 @@ test("the deploy probe reads the fleet once a minute in process, each serving re
 });
 
 test("the engine's timer tick may back off; a refresh during it still gets a fresh read right after", async t => {
-  const { mkdtemp, rm } = await import("node:fs/promises"); const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
+  const { mkdtemp } = await import("node:fs/promises"); const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
   const { Engine } = await import("../server/engine"); const { Store } = await import("../server/store"); const { workspace } = await import("./fixtures");
   const root = await mkdtemp(join(tmpdir(), "follow-poll-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr()] }), workspace({ id: "busy", mainAgentId: "busy-agent", runtimeBusy: true, prs: [pr({ key: "example/app#2", number: 2 })] })); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr()] }), workspace({ id: "busy", mainAgentId: "busy-agent", runtimeBusy: true, prs: [pr({ key: "example/app#2", number: 2 })] })); });
   const seen: Parameters<Github["observe"]>[1][] = []; let release: () => void = () => {}; let gate: Promise<void> | null = null;
   const github = { observe: async (prs: any[], o?: Parameters<Github["observe"]>[1]) => { seen.push(o); if (gate) await gate; return new Map(prs.map(p => [p.key, { snapshot: p.snapshot, error: null }])); } };
   const engine = new Engine(store, github as any, { observe: async () => ({ busy: false, reason: null, archived: false }), send: async () => {}, prepareRecovery: async () => ({ agentId: "r", contextPath: "c" }), label: async () => {} } as any, () => clock);

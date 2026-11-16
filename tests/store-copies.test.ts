@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -31,25 +32,25 @@ type Collected = {
 const rec = (v: any, field: string) => v[field] as Record<string, Item>;
 const COPY_ON_ACCESS: Record<string, Collected> = {
   "server/store.ts": {
-    make: async dir => { const s = new Store(dir, 0, 0); return { mutate: fn => s.mutate(fn), read: () => s.snapshot() }; },
+    make: async dir => { const s = testStore(Store, dir, 0, 0); return { mutate: fn => s.mutate(fn), read: () => s.snapshot() }; },
     seed: (v, n) => { for (let i = 0; i < n; i++) v.workspaces.push(workspace({ id: `w${i}`, title: `Synthetic ${i}` } as never)); },
     items: v => Object.fromEntries(v.workspaces.map((w: Item) => [w.id, w])),
     touch: (v, id) => { v.workspaces.find((w: Item) => w.id === id).goal = "Changed"; },
   },
   "server/inbox.ts": {
-    make: async dir => { const s = new InboxStore(dir); return { mutate: fn => s.mutate(fn), read: () => s.snapshot() }; },
+    make: async dir => { const s = testStore(InboxStore, dir); return { mutate: fn => s.mutate(fn), read: () => s.snapshot() }; },
     seed: (v, n) => { for (let i = 0; i < n; i++) v.entries[`a${i}`] = { ...newEntry(`a${i}`), seenKeys: Array.from({ length: 50 }, (_, k) => `k${k}`) }; },
     items: v => rec(v, "entries"),
     touch: (v, id) => { v.entries[id].seq = 9; },
   },
   "server/json-file-store.ts (linked.json)": {
-    make: async dir => new LinkedStore(dir) as never,
+    make: async dir => testStore(LinkedStore, dir) as never,
     seed: (v, n) => { for (let i = 0; i < n; i++) v.workspaces[`w${i}`] = emptyWorkspaceLinks(); },
     items: v => rec(v, "workspaces"),
     touch: (v, id) => { v.workspaces[id].candidates.push({ key: "ACME-1", seen: 1, firstSeen: "2026-11-13T00:00:00.000Z", retryAt: null, failures: 0, strong: true }); },
   },
   "server/json-file-store.ts (about.json)": {
-    make: async dir => new AboutStore(dir) as never,
+    make: async dir => testStore(AboutStore, dir) as never,
     seed: (v, n) => { for (let i = 0; i < n; i++) v.entries[`w${i}`] = { workspaceId: `w${i}`, inputsHash: `h${i}`, generatedAt: "2026-11-13T00:00:00.000Z", gist: `Synthetic summary ${i}.`, overview: "", links: [], basis: { chat: true, source: "live", prs: 1, issues: [] }, failed: [], costUsd: null }; },
     items: v => rec(v, "entries"),
     touch: (v, id) => { v.entries[id].inputsHash = "changed"; },
@@ -127,7 +128,7 @@ test("a-mutation-copies-only-what-it-changes: searching every workspace inside a
   const { workspace, pr } = await import("./fixtures");
   const root = await mkdtemp(join(tmpdir(), "follow-cow-find-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => { s.workspaces = Array.from({ length: 50 }, (_, i) => workspace({ id: `ws-${i}`, title: `Workspace ${i}`, prs: [pr({ key: `example/app#${i + 1}`, number: i + 1 })] })); });
   const original = structuredClone; let clones = 0;
   globalThis.structuredClone = ((v: unknown, o?: Parameters<typeof structuredClone>[1]) => { clones++; return original(v, o); }) as typeof structuredClone;

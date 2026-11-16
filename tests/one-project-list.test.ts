@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Daemon, withDaemon } from "../server/daemon";
@@ -47,7 +48,7 @@ test("concurrent-readers-share-one-request: a PR-workflow detect pass over N rep
   // A detection cache shorter than the directory's 10-minute backstop, so the pass meets a directory that is over a
   // minute old but not due for a full re-read (live: repositories detected at different times expire in between).
   const ttl = 120_000;
-  const store = new PrWorkflowStore(dir, { gtInstalled: async () => true, signedIn: async () => true, initialised: async () => false }, () => now, ttl);
+  const store = testStore(PrWorkflowStore, dir, { gtInstalled: async () => true, signedIn: async () => true, initialised: async () => false }, () => now, ttl);
   // As the server wires it (index.server.ts): the checkout map comes from the directory's project list.
   store.paths = async () => new Map((await directory.projects(60_000)).map(p => [p.projectKey.replace("remote:github.com/", ""), [p.projectRootPath!]]));
   await directory.read(); const before = d.requests["project.list"];

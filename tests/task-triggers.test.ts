@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { taskSchedule, taskTriggerSchema } from "../shared/task-trigger";
@@ -63,8 +64,8 @@ test("deployment delays persist their first verified clock across polls and stor
   recordSnapshot(w.prs[0], deployed(clock + 13 * day), clock + 13 * day);
   assert.equal(w.prs[0].deploymentAnchor!.at, new Date(clock).toISOString());
   const root = await mkdtemp(join(tmpdir(), "follow-trigger-")); t.after(() => rm(root, { recursive: true, force: true }));
-  await new Store(root).mutate(s => { s.workspaces.push(w); });
-  const restored = (await new Store(root).read()).workspaces[0];
+  await testStore(Store, root).mutate(s => { s.workspaces.push(w); });
+  const restored = (await testStore(Store, root).read()).workspaces[0];
   recordSnapshot(restored.prs[0], deployed(clock + 14 * day - 1), clock + 14 * day - 1);
   assert.equal(taskSchedule(restored.obligations[0], restored, clock + 14 * day - 1).ready, false);
   recordSnapshot(restored.prs[0], deployed(clock + 14 * day), clock + 14 * day);

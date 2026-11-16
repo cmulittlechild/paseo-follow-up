@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defaultTracking, type Project } from "../shared/settings";
@@ -37,7 +38,7 @@ test("project enrollment preserves existing records and cannot revive sends, arc
 });
 test("a default can be disabled while discovery is in flight without enrolling or sending", async t => {
   const directory = await mkdtemp(join(tmpdir(), "follow-project-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory); let release!: () => void; let started!: () => void;
+  const store = testStore(Store, directory); let release!: () => void; let started!: () => void;
   const entered = new Promise<void>(r => { started = r; }); const pending = new Promise<void>(r => { release = r; }); let sends = 0;
   const row = { id: "new", title: "New workspace", mainAgentId: "main", projectId: "project", messageAt: null, enable_default_tracking: true };
   const gateway: Gateway = { discover: async () => { started(); await pending; return [row]; }, observe: async () => ({ busy: false, archived: false, reason: null }), send: async () => { sends++; }, prepareRecovery: async () => { throw new Error("No recovery should launch"); }, label: async () => {} };
@@ -47,11 +48,11 @@ test("a default can be disabled while discovery is in flight without enrolling o
 });
 test("defaults enroll existing and newly discovered workspaces without dispatch, persist and preserve tracking when turned off", async t => {
   const directory = await mkdtemp(join(tmpdir(), "follow-project-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory); let ids = ["existing"]; let sends = 0;
+  const store = testStore(Store, directory); let ids = ["existing"]; let sends = 0;
   const gateway: Gateway = { discover: async s => ids.filter(() => s.projectDefaults?.project !== false).map(id => ({ id, title: id, mainAgentId: id + "-main", projectId: "project", messageAt: null, enable_default_tracking: true, history: { candidates: [], goal: null, complete: true, error: null } })), observe: async () => ({ busy: false, archived: false, reason: null }), send: async () => { sends++; }, prepareRecovery: async () => { throw new Error("No recovery should launch"); }, label: async () => {} };
   const engine = new Engine(store, { observe: async () => new Map() }, gateway, () => clock + 70_000);
   await engine.tick(); ids.push("new"); await engine.tick();
   let state = await store.snapshot(); assert.equal(state.workspaces.length, 2); assert.ok(state.workspaces.every(w => w.enable_tracking && w.enable_auto_sends && w.batches.length === 0)); assert.equal(sends, 0);
   await store.mutate(s => { s.projectDefaults = { project: false }; }); ids.push("later"); await engine.tick();
-  state = await new Store(directory).snapshot(); assert.equal(state.projectDefaults?.project, false); assert.equal(state.workspaces.length, 2); assert.ok(state.workspaces.every(w => w.enable_tracking)); assert.equal(sends, 0);
+  state = await testStore(Store, directory).snapshot(); assert.equal(state.projectDefaults?.project, false); assert.equal(state.workspaces.length, 2); assert.ok(state.workspaces.every(w => w.enable_tracking)); assert.equal(sends, 0);
 });

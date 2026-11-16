@@ -1,7 +1,8 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import { workspaceList } from "./support/workspace-list";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { checkName, lastRename, NAME_EXAMPLES, NAME_RULE, RENAME_DAILY_CAP, renamePrompt, undoRefusal, UNDO_WINDOW_MS, type RenameInputs, renameStatusSchema, normalizeSuggestion } from "../shared/rename";
@@ -85,7 +86,7 @@ async function setup(replies: string[], o: { room?: string | null; now?: () => n
   const seen: { model: string; prompt: string; thinking: string | null }[] = [];
   const runner: Runner = async input => { seen.push({ model: input.model, prompt: input.prompt, thinking: input.thinking }); if (o.runner) return o.runner(input); return { text: replies.shift() ?? '{"name":"Fix retry backoff in billing"}', costUsd: 0.0005, inputTokens: 400, outputTokens: 12 }; };
   const t = fakeTitles({ w1: { title: null, name: "dev-retry-backoff" } });
-  const store = new RenameStore(dir);
+  const store = testStore(RenameStore, dir);
   const service = new RenameService({ store, jobs: new AiJobs({ runner, ...(o.log ? { logPath: join(dir, "ai-jobs.jsonl") } : {}) }), role: async () => resolveRole(null, "about"), titles: t.titles, inputs: async (_id, current) => inputs({ ...o.inputs, current }), room: async () => o.room ?? null, now: o.now, pause: async () => undefined });
   return { dir, service, seen, t, store, done: () => rm(dir, { recursive: true, force: true }) };
 }
@@ -172,7 +173,7 @@ test("invariant rename-never-wakes-an-agent: renameDaemon reaches only the works
   assert.deepEqual(await titles.get("w1"), { title: null, name: "dev-retry-backoff" });
   const dir = await mkdtemp(join(tmpdir(), "rename-"));
   const runner: Runner = async () => ({ text: '{"name":"Fix retry backoff in billing"}', costUsd: null, inputTokens: null, outputTokens: null });
-  const service = new RenameService({ store: new RenameStore(dir), jobs: new AiJobs({ runner }), role: async () => resolveRole(null, "about"), titles, inputs: async (_id, current) => inputs({ current }), room: async () => null });
+  const service = new RenameService({ store: testStore(RenameStore, dir), jobs: new AiJobs({ runner }), role: async () => resolveRole(null, "about"), titles, inputs: async (_id, current) => inputs({ current }), room: async () => null });
   const s = await service.status("w1", true);
   await service.rename("w1", { title: s.suggestion! }, "developer");
   await service.rename("w1", { undo: true }, "developer");

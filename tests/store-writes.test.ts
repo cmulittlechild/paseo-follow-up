@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -20,7 +21,7 @@ const deployment = (at: string) => ({ state: "deployed", environment: "productio
 
 test("store-writes-only-real-changes: a tick that only refreshes read timestamps writes nothing; a real change still writes within writeMs", async t => {
   const d = await dir(t);
-  const store = new Store(d, 20, 60_000);
+  const store = testStore(Store, d, 20, 60_000);
   await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr({ snapshot: { ...pr().snapshot!, deployment: deployment("2026-01-01T10:00:00Z") } as any })] })); });
   await until(() => store.writes === 1, "the first real change is written"); const base = store.writes;
   // A fresh observation is a new object whose keys come in parsePr's order, not the saved (schema) order.
@@ -38,13 +39,13 @@ test("store-writes-only-real-changes: a tick that only refreshes read timestamps
 
 test("store-writes-only-real-changes: pending read timestamps are written every VOLATILE_WRITE_MS and on close", async t => {
   const d = await dir(t);
-  const store = new Store(d, 10, 80);
+  const store = testStore(Store, d, 10, 80);
   await store.mutate(s => { s.workspaces.push(workspace({ prs: [pr()] })); });
   await until(() => store.writes === 1, "the first real change is written"); const base = store.writes;
   await store.mutate(stamp("2026-01-01T11:00:00Z"));
   await sleep(30); assert.equal(store.writes, base, "not before the volatile interval");
   await until(() => store.writes === base + 1, "written once the volatile interval passes");
-  const closing = new Store(d, 10, 60_000);
+  const closing = testStore(Store, d, 10, 60_000);
   await closing.mutate(stamp("2026-01-01T12:00:00Z"));
   await closing.close(1000);
   assert.equal(JSON.parse(await readFile(join(d, "state.json"), "utf8")).workspaces[0].prs[0].snapshot.observedAt, "2026-01-01T12:00:00Z", "close writes pending read timestamps");
@@ -52,7 +53,7 @@ test("store-writes-only-real-changes: pending read timestamps are written every 
 
 test("store-writes-only-real-changes: the inbox writes real changes only, lastSeen at most every LAST_SEEN_WRITE_MS, compact JSON", async t => {
   const d = await dir(t); let now = Date.parse("2026-01-01T10:00:00Z");
-  const inbox = new InboxStore(d, () => now);
+  const inbox = testStore(InboxStore, d, () => now);
   const mtime = async () => (await stat(join(d, "inbox.json"))).mtimeMs;
   await inbox.mutate(s => { s.lastSeen = new Date(now).toISOString(); s.importedAt = "2026-01-01T09:00:00Z"; });
   const text = await readFile(join(d, "inbox.json"), "utf8");
@@ -85,7 +86,7 @@ test("store-writes-only-real-changes: a history scan that only moves inventory.s
   // 2026-11-12 live: 4 of 7 state.json writes (1.3 MB each) only moved inventory.scannedMessageAt, which nothing
   // reads back (a lost value costs a rescan of history the cache already holds).
   const d = await dir(t);
-  const store = new Store(d, 20, 60_000);
+  const store = testStore(Store, d, 20, 60_000);
   const inventory = { revision: 1, syncedRevision: 1, candidates: ["example/app#1"], historyComplete: true, historyError: null, scannedMessageAt: "2026-01-01T10:00:00Z" };
   await store.mutate(s => { s.workspaces.push(workspace({ inventory })); });
   await until(() => store.writes === 1, "the first real change is written"); const base = store.writes;
@@ -100,7 +101,7 @@ test("store-writes-only-real-changes: a history scan that only moves inventory.s
 
 test("the store keeps a fingerprint of what it wrote, not the 1–2 MB state.json text (worker memory, 2026-11-12)", async t => {
   const d = await dir(t);
-  const store = new Store(d, 0);
+  const store = testStore(Store, d, 0);
   await store.mutate(s => { for (let i = 0; i < 50; i++) s.workspaces.push(workspace({ id: `w${i}`, goal: "x".repeat(2000) })); });
   const written = (store as unknown as { written: string }).written;
   assert.ok(written.length < 64, `kept ${written.length} chars`);

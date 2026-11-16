@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
@@ -278,7 +279,7 @@ test("older long overviews are never shown; the first view writes the sentence",
   const { s, dir, calls } = await service();
   try {
     const old: AboutRecord = { workspaceId: "w1", inputsHash: "old", generatedAt: iso(5), gist: "Fix slow vendor-activity query; PR #1352 merged, waiting on Mira", overview: "A long overview.", links: [], basis: { chat: true, source: "live", prs: 1, issues: [] }, failed: [], costUsd: null };
-    await new AboutStore(dir).mutate(f => { f.entries.w1 = old; });
+    await testStore(AboutStore, dir).mutate(f => { f.entries.w1 = old; });
     const collapsed = await s.view("w1");
     assert.equal(collapsed.record, null, "nothing until the new sentence exists");
     assert.equal(summaryDisplay({ status: "ready", record: old, firstMessage: null, links: [], error: null }, NOW).sentence, null);
@@ -295,7 +296,7 @@ async function service(over: { runner?: Runner; sources?: AboutSources; usage?: 
   let calls = 0;
   const runner: Runner = over.runner ?? (async () => { calls++; return { text: JSON.stringify({ sentence: "Speed up the vendor activity query so the vendor page loads fast." }), costUsd: 0.0012, inputTokens: 1500, outputTokens: 80 }; });
   const s = new AboutService({
-    store: new AboutStore(dir), jobs: new AiJobs({ runner }), sources: over.sources ?? fakeSources(),
+    store: testStore(AboutStore, dir), jobs: new AiJobs({ runner }), sources: over.sources ?? fakeSources(),
     workspace: async id => all.find(w => w.id === id) ?? null, context: () => ctx(),
     usage: async () => ({ accounts: [{ family: "claude", windows: [{ pct: over.usage ?? 10 }] }] }), roomForBackground: async () => over.room ?? true, now: () => now, ...(over.role ? { role: over.role } : {}),
   });
@@ -429,7 +430,7 @@ test("above the governor's on-demand threshold, opening serves the cache and sta
   try {
     let calls = 0;
     const w = workspace({ id: "w1", title: "T", goal: "G", mainAgentId: "a1", prs: [] });
-    const s = new AboutService({ store: new AboutStore(dir), jobs: new AiJobs({ runner: async () => { calls++; return { text: "{}", costUsd: 0, inputTokens: 0, outputTokens: 0 }; } }), sources: fakeSources(),
+    const s = new AboutService({ store: testStore(AboutStore, dir), jobs: new AiJobs({ runner: async () => { calls++; return { text: "{}", costUsd: 0, inputTokens: 0, outputTokens: 0 }; } }), sources: fakeSources(),
       workspace: async () => w, context: () => ctx(), usage: async () => ({ accounts: [] }), roomOnDemand: async () => false });
     const v = await s.view("w1", { open: true, refresh: true, wait: true });
     assert.equal(v.status, "idle"); assert.equal(calls, 0);
@@ -467,7 +468,7 @@ test("an overview younger than an hour is served without reading the agent's his
     let reads = 0;
     let now = NOW;
     const w = workspace({ id: "w1", title: "T", goal: "G", mainAgentId: "a1", prs: [] });
-    const s = new AboutService({ store: new AboutStore(dir), jobs: new AiJobs({ runner: reply(JSON.stringify({ sentence: "A sentence about the workspace." })) }), sources: fakeSources(),
+    const s = new AboutService({ store: testStore(AboutStore, dir), jobs: new AiJobs({ runner: reply(JSON.stringify({ sentence: "A sentence about the workspace." })) }), sources: fakeSources(),
       workspace: async () => w, context: () => ctx({ async history() { reads++; return { first: [], items, source: "live" as const }; } }), usage: async () => ({ accounts: [] }), now: () => now });
     await s.view("w1", { open: true, wait: true });
     assert.equal(reads, 1);
@@ -484,7 +485,7 @@ test("the excerpt is the developer's first message, never the workspace title re
   const dir = await mkdtemp(join(tmpdir(), "about-first-"));
   try {
     const w = workspace({ id: "w1", title: "Asset inventory filters", goal: "Asset inventory filters", mainAgentId: "a1", prs: [] });
-    const make = (first: string | null) => new AboutService({ store: new AboutStore(dir), jobs: new AiJobs({ runner: reply("{}") }), sources: fakeSources(), workspace: async () => w, context: () => null, usage: async () => ({ accounts: [] }), firstMessage: async () => first });
+    const make = (first: string | null) => new AboutService({ store: testStore(AboutStore, dir), jobs: new AiJobs({ runner: reply("{}") }), sources: fakeSources(), workspace: async () => w, context: () => null, usage: async () => ({ accounts: [] }), firstMessage: async () => first });
     assert.equal((await make(null).view("w1")).firstMessage, null);
     assert.equal((await make("Add saved filters to the asset inventory.").view("w1")).firstMessage, "Add saved filters to the asset inventory.");
   } finally { await rm(dir, { recursive: true, force: true }); }

@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -12,7 +13,7 @@ import { snapshot, pr, workspace } from "./fixtures";
 // a draft can't change the store through it, and readers can tell an unchanged workspace by identity.
 async function store(t: TestContext, writeMs = 1000) {
   const directory = await mkdtemp(join(tmpdir(), "follow-owned-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const s = new Store(directory, writeMs); t.after(() => s.close().catch(() => undefined));
+  const s = testStore(Store, directory, writeMs); t.after(() => s.close().catch(() => undefined));
   await s.mutate(state => { state.workspaces = [workspace({ id: "a", title: "First" }), workspace({ id: "b", title: "Second" })]; });
   return s;
 }

@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { activeNeeds, needsYou, workspaceSnoozed } from "../shared/attention";
@@ -74,7 +75,7 @@ test("row menu: a workspace-only Needs-you row leads with Later; snoozed, it off
 
 async function agents(t: TestContext, extra: Partial<AgentActionDeps> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "ws-later-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new Store(dir);
+  const store = testStore(Store, dir);
   await store.mutate(s => { s.workspaces = [held()]; });
   const acts: InboxAction[] = []; const notes: string[] = [];
   const deps = {

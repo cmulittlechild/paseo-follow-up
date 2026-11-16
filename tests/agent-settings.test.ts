@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
@@ -39,7 +40,7 @@ test("config: missing, garbage and partly invalid files fall back to today's def
 
 test("store: agents.json is its own file, written only on change, reset removes the role", async t => {
   const dir = await mkdtemp(join(tmpdir(), "agents-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new AgentSettingsStore(dir);
+  const store = testStore(AgentSettingsStore, dir);
   assert.equal((await store.role("about")).model, "haiku");
   assert.deepEqual(await readdir(dir), [], "reading never writes");
   await store.save("about", { provider: "codex", model: "gpt-6-luna", thinking: "low", mode: "full-access", dailyCap: 20 });
@@ -49,9 +50,9 @@ test("store: agents.json is its own file, written only on change, reset removes 
   await assert.rejects(store.save("about", { provider: "has spaces" }), /isn't valid/);
   await store.save("about", null);
   await store.flush(); assert.deepEqual(JSON.parse(await readFile(join(dir, "agents.json"), "utf8")).roles, {});
-  await store.flush(); assert.equal((await new AgentSettingsStore(dir).role("about")).isDefault, true);
+  await store.flush(); assert.equal((await testStore(AgentSettingsStore, dir).role("about")).isDefault, true);
   await writeFile(join(dir, "agents.json"), "{not json");
-  await store.flush(); assert.equal((await new AgentSettingsStore(dir).role("overseer")).provider, "claude", "an unreadable file means defaults");
+  await store.flush(); assert.equal((await testStore(AgentSettingsStore, dir).role("overseer")).provider, "claude", "an unreadable file means defaults");
 });
 
 test("ai-jobs: the role's provider picks the CLI; claude and codex arguments; unknown providers fail cleanly", async () => {

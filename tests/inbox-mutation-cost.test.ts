@@ -1,7 +1,8 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Session } from "node:inspector/promises";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Inbox, InboxStore, type Directory } from "../server/inbox";
@@ -45,7 +46,7 @@ async function setup(t: { after(fn: () => unknown): void }) {
   const directory: Directory = { async agents() { return []; }, async workspaces() { return []; }, async agent() { return null; }, async tail() { return []; }, async clearAttention() {} };
   let now = T0;
   // The worker's write window: mutations land in memory, one write per window (none inside a measurement).
-  const inbox: Inbox = new Inbox(dir, {
+  const inbox: Inbox = testStore(Inbox, dir, {
     enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, now: () => now, writeMs: 3_600_000, guard: async () => null,
     briefs: { async sink() {}, async call() { return null; }, async pr() { return null; } },
     sources: { ledger: async () => (await inbox.store.snapshot()).ledger, defer: async () => false, session: async () => false, schedule: async () => false },
@@ -174,7 +175,7 @@ test("a-mutation-costs-what-it-changes: questionsChanged with nothing due drafts
 async function writingStore(t: { after(fn: () => unknown): void }) {
   const dir = await mkdtemp(join(tmpdir(), "follow-write-cost-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = new InboxStore(dir, () => T0, 0);
+  const store = testStore(InboxStore, dir, () => T0, 0);
   const seed = liveSized();
   await store.mutate(s => { Object.assign(s, seed); });
   return { store, file: () => readFile(join(dir, "inbox.json"), "utf8") };

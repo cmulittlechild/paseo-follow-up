@@ -530,6 +530,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    recheck. Prefilter transcript bytes before decoding. Guarded by `tests/transcript-titles.test.ts`, `tests/local-titles.test.ts` and
    `shared/status-invariants.ts`.
 
+39. **Flush test stores before removing their directory** (`flush-test-stores-before-removal`). Tests construct
+   every queued writer through `tests/support/store-temp-dir.ts` (`testStore`, or `trackPersistence` for a direct
+   writer) and use its `rm` for cleanup. Removal drains every instance, including reopened stores and stores in
+   subdirectories, before touching the directory. A writer with `flush()` uses it; a write-through `mutate()`
+   queue drains with a no-op mutation, which never saves another value. The guard follows inherited methods.
+   A failed flush fails cleanup and leaves the directory intact.
+   Shutdown tests may discard an intentionally stuck fake only when it can never perform filesystem writes.
+   Guarded by `tests/store-temp-dir.test.ts` and the held-fsync regression in `tests/pr-workflow.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

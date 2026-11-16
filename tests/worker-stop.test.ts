@@ -1,6 +1,7 @@
+import { testStore, discardFakeStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Gateway } from "../server/engine";
@@ -46,7 +47,7 @@ const engineFor = (store: Store, gateway: Gateway) => {
 
 test("worker stop: Engine.stop resolves while a sync pass is stuck on a daemon that never answers", async t => {
   let entered!: () => void; const stuck = new Promise<void>(resolve => { entered = resolve; });
-  const engine = engineFor(new Store(await directory(t)), gatewayWith(() => { entered(); return never(); }));
+  const engine = engineFor(testStore(Store, await directory(t)), gatewayWith(() => { entered(); return never(); }));
   void engine.tick();
   await stuck; // the pass is inside discover, waiting on the daemon: only then is it truly in flight
   assert.ok(await settlesWithin(engine.stop(), BOUND_MS), "Engine.stop waited on the stuck pass with no bound");
@@ -55,12 +56,12 @@ test("worker stop: Engine.stop resolves while a sync pass is stuck on a daemon t
 test("worker stop: a pass that finishes after stop writes nothing", async t => {
   const dir = await directory(t);
   // Control: the same late answer without a stop does record the workspace, so the assertion below means something.
-  { const store = new Store(await directory(t)); let answer!: (rows: typeof row[]) => void; let entered!: () => void;
+  { const store = testStore(Store, await directory(t)); let answer!: (rows: typeof row[]) => void; let entered!: () => void;
     const inside = new Promise<void>(resolve => { entered = resolve; });
     const engine = engineFor(store, gatewayWith(() => new Promise(resolve => { answer = resolve; entered(); })));
     const pass = engine.tick(); await inside; answer([row]); await pass;
     assert.equal((await store.snapshot()).workspaces.length, 1, "control: a late discovery is recorded when nothing stopped"); }
-  const store = new Store(dir); let answer!: (rows: typeof row[]) => void; let entered!: () => void;
+  const store = testStore(Store, dir); let answer!: (rows: typeof row[]) => void; let entered!: () => void;
   const inside = new Promise<void>(resolve => { entered = resolve; });
   const engine = engineFor(store, gatewayWith(() => new Promise(resolve => { answer = resolve; entered(); })));
   const pass = engine.tick(); await inside;
@@ -75,7 +76,7 @@ test("worker stop: a pass that finishes after stop writes nothing", async t => {
 });
 
 test("worker stop: Store.close is bounded by a stuck mutation, which then never commits; later mutations are refused", async t => {
-  const store = new Store(await directory(t));
+  const store = testStore(Store, await directory(t));
   let release!: () => void;
   const stuck = store.mutate(async state => { await new Promise<void>(resolve => { release = resolve; }); state.workspaces = []; (state as { version: number }).version = 1; return "late"; });
   await new Promise(r => setImmediate(r));
@@ -89,7 +90,7 @@ test("worker stop: Store.close is bounded by a stuck mutation, which then never 
 });
 
 test("worker stop: PrActions.close is bounded by a PR action whose gh/gt call never returns", async t => {
-  const store = new Store(await directory(t));
+  const store = testStore(Store, await directory(t));
   const actions = new PrActions(store, { observe: async () => new Map() } as never, { invalidate() {}, merge: async () => never() }, new BrowserBridge());
   (actions as unknown as { stopWaitMs: number }).stopWaitMs = STOP_WAIT_MS;
   (actions as unknown as { running: Set<Promise<unknown>> }).running.add(never());
@@ -126,7 +127,7 @@ const fakeDeadline = (left: number) => {
 test("worker stop: the whole stop shares one deadline; once it is over, nothing stuck is waited on", async t => {
   const stopWorker = (teardown as unknown as { stopWorker?: StopWorker }).stopWorker;
   assert.ok(stopWorker, "the worker's stop has no single deadline: each wait gets its own bound, one after another");
-  const store = new Store(await directory(t), 1_000);
+  const store = testStore(Store, await directory(t), 1_000);
   let entered!: () => void; const inside = new Promise<void>(resolve => { entered = resolve; });
   // Stop bounds of their own left at the 5 s default: a step that used one instead of the shared deadline would
   // hold the stop past BOUND_MS.
@@ -134,6 +135,7 @@ test("worker stop: the whole stop shares one deadline; once it is over, nothing 
   void engine.tick(); await inside;
   const actions = new PrActions(store, { observe: async () => new Map() } as never, { invalidate() {}, merge: async () => never() }, new BrowserBridge());
   (actions as unknown as { running: Set<Promise<unknown>> }).running.add(never());
+  discardFakeStore(store); // This sealed queue never resumes and performs no filesystem writes.
   const late = store.mutate(async state => { await never(); state.workspaces.push(workspace({ id: "late" })); });
   late.catch(() => undefined);
   let unlocked = false;
@@ -144,8 +146,9 @@ test("worker stop: the whole stop shares one deadline; once it is over, nothing 
 });
 
 test("worker stop: Store.close bounds the queue, a flush and the last write by the one deadline it is given", async t => {
-  const store = new Store(await directory(t), 1_000);
+  const store = testStore(Store, await directory(t), 1_000);
   await store.mutate(state => { state.workspaces.push(workspace({ id: "first" })); });
+  discardFakeStore(store); // The write below is a fake that never touches the filesystem.
   (store as unknown as { write: () => Promise<never> }).write = () => never();
   void store.flush(); // a flush whose write never returns
   await new Promise(r => setImmediate(r));
@@ -158,7 +161,7 @@ test("worker stop: Store.close bounds the queue, a flush and the last write by t
 
 test("worker stop: a save that finishes inside the deadline is kept; one that finishes after it is dropped", async t => {
   const dir = await directory(t);
-  const store = new Store(dir, 1_000); // batched, as in the worker
+  const store = testStore(Store, dir, 1_000); // batched, as in the worker
   let entered!: () => void; const inside = new Promise<void>(resolve => { entered = resolve; });
   let finish!: () => void; const answered = new Promise<void>(resolve => { finish = resolve; });
   let release!: () => void; const released = new Promise<void>(resolve => { release = resolve; });

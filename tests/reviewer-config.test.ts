@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -51,7 +52,7 @@ test("team vs user: GitHub gets reviewers[] for people and team_reviewers[] by s
 });
 
 async function actionsFixture(t: TestContext, reviewersFor: () => { login: string; name: string | null }[], author = "author") {
-  const store = new Store(await tmp(t));
+  const store = testStore(Store, await tmp(t));
   let current = snapshot({ reviewers: { ...open(), author } });
   await store.mutate(s => { s.workspaces = [workspace({ prs: [pr({ snapshot: current })] })]; });
   const writes: string[][] = [];
@@ -82,7 +83,7 @@ test("with nobody configured the button doesn't error about defaults; the picker
 
 test("the picker's Remember saves a repository list in reviewers.json (owner-only), separate from state.json, and updates what Needs you reads", async t => {
   const dir = await tmp(t);
-  const reviewers = new ReviewerConfigStore(dir);
+  const reviewers = testStore(ReviewerConfigStore, dir);
   setReviewerConfig(emptyReviewerConfig());
   const w = workspace({ prs: [pr({ snapshot: snapshot({ reviewers: open() }) })] });
   assert.equal(needsYou(w).some(i => i.kind === "reviewers"), false, "nothing configured: no Needs-you row");
@@ -97,14 +98,14 @@ test("the picker's Remember saves a repository list in reviewers.json (owner-onl
   await reviewers.save(null, people("lead"));
   assert.deepEqual(configuredReviewers("other/repo").map(r => r.login), ["lead"]);
   // A second store over the same folder reads what was written.
-  await reviewers.flush(); assert.deepEqual((await new ReviewerConfigStore(dir).read()).defaults.map(r => r.login), ["lead"]);
+  await reviewers.flush(); assert.deepEqual((await testStore(ReviewerConfigStore, dir).read()).defaults.map(r => r.login), ["lead"]);
   setReviewerConfig(emptyReviewerConfig());
 });
 
 test("an unreadable reviewers.json is reported, never silently replaced", async t => {
   const dir = await tmp(t);
   await writeFile(join(dir, "reviewers.json"), "{not json");
-  await assert.rejects(new ReviewerConfigStore(dir).read(), /reviewers\.json/);
+  await assert.rejects(testStore(ReviewerConfigStore, dir).read(), /reviewers\.json/);
   assert.equal(await readFile(join(dir, "reviewers.json"), "utf8"), "{not json");
 });
 
@@ -122,7 +123,7 @@ test("migration: an install that requested reviewers keeps them (latest submitte
     "acme/api": [{ login: "ana", name: null }, { login: "acme/platform", name: null }],
   });
   const dir = await tmp(t);
-  const store = new ReviewerConfigStore(dir);
+  const store = testStore(ReviewerConfigStore, dir);
   await store.save("acme/api", people("kept"));
   const migrated = await store.migrate(state, new Date(clock));
   assert.deepEqual(migrated.repos["acme/api"], people("kept"), "a list the developer already set wins");
@@ -134,7 +135,7 @@ test("migration: an install that requested reviewers keeps them (latest submitte
 });
 
 test("migration: a fresh install, or one that never requested reviewers, starts empty", async t => {
-  const fresh = await new ReviewerConfigStore(await tmp(t)).migrate({ version: 1, workspaces: [workspace({ prs: [pr({ repo: "acme/acme-poc", key: "acme/acme-poc#1" })] })] } as State);
+  const fresh = await testStore(ReviewerConfigStore, await tmp(t)).migrate({ version: 1, workspaces: [workspace({ prs: [pr({ repo: "acme/acme-poc", key: "acme/acme-poc#1" })] })] } as State);
   assert.deepEqual(fresh.repos, {}); assert.deepEqual(fresh.defaults, []); assert.ok(fresh.migratedAt);
   setReviewerConfig(emptyReviewerConfig());
 });

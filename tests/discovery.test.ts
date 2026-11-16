@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { applyDiscovery, applyHistory, extractHistory } from "../server/discovery";
@@ -39,7 +40,7 @@ test("chooses the oldest root deterministically and never substitutes an existin
 
 test("installation and reload are inert; activation and every send require separate clicks", async t => {
   const directory = await mkdtemp(join(tmpdir(), "follow-discovery-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory); let now = clock; const messages: string[] = [];
+  const store = testStore(Store, directory); let now = clock; const messages: string[] = [];
   const gateway: Gateway = {
     prepareRecovery: async () => ({ agentId: "recovery-agent", contextPath: "/fixture/recovery.json" }),
     discover: async () => [{ id: "workspace", title: "Rollout", mainAgentId: "main-agent", messageAt: null, history: extractHistory([]) }],
@@ -54,7 +55,7 @@ test("installation and reload are inert; activation and every send require separ
   for (let i = 0; messages.length === 0 && i < 40; i++) await new Promise(r => setTimeout(r, 10));
   assert.equal(messages.length, 1); assert.match(messages[0], /separate inventory agent/);
   await engine.acknowledge("recovery-agent", (await store.snapshot()).workspaces[0].batches[0].id, "completed", "Reconciled conversation, no PRs produced yet");
-  const restarted = new Engine(new Store(directory), github, gateway, () => now); await restarted.recover(); await restarted.tick();
+  const restarted = new Engine(testStore(Store, directory), github, gateway, () => now); await restarted.recover(); await restarted.tick();
   assert.equal(messages.length, 1); assert.equal((await store.snapshot()).workspaces.length, 1);
 });
 
@@ -82,7 +83,7 @@ test("settled PRs trigger completion verification rather than Done or a human pr
 
 test("Track returns after persistence while unrelated global observation is still pending", async t => {
   const directory = await mkdtemp(join(tmpdir(), "follow-track-latency-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory); let release!: () => void; let entered!: () => void;
+  const store = testStore(Store, directory); let release!: () => void; let entered!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
   const started = new Promise<void>(resolve => { entered = resolve; });
   const gateway: Gateway = {

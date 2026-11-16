@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
@@ -22,7 +23,7 @@ const N = 140;
 test("a-tick-copies-the-state-at-most-once: a 140-workspace tick where every sendWait flips copies, derives and saves once", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-tick-")); t.after(() => rm(root, { recursive: true, force: true }));
   // Write-through (writeMs 0) so every save the tick causes is counted, not hidden behind the worker's debounce.
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => {
     s.migrations = [ACTIVE_SCOPE_MIGRATION];
     for (let i = 0; i < N; i++) s.workspaces.push(workspace({ id: `w${i}`, mainAgentId: `a${i}`, managedDoneLabel: i % 10 === 0, prs: [pr({ key: `example/app#${i + 1}`, number: i + 1 })] }));
@@ -48,7 +49,7 @@ test("a-tick-copies-the-state-at-most-once: a 140-workspace tick where every sen
 
 async function fleet(t: { after: (fn: () => unknown) => void }, n: number, writeMs = 0) {
   const root = await mkdtemp(join(tmpdir(), "follow-tick-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root, writeMs);
+  const store = testStore(Store, root, writeMs);
   await store.mutate(s => { s.migrations = [ACTIVE_SCOPE_MIGRATION]; for (let i = 0; i < n; i++) s.workspaces.push(workspace({ id: `w${i}`, mainAgentId: `a${i}`, prs: [pr({ key: `example/app#${i + 1}`, number: i + 1 })] })); });
   return store;
 }

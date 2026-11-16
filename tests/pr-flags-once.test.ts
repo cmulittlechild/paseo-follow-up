@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newEntry, notifiedBefore, prNotice, pruneNotified, reduce } from "../shared/inbox";
@@ -24,7 +25,7 @@ const follow = (prs: unknown[]) => ({ version: 1 as const, workspaces: [workspac
 
 async function inbox(t: { after(fn: () => unknown): void }, now = () => Date.parse(at(1))) {
   const dir = await mkdtemp(join(tmpdir(), "follow-pr-flags-")); t.after(() => rm(dir, { recursive: true, force: true }));
-  return new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, now });
+  return testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, now });
 }
 const flags = async (box: Inbox) => (await box.store.snapshot()).entries.a1?.needs?.reasons.filter(r => r.reason === "pr_merged").map(r => r.detail) ?? [];
 

@@ -1,3 +1,4 @@
+import { testStore, rm } from "./support/store-temp-dir";
 /**
  * Regression: wks_4b27f268b5dc2fc6 (2026-11-10). Three acme-poc PRs merged and deployed, both tasks done, yet the
  * workspace sat in "Follow-up is fixing": the deploy probe failed now and then, declare_done refused twice on a
@@ -6,7 +7,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, doneGuidance, type Gateway, type Runtime } from "../server/engine";
@@ -22,7 +23,7 @@ const obligation = (patch: Partial<Obligation> = {}): Obligation => ({ id: "task
 type Probe = Deployment["state"] | "none";
 async function fixture(t: any, w: Workspace) {
   const root = await mkdtemp(join(tmpdir(), "follow-done-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); });
   let now = clock; let probe: Probe = "deployed"; let runtime: Runtime = { busy: false, reason: null, archived: false };
   const deployment = (): Deployment | null => probe === "none" ? null : { state: probe, environment: "production", commits: ["serving"], evidence: probe === "unknown" ? "Could not verify serving production revisions." : "Serving revisions", observedAt: new Date(now).toISOString() };
   const github = { observe: async (prs: any[]) => new Map(prs.map(p => [p.key, { snapshot: { ...p.snapshot, observedAt: new Date(now).toISOString(), deployment: deployment() } as Snapshot, error: null }])) };

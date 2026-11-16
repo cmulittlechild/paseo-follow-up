@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -24,7 +25,7 @@ const rows = (): DiscoveredWorkspace[] => Array.from({ length: N }, (_, i) => ({
 test("a-mutation-copies-only-what-it-changes: a discovery tick that finds nothing new leaves every workspace object as it was and writes nothing", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-discovery-noop-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const store = new Store(root);
+  const store = testStore(Store, root);
   await store.mutate(s => { s.workspaces = Array.from({ length: N }, (_, i) => workspace({ id: `ws-${i}`, title: `Workspace ${i}`, mainAgentId: `agent-${i}`, enable_tracking: true, prs: [pr({ key: `example/app#${i + 1}`, number: i + 1 })] })); });
   const now = Date.parse("2026-11-13T06:00:00.000Z");
   await store.mutate(s => applyDiscovery(s, rows(), now));

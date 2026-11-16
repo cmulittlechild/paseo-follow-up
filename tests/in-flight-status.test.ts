@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { followUpEvents, Inbox, type AgentInfo, type Directory } from "../server/inbox";
@@ -51,7 +52,7 @@ async function inbox(agents: AgentInfo[]) {
   const dir = await mkdtemp(join(tmpdir(), "in-flight-"));
   const directory: Directory = { async agents() { return agents; }, async workspaces() { return [{ id: "workspace", name: "Migration rollout" }]; }, async agent(id) { return agents.find(a => a.id === id) ?? null; }, async tail() { return []; }, async clearAttention() {} };
   let now = clock + 60_000;
-  const box: Inbox = new Inbox(dir, {
+  const box: Inbox = testStore(Inbox, dir, {
     enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: false }), directory,
     sources: { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false },
     guard: async () => null, graceMs: 5, settleMs: 40, settleStepMs: 5, now: () => now,

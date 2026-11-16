@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { communicationSchema, replyRecorded } from "../shared/communication";
@@ -68,8 +69,8 @@ test("reply destination changes invalidate queued work and recorded replies cann
 test("communication records survive storage and only a receipt or explicit waiver completes their batch", async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-communication-")); t.after(() => rm(root, { recursive: true, force: true }));
   const w = workspace({ prs: [] }); const o = updateObligation(w, progress());
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); });
-  assert.deepEqual((await new Store(root).snapshot()).workspaces[0].obligations[0].communication, communication());
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); });
+  assert.deepEqual((await testStore(Store, root).snapshot()).workspaces[0].obligations[0].communication, communication());
   const sends: string[] = [];
   const gateway: Gateway = { observe: async () => ({ busy: false, reason: null, archived: false }), send: async (_w, _b, text) => { sends.push(text); }, label: async () => {}, prepareRecovery: async () => { throw new Error("Not a recovery request"); } };
   const engine = new Engine(store, { observe: async () => new Map() }, gateway, () => clock);
@@ -89,7 +90,7 @@ test("an authorized progress update can report unknown PR state; dependent verif
   const root = await mkdtemp(join(tmpdir(), "follow-communication-")); t.after(() => rm(root, { recursive: true, force: true }));
   const w = workspace({ enable_auto_sends: true }); updateObligation(w, progress());
   updateObligation(w, { ...progress(), title: "Verify and update the requester", afterPrs: [w.prs[0].key], trigger: { event: "deploy" as const, delayDays: 0 }, communication: { ...communication(), purpose: "verified" } });
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); });
   const sends: string[] = []; let now = clock;
   const gateway: Gateway = { observe: async () => ({ busy: false, reason: null, archived: false }), send: async (_w, _b, text) => { sends.push(text); }, label: async () => {}, prepareRecovery: async () => { throw new Error("Not recovery"); } };
   const engine = new Engine(store, { observe: async () => new Map([[w.prs[0].key, { snapshot: null, error: "Temporarily unavailable" }]]) }, gateway, () => now);

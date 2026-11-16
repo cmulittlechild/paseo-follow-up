@@ -1,9 +1,10 @@
+import { testStore, rm } from "./support/store-temp-dir";
 // Wait for background jobs, folded in from the standalone paseo-wait plugin (its tests/mcp.test.ts covered the same
 // rules over its own MCP; here the tools are native plugin tools, so they're exercised through execute()).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { AgentToolContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
@@ -131,13 +132,13 @@ test("plugin teardown releases active waits and keeps the records", async t => {
 
 test("the setting: on by default, saved as enable_wait in agents.json next to the role settings", async t => {
   const root = await dir(t);
-  const store = new AgentSettingsStore(root);
+  const store = testStore(AgentSettingsStore, root);
   assert.equal(await store.waitEnabled(), true);
   await store.save("about", { model: "sonnet" });
   await store.setWait(false);
   await store.flush(); const saved = JSON.parse(await readFile(join(root, "agents.json"), "utf8"));
   assert.equal(saved.enable_wait, false); assert.equal(saved.roles.about.model, "sonnet", "roles kept");
-  await store.flush(); assert.equal(await new AgentSettingsStore(root).waitEnabled(), false, "survives a restart");
+  await store.flush(); assert.equal(await testStore(AgentSettingsStore, root).waitEnabled(), false, "survives a restart");
   await store.save("about", null);
   await store.flush(); assert.equal(JSON.parse(await readFile(join(root, "agents.json"), "utf8")).enable_wait, false, "a role change keeps it");
   await store.setWait(true);
@@ -147,7 +148,7 @@ test("the setting: on by default, saved as enable_wait in agents.json next to th
 
 test("agent parity: set_wait_for_jobs is the switch's RPC, planned first; agent_settings reads it", async t => {
   const root = await dir(t);
-  const store = new AgentSettingsStore(root);
+  const store = testStore(AgentSettingsStore, root);
   const notes: string[] = [];
   const status = async () => waitStatus(await store.waitEnabled(), null);
   const calls: string[] = [];

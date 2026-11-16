@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, type Runtime, type Gateway } from "../server/engine";
@@ -15,7 +16,7 @@ import { clock, workspace, pr, snapshot } from "./fixtures";
 
 async function fixture(t: any, w: Workspace) {
   const root = await mkdtemp(join(tmpdir(), "follow-send-"));
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(w); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(w); });
   t.after(() => rm(root, { recursive: true, force: true }));
   let now = clock; let state: Runtime = { busy: false, reason: null, archived: false }; let fresh: Runtime | null = null; let prError: string | null = null; let errorKey: string | null = null;
   const observations = new Map(w.prs.map(p => [p.key, p.snapshot!]));

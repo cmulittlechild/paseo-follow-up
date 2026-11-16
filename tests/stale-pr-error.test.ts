@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -72,7 +73,7 @@ test("a-github-limit-never-blanks-a-known-pr: loading state.json heals a merged 
   // The live shape, on disk as beta.1 wrote it, in a dormant workspace the engine never observes.
   const open = pr({ key: "example/app#1290", number: 1290, snapshot: snapshot({ state: "OPEN" }), error: ERROR });
   await writeFile(join(root, "state.json"), JSON.stringify({ version: 1, workspaces: [workspace({ dormant: true, prs: [live(), open] })] }));
-  const w = (await new Store(root).snapshot()).workspaces[0];
+  const w = (await testStore(Store, root).snapshot()).workspaces[0];
   assert.equal(w.prs[0].error, null, "a merged PR with a complete snapshot loads without its stale error");
   assert.equal(w.prs[1].error, ERROR, "an open PR keeps its error: its status can still move, and the next read decides");
   assert.equal(prPresentation(w.prs[0]).label, "Merged");
@@ -90,7 +91,7 @@ test("a-github-limit-never-blanks-a-known-pr: the developer's Refresh of a dorma
   t.after(() => rm(root, { recursive: true, force: true }));
   // An open PR in the same dormant workspace: the error a later read can clear only if Refresh reads it at all.
   const open = pr({ key: "example/app#1324", number: 1324, snapshot: snapshot({ state: "OPEN" }), error: ERROR });
-  const store = new Store(root); await store.mutate(s => { s.workspaces.push(workspace({ id: "dormant", dormant: true, prs: [live(), open] })); });
+  const store = testStore(Store, root); await store.mutate(s => { s.workspaces.push(workspace({ id: "dormant", dormant: true, prs: [live(), open] })); });
   const read: string[][] = []; const runtimes: string[] = [];
   const github = { observe: async (prs: any[]) => { read.push(prs.map(p => p.key)); return new Map(prs.map(p => [p.key, { snapshot: { ...p.snapshot, observedAt: new Date(clock).toISOString() }, error: null }])); } };
   const gateway = { observe: async (w: any) => { runtimes.push(w.id); return { busy: false, reason: null, archived: false }; }, send: async () => {}, label: async () => {}, prepareRecovery: async () => ({ agentId: "recovery-agent", contextPath: "/fixture/recovery.json" }) };

@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -134,7 +135,7 @@ test("the inbox keeps the Overseer out of rows and counts and returns its row ap
   const agents = [info("ov", "w-ov"), info("a1", "w1")];
   const directory: Directory = { async agents() { return agents; }, async workspaces() { return [{ id: "w-ov", name: "Overseer" }, { id: "w1", name: "SCIM" }]; }, async agent(id) { return agents.find(a => a.id === id) ?? null; }, async tail() { return []; }, async clearAttention() {} };
   const none: Sources = { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false };
-  const inbox = new Inbox(dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, settleMs: 1, settleStepMs: 1, now: () => NOW, overseer: async () => "ov" });
+  const inbox = testStore(Inbox, dir, { enabled: async () => ({ enable_inbox: true, enable_inbox_pr_closed: true }), directory, sources: none, guard: async () => null, graceMs: 5, settleMs: 1, settleStepMs: 1, now: () => NOW, overseer: async () => "ov" });
   await inbox.store.mutate(s => { s.importedAt = at(60); s.lastSeen = at(1); s.primedAt = at(60); s.notifiedAt = at(60); });
   await inbox.turnEnded({ id: "ov", workspaceId: "w-ov" }, { kind: "completed" }, "t1");
   await inbox.turnEnded({ id: "a1", workspaceId: "w1" }, { kind: "completed" }, "t2");

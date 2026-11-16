@@ -1,6 +1,7 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store";
@@ -15,7 +16,7 @@ import type { Snapshot } from "../shared/model";
 const reviewers = () => ({ author: "author", requested: [] as string[], teams: [] as string[], reviewed: [] as string[], complete: true });
 async function fixture(t: TestContext) {
   const directory = await mkdtemp(join(tmpdir(), "follow-reviewers-")); t.after(() => rm(directory, { recursive: true, force: true }));
-  const store = new Store(directory);
+  const store = testStore(Store, directory);
   let current = snapshot({ reviewers: reviewers() }); let now = clock;
   // The store gets its own copy: `current` is the fake GitHub's, and it changes it (committed-workspaces-are-owned).
   await store.mutate(s => { s.workspaces = [workspace({ prs: [pr({ snapshot: structuredClone(current) })] })]; });
@@ -78,7 +79,7 @@ test("GitHub review writes use repository-scoped argv and distinguish rejected f
 
 test("two PRs can request reviewers while the first request is still in flight; duplicate clicks share one request", async t => {
   const directory = await mkdtemp(join(tmpdir(), "follow-reviewers-parallel-"));
-  const store = new Store(directory);
+  const store = testStore(Store, directory);
   const rows = [1, 2].map(number => pr({ key: `example/app#${number}`, number, snapshot: snapshot({ reviewers: reviewers() }) }));
   await store.mutate(s => { s.workspaces = [workspace({ prs: rows })]; });
   let notifyStarted!: () => void; let releaseFirst!: () => void;

@@ -1,7 +1,8 @@
+import { testStore, rm } from "./support/store-temp-dir";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { fork, spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ async function directory(t: TestContext) {
 test("a-new-worker-starts-once-the-old-one-exits: the lock waits for a live previous worker and is claimed once it exits", async t => {
   const dir = await directory(t);
   const old = await previousWorker(t, join(dir, "worker.lock"), 2_000);
-  const store = new Store(dir); t.after(() => store.close().catch(() => undefined));
+  const store = testStore(Store, dir); t.after(() => store.close().catch(() => undefined));
   const waits: (number | null)[] = [];
   const started = Date.now();
   const unlock = await store.lock({ onWait: pid => waits.push(pid), pollMs: FAST });
@@ -48,7 +49,7 @@ test("a-new-worker-starts-once-the-old-one-exits: a reused pid that isn't a plug
   const other = spawn("sleep", ["30"], { stdio: "ignore" }); t.after(() => other.kill("SIGKILL"));
   await writeFile(join(dir, "worker.lock"), `${other.pid}:an-old-worker`);
   assert.equal(workerOwner(other.pid!), false, "a running pid that is not a plugin process");
-  const store = new Store(dir); t.after(() => store.close().catch(() => undefined));
+  const store = testStore(Store, dir); t.after(() => store.close().catch(() => undefined));
   const waits: (number | null)[] = [];
   await store.lock({ onWait: pid => waits.push(pid), pollMs: FAST });
   assert.deepEqual(waits, [], "stale at once: no wait");
@@ -65,7 +66,7 @@ test("a-new-worker-starts-once-the-old-one-exits: a plugin process that started 
   await utimes(lock, written, written);
   assert.equal(workerOwner(other.pid!, written.getTime()), false, "started after the lock: not its owner");
   assert.equal(workerOwner(other.pid!, Date.now()), true, "the same process counts for a lock written after it started");
-  const store = new Store(dir); t.after(() => store.close().catch(() => undefined));
+  const store = testStore(Store, dir); t.after(() => store.close().catch(() => undefined));
   const waits: (number | null)[] = [];
   await store.lock({ onWait: pid => waits.push(pid), pollMs: FAST });
   assert.deepEqual(waits, [], "stale at once: no wait on an unrelated plugin's worker");
@@ -89,7 +90,7 @@ test("a-new-worker-starts-once-the-old-one-exits: a clear claim left by a worker
     else if (left === "empty and old") await writeFile(`${lock}.recovery`, "");
     else await writeFile(`${lock}.recovery`, String((await previousWorker(t, "-", 30_000)).pid));
     if (left !== "dead holder") { const old = new Date(Date.now() - 2 * RECOVERY_STALE_MS); await utimes(`${lock}.recovery`, old, old); }
-    const store = new Store(dir); t.after(() => store.close().catch(() => undefined));
+    const store = testStore(Store, dir); t.after(() => store.close().catch(() => undefined));
     const waits: (number | null)[] = [];
     await store.lock({ onWait: pid => waits.push(pid), pollMs: FAST });
     assert.deepEqual(waits, [], `${left}: cleared at once, no wait`);
@@ -105,7 +106,7 @@ test("a-new-worker-starts-once-the-old-one-exits: a live worker clearing the loc
   const clearer = await previousWorker(t, "-", 30_000);
   await writeFile(`${lock}.recovery`, String(clearer.pid));
   setTimeout(() => void rm(`${lock}.recovery`, { force: true }), 1_000);
-  const store = new Store(dir); t.after(() => store.close().catch(() => undefined));
+  const store = testStore(Store, dir); t.after(() => store.close().catch(() => undefined));
   const waits: (number | null)[] = [];
   await store.lock({ onWait: pid => waits.push(pid), pollMs: FAST });
   assert.ok(waits.length > 0 && waits.every(pid => pid === clearer.pid), "it reported waiting on the worker clearing the lock");
@@ -115,10 +116,10 @@ test("a-new-worker-starts-once-the-old-one-exits: a live worker clearing the loc
 test("a-new-worker-starts-once-the-old-one-exits: only a lock with no valid owner is an error, and stopping ends the wait", async t => {
   const dir = await directory(t);
   await writeFile(join(dir, "worker.lock"), "not-a-pid");
-  await assert.rejects(new Store(dir).lock({ pollMs: FAST }), /invalid owner/);
+  await assert.rejects(testStore(Store, dir).lock({ pollMs: FAST }), /invalid owner/);
   const live = await directory(t);
   await previousWorker(t, join(live, "worker.lock"), 60_000);
-  const store = new Store(live);
+  const store = testStore(Store, live);
   const waiting = store.lock({ pollMs: { fast: 30_000, fastForMs: 60_000, slow: 30_000 } });
   await new Promise(resolve => setTimeout(resolve, 200));
   const stopped = Date.now();
