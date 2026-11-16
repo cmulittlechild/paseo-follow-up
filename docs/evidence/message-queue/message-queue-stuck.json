@@ -1,0 +1,149 @@
+{
+  "script": "scripts/check-message-queue.mjs",
+  "baseline": false,
+  "pack": {
+    "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+    "version": "2.1.0-beta.3"
+  },
+  "paseo": "0.15.4",
+  "cases": {
+    "forward-stuck": {
+      "timeScale": 0.05,
+      "neverLeft": {
+        "id": "message:42b84047-5f1e-4eb4-8cdd-90c7418ba9aa:48e05b96-66d4-4f8b-9e8f-d631b7dcd3ed",
+        "agentId": "42b84047-5f1e-4eb4-8cdd-90c7418ba9aa",
+        "agentTitle": "Stuck forward main",
+        "state": "queued",
+        "reason": "Paseo unreachable",
+        "since": "2026-11-16T15:51:46.789Z"
+      },
+      "failed": {
+        "id": "message:42b84047-5f1e-4eb4-8cdd-90c7418ba9aa:02e51b92-1b42-4384-b495-19fa0883818b",
+        "agentId": "42b84047-5f1e-4eb4-8cdd-90c7418ba9aa",
+        "agentTitle": "Stuck forward main",
+        "state": "failed",
+        "reason": "Follow-up couldn't confirm the agent got it.",
+        "since": "2026-11-16T15:53:02.359Z"
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "the worker's daemon connection goes through the proxy",
+      "ok": true,
+      "connections": 1
+    },
+    {
+      "name": "stuck (never left): the workspace shows the message that didn't go out",
+      "ok": true,
+      "entry": {
+        "id": "message:42b84047-5f1e-4eb4-8cdd-90c7418ba9aa:48e05b96-66d4-4f8b-9e8f-d631b7dcd3ed",
+        "agentId": "42b84047-5f1e-4eb4-8cdd-90c7418ba9aa",
+        "agentTitle": "Stuck forward main",
+        "state": "queued",
+        "reason": "Paseo unreachable",
+        "since": "2026-11-16T15:51:46.789Z"
+      },
+      "title": "A message to Stuck forward main didn't go out"
+    },
+    {
+      "name": "stuck (never left): Cancel clears it",
+      "ok": true
+    },
+    {
+      "name": "stuck (never left): the cancelled forward never reached the agent",
+      "ok": true
+    },
+    {
+      "name": "stuck (failed): the workspace shows it as failed",
+      "ok": true,
+      "entry": {
+        "id": "message:42b84047-5f1e-4eb4-8cdd-90c7418ba9aa:02e51b92-1b42-4384-b495-19fa0883818b",
+        "agentId": "42b84047-5f1e-4eb4-8cdd-90c7418ba9aa",
+        "agentTitle": "Stuck forward main",
+        "state": "failed",
+        "reason": "Follow-up couldn't confirm the agent got it.",
+        "since": "2026-11-16T15:53:02.359Z"
+      }
+    },
+    {
+      "name": "stuck (failed): Cancel clears it",
+      "ok": true
+    },
+    {
+      "name": "no worker crash in the daemon log",
+      "ok": true
+    }
+  ],
+  "timing": null,
+  "mainTiming": {
+    "pack": {
+      "file": "paseo-follow-up-2.1.0-beta.3.tgz",
+      "version": "2.1.0-beta.3"
+    },
+    "rows": [
+      {
+        "action": "answer-question send",
+        "method": "follow.answer-question",
+        "ms": 5,
+        "ok": true
+      },
+      {
+        "action": "answer-question resend (Try now on a queued answer)",
+        "method": "follow.answer-question",
+        "ms": 2,
+        "ok": true
+      },
+      {
+        "action": "brief-action",
+        "method": "follow.brief-action",
+        "ms": 7,
+        "ok": true
+      },
+      {
+        "action": "brief-action Retry on a queued card",
+        "method": "follow.brief-action",
+        "ms": 4,
+        "ok": false,
+        "error": "Request failed: This brief was replaced by a newer one. Read the newest card. requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "send (manual Send of a repair batch)",
+        "method": "follow.send",
+        "ms": 20013,
+        "ok": false,
+        "error": "Request failed: Connection timed out requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action retry",
+        "method": "follow.queue-action",
+        "ms": 3,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "queue-action cancel",
+        "method": "follow.queue-action",
+        "ms": 1,
+        "ok": false,
+        "error": "Request failed: Plugin follow-up does not contribute RPC follow.queue-action requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "Overseer forward (send_to_agent)",
+        "method": "follow.overseer-act",
+        "ms": 30002,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+      },
+      {
+        "action": "report handed to an agent (report-issue-send)",
+        "method": "follow.report-issue-send",
+        "ms": 30001,
+        "ok": false,
+        "error": "Request failed: Plugin RPC timed out: follow-up.invoke requestType=plugin.rpc.invoke.request code=handler_error"
+      }
+    ]
+  },
+  "todo": [],
+  "result": "pass"
+}
