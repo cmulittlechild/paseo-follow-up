@@ -150,6 +150,12 @@ export const workspaceSchema = z.object({
   dormant: z.boolean().optional(),
   /** The main agent's provider conversation no longer exists; Follow-up stops sending to it. */
   goneAgent: z.object({ agentId: idSchema, at: z.string(), reason: z.string() }).nullable().optional(),
+  /**
+   * Messages to this workspace's agents with no card of their own (Overseer forwards, reports handed to an agent) that
+   * didn't go out: Failed, or Queued past MESSAGE_STUCK_MS. The message queue writes it (server/message-queue.ts) and
+   * clears an entry once its item is sent or cancelled; Needs you shows each with Retry and Cancel.
+   */
+  undelivered: z.array(z.object({ id: z.string().max(400), agentId: idSchema, agentTitle: z.string().nullable(), state: z.enum(["queued", "failed"]), reason: z.string().nullable(), since: z.string() })).max(20).optional(),
   /** The main agent's title from Paseo, for "Next message to <title>". Absent: "the main agent". */
   mainAgentTitle: z.string().nullable().optional(),
   /** Open tasks kept out of the next message (reconcile): capped (sent NO_PROGRESS_CAP times unchanged) or manual (Auto off for that task). */

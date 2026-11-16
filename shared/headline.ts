@@ -179,6 +179,7 @@ export function workspaceHeadline(items: NeedItem[]): Headline | null {
     case "retry": return { key: "blocked", label: "Tasks stuck", line: top.title, source: "workspace" };
     case "capped": return { key: "blocked", label: "Task unchanged", line: top.title, source: "workspace" };
     case "check": return { key: "blocked", label: "Check PR", line: top.title, source: "workspace" };
+    case "message": return { key: "blocked", label: "Message not sent", line: top.title, source: "workspace" };
     case "answer": return top.waiting ? { key: "decision", label: "Send answer", line: top.title, source: "workspace" } : { key: "blocked", label: "Check answer", line: top.title, source: "workspace" };
     case "decision": return { key: "decision", label: "Decision", line: top.title, source: "workspace" };
     case "send": return top.finish ? { key: "finish", label: FINISH_WORD, line: FINISH_ASK[0].toUpperCase() + FINISH_ASK.slice(1), source: "workspace" } : { key: "repairs", label: `Send ${plural(top.tasks.length, "task")}`, line: top.title, source: "workspace" };

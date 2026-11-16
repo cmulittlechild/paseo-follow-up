@@ -95,6 +95,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `inbox_list`, `inbox_brief` | `follow.inbox-list`, `follow.inbox-brief` | read (`inbox_list` rows carry `prs`: each PR the row is about, with its url) |
 | `sign_off`, `snooze`, `set_finish_flags`, `inbox_act` | `follow.inbox-act` | planned; other agents only |
 | `brief_action` | `follow.brief-action` | planned; never your own brief |
+| `queue_list` | `follow.queue-list` | read: the message queue per workspace or agent (state, why it waits, next try), plus the newest sent |
+| `queue_action` | `follow.queue-action` | planned: retry a queued or failed message now, or cancel it (a card's Retry, Needs you's message row) |
 | `answer_question` | `follow.answer-question` | planned; never your own question. The tool sends; the UI's Copy and Put in chat (`action: "copy" \| "chat"`) only move the developer's own words into their clipboard or composer, so they have no tool (`server/agent-parity.ts`). |
 | `set_workspace_spec` | `follow.workspace-spec` | planned |
 | `set_task_trigger` | `follow.set-task-trigger` | planned |
