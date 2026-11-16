@@ -262,6 +262,9 @@ export class Store {
    * the copy is never one of them, so a later change by the caller can't reach the store, a write to a committed
    * workspace throws (strict code), and an unchanged workspace keeps its object across commits, which is what
    * ListCache and perSnapshot key on. The save's validation skips owned workspaces: they were parsed here.
+   * In production that write is silently ignored, not thrown: Paseo's wrapper (compiler-build.js wrapCommonJsBundle)
+   * evaluates the server bundle in sloppy mode, so only tests (strict) throw. Candidate upstream fix, one line: the
+   * wrapper's body starts with "use strict".
    */
   private own(next: State): State {
     let changed = false;

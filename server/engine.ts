@@ -649,9 +649,6 @@ export class Engine {
   async stop(within?: Deadline): Promise<void> { this.stopped = true; if (this.nudgeTimer) clearTimeout(this.nudgeTimer); this.nudgeTimer = null; this.nudgeWaiters.splice(0).forEach(w => w()); await settleWithin(Promise.allSettled([this.running, ...this.recoveryOperations]), within ?? this.stopWaitMs); }
 }
 
-export type DoneResult = { workspace: Workspace; blockers: string[]; unconfirmed: string[]; alreadyDone: boolean; next: string };
-/** The declare_done reply in words: what's missing, who can move it, and whether calling again could help. */
-/** Done answers every open Done check: a queued one is cancelled, a sent one counts as acknowledged. */
 /**
  * An acknowledged repair waits for a GitHub read newer than its acknowledgment (readSince, One cap). Until that read
  * lands, a read that only moves observedAt is a change: it is what lets the condition go out again.
@@ -670,6 +667,10 @@ function nextDue(w: Workspace, now: number): number {
   }
   return next;
 }
+
+export type DoneResult = { workspace: Workspace; blockers: string[]; unconfirmed: string[]; alreadyDone: boolean; next: string };
+/** The declare_done reply in words: what's missing, who can move it, and whether calling again could help. */
+/** Done answers every open Done check: a queued one is cancelled, a sent one counts as acknowledged. */
 function settleDoneChecks(w: Workspace, now: number): void {
   for (const b of w.batches.filter(b => completionCheck(b) && ["pending", "sending", "sent", "blocked", "uncertain"].includes(b.state))) {
     const sent = b.state !== "pending";
