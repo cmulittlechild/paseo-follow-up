@@ -84,7 +84,9 @@ Answers that the client polls are kept small:
 
 - `follow.list` takes `since` (a revision) and returns only changed workspaces (`server/list-cache.ts`). It
   serialises only a workspace whose object changed (`a-list-answer-serializes-only-what-changed`): the store keeps an
-  unchanged workspace's frozen object, so the same object is skipped.
+  unchanged workspace's frozen object, so the same object is skipped. A changed workspace becomes the store's own
+  parsed, frozen copy at the commit (`committed-workspaces-are-owned`), so it is built once, not on every call until
+  the next save.
 - `follow.list` and `follow.workspaces-feed` carry each workspace's **list form** (`shared/list.ts`, invariant
   `a-list-carries-only-what-lists-draw`): what Home, the pill, the sidebar, header dots and search draw. It is the
   stored schema minus named detail fields: deployment evidence and commits; a snapshot's base, trunk and head branch;

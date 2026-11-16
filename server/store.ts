@@ -47,6 +47,8 @@ export class Store {
    */
   private holds = 0;
   private held: { volatile: boolean } | null = null;
+  /** Workspaces the store owns: validated copies, frozen, never a caller's object (committed-workspaces-are-owned). */
+  private owned = new WeakSet<Workspace>();
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * an-ack-never-waits-on-the-disk, for state.json's own write: a batched write that fails keeps the state in memory,
@@ -72,7 +74,7 @@ export class Store {
     try { state = text === null ? { version: 1, workspaces: [] } : stateSchema.parse(JSON.parse(text)); }
     catch { throw new Error("Saved follow-up state could not be read. Restore state.json before continuing."); }
     // Loaded state is validated whole; it is also what the next write's per-workspace validation compares against.
-    if (!this.state) { this.state = deepFreeze(state); this.saved = this.state; }
+    if (!this.state) { this.state = deepFreeze(state); this.saved = this.state; for (const w of state.workspaces) this.owned.add(w); }
     return this.state;
   }
   /** A private, mutable copy of the saved state (the old per-call read). */
@@ -109,7 +111,8 @@ export class Store {
     if (this.closing) return Promise.reject(stopping());
     const next = this.tail.then(async () => {
       if (this.sealed) throw stopping();
-      const { value, next, volatile } = await work(await this.load());
+      const { value, next: draft, volatile } = await work(await this.load());
+      const next = draft && this.own(draft);
       // Accepted before the worker stopped: it commits if it finished before the stop's deadline, and is dropped if
       // it finished after (its work awaited a daemon that answered late).
       if (this.sealed) throw stopping();
@@ -120,8 +123,8 @@ export class Store {
         this.holdTimer ??= setTimeout(() => { this.holdTimer = null; void this.commitHeld(); }, MAX_HOLD_MS);
         (this.holdTimer as { unref?: () => void }).unref?.();
       } else if (next) {
-        // Write-through keeps the old contract: a failed write leaves the saved state as it was. The draft may hold
-        // objects owned by callers (observations), so only the validated copy the write returns is frozen.
+        // Write-through keeps the old contract: a failed write leaves the saved state as it was. Changed workspaces are
+        // already the store's own frozen copies (own, above); a workspace that fails validation rejects the commit.
         if (this.writeMs <= 0) this.state = await this.write(next);
         else { this.state = next; this.schedule(!!volatile); }
         await this.onChanged(this.state).catch(() => undefined);
@@ -243,7 +246,7 @@ export class Store {
    * Under FOLLOW_UP_STORE_FULL_VALIDATION (tests) every write is also parsed whole and must read the same.
    */
   private validate(state: State): State {
-    const valid = new Set<Workspace>(this.saved?.workspaces ?? []);
+    const valid = this.owned;
     const { workspaces, ...top } = state;
     const head = topSchema.parse(top) as Record<string, unknown>;
     const checked = workspaces.map(w => valid.has(w) ? w : workspaceSchema.parse(w) as Workspace);
@@ -252,6 +255,23 @@ export class Store {
     const parsed = deepFreeze(out as State);
     if (process.env.FOLLOW_UP_STORE_FULL_VALIDATION && JSON.stringify(stateSchema.parse(state)) !== JSON.stringify(parsed)) throw new Error("Store: per-workspace validation disagrees with a full parse");
     return parsed;
+  }
+  /**
+   * committed-workspaces-are-owned: a workspace a commit changed becomes the store's own validated, frozen copy here,
+   * at the commit, not at the next save. A draft may hold objects its caller still owns (an observation's snapshot);
+   * the copy is never one of them, so a later change by the caller can't reach the store, a write to a committed
+   * workspace throws (strict code), and an unchanged workspace keeps its object across commits, which is what
+   * ListCache and perSnapshot key on. The save's validation skips owned workspaces: they were parsed here.
+   */
+  private own(next: State): State {
+    let changed = false;
+    const workspaces = next.workspaces.map(w => {
+      if (this.owned.has(w)) return w;
+      changed = true;
+      const copy = deepFreeze(workspaceSchema.parse(w) as Workspace);
+      this.owned.add(copy); return copy;
+    });
+    return changed ? { ...next, workspaces } : next;
   }
   async lock(): Promise<() => Promise<void>> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
