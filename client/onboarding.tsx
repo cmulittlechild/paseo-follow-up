@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Animated, Easing, Keyboard, Platform, View, type ViewStyle, type ScrollView as NativeScrollView } from "react-native";
+import { Animated, Easing, Platform, View, type ViewStyle, type ScrollView as NativeScrollView } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc, useSettings } from "@getpaseo/plugin/client";
-import { Icon, ScrollView, copyText, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { followSettingsRpc, onboardingChecksRpc, onboardingRpc, setFollowSettingsRpc, setOnboardingRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
@@ -10,6 +10,7 @@ import { ONBOARDING_STEPS, autoSendWrites, checksSummary, type Check, type Onboa
 import { Button, IconButton, errorText, text, type Theme } from "./kit";
 import { ReviewerSettings } from "./reviewers";
 import { JobRows } from "./job-rows";
+import { DockedPane } from "./docked-pane";
 import { SETUP_ORDER } from "../shared/job-rows";
 import { ShippingStep } from "./shipping";
 import { UpdatesStep } from "./updates";
@@ -77,7 +78,6 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
   } });
   const skip = () => move.mutate({ action: "skip" }, { onSuccess: () => toast.show("Setup skipped. Set it up any time from Follow-up settings, General.") });
   const last = index === ONBOARDING_STEPS.length - 1;
-  const keyboard = useKeyboardUp(compact);
   const failing = step === "checks" && checks.data ? checksSummary(checks.data.checks).state === "fail" : false;
 
   const body = step === "intro" ? <IntroStep theme={theme} compact={compact} follow={follow.data ?? null} />
@@ -100,22 +100,13 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
   };
   const column: ViewStyle = { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: compact ? 16 : 24 };
 
-  return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
-    <View style={[column, { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: compact ? 8 : 20, paddingBottom: 8 }]}>
+  return <DockedPane compact={compact} scrollRef={scroll} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ paddingBottom: 24 }}
+    header={<View style={[column, { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: compact ? 8 : 20, paddingBottom: 8 }]}>
       <Progress theme={theme} index={index} onPick={i => i < index && go(ONBOARDING_STEPS[i])} />
       <Button theme={theme} compact={compact} kind="ghost" title="Skip setup" accessibilityHint="Leaves setup. Every setting keeps its current value." onPress={skip} disabled={move.isPending} />
-    </View>
-    <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-      <StepFade key={step} style={[column, { gap: compact ? 14 : 16, paddingTop: compact ? 8 : 20 }]}>
-        <View style={{ gap: 6 }}>
-          <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 20, lineHeight: 26, fontWeight: "600" }}>{TITLES[step]}</Text>
-          <Text style={[t.body, { color: c.foregroundMuted, maxWidth: 520 }]}>{lead[step]}</Text>
-        </View>
-        {body}
-      </StepFade>
-    </ScrollView>
-    {/* While typing a reviewer on a phone the bar steps aside, so Continue never sits over the keyboard. */}
-    {!keyboard && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0, paddingTop: 12 }, bottomPad(compact)]}>
+    </View>}
+    // While typing a reviewer on a phone the bar steps aside, so Continue never sits over the keyboard (DockedPane).
+    dock={({ yields }) => !yields && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0, paddingTop: 12 }, bottomPad(compact)]}>
       <View style={[column, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
         {index > 0 && (compact
           ? <IconButton theme={theme} compact icon="ChevronLeft" label="Back" onPress={() => go(ONBOARDING_STEPS[index - 1])} />
@@ -126,29 +117,15 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
           title={last ? "Finish" : failing ? "Continue anyway" : "Continue"} loading={last && move.isPending}
           onPress={() => last ? finish() : go(ONBOARDING_STEPS[index + 1])} />
       </View>
-    </View>}
-  </View>;
-}
-
-/** Phones: whether the on-screen keyboard is up (native events; on the web, the visual viewport shrinking). */
-function useKeyboardUp(compact: boolean): boolean {
-  const [up, setUp] = useState(false);
-  useEffect(() => {
-    if (!compact) return;
-    if (Platform.OS === "web") {
-      type Viewport = { height: number; addEventListener(e: "resize", f: () => void): void; removeEventListener(e: "resize", f: () => void): void };
-      const vv = (globalThis as { visualViewport?: Viewport }).visualViewport;
-      const win = globalThis as unknown as { innerHeight: number };
-      if (!vv) return;
-      const check = () => setUp(win.innerHeight - vv.height > 150);
-      vv.addEventListener("resize", check);
-      return () => vv.removeEventListener("resize", check);
-    }
-    const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", () => setUp(true));
-    const hide = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => setUp(false));
-    return () => { show.remove(); hide.remove(); };
-  }, [compact]);
-  return up;
+    </View>}>
+    <StepFade key={step} style={[column, { gap: compact ? 14 : 16, paddingTop: compact ? 8 : 20 }]}>
+      <View style={{ gap: 6 }}>
+        <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 20, lineHeight: 26, fontWeight: "600" }}>{TITLES[step]}</Text>
+        <Text style={[t.body, { color: c.foregroundMuted, maxWidth: 520 }]}>{lead[step]}</Text>
+      </View>
+      {body}
+    </StepFade>
+  </DockedPane>;
 }
 
 /** "2 of 5" and one short segment per step, drawn like the stack bar but in neutral ink: progress isn't a PR state. */

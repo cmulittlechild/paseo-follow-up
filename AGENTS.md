@@ -580,6 +580,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    version (`available:<version>`). `announcesUpdate` in `shared/changelog.ts` is the one version rule; the updater
    applies the mode and dismissal. Guarded by `tests/updater.test.ts` and `tests/update-announcements.test.ts`.
 
+43. **A focused field and its Send stay in view** (`a-focused-field-and-its-send-stay-in-view`). On a phone, neither a
+   bar docked under the content nor the keyboard covers what is being typed or the action that sends it. Every pane
+   with a docked bar (Home's detail pane, the Overseer's pane, setup) draws through `DockedPane`
+   (`client/docked-pane.tsx`): while a field in the pane has focus or the keyboard is up, the dock drops its extras
+   (Sign off, Sign off & next, Later; setup's Back and Continue), the pane stops above a keyboard that overlays the
+   page, and the focused field's primary form (the field with its Send, marked `PRIMARY_FORM`) scrolls into view,
+   again whenever the keyboard or the dock changes size (`client/dock.ts`). Every answer form marks itself:
+   `QuestionBody`'s field with its actions, the brief card's answer and note fields. No pane keeps its own typing or
+   keyboard state for its dock. 2026-11-17: on Home on a phone, the question card's Send sat under the dock after
+   Something else opened its field, because the dock hid its Sign off row only while its own reply box had focus.
+   Guarded by `tests/dock-in-view.test.ts` and `scripts/screenshots.mjs --only dock-in-view` (390 wide, the keyboard
+   down and up).
 44. **A queued message never stops short** (`a-queued-message-never-stops-short`). Every way out of a send ends in
    exactly one of: delivered (confirmed, or found in the agent's chat), a scheduled next try, or Failed because its
    target can't take messages (its conversation is gone: `gone` and `GONE_REASON`, shown with Retry). An arrival check

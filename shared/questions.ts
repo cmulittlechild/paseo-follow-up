@@ -152,7 +152,7 @@ export type AnswerDraft = {
   /** Remove note is on offer: the field is a note the developer opened. */
   canRemoveNote: boolean;
 };
-export function answerDraft(q: { id: string; options: readonly unknown[] }, s: { choice: string | null; words: string; noteOpen: boolean }): AnswerDraft {
+export function answerDraft(q: { id: string; options: readonly { letter?: string; label?: string }[] }, s: { choice: string | null; words: string; noteOpen: boolean }): AnswerDraft {
   const words = s.words.trim();
   if (!q.options.length) return { field: "answer", own: false, answer: words || null, placeholder: "Your answer", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
   const own = isOther(s.choice) || (!s.choice && !!words);
@@ -160,8 +160,13 @@ export function answerDraft(q: { id: string; options: readonly unknown[] }, s: {
   // A lettered pick: the field is a note, shown once asked for (or once it holds words, e.g. Something else's words
   // kept when the developer picks a letter after all, so they read as the note they now are).
   const field = s.choice && (s.noteOpen || !!words) ? "note" as const : null;
-  return { field, own, answer: s.choice, note: field && words ? words : undefined, placeholder: "Add a note for the agent (optional)", heading: s.choice ? `Note, sent with ${s.choice}` : null,
+  return { field, own, answer: s.choice, note: field && words ? words : undefined, placeholder: "Add a note for the agent (optional)", heading: s.choice ? noteHeading(q, s.choice) : null,
     label: `Note for the agent, sent with ${s.choice} on ${q.id}, optional`, hint: s.choice ? null : PICK_HINT, canAddNote: !!s.choice && !field, canRemoveNote: field === "note" };
+}
+/** "Note, sent with A · The English text": the option by name too, since it may have scrolled out of view. */
+function noteHeading(q: { options: readonly { letter?: string; label?: string }[] }, choice: string): string {
+  const label = q.options.find(o => o.letter === choice)?.label?.replace(/\s+/g, " ").trim();
+  return `Note, sent with ${choice}${label ? ` · ${label.length > 48 ? `${label.slice(0, 47)}…` : label}` : ""}`;
 }
 const quoted = (words: string | undefined | null) => `"${(words ?? "").trim()}"`;
 
