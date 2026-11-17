@@ -961,15 +961,16 @@ export default function contribute(server: PluginServerContext) {
     const actor = actorOf(context);
     if (actor.kind === "agent" && input.target === "agent" && input.agentId === actor.agentId) throw new Error("ask_context asks another agent about its card for the developer; explain your own ask in your reply.");
     if (input.target === "agent" && !input.agentId) throw new Error("This card has no agent to ask. Ask the Overseer instead.");
-    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : (await overseerStatus().catch(() => null))?.agentId ?? null);
+    // Recorded at once, never waiting on Paseo (an-ack-never-waits): the Overseer's id is learnt after its send.
+    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : null);
     if (!out.fresh) return out;
     const r = out.request;
     if (input.target === "agent") enqueueMessage(input.agentId!, agentContextPrompt(r), r.id, actorBy(actor));
     else {
       const paseo = (context as { paseo?: unknown }).paseo;
-      const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
       void (async () => {
         try {
+          const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
           if (!await overseerOn()) throw new Error("The Overseer is off. Turn it on in Settings → Agents, or ask the agent.");
           const s = await overseer!.ask(paseo as unknown as OverseerPaseo, overseerContextPrompt(r, workspace));
           if (s.agentId) { await contextRequests.setAskedOf(r.id, s.agentId); await contextRequests.delivered(r.id, new Date().toISOString()); }
