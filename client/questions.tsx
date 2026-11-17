@@ -10,13 +10,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { answerQuestionRpc } from "../shared/contracts";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
-import { OTHER, OTHER_LABEL, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
 import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
 import { activity, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
 import { Spinner } from "./motion";
+import { NoteLink } from "./brief";
 import { mergedColor, tint, withAlpha, type Colors } from "./theme";
 import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
@@ -92,7 +93,9 @@ const inputStyle = (c: Colors, compact: boolean, lines: number) => ({ minHeight:
 
 /**
  * One question with its answer form. Send records the answer and messages the asking agent straight
- * away; Copy records it and puts a reply on the clipboard instead. Used by the dialog and the pill.
+ * away; Copy records it and puts a reply on the clipboard instead. The one answer flow every question surface draws
+ * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
+ * (`one-answer-flow-for-every-question`), never from the surface.
  */
 export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false }: {
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
@@ -122,10 +125,12 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   useEffect(() => { setChoice(unsent?.choice ?? q.answer?.choice ?? null); setWords(unsent?.words ?? q.answer?.words ?? ""); }, [q.id, !!unsent]);
   const refresh = () => { void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey }); };
   const free = !q.options.length;
-  // Something else: the field below stops being an optional note and becomes the answer, so Send waits for words.
-  const other = !free && isOther(choice);
-  const answer = free ? words.trim() : other && !words.trim() ? null : choice;
-  const note = free ? undefined : words.trim() || undefined;
+  // The field is shown only once its role is known: Something else (the answer, so Send waits for words) or Add note
+  // on a lettered pick. One rule for every surface (shared/questions.ts answerDraft).
+  const draft = answerDraft(q, { choice, words, noteOpen });
+  const other = draft.own;
+  const answer = draft.answer;
+  const note = draft.note;
   const run = useMutation({
     mutationFn: async (action: "send" | "copy" | "resend") => {
       if (action === "copy") await copyText(answerMessage(q, q.answer?.choice ?? answer!, q.answer?.words ?? note));
@@ -162,7 +167,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     if (!answer) return;
     const input = { workspaceId: w.id, questionId: q.id, choice: answer, words: note, action };
     if (action === "copy") void copyText(answerMessage(q, answer, note)).catch(() => undefined);
-    setPendingAnswer(w.id, q.id, { choice: answer, words: note ?? (free ? undefined : words.trim() || undefined) });
+    setPendingAnswer(w.id, q.id, { choice: answer, words: other ? words.trim() : note });
     const agent = who(w, q.askedBy);
     void runAction({
       label: `Answer to ${q.id}`, toast, run: () => answerRpc(input),
@@ -213,10 +218,12 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const submittable = !run.isPending && (open ? !!answer : q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat");
   // In the pill popover the answer field and actions stay pinned below a scrolling body.
   const pinned = dense && !!bodyMaxHeight;
-  const input = <View style={{ gap: 6 }}>
+  // Re-keyed by role, so the field that opens on Something else or Add note takes the caret; typing never re-keys it.
+  const input = draft.field && <View style={{ gap: 6 }}>
     {free && !dense && <Text style={t.meta}>No options were given. Write the decision for the agent.</Text>}
-    <TextInput key={other ? "answer" : "note"} accessibilityLabel={free || other ? `Your answer to ${q.id}${other ? ", required" : ""}` : `Note for the agent about ${q.id}, optional`} placeholder={free ? "Your answer" : other ? "Your answer (required)" : "Add a note for the agent (optional)"} placeholderTextColor={c.foregroundMuted}
-      multiline value={words} editable={!run.isPending} onChangeText={setWords} maxLength={2000} autoFocus={other || pinned && !free && noteOpen} style={[inputStyle(c, compact, (free || other) && !dense ? 3 : 2)]} />
+    {!!draft.heading && <Text style={[t.small, { fontWeight: "600" }]}>{draft.heading}</Text>}
+    <TextInput key={draft.field} accessibilityLabel={draft.label} placeholder={draft.placeholder} placeholderTextColor={c.foregroundMuted}
+      multiline value={words} editable={!run.isPending} onChangeText={setWords} maxLength={2000} autoFocus={!free && (other || noteOpen)} style={[inputStyle(c, compact, draft.field === "answer" && !dense ? 3 : 2)]} />
   </View>;
   // Context comes before the options so the developer reads why before choosing.
   const body = <View style={{ gap: dense ? 10 : 14 }}>
@@ -240,7 +247,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}
       {/* Built in on every question with options, after the agent's own: the developer's own answer. */}
       {(open || isOther(q.answer?.choice)) && <OptionCard theme={theme} compact={compact} dense={dense} own label={OTHER_LABEL} consequence={open && !dense ? "Write your own answer" : undefined} recommended={false}
-        selected={(open ? choice : q.answer?.choice) === OTHER} disabled={!open || run.isPending} onPress={() => { setChoice(OTHER); if (pinned) setNoteOpen(true); }} />}
+        selected={open ? other : isOther(q.answer?.choice)} disabled={!open || run.isPending} onPress={() => setChoice(OTHER)} />}
     </View>}
     {/* Not sent yet (copied, or in the agent's message box) never reads as answered: no check, no green. Only a
         delivered answer is green; queued, retrying or failed keeps the check but stays neutral (answerHeading). */}
@@ -262,6 +269,10 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
         <Text style={[t.meta, { color: c.foreground, fontWeight: "600", textDecorationLine: "underline" }]}>Retry</Text>
       </Pressable>
     </View>}
+    {/* A note on a lettered pick: the brief card's quiet links, under the options, in every mode. */}
+    {open && (draft.canAddNote || draft.canRemoveNote) && <NoteLink icon={draft.canAddNote ? "MessageSquarePlus" : "X"} label={draft.canAddNote ? "Add note" : "Remove note"}
+      a11y={draft.canAddNote ? `Add a note for the agent about ${q.id}` : `Remove the note on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
+      onPress={() => { if (draft.canAddNote) setNoteOpen(true); else { setWords(""); setNoteOpen(false); } }} />}
     {open && !pinned && input}
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
@@ -276,18 +287,17 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
       {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title="Open chat" accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
       {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
-      {pinned && open && !free && !other && !noteOpen && <Button theme={theme} compact={compact} kind="ghost" icon="Pencil" title="Note" accessibilityLabel={`Add a note for the agent about ${q.id}`} onPress={() => setNoteOpen(true)} />}
       {dense && onDetails && <IconButton theme={theme} compact={compact} icon="Maximize2" label={`Open ${q.id} with its links and full context`} onPress={onDetails} />}
     </View>
     {/* Same words as the brief card's, so a disabled Send always says why. */}
-    {open && other && !words.trim() ? <Text style={t.small}>Write your answer, then send it.</Text>
+    {open && draft.hint ? <Text style={t.small}>{draft.hint}</Text>
       // Two ways to deliver (Paseo 0.16) need telling apart everywhere, the phone and the Needs you block included.
       : open && !dense && composer ? <Text style={t.small}>Send delivers it now, even mid-turn. Put in chat adds it to your message box to edit first.</Text>
       : open && !dense && !compact && !inline && <Text style={t.small}>Send puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under {q.id}.</Text>}
   </View>;
   // In the pill popover the question scrolls and the answer field and actions stay put, so Send is never cut off.
   if (pinned) {
-    const showInput = open && (free || other || noteOpen);
+    const showInput = open && !!draft.field;
     return <SubmitScope enabled={submittable} onSubmit={() => open ? quick("send") : run.mutate("send")} style={{ gap: 10 }}>
       <View>
         <ScrollView style={{ maxHeight: bodyMaxHeight! - (showInput ? 62 : 0), flexGrow: 0 }} contentContainerStyle={{ paddingRight: 2 }} scrollEventThrottle={32}

@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -416,7 +416,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1643,6 +1643,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await shoot(`ny-${s.state}-home-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, s.title)).click(); await settleOn(page); });
     }
   }
+  if (only.includes("own-answer")) await ownAnswerShots({ shoot });
   if (only.includes("pick-notes")) {
     // Decision cards with a note (a-pick-note-reaches-the-agent): one decision and two; the note link closed, then
     // open with text.
@@ -2126,6 +2127,53 @@ async function reviewModeShots({ shoot, call }) {
   }
   await team();
 }
+/**
+ * own-answer (one-answer-flow-for-every-question): writing your own answer, and a note on a picked option, in the
+ * panel and Home's Needs you (desktop and phone) and the dialog; plus the two-question card. Light and dark.
+ * `--own-answer-before` drives the old form (a note field shown before any pick: type into it with nothing picked)
+ * and prefixes each shot `before-`, for the PR's before and after.
+ */
+async function ownAnswerShots({ shoot }) {
+  const before = argv.includes("--own-answer-before");
+  const name = n => `${before ? "before-" : ""}oa-${n}`;
+  const OWN = "Show the key itself, and log it so we add the translation.";
+  const NOTE = "Only in production; staging should show the key.";
+  const TALL = { width: DESKTOP.width, height: 1000 };
+  const lone = pick("ny-lone"), two = pick("ny-two");
+  const visible = l => l.filter({ visible: true }).first();
+  const panel = (s, wait) => async page => { await page.setViewportSize(TALL); await openChat(page, s.title, s.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText(wait)).waitFor(); };
+  const homePhone = (s, wait) => async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, s.title)).click(); await visible(page.getByText(wait)).waitFor(); };
+  const dialog = (s, wait) => async page => {
+    await panel(s, wait)(page);
+    await visible(page.getByRole("tab", { name: /^Questions/ })).click();
+    await visible(page.getByRole("button", { name: /^Q1, Missing keys/ })).click();
+    await visible(page.getByRole("dialog")).waitFor();
+  };
+  const scope = page => page.getByRole("dialog").count().then(n => n ? page.getByRole("dialog").last() : page);
+  const own = async page => {
+    const root = await scope(page);
+    if (before) { await visible(root.getByLabel("Note for the agent about Q1, optional")).fill(OWN); return; }
+    await visible(root.getByRole("radio", { name: /^Something else/ })).click();
+    await visible(root.getByLabel("Your answer to Q1, required")).fill(OWN);
+  };
+  const note = async page => {
+    const root = await scope(page);
+    await visible(root.getByRole("radio", { name: /^A\. The English text/ })).click();
+    if (!before) await visible(root.getByRole("button", { name: "Add a note for the agent about Q1" })).click();
+    await visible(root.getByLabel(before ? "Note for the agent about Q1, optional" : "Note for the agent, sent with A on Q1, optional")).fill(NOTE);
+  };
+  for (const theme of ["light", "dark"]) {
+    await shoot(name(`own-panel-${theme}`), TALL, theme, async page => { await panel(lone, "Missing keys")(page); await own(page); });
+    await shoot(name(`note-panel-${theme}`), TALL, theme, async page => { await panel(lone, "Missing keys")(page); await note(page); });
+    if (!before) await shoot(name(`picked-panel-${theme}`), TALL, theme, async page => { await panel(lone, "Missing keys")(page); await visible(page.getByRole("radio", { name: /^A\. The English text/ })).click(); });
+    await shoot(name(`own-home-phone-${theme}`), PHONE, theme, async page => { await homePhone(lone, "Missing keys")(page); await own(page); });
+    await shoot(name(`note-home-phone-${theme}`), PHONE, theme, async page => { await homePhone(lone, "Missing keys")(page); await note(page); });
+    await shoot(name(`own-dialog-${theme}`), DESKTOP, theme, async page => { await dialog(lone, "Missing keys")(page); await own(page); });
+    await shoot(name(`two-panel-${theme}`), TALL, theme, panel(two, "Limit scope"));
+    await shoot(name(`two-home-phone-${theme}`), PHONE, theme, homePhone(two, "Limit scope"));
+  }
+}
+
 function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
 
 async function optimise(path, tool) {
