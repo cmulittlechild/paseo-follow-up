@@ -33,7 +33,7 @@ test("phones: a Home row opens its own screen, so the host's back is the only ba
   for (const m of home.matchAll(/onBack=\{([^}]*)\}/g)) assert.match(m[1], /compact && !route \?/, m[0]);
   // The phone pane head has no back control and Open full is an icon.
   const pane = home.slice(home.indexOf("function DetailPane"), home.indexOf("function OverseerPane"));
-  const phoneHead = pane.slice(pane.indexOf("const header = compact ?"), pane.indexOf(": <View style={{ paddingHorizontal: 20"));
+  const phoneHead = pane.slice(pane.indexOf("const header = ({ yields: writing }: DockState) => compact ?"), pane.indexOf(": <View style={{ paddingHorizontal: 20"));
   assert.doesNotMatch(phoneHead, /ChevronLeft/);
   assert.match(phoneHead, /<IconButton theme=\{theme\} compact icon="PanelRightOpen" label="Open full"/);
   assert.match(phoneHead, /numberOfLines=\{1\}/, "the meta line ellipsizes instead of wrapping");
@@ -41,7 +41,7 @@ test("phones: a Home row opens its own screen, so the host's back is the only ba
 
 test("phones: the composer dock clears the bottom inset and keeps its hint off the screen edge", async () => {
   const home = await source("client/home.tsx");
-  assert.match(home, /backgroundColor: c\.surface0 \}, bottomInset\(compact\)\]\}>\s*\{moves\}\s*<ReplyBox/);
+  assert.match(home, /backgroundColor: c\.surface0 \}, bottomInset\(compact\)\]\}>\s*\{!yields && moves\}\s*<ReplyBox/);
   assert.match(home, /\{!!hint && !compact && <Text/, "the visible hint is desktop-only");
   assert.match(home, /accessibilityHint=\{compact && hint \? hint : undefined\}/, "phones keep it as the input's hint");
   const kit = await source("client/kit.tsx");

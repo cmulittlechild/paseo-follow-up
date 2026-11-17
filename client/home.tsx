@@ -17,6 +17,8 @@ import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
+import { DockedPane } from "./docked-pane";
+import type { DockState } from "./dock";
 import { NeedsYouBlock } from "./needs-you";
 import { HeldMerges } from "./merge-button";
 import { PrSheet } from "./pr-sheet";
@@ -385,7 +387,6 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   // Phones: one primary per screen. An actionable Needs-you item (Answer, Merge…) outranks Sign off.
   const itemFirst = compact && asks.length > 0;
   const [laterSheet, setLaterSheet] = useState(false);
-  const [typing, setTyping] = useState(false);
   // A snoozed row keeps its moves: Sign off is a normal end for something put off, and Later changes the time.
   const flagged = !!row?.needs;
   const plan = paneButtons({ permissions: agent.permissions.length, decisions: !!b?.decisions.some(d => d.options.length), items, flagged, hasAgent: !!s.agentId });
@@ -410,12 +411,13 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const metaRest = [laterText, ago === "now" ? "just now" : ago, s.project].filter(Boolean).join(" · ");
   // Phones: the host header already says Follow-up and carries ←. The pane head is the full-width title, then one meta
   // line (state, age, project, PRs as text) that ellipsizes instead of wrapping, with Open full as an icon at its end.
-  const header = compact ? <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 2, borderBottomWidth: 1, borderBottomColor: c.border }}>
-    <Text accessibilityRole="header" numberOfLines={3} style={t.title}>{s.title}</Text>
+  // While typing (DockedPane yields) the phone head keeps only the title, so the form gets the height.
+  const header = ({ yields: writing }: DockState) => compact ? <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 2, borderBottomWidth: 1, borderBottomColor: c.border }}>
+    <Text accessibilityRole="header" numberOfLines={writing ? 1 : 3} style={t.title}>{s.title}</Text>
     {/* The Summary: what this workspace is for, right under its name. */}
-    {s.workspaceId && w && <View style={{ marginTop: 4 }}><SummaryLine key={s.workspaceId} workspace={w} theme={theme} compact /></View>}
-    {s.workspaceId && w && <View style={{ marginTop: 6 }}><ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact /></View>}
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
+    {!writing && s.workspaceId && w && <View style={{ marginTop: 4 }}><SummaryLine key={s.workspaceId} workspace={w} theme={theme} compact /></View>}
+    {!writing && s.workspaceId && w && <View style={{ marginTop: 6 }}><ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact /></View>}
+    {!writing && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
       <Icon name={s.icon} size={14} color={color} />
       <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0 }]}>
         {!!s.word && <Text style={{ color, fontWeight: "600" }}>{s.word}</Text>}
@@ -423,7 +425,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
         <PrSummaryText s={s} c={c} lead=" · " />
       </Text>
       <IconButton theme={theme} compact icon="PanelRightOpen" label="Open full" onPress={() => openFull(s)} />
-    </View>
+    </View>}
   </View> : <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, gap: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       {onBack && <IconButton theme={theme} compact icon="ChevronLeft" label="Back to Home" onPress={onBack} />}
@@ -476,7 +478,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const laterTimes = laterChoices(new Date());
   // Phones: the moves sit in the dock above the composer, in thumb reach, on one row: Sign off, Sign off & next, Later.
   const narrow = useWindowDimensions().width < 380;
-  const moves = compact && canMove && !typing && <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 }}>
+  // The dock's extras step aside while a field in the pane has focus (DockedPane, a-focused-field-and-its-send-stay-in-view).
+  const moves = compact && canMove && <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 }}>
     <View style={{ flex: 1 }}><Button nativeID={PANE_PRIMARY} theme={theme} compact grow kind={plan.primary === "sign_off" && !itemFirst ? "primary" : "secondary"} icon={narrow ? undefined : "Check"} title="Sign off" loading={busy === "sign_off"}
       onPress={() => void run("sign_off", () => inbox.signOff([s.agentId!]))} /></View>
     <View style={{ flex: 1.3 }}><Button theme={theme} compact grow icon={narrow ? undefined : "ArrowRight"} title="Sign off & next" onPress={() => signOffNext(s)} /></View>
@@ -521,9 +524,14 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   // Only a real ask joins it (shared briefAsks): a done brief on a row flagged for something else stays out of the count.
   const inBlock = !!w && !!showBrief && !later && briefAsks(b, row);
 
-  return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
-    {header}
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+  return <><DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }}
+    dock={({ yields, typingInContent }) => s.agentId && !typingInContent && <View nativeID={compact ? TOAST_ANCHOR : undefined} style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
+      {!yields && moves}
+      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} onSend={async text => {
+        await agent.handle!.send(text);
+        inbox.refresh();
+      }} />
+    </View>}>
       {agent.permissions.map(p => <PermissionBlock key={p.id} p={p} theme={theme} compact={compact} busy={busy === `perm:${p.id}`} primary={plan.primary === "allow"} onRespond={r => void respond(p, r)} />)}
       {showBrief ? inBlock ? null : <BriefCard {...({ embedded: true, snoozed: !!later, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} />
         : echoed || (b && compact && b.source === "none" && asks.length) ? null
@@ -536,18 +544,11 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       {actionBar}
       {laterBlock}
       {steps}
-    </ScrollView>
-    {s.agentId && <View nativeID={compact ? TOAST_ANCHOR : undefined} style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
-      {moves}
-      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} onFocusChange={setTyping} onSend={async text => {
-        await agent.handle!.send(text);
-        inbox.refresh();
-      }} />
-    </View>}
+    </DockedPane>
     {laterModal}
     {full && sheet && <PrSheet workspace={full} prKey={sheet.key} intent={sheet.intent} theme={theme} compact={compact} browserReady={browser.data?.ready ?? false} onClose={() => setSheet(null)} />}
     {full && <QuestionSheet workspace={full} questionId={question} theme={theme} compact={compact} onClose={() => setQuestion(null)} />}
-  </View>;
+  </>;
 }
 
 /**
@@ -613,9 +614,11 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
       <View style={{ flexDirection: "row" }}><Button theme={theme} compact={compact} grow={compact} kind="primary" icon="Play" title="Start the Overseer" loading={starting} onPress={() => void start()} /></View>
     </ScrollView>
   </View>;
-  return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
-    {header}
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 12, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+  return <DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 12, paddingBottom: 24 }}
+    dock={({ typingInContent }) => agentId && !typingInContent && <View style={[{ borderTopWidth: 1, borderTopColor: c.border }, bottomInset(compact)]}>
+      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? "Ask or give a task" : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus}
+        onSend={async message => { await agent.handle!.send(message); inbox.refresh(); }} />
+    </View>}>
       {o.state === "error" && <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{o.line}</Text>}
       {tail.steps === null ? <Spinner color={c.foregroundMuted} size={12} label="Loading the conversation" />
         : tail.steps.length === 0 ? <Text style={t.meta}>{tail.error ? `Couldn't load the conversation: ${tail.error}` : "Nothing yet. Ask it what needs you, or give it a task for one of your agents."}</Text>
@@ -625,12 +628,7 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
       {(o.state === "running" || pending && tail.steps && !tail.steps.some(x => x.kind === "you" && x.text.trim() === pending)) && <Spinner color={c.foregroundMuted} size={12} label="The Overseer is working" />}
       {/* Its open ask, after the conversation that led to it. Only something Tom can act on; never "No ask stated". */}
       {b && agentId && (b.kind === "decision" && b.decisions.some(d => d.options.length) || b.kind === "action") ? <BriefCard {...({ embedded: true, item: { data: b }, theme, layout: { compact }, agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} /> : null}
-    </ScrollView>
-    {agentId && <View style={[{ borderTopWidth: 1, borderTopColor: c.border }, bottomInset(compact)]}>
-      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? "Ask or give a task" : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus}
-        onSend={async message => { await agent.handle!.send(message); inbox.refresh(); }} />
-    </View>}
-  </View>;
+  </DockedPane>;
 }
 
 /** "Codex · GPT-6-Luna · low" → "GPT-6-Luna · low": the button already says it's the Overseer's provider change. */

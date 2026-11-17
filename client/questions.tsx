@@ -18,6 +18,7 @@ import { activity, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
 import { Spinner } from "./motion";
 import { NoteLink } from "./brief";
+import { PRIMARY_FORM } from "./dock";
 import { mergedColor, tint, withAlpha, type Colors } from "./theme";
 import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
@@ -273,7 +274,6 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     {open && (draft.canAddNote || draft.canRemoveNote) && <NoteLink icon={draft.canAddNote ? "MessageSquarePlus" : "X"} label={draft.canAddNote ? "Add note" : "Remove note"}
       a11y={draft.canAddNote ? `Add a note for the agent about ${q.id}` : `Remove the note on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
       onPress={() => { if (draft.canAddNote) setNoteOpen(true); else { setWords(""); setNoteOpen(false); } }} />}
-    {open && !pinned && input}
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
@@ -309,13 +309,20 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
           <Text style={t.small}>More below</Text>
         </View>}
       </View>
-      {showInput && input}
-      {actions}
+      {/* The field with its Send: kept on screen together while typing (a-focused-field-and-its-send-stay-in-view). */}
+      <View {...PRIMARY_FORM} style={{ gap: 10 }}>
+        {showInput && input}
+        {actions}
+      </View>
     </SubmitScope>;
   }
   return <SubmitScope enabled={submittable} onSubmit={() => open ? quick("send") : run.mutate("send")} style={{ gap: dense ? 10 : 14 }}>
     {body}
-    {actions}
+    {/* The field with its Send: kept on screen together while typing (a-focused-field-and-its-send-stay-in-view). */}
+    <View {...PRIMARY_FORM} style={{ gap: dense ? 10 : 14 }}>
+      {open && input}
+      {actions}
+    </View>
     {!dense && !compact && !inline && <Text style={t.small}>Asked {ago(q.askedAt, now)} by {who(w, q.askedBy)}{q.taskId && !q.options.length ? " (blocked task)" : ""}</Text>}
   </SubmitScope>;
 }

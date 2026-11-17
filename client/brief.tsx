@@ -14,6 +14,7 @@ import { briefKey, HEADLINE_WORD } from "../shared/headline";
 const word = (kind: Brief["kind"]) => HEADLINE_WORD[briefKey(kind)];
 import { answerQuestionRpc, briefActionRpc, browserStatusRpc, inboxBriefRpc } from "../shared/contracts";
 import { errorText, mootNote } from "../shared/errors";
+import { PRIMARY_FORM } from "./dock";
 import { OTHER, OTHER_LABEL, OWN_ANSWER_HINT, briefAnswerStatus, isOther, type Question } from "../shared/questions";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { useDetailGate, useWorkspace } from "./workspace-data";
@@ -184,7 +185,8 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
         {(!readonly || isOther(d.chosen)) && <OptionRow other option={{ letter: "", label: OTHER_LABEL, consequence: readonly ? `"${d.words ?? ""}"` : null }} recommended={false} mode={mode} answerLabel={answerLabel}
           selected={readonly ? isOther(d.chosen) : isOther(picks[d.id])} answered={readonly && !!d.chosen} sending={busy === `${d.id}:${OTHER}`} disabled={!!busy} tight={false} open={false} onToggle={() => undefined}
           onPress={() => onPick(d.id, OTHER)} c={c} compact={compact} />}
-        {!readonly && isOther(picks[d.id]) && <View style={{ gap: 8 }}>
+        {/* Something else's field with its Send answer, kept on screen together while typing (DockedPane). */}
+        {!readonly && isOther(picks[d.id]) && <View {...PRIMARY_FORM} style={{ gap: 8 }}>
           <TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} />
@@ -194,7 +196,7 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
           </View>}
         </View>}
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}
-        {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View style={{ gap: 6, marginTop: 2 }}>
+        {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View {...PRIMARY_FORM} style={{ gap: 6, marginTop: 2 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Note</Text>
           <TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}

@@ -14,7 +14,7 @@ import { OTHER, OWN_ANSWER_HINT, PICK_HINT, answerDraft } from "../shared/questi
 // Note) was pressed, so there it was one step. Invariant `one-answer-flow-for-every-question`: one rule
 // (answerDraft) decides what the field means, and the field shows only once that is known, on every surface.
 
-const q = { id: "Q1", options: [{ letter: "A" }, { letter: "B" }] };
+const q = { id: "Q1", options: [{ letter: "A", label: "The English text" }, { letter: "B", label: "The key itself" }] };
 const ROOT = join(import.meta.dirname, "..");
 const src = (f: string) => readFile(join(ROOT, f), "utf8");
 
@@ -58,7 +58,7 @@ test("a lettered pick sends at once; Add note opens a field labelled as a note, 
   assert.equal(noting.canAddNote, false);
   assert.equal(noting.placeholder, "Add a note for the agent (optional)");
   assert.equal(noting.label, "Note for the agent, sent with A on Q1, optional");
-  assert.equal(noting.heading, "Note, sent with A");
+  assert.equal(noting.heading, "Note, sent with A · The English text", "names the option, which may have scrolled away");
   assert.equal(noting.canRemoveNote, true);
   const noted = answerDraft(q, { choice: "A", words: "but keep the old flag", noteOpen: true });
   assert.deepEqual([noted.answer, noted.note], ["A", "but keep the old flag"]);
@@ -105,7 +105,7 @@ test("one-answer-flow-for-every-question: every question surface draws QuestionB
   assert.match(body, /const answer = draft\.answer;/);
   // The brief card's decisions follow the same shape: the answer field only on Something else, a note only on Add note.
   const brief = await src("client/brief.tsx");
-  assert.match(brief, /\{!readonly && isOther\(picks\[d\.id\]\) && <View style=\{\{ gap: 8 \}\}>\s*<TextInput accessibilityLabel=\{`Your answer/);
+  assert.match(brief, /\{!readonly && isOther\(picks\[d\.id\]\) && <View (?:\{\.\.\.PRIMARY_FORM\} )?style=\{\{ gap: 8 \}\}>\s*<TextInput accessibilityLabel=\{`Your answer/);
   assert.match(brief, /\{!readonly && !isOther\(picks\[d\.id\]\) && \(notesOpen\[d\.id\] \? <View/);
   assert.match(brief, /\{OWN_ANSWER_HINT\}/, "one hint for a Something else without words");
 });
