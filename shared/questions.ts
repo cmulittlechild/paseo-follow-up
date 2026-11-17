@@ -114,6 +114,55 @@ export function nextQuestionId(questions: Pick<Question, "id">[]): string {
 export const OTHER = "other";
 export const OTHER_LABEL = "Something else";
 export const isOther = (choice: string | null | undefined) => choice === OTHER;
+
+/** Under a disabled Send while Something else has no words yet. The brief card says the same. */
+export const OWN_ANSWER_HINT = "Write your answer, then send it.";
+/** Under a disabled Send while nothing is picked: names the way to write your own, too. */
+export const PICK_HINT = "Pick an option, or Something else to write your own.";
+
+/**
+ * What an open question's answer form holds and what its one text field means
+ * (`one-answer-flow-for-every-question`). Every surface that answers a question (the dialog, the panel's and Home's
+ * Needs you, the pill, phones) draws QuestionBody, which reads this and nothing else, so the same question is
+ * answered the same way wherever it is shown.
+ *
+ * The field appears only once the developer has said what the words are: their own answer (Something else, or a
+ * question with no options) or a note on the option they picked (Add note). A field that is a note until something
+ * else is clicked is the bug this replaces: words typed with nothing picked could not be sent. Should words ever be
+ * there with nothing picked (an unsent answer restored, say), they are the developer's own answer, never a lost note.
+ */
+export type AnswerField = "answer" | "note";
+export type AnswerDraft = {
+  /** The field's role, or null while it is hidden (a lettered pick, or nothing picked, without Add note). */
+  field: AnswerField | null;
+  /** Something else is the pick, marked on its radio. */
+  own: boolean;
+  /** What Send records: a letter, OTHER, the free answer, or null while Send can't send yet. */
+  answer: string | null;
+  /** Words sent with a lettered pick. */
+  note?: string;
+  placeholder: string;
+  /** The field's visible label, which stays once the placeholder is gone. */
+  heading: string | null;
+  label: string;
+  /** Says why Send is disabled, when it is. */
+  hint: string | null;
+  /** Add note is on offer: a letter is picked and no field is open. */
+  canAddNote: boolean;
+  /** Remove note is on offer: the field is a note the developer opened. */
+  canRemoveNote: boolean;
+};
+export function answerDraft(q: { id: string; options: readonly unknown[] }, s: { choice: string | null; words: string; noteOpen: boolean }): AnswerDraft {
+  const words = s.words.trim();
+  if (!q.options.length) return { field: "answer", own: false, answer: words || null, placeholder: "Your answer", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
+  const own = isOther(s.choice) || (!s.choice && !!words);
+  if (own) return { field: "answer", own, answer: words ? OTHER : null, placeholder: "Your answer (required)", heading: "Your answer", label: `Your answer to ${q.id}, required`, hint: words ? null : OWN_ANSWER_HINT, canAddNote: false, canRemoveNote: false };
+  // A lettered pick: the field is a note, shown once asked for (or once it holds words, e.g. Something else's words
+  // kept when the developer picks a letter after all, so they read as the note they now are).
+  const field = s.choice && (s.noteOpen || !!words) ? "note" as const : null;
+  return { field, own, answer: s.choice, note: field && words ? words : undefined, placeholder: "Add a note for the agent (optional)", heading: s.choice ? `Note, sent with ${s.choice}` : null,
+    label: `Note for the agent, sent with ${s.choice} on ${q.id}, optional`, hint: s.choice ? null : PICK_HINT, canAddNote: !!s.choice && !field, canRemoveNote: field === "note" };
+}
 const quoted = (words: string | undefined | null) => `"${(words ?? "").trim()}"`;
 
 /**

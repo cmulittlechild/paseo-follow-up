@@ -166,7 +166,8 @@ test("the question card and the brief card render Something else after the agent
   const other = question.indexOf("label={OTHER_LABEL}", options);
   assert.ok(options > 0 && other > options, "QuestionBody renders Something else after the options");
   assert.match(question, /\(open \|\| isOther\(q\.answer\?\.choice\)\) && <OptionCard/, "shown while open, and on an answered card only when it was the answer");
-  assert.match(question, /const answer = free \? words\.trim\(\) : other && !words\.trim\(\) \? null : choice;/, "Send waits for words");
+  // Send waits for words: the rule lives in answerDraft (tests/own-answer.test.ts), which QuestionBody reads.
+  assert.match(question, /const draft = answerDraft\(q, \{ choice, words, noteOpen \}\);/, "Send waits for words");
   const brief = await readFile("client/brief.tsx", "utf8");
   const rows = brief.indexOf("d.options.map(o => <OptionRow");
   assert.ok(rows > 0 && brief.indexOf("<OptionRow other option={{ letter: \"\", label: OTHER_LABEL", rows) > rows, "every brief decision ends with Something else");

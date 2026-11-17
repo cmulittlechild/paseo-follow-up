@@ -1,0 +1,2 @@
+- Writing your own answer to a question is one step everywhere. Pick Something else, type, and send. The box no longer sits there as a note before you pick anything, in the panel, on Home or on a phone.
+- A note on a picked option opens with Add note and says which option it goes with.
