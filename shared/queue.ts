@@ -40,7 +40,7 @@ export const queueItemSchema = z.object({
   state: z.enum(QUEUE_STATES),
   /** Tries that never left (unreachable, no agent): they never end in failed. */
   attempts: z.number().int().min(0).default(0),
-  /** Arrival checks that couldn't tell: the ambiguous ladder's step. */
+  /** Unconfirmed sends and arrival checks that couldn't tell: the ambiguous ladder's step (AMBIGUOUS_MS). */
   unknowns: z.number().int().min(0).default(0),
   /** When it is due again. Null: fresh, it goes out after the quiet window. */
   nextAt: z.string().nullable().default(null),

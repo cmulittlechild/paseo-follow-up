@@ -275,8 +275,8 @@ export class MessageQueue {
       if (arrived.unknown) {
         // An unknown isn't a no: check again on the ladder, its last step for as long as the chat can't tell. Never
         // failed here (a-queued-message-never-stops-short): only a gone target stops a message.
-        item.unknowns++;
         Object.assign(item, { reason: UNKNOWN_REASON, nextAt: this.iso(ambiguousDelay(item.unknowns) * this.scale) });
+        item.unknowns++;
         await this.project(item); this.save();
         return null;
       }
@@ -318,7 +318,11 @@ export class MessageQueue {
       for (const item of items) {
         if (error instanceof DeliveryDeferred) { item.envelope = null; await this.neverLeft(item, error.message); continue; }
         if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, gone: error.agentId, reason: GONE_REASON }); await this.project(item); continue; }
+        // Each unconfirmed send climbs the same ladder as a check that can't tell, so an agent Paseo can't load yet
+        // (every send times out, every check says it isn't there) is tried at 15 s, 1 min, 5 min, then every 15 min,
+        // not every 15 s.
         Object.assign(item, { state: "uncertain", reason: UNKNOWN_REASON, nextAt: this.iso(ambiguousDelay(item.unknowns) * this.scale) });
+        item.unknowns++;
         await this.project(item);
       }
       if (!(error instanceof DeliveryDeferred)) console.warn(`[follow-up] message to ${target.recipients.join(", ")} not confirmed: ${error instanceof Error ? error.message : String(error)}`);

@@ -583,13 +583,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 44. **A queued message never stops short** (`a-queued-message-never-stops-short`). Every way out of a send ends in
    exactly one of: delivered (confirmed, or found in the agent's chat), a scheduled next try, or Failed because its
    target can't take messages (its conversation is gone: `gone` and `GONE_REASON`, shown with Retry). An arrival check
-   that can't tell is not a no: it climbs `AMBIGUOUS_MS` and repeats the last step, and an unloaded agent's transcript
-   answers "not there" once the part read reaches back to the send (`markerSince`, `server/transcript.ts`), so the
-   message is resent instead of waiting on a load that may never come. A restart resumes what it left: `sending` reads
+   that can't tell is not a no: it climbs `AMBIGUOUS_MS` and repeats the last step, and so does every unconfirmed
+   resend (an agent Paseo can't load yet is tried at 15 s, 1 min, 5 min, then every 15 min). An unloaded agent's
+   transcript is read back from its end to the send (`markerInFile`, `server/transcript.ts`, at most
+   `MARKER_READ_MAX_BYTES`), so "not there" holds even after a busy agent wrote megabytes, and the message is resent
+   instead of waiting on a load that may never come; Paseo's per-messageId receipts make a resend behind a send still
+   in flight wait for it, never run twice. A restart resumes what it left: `sending` reads
    back `uncertain` and an old Failed whose target isn't gone goes back to checking, both due at once. No new timer:
-   the item's own retry time is the only wake-up, and nothing reads an agent that isn't loaded. 2026-11-17: an answer
-   whose send timed out (Paseo held it 60 s) met four checks that couldn't tell (the agent wasn't loaded, and its
-   transcript counted only a find), ended Failed 22 minutes later with no next try, and never reached the agent.
+   the item's own retry time is the only wake-up, and nothing reads an agent that isn't loaded. 2026-11-17: another
+   plugin's refresh took the agent out of Paseo's agent manager for 27 minutes (its turn had ended); the answer's send
+   waited on the reload until the client's 60 s timeout, four checks couldn't tell (the agent wasn't loaded, and its
+   transcript counted only a find), and it ended Failed 22 minutes later with no next try, never reaching the agent.
    Guarded by `queueItemStop` (`shared/queue.ts`) over a grid of send outcomes and arrival answers in
    `tests/message-queue.test.ts`, `tests/queue-tools.test.ts` and `INVARIANTS`.
 

@@ -11,7 +11,7 @@ import { ConversationGone, DeliveryDeferred } from "../server/delivery";
 import { MessageQueue, QUEUE_FILE, queueTimeScale } from "../server/message-queue";
 import { AMBIGUOUS_MS, NEVER_LEFT_MS, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema, queueItemStop } from "../shared/queue";
 import { clock, workspace, pr } from "./fixtures";
-import { markerSince } from "../server/transcript";
+import { markerInFile, markerSince } from "../server/transcript";
 import { testQueue } from "./support/queue";
 
 /**
@@ -108,6 +108,23 @@ test("live bug (2026-11-17): an answer whose arrival can't be known climbs 15 s,
   await f.timers.fire(); await f.engine.idle();
   assert.equal(calls, 2); assert.equal((await f.delivery()).state, "sent");
   assert.deepEqual(f.timers.pending, [], "no timer once it is sent");
+});
+
+test("live bug (2026-11-17), the agent Paseo couldn't load: every send times out and the chat says it isn't there; resends back off and it goes once the agent loads", async t => {
+  // A plugin's refresh took the agent out of Paseo's agent manager for 27 minutes: each send waited on the load until
+  // the client's 60 s timeout, and its transcript (written last before the send) showed the answer wasn't there.
+  let loads = false; let sends = 0;
+  const f = await setup(t, { deliver: async target => { sends++; if (!loads) throw new Error("Timeout waiting for message (60000ms)"); return target.recipients[0]!; }, arrived: async () => false });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  const waits: number[] = [];
+  for (let i = 0; i < 6 && f.timers.pending.length; i++) { waits.push(await f.timers.fire()); await f.engine.idle(); }
+  assert.deepEqual(waits, [...AMBIGUOUS_MS, AMBIGUOUS_MS.at(-1)!, AMBIGUOUS_MS.at(-1)!], "backs off like a check that can't tell, never a resend every 15 s");
+  assert.equal(sends, 7, "one send per step, each after the chat showed it missing");
+  assert.equal((await f.delivery()).state, "retrying");
+  loads = true;
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal((await f.delivery()).state, "sent", "the agent is back: delivered");
+  assert.equal(f.delivered.length, 1, "it reached the agent once");
 });
 
 test("only a gone conversation ends Failed; Retry there resends without asking", async t => {
@@ -354,3 +371,20 @@ test("an unloaded agent's transcript says \"not there\" only when what was read 
   assert.equal(markerSince(["not json", "{}"], false, since, marker), null, "no dated line: unknown");
   assert.equal(markerSince([before], false, since, ""), null, "no marker to look for: unknown");
 });
+
+test("an unloaded agent's transcript is read back to the send, past a fixed tail: a busy agent's megabytes don't make it unknown", async t => {
+  const root = await mkdtemp(join(tmpdir(), "follow-queue-transcript-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const since = Date.parse("2026-11-16T09:00:00.000Z");
+  const marker = "Follow-up answer Q7 (Cache policy): A";
+  const line = (at: string, text: string) => JSON.stringify({ type: "assistant", timestamp: at, message: { content: text } });
+  // 6 MB written after the send (far more than the 512 KB tail), an hour of older work before it.
+  const busy = Array.from({ length: 3_000 }, (_, i) => line(new Date(since + 5_000 + i * 100).toISOString(), "x".repeat(2_000))).join("\n");
+  const older = Array.from({ length: 1_000 }, (_, i) => line(new Date(since - 3_600_000 + i * 1_000).toISOString(), "y".repeat(2_000))).join("\n");
+  const missing = join(root, "missing.jsonl"), found = join(root, "found.jsonl");
+  await writeFile(missing, `${older}\n${busy}\n`);
+  await writeFile(found, `${older}\n${line(new Date(since + 1_000).toISOString(), marker)}\n${busy}\n`);
+  assert.equal(await markerInFile(missing, since, marker), false, "read back past the send: not there");
+  assert.equal(await markerInFile(found, since, marker), true, "found behind 6 MB of later work");
+  assert.equal(await markerInFile(missing, since, marker, 2 * 1024 * 1024), null, "past the read cap: unknown, never a guess");
+});
+

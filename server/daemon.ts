@@ -28,7 +28,7 @@ export { ConversationGone } from "./delivery";
 import { compactionDelivered, turnIdOf } from "../shared/status";
 import { activeWindowMs, backgroundCount, isLive, isLoaded, recentlyUsed, workspaceActive, conversationGone, DEFAULT_ACTIVE_WINDOW_DAYS, DAY_MS } from "./agent-load";
 import { HistoryCache } from "./history-cache";
-import { agentRecord, headAndTail, markerSince, transcriptFile } from "./transcript";
+import { agentRecord, markerInFile, transcriptFile } from "./transcript";
 import { DaemonDirectory, type DirectoryRows } from "./directory";
 import { traceDaemon } from "./request-trace";
 import type { TurnTimeline } from "./turn-timeline";
@@ -621,7 +621,7 @@ export class PaseoGateway implements Gateway {
    * Whether `messageId` reached the agent since `since`. A loaded agent: its timeline, where Paseo records the message
    * with its clientMessageId when it accepts it (before the provider runs). An unloaded one is never read (that would
    * wake it, Invariant 1): its provider transcript on disk is searched for `marker` instead; it says "not there" only
-   * when the part read reaches back to the send (markerSince). Null: unknown.
+   * when the part read reaches back to the send (markerInFile). Null: unknown.
    */
   async arrivedMessage(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null> {
     const loaded = await this.connect(async client => {
@@ -756,8 +756,8 @@ async function timelineHas(client: Daemon, agentId: string, messageId: string, s
   return null;
 }
 /**
- * The agent's provider transcript on disk holds `marker` (its last TAIL_BYTES). Never wakes the agent. False only when
- * the part read reaches back to `sinceMs` and holds no marker: the agent isn't loaded, so nothing of Paseo's is still
+ * The agent's provider transcript on disk holds `marker`, read back from its end to the send (markerInFile, at most
+ * MARKER_READ_MAX_BYTES). Never wakes the agent. False only when the part read reaches back to `sinceMs` and holds no marker: the agent isn't loaded, so nothing of Paseo's is still
  * holding the message, and a provider writes a prompt to its transcript when it takes it. Anything else is unknown.
  */
 async function transcriptHas(home: string, agentId: string, marker: string, sinceMs: number): Promise<boolean | null> {
@@ -766,7 +766,6 @@ async function transcriptHas(home: string, agentId: string, marker: string, sinc
     const record = await agentRecord(home, agentId);
     const file = record && await transcriptFile(record);
     if (!file) return null;
-    const { head, tail } = await headAndTail(file);
-    return markerSince(tail, head === tail, sinceMs, marker);
+    return await markerInFile(file, sinceMs, marker);
   } catch { return null; }
 }
