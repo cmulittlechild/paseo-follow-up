@@ -1,1 +1,0 @@
-- Follow-up reliably frees its previous session when the app restarts, so tracking can resume.

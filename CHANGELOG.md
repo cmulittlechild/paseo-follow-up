@@ -2,6 +2,93 @@
 
 What changed in each version of Follow-up, newest first. Follow-up shows the curated part of a major release in "What's new" after the update, and every version's notes from Home's version line.
 
+## 2.1.0 (2026-11-17)
+
+Answers reach the agent even when Paseo is busy, search is one key away, and artifact links have their real names.
+
+- **Answers reach the agent on their own.** They wait in a queue and retry until they land, even while Paseo is busy or unreachable, without arriving twice. The card says when the next try is.
+- **⌘/ opens Follow-up search from anywhere** (Ctrl+/ on Windows and Linux). Walk Home and the sidebar view with ↑/↓ or j/k, and Enter opens the chat.
+- **Find things faster:** search inside a workspace's Pull requests, Tasks and Activity, and the sidebar filter puts name matches first.
+- **Artifact links show their real names** instead of "Untitled artifact", or where they came from and when if the name was never seen.
+- **New:** Follow-up's own icon, a resizable side pane on Home, the Overseer in the sidebar view, and Report an issue can start in a new workspace.
+- **Steadier and lighter:** Follow-up starts on its own after Paseo restarts, keeps one connection to Paseo, gives memory back after a busy stretch, and tells you when it can't save instead of failing silently.
+
+<details><summary>Full changelog since 2.0.1</summary>
+
+### Home and Needs you
+
+- Follow-up has its own icon now, in the sidebar, the workspace header button and the panel tab, instead of the pull request icon. While a workspace needs you, the icon's dot turns amber.
+- Walk Home and Follow-up's sidebar view from the keyboard: ↑/↓ or j/k move between workspaces, Home and End jump to the ends, and Enter opens the chat.
+- Drag the line between Home's list and the right-hand pane to make the pane wider or narrower. Follow-up keeps the width you pick, and on a keyboard you can move it with the arrow keys.
+- Press ⌘/ (Ctrl+/ on Windows and Linux) anywhere in Paseo to open Follow-up Home with the cursor in its search, even while you're typing a message. Pick another key, or none, in Settings under Inbox & display.
+- Search inside a workspace's Pull requests, Tasks and Activity: the search icon in each section's header finds a PR by number, title, branch or failing check, a task by its title or evidence, and anything in Activity, including folded items.
+- Filtering the sidebar list puts workspaces whose name matches first, then matches in a branch, PR or linked item, then matches elsewhere in the row.
+- On a narrow Home list, a row's badges and pull request chip now make room (shortening, then hiding the least important) instead of covering when the row last changed.
+- A task scheduled for a time now starts at that time, not up to a minute later.
+
+### Questions and answers
+
+- Sending repairs answers at once, even when Paseo is slow. Follow-up queues the message and sends it as soon as the agent is free; the message line says why it's waiting.
+- An answer and the repairs waiting for the same agent now go together as one message, so the agent wakes up once instead of twice.
+- Your answers reach the agent on their own. If Paseo is busy or unreachable, Follow-up keeps the answer and retries until it lands, and the card says when it tries next. Once Paseo is back, the answer goes out within about 15 seconds.
+- An answer that can't be confirmed after several tries shows Failed with Retry, instead of waiting silently for you to resend it.
+- On a phone, Report an issue's Send to list scrolls again, and the new workspace and new agent options come first.
+
+### Repairs and PRs
+
+- Lists inside sheets and popovers scroll on a phone, and the reviewer field in a PR sheet stays above the keyboard.
+- Follow-up keeps one connection to Paseo while it runs, instead of reconnecting every minute or two between checks.
+- The deploy check reads Cloud Run in Follow-up itself instead of starting gcloud for every fleet read; gcloud now only hands out the access token, once every 45 minutes.
+
+### The Overseer and AI priority
+
+- Overseer forwards and reports handed to an agent are kept and retried until they arrive.
+
+### Summary and Linked items
+
+- Rename title with AI works with linked artifacts and fixes long or quoted suggestions before showing them.
+
+### Providers and helper agents
+
+- Report an issue can start the report in a new workspace, with an agent on the default model.
+
+### Agents and tools
+
+- Rename title with AI works for workspaces beyond the first page, including background workspaces.
+
+### Setup, Settings and updates
+
+- Release tooling waits for delayed registry updates after npm accepts a version, rather than treating the version as failed.
+- Retrying an accepted release resumes verification when npm reports that the version was already published.
+
+### Performance
+
+- Follow-up gives memory back after a busy stretch: once agents and the app go quiet, the worker returns to its usual size instead of staying at its peak.
+- Follow-up does less work while agents are busy.
+- Follow-up sends the app less data when it refreshes your workspaces, so the worker uses less memory.
+
+### More
+
+- Agents can read Follow-up's message queue and retry or cancel a waiting message, like you can.
+- Artifact and spec links reuse names from local publish and read receipts across workspaces. Existing unnamed links fill at startup, chosen names stay intact, and unnamed artifacts show their source and date.
+- Follow-up reliably frees its previous session when the app restarts, so tracking can resume.
+- The action is now called Rename title with AI in menus, ⌘K and the dialog.
+
+### Fixes
+
+- A message to an agent that can't go out (an Overseer forward or a report) now shows in Needs you with Retry and Cancel.
+- Fixed: an answer card could reach the agent twice when Paseo was slow to confirm it. Follow-up now checks the agent's chat before sending anything again.
+- Follow-up's sidebar view now shows the Overseer, with its state, like Home does. Tap it to open the Overseer's chat, or to start it.
+- Saving reviewers, agent settings and the PR workflow no longer stalls on a slow disk, and Needs you no longer waits while the inbox saves.
+- A setting that can't be saved now shows an error instead of failing silently; your change is kept and saving keeps retrying.
+- A message waiting to go out now says "Next try at 12:04" instead of "retrying at 12:04", so its status line no longer repeats the Retrying label.
+- Suggestions stay editable when they need a change, and a busy host no longer refuses a rename click.
+- The sort menu now says only when your workspaces were last ranked, without the run's cost or a note about Home.
+- If Follow-up can't save your tracked work, it now says so and keeps retrying instead of failing silently.
+- Follow-up no longer stays down after Paseo restarts while the previous Follow-up is still stopping. It waits for that one to exit and starts on its own, and says it is waiting meanwhile.
+
+</details>
+
 ## 2.0.1 (2026-11-14)
 
 Fixes are easier to follow, merging takes one click, and Follow-up runs much lighter.

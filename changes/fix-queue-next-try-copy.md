@@ -1,1 +1,0 @@
-- A message waiting to go out now says "Next try at 12:04" instead of "retrying at 12:04", so its status line no longer repeats the Retrying label.

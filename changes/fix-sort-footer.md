@@ -1,1 +1,0 @@
-- The sort menu now says only when your workspaces were last ranked, without the run's cost or a note about Home.

@@ -1,2 +1,0 @@
-- Rename title with AI works for workspaces beyond the first page, including background workspaces.
-- The action is now called Rename title with AI in menus, ⌘K and the dialog.
