@@ -1,2 +1,0 @@
-- A task scheduled for a time now starts at that time, not up to a minute later.
-- Follow-up does less work while agents are busy.

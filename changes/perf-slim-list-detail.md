@@ -1,1 +1,0 @@
-- Follow-up sends the app less data when it refreshes your workspaces, so the worker uses less memory.

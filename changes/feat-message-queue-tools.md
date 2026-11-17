@@ -1,2 +1,0 @@
-- A message to an agent that can't go out (an Overseer forward or a report) now shows in Needs you with Retry and Cancel.
-- Agents can read Follow-up's message queue and retry or cancel a waiting message, like you can.

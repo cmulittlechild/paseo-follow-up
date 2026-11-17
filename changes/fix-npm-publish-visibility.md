@@ -1,2 +1,0 @@
-- Release tooling waits for delayed registry updates after npm accepts a version, rather than treating the version as failed.
-- Retrying an accepted release resumes verification when npm reports that the version was already published.

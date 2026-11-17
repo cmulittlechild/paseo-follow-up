@@ -1,1 +1,0 @@
-- Follow-up keeps one connection to Paseo while it runs, instead of reconnecting every minute or two between checks.

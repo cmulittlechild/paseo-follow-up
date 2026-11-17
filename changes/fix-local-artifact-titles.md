@@ -1,1 +1,0 @@
-- Artifact and spec links reuse names from local publish and read receipts across workspaces. Existing unnamed links fill at startup, chosen names stay intact, and unnamed artifacts show their source and date.

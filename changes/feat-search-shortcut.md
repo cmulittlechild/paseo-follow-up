@@ -1,1 +1,0 @@
-- Press ⌘/ (Ctrl+/ on Windows and Linux) anywhere in Paseo to open Follow-up Home with the cursor in its search, even while you're typing a message. Pick another key, or none, in Settings under Inbox & display.

@@ -1,1 +1,0 @@
-- Follow-up gives memory back after a busy stretch: once agents and the app go quiet, the worker returns to its usual size instead of staying at its peak.

@@ -1,2 +1,0 @@
-- Saving reviewers, agent settings and the PR workflow no longer stalls on a slow disk, and Needs you no longer waits while the inbox saves.
-- A setting that can't be saved now shows an error instead of failing silently; your change is kept and saving keeps retrying.

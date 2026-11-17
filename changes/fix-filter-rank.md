@@ -1,1 +1,0 @@
-- Filtering the sidebar list puts workspaces whose name matches first, then matches in a branch, PR or linked item, then matches elsewhere in the row.

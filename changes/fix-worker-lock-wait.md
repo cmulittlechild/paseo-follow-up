@@ -1,1 +1,0 @@
-- Follow-up no longer stays down after Paseo restarts while the previous Follow-up is still stopping. It waits for that one to exit and starts on its own, and says it is waiting meanwhile.

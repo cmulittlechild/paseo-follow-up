@@ -1,1 +1,0 @@
-- On a narrow Home list, a row's badges and pull request chip now make room (shortening, then hiding the least important) instead of covering when the row last changed.
