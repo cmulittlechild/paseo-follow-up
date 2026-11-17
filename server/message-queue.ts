@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, ambiguousDelay, GONE_REASON, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
-import { ConversationGone, DeliveryDeferred, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
+import { ConversationGone, DeliveryDeferred, idRefused, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
 import type { Workspace } from "../shared/model";
 
@@ -286,9 +286,13 @@ export class MessageQueue {
   private async check(item: QueueItem, target: Target): Promise<{ found: string | null; unknown: boolean }> {
     const env = item.envelope!;
     const marker = item.text.split("\n")[0]!.slice(0, 200);
+    // Every id it went out under: a resend under a fresh id (a refused one) mustn't hide that the first one landed.
+    const ids = [...new Set([...item.sentIds, env.messageId])];
+    // An earlier id went out before this envelope: read back to the item's start for it.
+    const since = ids.length > 1 ? item.createdAt : env.at;
     let unknown = false;
-    for (const agentId of env.to ? [env.to] : target.recipients) {
-      const seen = await this.courier.arrived(agentId, env.messageId, env.at, marker).catch(() => null);
+    for (const agentId of env.to ? [env.to] : target.recipients) for (const id of ids) {
+      const seen = await this.courier.arrived(agentId, id, since, marker).catch(() => null);
       if (seen === true) return { found: agentId, unknown: false };
       if (seen === null) unknown = true;
     }
@@ -300,9 +304,12 @@ export class MessageQueue {
    * the chat showed it missing is the same message again.
    */
   private async send(items: QueueItem[], target: Target): Promise<void> {
-    const messageId = items.length === 1 ? items[0]!.messageId : stableMessageId(`envelope:${items.map(i => i.id).join("|")}`);
+    const base = items.length === 1 ? items[0]!.messageId : stableMessageId(`envelope:${items.map(i => i.id).join("|")}`);
+    // A messageId Paseo refused for good (a stuck receipt) is replaced by one derived from it, the same on every resend.
+    const generation = Math.max(...items.map(i => i.generation));
+    const messageId = generation ? stableMessageId(`${base}:${generation}`) : base;
     const at = this.iso();
-    for (const item of items) Object.assign(item, { state: "sending", envelope: { messageId, to: null, at }, nextAt: null });
+    for (const item of items) Object.assign(item, { state: "sending", envelope: { messageId, to: null, at }, nextAt: null, sentIds: item.sentIds.includes(messageId) ? item.sentIds : [...item.sentIds, messageId].slice(-50) });
     await this.saveNow();
     for (const item of items) await this.project(item);
     if (this.stopped) return;
@@ -323,6 +330,8 @@ export class MessageQueue {
         // not every 15 s.
         Object.assign(item, { state: "uncertain", reason: UNKNOWN_REASON, nextAt: this.iso(ambiguousDelay(item.unknowns) * this.scale) });
         item.unknowns++;
+        // Paseo refused this id for good: the resend (only after the chat shows it missing) goes under a fresh one.
+        if (idRefused(error) && item.generation === generation) item.generation++;
         await this.project(item);
       }
       if (!(error instanceof DeliveryDeferred)) console.warn(`[follow-up] message to ${target.recipients.join(", ")} not confirmed: ${error instanceof Error ? error.message : String(error)}`);

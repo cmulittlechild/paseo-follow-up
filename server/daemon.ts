@@ -620,19 +620,24 @@ export class PaseoGateway implements Gateway {
   /**
    * Whether `messageId` reached the agent since `since`. A loaded agent: its timeline, where Paseo records the message
    * with its clientMessageId when it accepts it (before the provider runs). An unloaded one is never read (that would
-   * wake it, Invariant 1): its provider transcript on disk is searched for `marker` instead; it says "not there" only
-   * when the part read reaches back to the send (markerInFile). Null: unknown.
+   * wake it, Invariant 1): its provider transcript on disk is searched for `marker` instead, as it is for a loaded agent
+   * whose timeline read can't tell (a busy one); it says "not there" only when the part read reaches back to the send
+   * (markerInFile). Null: unknown.
    */
   async arrivedMessage(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null> {
-    const loaded = await this.connect(async client => {
+    const sinceMs = Date.parse(since) - 60_000;
+    const timeline = await this.connect(async client => {
       const a = (await client.fetchAgent(agentId))?.agent;
       if (!a) return null;
-      if (!isLoaded(a)) return "unloaded" as const;
-      return timelineHas(client, agentId, messageId, Date.parse(since) - 60_000);
+      if (!isLoaded(a)) return null;
+      return timelineHas(client, agentId, messageId, sinceMs);
     }).catch(() => null);
-    if (loaded !== "unloaded") return loaded;
-    return transcriptHas(paseoHome, agentId, marker, Date.parse(since) - 60_000);
+    // The timeline can't tell (the agent isn't loaded, or a busy one wrote more than the read's pages since the send):
+    // the provider transcript on disk decides, read back to the send. Only an unconfirmed item gets here.
+    return timeline ?? this.transcriptArrived(agentId, marker, sinceMs);
   }
+  /** The transcript half of arrivedMessage (tests replace it): markerInFile over the agent's provider transcript. */
+  transcriptArrived: (agentId: string, marker: string, sinceMs: number) => Promise<boolean | null> = (agentId, marker, sinceMs) => transcriptHas(paseoHome, agentId, marker, sinceMs);
   async handoff(w: Workspace, callerId: string): Promise<{ batchId: string; fromAgentId: string } | null> {
     return this.connect(async client => {
       const caller = (await client.fetchAgent(callerId))?.agent;

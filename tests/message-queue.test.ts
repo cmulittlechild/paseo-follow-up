@@ -388,3 +388,64 @@ test("an unloaded agent's transcript is read back to the send, past a fixed tail
   assert.equal(await markerInFile(missing, since, marker, 2 * 1024 * 1024), null, "past the read cap: unknown, never a guess");
 });
 
+
+/**
+ * a-queued-message-never-stops-short, two more ways a message stopped short (2026-11-17, after #230):
+ * - Paseo 0.16 keeps a receipt per agent and messageId. A daemon that dies between the pending and the completed write
+ *   leaves it pending, and every later send under that id is refused (agent_request_outcome_unknown) for good. The queue
+ *   resent under the same id forever.
+ * - A loaded agent that wrote more than the timeline read's 5 pages since the send left every check unknown.
+ */
+test("a messageId Paseo refuses for good (a stuck receipt) is resent under a fresh id once the chat shows it isn't there; the check looks for every id it used", async t => {
+  const refused = new Set<string>(); const asked: string[][] = []; const sent: string[] = [];
+  const f = await setup(t, {
+    deliver: async (target, _text, messageId) => {
+      sent.push(messageId);
+      if (refused.size === 0) refused.add(messageId);
+      if (refused.has(messageId)) throw new Error("agent_request_outcome_unknown");
+      return target.recipients[0]!;
+    },
+    arrived: async (_agent, messageId) => { asked.at(-1)!.push(messageId); return false; },
+  });
+  const fire = async () => { asked.push([]); await f.timers.fire(); await f.engine.idle(); };
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  for (let i = 0; i < 3 && (await f.delivery()).state !== "sent"; i++) await fire();
+  assert.equal((await f.delivery()).state, "sent", "it reached the agent");
+  assert.equal(new Set(sent).size, 2, "a fresh id after the refusal");
+  assert.equal(sent.filter(id => !refused.has(id)).length, 1, "the fresh id went once");
+  assert.ok(asked.some(ids => ids.includes(sent[0]!)), "the check looked for the refused id before resending");
+});
+
+test("a key conflict is refused like a stuck receipt; a refused id is never retried blind, only after the chat says not there", async t => {
+  const sent: string[] = []; let known: boolean | null = null;
+  const f = await setup(t, {
+    deliver: async (target, _text, messageId) => { sent.push(messageId); if (sent.length === 1) throw new Error("agent_request_key_conflict"); return target.recipients[0]!; },
+    arrived: async () => known,
+  });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal(sent.length, 1, "the chat couldn't tell: nothing resent");
+  known = false;
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal(sent.length, 2); assert.notEqual(sent[1], sent[0]);
+  assert.equal((await f.delivery()).state, "sent");
+});
+
+test("a loaded, busy agent: when its timeline can't tell, the transcript decides (read only for an unconfirmed item)", async () => {
+  const { PaseoGateway } = await import("../server/daemon");
+  const since = "2026-11-16T09:00:00.000Z";
+  // Five full pages, each newer than the send and each with older ones behind it: the timeline read can't tell.
+  const page = { entries: Array.from({ length: 200 }, () => ({ timestamp: "2026-11-16T09:30:00.000Z", item: { type: "assistant_message" } })), hasOlder: true, startCursor: { epoch: "e", seq: 1 } };
+  const client = { fetchAgent: async () => ({ agent: { id: "a1", status: "running", activeTurn: {}, pendingPermissions: [], lastError: null } }), fetchAgentTimeline: async () => page };
+  const gateway = new PaseoGateway((async (work: (c: unknown) => Promise<unknown>) => work(client)) as never);
+  const looked: string[] = [];
+  for (const answer of [false, true, null] as const) {
+    gateway.transcriptArrived = async (agentId, marker) => { looked.push(`${agentId}:${marker}`); return answer; };
+    assert.equal(await gateway.arrivedMessage("a1", "m-1", since, "Follow-up answer Q7 (x): A"), answer);
+  }
+  assert.equal(looked.length, 3, "the transcript was read each time the timeline couldn't tell");
+  const found = { ...page, entries: [{ timestamp: "2026-11-16T09:00:05.000Z", item: { type: "user_message", clientMessageId: "m-1" } }] };
+  const quick = new PaseoGateway((async (work: (c: unknown) => Promise<unknown>) => work({ ...client, fetchAgentTimeline: async () => found })) as never);
+  quick.transcriptArrived = async () => { throw new Error("not read when the timeline answers"); };
+  assert.equal(await quick.arrivedMessage("a1", "m-1", since, "x"), true);
+});
