@@ -7,6 +7,10 @@ import { SEARCH_SHORTCUTS } from "./search-key";
 export const HOME_DETAIL_DEFAULT = 0.42;
 export const HOME_DETAIL_MIN = 0.2;
 export const HOME_DETAIL_MAX = 0.8;
+/** Catch up's queue rail on desktop (side-panes-are-resizable): its share of the width. */
+export const CATCH_UP_RAIL_DEFAULT = 0.28;
+export const CATCH_UP_RAIL_MIN = 0.16;
+export const CATCH_UP_RAIL_MAX = 0.5;
 
 export const displayPreferences = defineSettings({
   id: "display",
@@ -36,6 +40,9 @@ export const displayPreferences = defineSettings({
     // 2.1: the share of Home's width the right pane (the brief or the selected item) takes, set by dragging the divider
     // (client/split.tsx). A fraction, so it carries across window sizes; absent means HOME_DETAIL_DEFAULT.
     home_detail_fraction: z.number().min(HOME_DETAIL_MIN).max(HOME_DETAIL_MAX).optional(),
+    // 2.2: the share of Catch up's width its queue rail takes on desktop (client/catch-up.tsx, client/split.tsx).
+    // Absent means CATCH_UP_RAIL_DEFAULT.
+    catch_up_rail_fraction: z.number().min(CATCH_UP_RAIL_MIN).max(CATCH_UP_RAIL_MAX).optional(),
     // 2.1: the key that opens Home with the cursor in its search from anywhere in Paseo (shared/search-key.ts).
     // Absent means DEFAULT_SEARCH_SHORTCUT (⌘/ or Ctrl+/); "none" turns it off.
     search_shortcut: z.enum(SEARCH_SHORTCUTS).optional() }),

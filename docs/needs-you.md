@@ -256,7 +256,14 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   waits. When the answer arrives (`context_reply`), or the agent ends a turn without it (`chat`: read its chat), or
   the ask fails, the workstream comes back as the very next card, right after the one on screen and never in its
   place, with the answer on the card. The answer reaches the client on `follow.home-feed` (`context`), so nothing
-  polls. A finished deck still counts the cards waiting for context.
+  polls. A finished deck still counts the cards waiting for context, and Back reaches a waiting card at any time,
+  which the card and the More context panel say.
+- **An ask always ends.** The ask records when it was delivered (`deliveredAt`: the queue's settle for the card's
+  agent, the Overseer taking it), and the first turn end after that without a `context_reply` settles it as `chat`,
+  so a prompt steered into a turn already running counts. After a worker restart, an ask still open is re-derived
+  from the queue's record and the cached agent list (delivered to an idle agent: `chat`; a send that failed for good:
+  `failed`), never by waking anyone. The prompt carries who asked (`by`): the developer, or the agent that called
+  `ask_context`.
 
 ## Answers waiting to be sent
 

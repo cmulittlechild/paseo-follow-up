@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WriteBehind } from "./write-behind";
-import { CONTEXT_ANSWER_MAX, contextFileSchema, pruneContext, type ContextFile, type ContextRequest, type ContextTarget } from "../shared/catch-up";
+import { CONTEXT_ANSWER_MAX, contextFileSchema, plainAnswer, pruneContext, type ContextFile, type ContextRequest, type ContextTarget } from "../shared/catch-up";
 
 export const CONTEXT_FILE = "context.json";
 
@@ -51,7 +51,7 @@ export class ContextRequests {
     if (open) return { request: open, fresh: false };
     const request: ContextRequest = {
       id: `ctx-${randomUUID()}`, ...input, askedOf, state: "asking", answer: null, error: null,
-      askedAt: new Date(this.now()).toISOString(), settledAt: null, by,
+      askedAt: new Date(this.now()).toISOString(), settledAt: null, deliveredAt: null, by,
     };
     this.save([...requests, request]);
     return { request, fresh: true };
@@ -80,7 +80,7 @@ export class ContextRequests {
     const r = (await this.list()).find(x => x.id === id);
     if (!r) throw new Error(`No open context request ${id}. It may have expired; the developer can ask again.`);
     if (r.askedOf !== caller) throw new Error("This context request was asked of another agent.");
-    const answer = text.trim().slice(0, CONTEXT_ANSWER_MAX);
+    const answer = plainAnswer(text).slice(0, CONTEXT_ANSWER_MAX);
     if (!answer) throw new Error("context_reply: give text, the explanation for the developer.");
     return (await this.update(id, x => ({ ...x, state: "answered", answer, error: null, settledAt: new Date(this.now()).toISOString() })))!;
   }
@@ -90,22 +90,35 @@ export class ContextRequests {
     return this.update(id, r => r.state !== "asking" ? r : { ...r, state: "failed", error: error.slice(0, 500), settledAt: new Date(this.now()).toISOString() });
   }
 
-  /**
-   * An asked agent's turn ended. If it started after the ask and the agent didn't reply with the tool, the answer is in
-   * its chat: the card comes back with Open chat. Costs a lookup in a list of at most CONTEXT_MAX; no reads.
-   */
-  private started = new Map<string, number>();
-  /** An agent's turn started: remembered only while that agent owes a reply. */
-  turnStarted(agentId: string): void {
-    if (this.value?.requests.some(r => r.state === "asking" && r.askedOf === agentId)) this.started.set(agentId, this.now());
+  /** The ask reached its agent (the queue sent it; the Overseer took it). Earlier deliveries win: it is the first. */
+  delivered(id: string, at: string): Promise<ContextRequest | null> {
+    return this.update(id, r => r.state !== "asking" || r.deliveredAt ? r : { ...r, deliveredAt: at });
   }
+
+  /**
+   * An agent's turn ended. Every ask it owes that was delivered before now and still has no context_reply settles as
+   * `chat`: the answer is in its chat, and the card comes back with Open chat. Delivery, not the turn's start, is the
+   * test, so a prompt steered into a turn already running counts, and nothing in memory is lost on a restart. Costs a
+   * lookup in a list of at most CONTEXT_MAX; no reads.
+   */
   async turnEnded(agentId: string): Promise<void> {
-    const turnStartedAt = this.started.get(agentId) ?? null;
-    this.started.delete(agentId);
-    if (!this.value?.requests.some(r => r.state === "asking" && r.askedOf === agentId)) return;
-    for (const r of this.value.requests.filter(r => r.state === "asking" && r.askedOf === agentId)) {
-      if (turnStartedAt === null || turnStartedAt < Date.parse(r.askedAt)) continue;
-      await this.update(r.id, x => x.state !== "asking" ? x : { ...x, state: "chat", settledAt: new Date(this.now()).toISOString() });
+    const owed = (await this.list()).filter(r => r.state === "asking" && r.askedOf === agentId && r.deliveredAt && Date.parse(r.deliveredAt) <= this.now());
+    for (const r of owed) await this.update(r.id, x => x.state !== "asking" ? x : { ...x, state: "chat", settledAt: new Date(this.now()).toISOString() });
+  }
+
+  /**
+   * After a restart: anything still asking is re-derived from what the worker can read without waking anyone. `sent`
+   * says when the queue delivered it (null: not yet, or not a queued ask); `idle` says the agent isn't in a turn now.
+   * Delivered to an agent that is idle means its turn ended while the worker was down, so it settles as `chat`; a send
+   * that failed for good fails the ask.
+   */
+  async reconcile(look: (r: ContextRequest) => { sent: string | null; failed: string | null; idle: boolean }): Promise<void> {
+    for (const r of (await this.list()).filter(x => x.state === "asking" && x.askedOf)) {
+      const seen = look(r);
+      if (seen.failed) { await this.fail(r.id, seen.failed); continue; }
+      const at = r.deliveredAt ?? seen.sent;
+      if (at && !r.deliveredAt) await this.delivered(r.id, at);
+      if (at && seen.idle) await this.turnEnded(r.askedOf!);
     }
   }
 }

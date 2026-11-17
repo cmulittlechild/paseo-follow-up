@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -269,7 +269,7 @@ const WORKSPACES = [
       rpc("follow.link-item", { ref: "https://example.slack.com/archives/C0BILLING1/p1772614800000100", title: "#billing: which declines are soft?", why: "Where support asked for declined-card retries" }),
       rpc("follow.link-item", { ref: "https://example.com/docs/billing/retries", title: "Retry notes", why: "The backoff schedule and its limits" }),
       bash("pnpm test billing", "pass 87"),
-      rpc("follow.ask-question", { title: "Retry declined cards?", question: "Should charges that fail with card_declined retry, or only network failures?",
+      rpc("follow.ask-question", { title: "fail with card_declined retry", question: "Should charges that fail with card_declined retry, or only network failures?",
         options: [{ letter: "A", label: "Only network failures", consequence: "Today's behavior. Declined cards go straight to the dunning email." },
           { letter: "B", label: "Retry card_declined once after 24 hours", consequence: "Recovers some soft declines for one extra charge attempt per invoice." },
           { letter: "C", label: "Retry every failure with the same backoff", consequence: "Highest recovery, but card networks can flag repeated declines." }],
@@ -303,7 +303,7 @@ const WORKSPACES = [
       rpc("follow.needs-you", { kind: "decision", ask: "Pick the default for new accounts", questions: ["Q1"] })] },
   { key: "csv", project: "web", title: "Contact import", minute: 95, prompt: "WEB-38: import contacts from a CSV, with a preview before saving.",
     steps: [rpc("follow.enroll", { goal: "WEB-38 Import contacts from CSV" }), rpc("follow.register-pr", { repo: "example/web", number: 224, stack: "Contact import" }),
-      rpc("follow.ask-question", { title: "Duplicate contacts?", question: "When a CSV row matches an existing contact by email, should it update that contact or be skipped?",
+      rpc("follow.ask-question", { title: "When a CSV row matches an existing contact", question: "When a CSV row matches an existing contact by email, should it update that contact or be skipped?",
         options: [{ letter: "A", label: "Update the existing contact", consequence: "The CSV wins; old values are overwritten." }, { letter: "B", label: "Skip the row", consequence: "Existing contacts never change; the preview lists what was skipped." }],
         recommend: "B", pr: "example/web#224" }),
       msg("The preview works in example/web#224. Q1 asks what to do with duplicates.")] },
@@ -416,7 +416,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("catch-up") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("catch-up") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1421,7 +1421,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     if (name === "pill") await shoot("pill", DESKTOP, "dark", async page => {
       await openChat(page, "Billing retries", billing.prompt);
       await page.getByRole("button", { name: /^Follow-up · / }).last().click();
-      await page.getByText("Retry declined cards?").last().waitFor();
+      await page.getByText("fail with card_declined retry").last().waitFor();
     });
     if (name === "pr-sheet") await shoot("pr-sheet", DESKTOP, "dark", async page => {
       await openChat(page, "Billing retries", billing.prompt);
@@ -1613,6 +1613,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
+  if (only.includes("catch-up")) await catchUpShots({ shoot, call });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -1622,7 +1623,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     // One Needs you block per surface: each state on the panel (desktop) and Home's detail pane (desktop and phone),
     // light and dark. Tall panel frames so the block, Tasks and their neighbours all fit.
     const states = [
-      { state: "brief-same-q", title: "Billing retries", prompt: billing.prompt, wait: "Retry declined cards?" },
+      { state: "brief-same-q", title: "Billing retries", prompt: billing.prompt, wait: "fail with card_declined retry" },
       { state: "brief-other-q", ...pick("ny-other"), wait: "Approve the staging export bucket" },
       { state: "two-qs", ...pick("ny-two"), wait: "Limit scope" },
       { state: "q-no-brief", ...pick("ny-lone"), wait: "Missing keys" },
@@ -2004,6 +2005,76 @@ async function mergeClickShots({ shoot, billing }) {
   await shoot("mc-done-panel-light", TALL, "light", click(receipts, "light", panel, "panel"));
   const digest = { title: MERGE_CLICK_STATES[2].title, prompt: MERGE_CLICK_STATES[2].prompt, button: "Merge pull request #256", merged: /Merged #256/, gone: true };
   await shoot("mc-done-home-phone-dark", PHONE, "dark", click(digest, "dark", phone, "home-phone"));
+}
+
+/**
+ * catch-up (docs/design/catch-up.md, docs/needs-you.md#catch-up): Catch up driven the way the developer drives it.
+ * Home's "Catch up · N" opens it; Skip walks the deck to a card; More context asks the card's agent for real
+ * (follow.context-ask through the screen), and the answer comes back through follow.context-reply as that agent, so the
+ * deck parks the workspace and brings it back as the next card. Phone 390×844 and desktop, light and dark.
+ */
+async function catchUpShots({ shoot, call }) {
+  const entry = /^Catch up on \d+ things? that need you/;
+  const visible = (page, what) => page.getByText(what).filter({ visible: true }).first();
+  const enter = async (page, size, find) => {
+    await openHome(page); if (size === PHONE) await page.setViewportSize(PHONE);
+    await page.getByRole("button", { name: entry }).filter({ visible: true }).first().click();
+    await page.getByRole("heading", { name: /^Catch up/ }).filter({ visible: true }).first().waitFor();
+    // A card is found by what only the card shows (its question's words, or its header), never the rail's labels.
+    const here = () => typeof find === "string" ? page.locator("[data-catch-up-card]").getByText(find).filter({ visible: true }).first() : page.getByRole("heading", { name: find }).filter({ visible: true }).first();
+    if (find) for (let i = 0; !(await here().isVisible()); i++) {
+      if (i > 30) throw new Error(`catch-up: no card shows ${find}`);
+      await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(1200);
+  };
+  const skips = async (page, n) => { for (let i = 0; i < n; i++) { await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(200); } await page.waitForTimeout(1000); };
+  const finish = async page => {
+    for (let i = 0; !(await visible(page, /^(All caught up|End of the deck)$/).isVisible()); i++) {
+      if (i > 80) throw new Error("catch-up: the deck never finished");
+      await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(150);
+    }
+    await page.waitForTimeout(800);
+  };
+  const more = page => page.getByRole("button", { name: /^More context$/ }).filter({ visible: true }).first().click();
+  await shoot("cu-entry-phone-light", PHONE, "light", async page => { await openHome(page); await page.setViewportSize(PHONE); await page.getByRole("button", { name: entry }).filter({ visible: true }).first().waitFor(); });
+  await shoot("cu-entry-desktop-dark", DESKTOP, "dark", async page => { await openHome(page); await page.getByRole("button", { name: entry }).filter({ visible: true }).first().waitFor(); });
+  // The first cards of the deck in order, on a phone: Home's Needs-you order and each kind of card.
+  for (let i = 0; i < 6; i++) await shoot(`cu-deck-${String(i).padStart(2, "0")}-phone-light`, PHONE, "light", async page => { await enter(page, PHONE); await skips(page, i); });
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-question-phone-${theme}`, PHONE, theme, page => enter(page, PHONE, "fail with card_declined retry"));
+    await shoot(`cu-rail-desktop-${theme}`, DESKTOP, theme, page => enter(page, DESKTOP, "fail with card_declined retry"));
+  }
+  await shoot("cu-merge-phone-dark", PHONE, "dark", page => enter(page, PHONE, /Search filters/));
+  await shoot("cu-more-phone-light", PHONE, "light", async page => { await enter(page, PHONE, "fail with card_declined retry"); await more(page); await visible(page, "I don't get it").scrollIntoViewIfNeeded(); });
+  await shoot("cu-more-desktop-dark", DESKTOP, "dark", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await more(page); await visible(page, "I don't get it").scrollIntoViewIfNeeded(); });
+  // The real round trip: ask the card's agent, the deck moves on ("1 getting context"), the agent answers with
+  // context_reply, and the workspace comes back as the very next card with the answer on it.
+  for (const [size, theme, tag] of [[DESKTOP, "dark", "desktop"], [PHONE, "light", "phone"]]) {
+    const askAgent = async page => {
+      await enter(page, size, "When a CSV row matches an existing contact"); await more(page);
+      await page.getByRole("button", { name: /^Ask (?!the Overseer)/ }).filter({ visible: true }).first().click();
+      await visible(page, /^1 getting context$/).waitFor();
+    };
+    await shoot(`cu-asked-${tag}-${theme}`, size, theme, askAgent);
+    await shoot(`cu-arrived-${tag}-${theme}`, size, theme, async page => {
+      // Asking again while the first ask is open returns that one, so this page parks the same request.
+      await askAgent(page);
+      const asked = (await call("follow.context-list", {})).requests.filter(r => r.state === "asking").at(-1);
+      if (!asked) throw new Error("catch-up: the ask wasn't recorded");
+      await call("follow.context-reply", { agentId: asked.askedOf, requestId: asked.id, text: "A CSV row and a contact match when their emails match, ignoring case. **Update** keeps one contact per person and overwrites its name and phone; **skip** leaves the old values and drops the row. Update is safer for re-imports of the same list." });
+      await page.getByText(/^1 getting context$/).filter({ visible: true }).first().waitFor({ state: "hidden", timeout: 30000 });
+      await skips(page, 1); // the card on screen stays put; the answered one is the very next card
+      await visible(page, /emails match/).waitFor({ timeout: 30000 });
+      await page.waitForTimeout(600);
+    });
+  }
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-finished-phone-${theme}`, PHONE, theme, async page => { await enter(page, PHONE); await finish(page); });
+    await shoot(`cu-finished-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP); await finish(page); });
+  }
 }
 
 async function sendingShots({ shoot, seeded, call, home }) {

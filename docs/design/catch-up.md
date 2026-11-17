@@ -4,6 +4,9 @@ Status: decided 2026-11-17 ([the picks](#the-picks)); building in small stacked 
 phase 1 prototype, drawn with Follow-up's own components and synthetic data (`scripts/screenshots.mjs --only
 catch-up`), and still show its working name, "Go through". The shipped words are Catch up's.
 
+Renders of the shipped screen (driven through the real flow by `scripts/screenshots.mjs --only catch-up`) are in
+[`catch-up/shipped/`](catch-up/shipped/).
+
 The developer asked for a mode on Follow-up Home where they go through everything that needs them, one item at a time,
 mainly on the phone: read the card, act, next card, act, next card. The rhythm matters most. Every card carries what
 it takes to decide without opening the chat, and acting never waits on the network.
