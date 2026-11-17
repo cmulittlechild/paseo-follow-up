@@ -14,7 +14,7 @@ import { briefKey, HEADLINE_WORD } from "../shared/headline";
 const word = (kind: Brief["kind"]) => HEADLINE_WORD[briefKey(kind)];
 import { answerQuestionRpc, briefActionRpc, browserStatusRpc, inboxBriefRpc } from "../shared/contracts";
 import { errorText, mootNote } from "../shared/errors";
-import { OTHER, OTHER_LABEL, briefAnswerStatus, isOther, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, OWN_ANSWER_HINT, briefAnswerStatus, isOther, type Question } from "../shared/questions";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { useDetailGate, useWorkspace } from "./workspace-data";
 import { SubmitScope, focusRing, submitHint, text, useNow } from "./kit";
@@ -139,8 +139,8 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
   </View>;
 }
 
-/** "Add note" / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. */
-function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: { icon: string; label: string; a11y: string; disabled: boolean; onPress: () => void; c: Colors; compact: boolean }) {
+/** "Add note" / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. QuestionBody uses it too. */
+export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: { icon: string; label: string; a11y: string; disabled: boolean; onPress: () => void; c: Colors; compact: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={6}
     style={({ hovered, pressed, focused }: { hovered?: boolean; pressed: boolean; focused?: boolean }) => ({ ...ring(focused, c), flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: compact ? 44 : 28, paddingHorizontal: 4, marginLeft: -4, borderRadius: 6, opacity: disabled ? 0.5 : pressed ? 0.7 : 1, backgroundColor: hovered && !disabled ? withAlpha(c.foreground, 0.05) : "transparent" })}>
     <Icon name={icon} size={14} color={c.foregroundMuted} />
@@ -190,7 +190,7 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} />
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
             <Btn shortcut label={busy === `${d.id}:${OTHER}` ? "Sending…" : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
-            {!words[d.id]?.trim() && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>Write your answer, then send it.</Text>}
+            {!words[d.id]?.trim() && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{OWN_ANSWER_HINT}</Text>}
           </View>}
         </View>}
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}

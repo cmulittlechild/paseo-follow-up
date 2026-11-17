@@ -562,7 +562,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the attempt finishes, without rejecting shutdown.
    Guarded by `tests/worker-stop.test.ts` and `tests/worker-lock.test.ts`.
 
-41. **Home announces every newer stable in Tell me mode** (`update-notice-every-stable`). Major, minor and patch
+41. **One answer flow for every question** (`one-answer-flow-for-every-question`). A question is answered the same way
+   wherever it is shown: the dialog, Needs you on Home and in the panel, the pill, desktop and phone all draw
+   `QuestionBody` (`client/questions.tsx`), and what its one text field means comes from `answerDraft`
+   (`shared/questions.ts`), never from the surface or its mode. The field appears only once its role is known: the
+   developer's own answer (Something else, or a question with no options; Send sends it, no second click) or a note on
+   the picked letter (Add note), each labelled so before anything is typed. Words with nothing picked are the
+   developer's own answer, never a note Send can't send. The brief card's decisions follow the same shape. 2026-11-17:
+   the panel showed an "Add a note (optional)" field before any pick, so writing your own answer took typing and then
+   finding Something else, while the pill's popover hid the field until Something else. Guarded by
+   `tests/own-answer.test.ts`.
+
+42. **Home announces every newer stable in Tell me mode** (`update-notice-every-stable`). Major, minor and patch
    releases count, including a beta to its stable release. Prereleases stay in Settings → General. First installs,
    unchanged versions, downgrades, Install automatically and Off get no available-update line. Dismissal stays per
    version (`available:<version>`). `announcesUpdate` in `shared/changelog.ts` is the one version rule; the updater
