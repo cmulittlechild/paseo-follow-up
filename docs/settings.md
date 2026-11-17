@@ -117,10 +117,12 @@ First, pick where it lives:
   each update is then recorded as seen without the sheet, so turning it back on never brings old notes, and Home's
   footer and Release notes still open it by hand. The invariant is `whats-new-after-every-stable-update`, with a grid
   test in `tests/update-announcements.test.ts`. Home's "Updated to X · What's new" needs notes of X's own.
-- **Home's available-update line stays major-only.** `announcesUpdate(from, to)` decides the Tell me notice
-  ("Follow-up X is available"): true only when a new major is released (1.x to 2.0.0; a 2.0.0 beta still counts as
-  1.x). Other versions wait in Settings → General. Invariant `update-notice-major-only`, grid test in
-  `tests/updater.test.ts`. Any new update prompt besides What's new goes through it, or is a Settings row.
+- **Home announces every newer stable in Tell me mode.** `announcesUpdate(from, to)` decides the
+  "Follow-up X is available" line for major, minor and patch releases, including a beta to its stable release.
+  Prereleases stay in Settings → General. First installs, unchanged versions and downgrades get no available-update
+  line, nor do Install automatically and Off. Dismissal is per version (`available:<version>`).
+  Invariant `update-notice-every-stable`, grid test in `tests/updater.test.ts`; first-install and version cases in
+  `tests/update-announcements.test.ts`. What's new follows its own notes-based rule above.
 - **The installed version.** `server/release-notes.ts` reads Follow-up's own install row from the daemon's plugin
   list (`describeSelf`) and the package's `CHANGELOG.md`. It records `versions.json`: the current version, the
   previous one, and the host-wide "seen" record.

@@ -2,7 +2,7 @@
 
 Follow-up checks npm for a newer version of itself, and can install it, watch it, and roll it back. The UI is the
 Updates part of Settings → General (`UpdatesSections` in `client/updates.tsx`), Home's one-line notice
-(`UpdateNotice`: a rollback, or in Tell me a new major only, per `announcesUpdate` in `shared/changelog.ts`), and setup's Updates step (`UpdatesStep`). Settings → General also holds **Show What's new after updates** (`enable_whats_new`, [settings.md](settings.md#release-notes-whats-new-and-updates)). Users read about it in README's "Updates" section.
+(`UpdateNotice`: a rollback, or in Tell me every newer stable release, per `announcesUpdate` in `shared/changelog.ts`), and setup's Updates step (`UpdatesStep`). Settings → General also holds **Show What's new after updates** (`enable_whats_new`, [settings.md](settings.md#release-notes-whats-new-and-updates)). Users read about it in README's "Updates" section.
 
 ## Files
 
@@ -34,6 +34,8 @@ Updates part of Settings → General (`UpdatesSections` in `client/updates.tsx`)
   `shared/onboarding.ts` saves it when the step is passed or setup is skipped.
 - An existing install defaults to Tell me, and its setup never writes a mode it didn't pick.
 - Off means no scheduled checks and no check when Settings opens. Check now still works.
+- Home's available-update line follows `update-notice-every-stable`: major, minor and patch releases count;
+  prereleases, first installs, downgrades, Install automatically and Off stay quiet. Dismissal is per version.
 - Channel: Stable (`latest`) or Beta (the newer of `beta` and `latest`). It starts from the installed version, and
   Stable never offers an older stable than what runs (`offerFor` in `shared/version.ts`).
 - Installs that aren't from npm (a Git checkout, a local folder, the Paseo registry) never check or install. They

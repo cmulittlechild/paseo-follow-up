@@ -90,6 +90,9 @@ View. Follow-up 2.0 still runs on Paseo 0.15; there it simply doesn't offer the 
 
   <img alt="Follow-up on a phone: Home's list, and a workspace's detail with its question" src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-phone.png">
 
+With Updates set to **Tell me**, Home says when any newer stable version is available, including minor and patch
+releases. On the Beta channel, betas show only in Settings → General.
+
 After an update that brings new release notes, Follow-up shows **What's new** once. Betas install quietly.
 To stop it, turn off **Show What's new after updates** in Settings → General. Release notes are there too, and in
 [CHANGELOG.md](CHANGELOG.md).

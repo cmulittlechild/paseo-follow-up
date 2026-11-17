@@ -10,7 +10,6 @@ import { run } from "../server/update-watchdog.mjs";
 import type { UpdatesFile } from "../server/updates";
 import type { Busy } from "../shared/update-policy";
 import type { Provenance } from "../server/update-provenance";
-import { announcesUpdate } from "../shared/changelog";
 import { updatePhaseViolations } from "../shared/status-invariants";
 
 const INTEGRITY = "sha512-kM/c8bZm2HxcQQMwaiSMYCyjq+HTquHiLEbam/EyTedfZ9H+os1VcSNtQecqKxvKA/LyO+rOzm8ShRSOSy/QVQ==";
@@ -71,12 +70,12 @@ test("Tell me: a newer beta is available in Settings only, with no Home notice; 
   await r.updater.check("manual");
   const view = await r.updater.view();
   assert.deepEqual(view.phase, { kind: "available", version: "1.4.0-beta.24", publishedAt: null });
-  assert.equal(view.notice, null, "a beta is not a major: Settings → General shows it, Home doesn't");
+  assert.equal(view.notice, null, "a beta stays quiet: Settings → General shows it, Home doesn't");
   assert.deepEqual(view.channels, { stable: "1.0.1", beta: "1.4.0-beta.24" });
   assert.deepEqual(r.spawned, []);
 });
 
-test("Tell me: a new major gets a Home notice until dismissed", async () => {
+test("Tell me: a newer stable gets a Home notice until dismissed", async () => {
   const r = await rig({ file: { mode: "notify" }, tags: { latest: "2.0.0", beta: "2.0.0" }, versions: ["1.4.0-beta.23", "2.0.0"] });
   await r.updater.check("manual");
   assert.deepEqual((await r.updater.view()).notice, { id: "available:2.0.0", kind: "available", version: "2.0.0", from: null });
@@ -85,15 +84,24 @@ test("Tell me: a new major gets a Home notice until dismissed", async () => {
   assert.deepEqual(r.spawned, []);
 });
 
-test("grid (update-notice-major-only): an available update has a Home notice only when announcesUpdate says so", async () => {
-  const cases: [string, string][] = [["1.4.0-beta.23", "1.4.0-beta.24"], ["1.4.0-beta.23", "1.4.0"], ["1.4.0", "1.4.1"], ["1.4.0", "1.5.0"],
-    ["1.4.0", "2.0.0-beta.0"], ["2.0.0-beta.0", "2.0.0"], ["1.4.0-beta.23", "2.0.0"], ["2.0.0", "2.1.0-beta.0"], ["2.0.0", "3.0.0"]];
-  for (const [installed, offered] of cases) {
-    const r = await rig({ file: { mode: "notify", channel: "beta" }, installed, tags: { latest: offered, beta: offered }, versions: [installed, offered] });
+test("grid (update-notice-every-stable): Home announces every newer stable only in Tell me mode", async () => {
+  const cases: [string, string, boolean][] = [
+    ["1.4.0", "2.0.0", true], ["1.4.0", "1.5.0", true], ["1.4.0", "1.4.1", true],
+    ["2.2.0-beta.3", "2.2.0", true], ["2.2.0-beta.3", "2.2.0-beta.4", false],
+    ["1.4.0", "2.0.0-beta.0", false], ["1.4.0", "2.0.0-rc.0", false],
+    ["2.0.0-rc.0", "2.0.0", true], ["2.0.0", "1.4.0", false], ["2.0.0", "2.0.0", false],
+  ];
+  for (const mode of ["notify", "auto", "off"] as const) for (const [installed, offered, announce] of cases) {
+    const r = await rig({ file: { mode, channel: "beta" }, installed, tags: { latest: offered, beta: offered }, versions: [installed, offered] });
     await r.updater.check("manual");
     const view = await r.updater.view();
-    assert.equal(view.phase.kind, "available", `${installed} -> ${offered}`);
-    assert.equal(view.notice != null, announcesUpdate(installed, offered), `${installed} -> ${offered}`);
+    const label = `${mode}: ${installed} -> ${offered}`;
+    assert.equal(view.notice != null, mode === "notify" && announce, label);
+    if (view.notice) {
+      assert.equal(view.notice.id, `available:${offered}`, label);
+      await r.updater.dismiss(view.notice.id);
+      assert.equal((await r.updater.view()).notice, null, `${label}: dismissed`);
+    }
   }
 });
 

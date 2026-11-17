@@ -177,7 +177,7 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
 
 const SETUP_CARDS: { mode: UpdateMode; hint: string }[] = [
   { mode: "auto", hint: "Waits until your agents are idle. Rolls back if the new version fails." },
-  { mode: "notify", hint: "Shows new versions on Home. You choose when to install." },
+  { mode: "notify", hint: "Shows new stable versions on Home. You choose when to install." },
   { mode: "off", hint: "No checks. You can check from Settings → General." },
 ];
 /**
