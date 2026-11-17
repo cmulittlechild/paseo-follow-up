@@ -1,1 +1,1 @@
-- On a phone, what you type and its Send button stay on screen. While you write an answer or a note, the Sign off buttons and the reply box step aside, the header shrinks to its title, and the page scrolls so the field and Send sit above the keyboard.
+- On a phone, what you type and its Send button stay on screen. While you write an answer or a note, Sign off and the reply box step aside and the page scrolls the field above the keyboard.
