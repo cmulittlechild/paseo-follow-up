@@ -51,6 +51,7 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | `link_item`, `unlink_item` | `follow.link-item`, `follow.unlink-item` | Links what the work is about (a Linear key is confirmed with Linear first; a PR is refused), or removes one for good ([linked-items.md](linked-items.md)). Main and contributors. |
 | `needs_you` | `follow.needs-you` | The end-of-turn brief: what the developer must do next. |
 | `declare_done` | `follow.done` | Declares the goal fulfilled and returns any blockers. |
+| `context_reply` | `follow.context-reply` | Answers the developer's Catch up More context ask with the `requestId` the ask carried; only the agent it was asked of (or the Overseer, for its asks) may answer ([needs-you.md](needs-you.md#catch-up)). Not offered to recovery sessions or contributors. |
 
 ## Action tools (agent parity)
 
@@ -112,9 +113,12 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `report_send` | `follow.report-issue-send` | planned; hands the developer's report to an agent, a new agent in a workspace or a new workspace, like Report an issue's Send. [report-issue.md](report-issue.md#send-to) |
 | `workspace_status` | `follow.created-items` | read. The chat's created-agent / created-workspace cards: live states from the engine's cached directory rows and Follow-up's line for the workspace ([client.md](client.md#created-agent-and-workspace-cards)). |
 | `trust_bypass_status` | `follow.trust-bypass` | read |
+| `catch_up_deck` | `follow.catch-up-deck` | read. Catch up's deck as Home would deal it (one card per ask, Home's Needs-you order and `home_sort`), each card with its More context ask. Built when read from the worker's own state; the client deals the same deck from Home's model ([needs-you.md](needs-you.md#catch-up)). |
+| `context_requests`, `ask_context` | `follow.context-list`, `follow.context-ask` | read / planned. More context on a card: ask the Overseer (reads without waking anyone) or the card's agent (a queued message; it may wake, since the developer asked). `ask_context` refuses asking the caller about its own card. |
 
 Features that change only one person's view (no RPC) are listed in `VIEW_PARITY` with the tools that read the
-same data: section search in the panel reads what `workspace_status` and `list_prs` return.
+same data: section search in the panel reads what `workspace_status` and `list_prs` return; Catch up's Skip and Back
+move only the developer's view, and `catch_up_deck` reads the deck they move through.
 
 Exempt in `PARITY`, with the reason recorded there:
 
@@ -164,7 +168,7 @@ nothing. On 0.15 there is no `client.subscribe`, and the client polls the RPCs a
 | --- | --- | --- |
 | `follow.workspaces-feed` | `follow.list` every 15 s | Store saves and the engine tick (the revision diff, plus the worker's error) |
 | `follow.inbox-feed` | `follow.inbox-list` every 15 s, and its nudge on agent activity | Inbox hooks and actions, and the inbox tick (wake-ups, directory titles) |
-| `follow.home-feed` | `follow.priorities`, `follow.rank-status`, `follow.usage` every 60 s, `follow.overseer-status` every 15 s, and Re-rank's 3 s loop | Priority writes, ranker start and finish, the inbox tick (the Overseer), and Smart Session's accounts directory, watched only while someone subscribes (`USAGE_WATCH_DEBOUNCE_MS`, 5 s: a burst of writes is one read; the key is the meters as shown). The worker's live resources aren't in it: Home reads `follow.usage` once when it opens. With no directory to watch, `usageLive` is false and the client reads usage every 60 s |
+| `follow.home-feed` | `follow.priorities`, `follow.rank-status`, `follow.usage` every 60 s, `follow.overseer-status` every 15 s, Re-rank's 3 s loop, and Catch up's More context asks (`context`, so an answer arriving needs no poll) | A More context ask or answer, priority writes, ranker start and finish, the inbox tick (the Overseer), and Smart Session's accounts directory, watched only while someone subscribes (`USAGE_WATCH_DEBOUNCE_MS`, 5 s: a burst of writes is one read; the key is the meters as shown). The worker's live resources aren't in it: Home reads `follow.usage` once when it opens. With no directory to watch, `usageLive` is false and the client reads usage every 60 s |
 | `follow.display-feed` | the Display settings read every 60 s (sidebar, pills, `home_sort`) | The settings' own subscription |
 
 `follow.browser-status` is read once when a PR sheet, the panel or the pill's popover opens; nothing polls it.

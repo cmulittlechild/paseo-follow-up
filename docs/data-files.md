@@ -26,6 +26,7 @@ Everything lives in `$PASEO_HOME/plugin-data/follow-up/`.
 | `queue.json` | `server/message-queue.ts` | The message queue: every message to an agent waiting, in flight or retrying (answers today), with its state, retry time and last envelope messageId; the newest settled ones without text; the one-time moves done (`migrations`). Saved before each send. |
 | `agents.json` | `server/agent-settings.ts` | Settings → Agents: per-role provider, model, effort and mode, plus `enable_wait`. |
 | `reviewers.json` | `server/reviewer-config.ts` | Reviewer lists per repository, plus a default. |
+| `context.json` | `server/context-requests.ts` | Catch up's More context asks and their answers: at most 50, none older than 24 h. Saved behind the reply; losing it costs a re-ask. |
 | `pr-workflow.json` | `server/pr-workflow.ts` | Graphite or GitHub, the default and per repository, merge methods, the review-fix command. |
 | `priorities.json`, `ranker.json` | `server/priorities.ts`, `server/ranker.ts` | Home's Priority sort, the ranker's input hash, run count, source health and plan summary. |
 | `about.json`, `ai-jobs.jsonl` | `server/about.ts`, `server/ai-jobs.ts` | Summary overviews and linked items, and each model call’s duration and cost, plus privacy-safe validation rule codes for rejected rename replies (never their text). |

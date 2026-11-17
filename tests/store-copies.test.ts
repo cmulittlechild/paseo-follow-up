@@ -77,6 +77,7 @@ const EXEMPT: Record<string, string> = {
   "server/ranker.ts": "the ranker's own state (bytes), once per run",
   "server/release-notes.ts": "What's new seen markers, on the developer's click",
   "server/reviewer-config.ts": "Settings → Reviewers (bytes), on the developer's change",
+  "server/context-requests.ts": "Catch up's More context asks: at most 50 small records, replaced one at a time on the developer's ask or an agent's reply",
   "server/scopes.ts": "derived per-agent scopes for hooks (≈14 KB), rewritten only when they change",
   "server/trust-bypass.ts": "a JSONL audit line per decision",
   "server/updates.ts": "update records, on an install",
