@@ -249,6 +249,13 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
 - **The session** (`Session`, `startSession`, `settle`, `park`, `sync`, `nextPos`): pure, so the screen and the tests
   agree. A card that leaves Needs you elsewhere is `gone`, never pulled from under the developer; a new one joins at
   the end; Skip moves a card behind the rest (a second pass picks it up); done cards stay so Back can show them.
+- **Keys** (desktop web): every move has one, from the one list `CATCH_UP_KEYS` (`shared/catch-up.ts`) that the
+  handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip,
+  K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the Overseer, ⌘⇧↵ the agent), N adds a note, L Later,
+  O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), S shows the keys, X leaves. None is a combo
+  Paseo binds (`PASEO_BOUND`): Paseo keeps ? (its shortcuts) and Esc (interrupt agent), so the sheet is S and leaving
+  is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). Buttons name their key in their
+  tooltip.
 - **More context** (invariant `context-never-blocks-the-deck`): the developer asks the Overseer (it answers from what
   it can read and wakes no one) or the card's agent (a queued message, invariant 36; asking may wake it, because the
   developer asked). "I don't get it" is the first suggestion. The ask is recorded (`server/context-requests.ts`,

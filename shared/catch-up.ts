@@ -139,19 +139,61 @@ export function statsOf(s: Session): SessionStats {
 }
 
 /** The keys, one place, so the help line, the tooltips and the handler agree. Option letters pick; these never collide with A–H. */
-export const CATCH_UP_KEYS = [
-  { key: "A–H", what: "Pick an option" },
-  { key: "W", what: "Write your own answer" },
-  { key: "⌘↵", what: "Send" },
-  { key: "J / →", what: "Skip" },
-  { key: "K / ←", what: "Back" },
-  { key: "M", what: "More context" },
-  { key: "N", what: "Add a note" },
-  { key: "L", what: "Later" },
-  { key: "O", what: "Open chat" },
-  { key: "?", what: "Show the keys" },
-  { key: "Esc", what: "Leave" },
-] as const;
+/**
+ * Catch up's keys (desktop web): one list that the handler (`catchUpKey`), the S sheet and the hint line read, so
+ * they never disagree. `combos` spell each key the way Paseo's bundle does (PASEO_BOUND, shared/search-key.ts):
+ * tests/catch-up-keys.test.ts fails if one is a combo Paseo binds, Home's search key, or one of the search-from-
+ * anywhere presets. Paseo takes Shift+? (its shortcuts dialog) and Escape (interrupt agent) when focus is outside a
+ * field, which is exactly when these fire, so the sheet is S and leaving is X.
+ */
+export type CatchUpAction = "pick" | "own" | "send" | "skip" | "back" | "more" | "chip" | "ask-overseer" | "ask-agent" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
+/** A key as this platform spells it: ⌘ on a Mac, Ctrl elsewhere (as the Send button's own hint reads). */
+export const keyLabel = (key: string, mac: boolean) => mac ? key : key.replace("⌘", "Ctrl ");
+
+export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchUpAction; combos: readonly string[]; when?: "more" | "rail" }[] = [
+  { key: "A–H", what: "Pick an option", action: "pick", combos: ["A", "B", "C", "D", "E", "F", "G", "H"] },
+  { key: "W", what: "Write your own answer", action: "own", combos: ["W"] },
+  { key: "⌘↵", what: "Send", action: "send", combos: ["Cmd+Enter", "Ctrl+Enter"] },
+  { key: "J / →", what: "Skip", action: "skip", combos: ["J", "ArrowRight"] },
+  { key: "K / ←", what: "Back", action: "back", combos: ["K", "ArrowLeft"] },
+  { key: "M", what: "More context", action: "more", combos: ["M"] },
+  { key: "1–4", what: "Pick a More context ask", action: "chip", combos: ["Digit"], when: "more" },
+  { key: "⌘↵", what: "Ask the Overseer", action: "ask-overseer", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
+  { key: "⌘⇧↵", what: "Ask the agent", action: "ask-agent", combos: ["Cmd+Shift+Enter", "Ctrl+Shift+Enter"], when: "more" },
+  { key: "N", what: "Add a note", action: "note", combos: ["N"] },
+  { key: "L", what: "Later", action: "later", combos: ["L"] },
+  { key: "O", what: "Open chat", action: "chat", combos: ["O"] },
+  { key: "R", what: "Go to the queue, and back", action: "rail", combos: ["R"] },
+  { key: "↑ / ↓", what: "Move in the queue (Enter opens)", action: "rail-up", combos: ["ArrowUp", "ArrowDown"], when: "rail" },
+  { key: "S", what: "Show the keys", action: "keys", combos: ["S"] },
+  { key: "X", what: "Leave Catch up", action: "leave", combos: ["X"] },
+];
+
+export type KeyPress = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; composing?: boolean; mac: boolean };
+/**
+ * What a key press does in Catch up, or null to leave it alone (Paseo's, the field's, the browser's). Pure, so the
+ * map is tested without a DOM. `typing`: focus is in a text field, where only the More context box's ⌘↵ and ⌘⇧↵ act
+ * (a card field's ⌘↵ is its own SubmitScope's). `inRail`: focus is in the queue.
+ */
+export function catchUpKey(e: KeyPress, at: { typing: boolean; inMore: boolean; moreOpen: boolean; inRail: boolean }): { action: CatchUpAction; arg?: string } | null {
+  if (e.composing || e.alt) return null;
+  const mod = e.mac ? e.meta : e.ctrl;
+  if (e.key === "Enter" && mod && (e.mac ? !e.ctrl : !e.meta)) {
+    if (e.shift) return at.moreOpen && (!at.typing || at.inMore) ? { action: "ask-agent" } : null;
+    if (at.moreOpen && (!at.typing || at.inMore)) return { action: "ask-overseer" };
+    return at.typing ? null : { action: "send" };
+  }
+  if (at.typing || e.meta || e.ctrl) return null;
+  if (at.inRail && (e.key === "ArrowUp" || e.key === "ArrowDown")) return { action: e.key === "ArrowUp" ? "rail-up" : "rail-down" };
+  if (e.key === "ArrowRight") return { action: "skip" };
+  if (e.key === "ArrowLeft") return { action: "back" };
+  if (at.moreOpen && /^[1-4]$/.test(e.key)) return { action: "chip", arg: e.key };
+  if (e.shift || e.key.length !== 1) return null;
+  const k = e.key.toLowerCase();
+  if (/^[a-h]$/.test(k)) return { action: "pick", arg: k.toUpperCase() };
+  const byLetter: Record<string, CatchUpAction> = { w: "own", j: "skip", k: "back", m: "more", n: "note", l: "later", o: "chat", r: "rail", s: "keys", x: "leave" };
+  return byLetter[k] ? { action: byLetter[k] } : null;
+}
 
 /**
  * The mode's name in every place it shows, so renaming it is one edit. Tom picked Catch up (2026-11-17: "people know

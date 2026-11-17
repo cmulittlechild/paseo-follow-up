@@ -101,7 +101,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
-  useSlashToFocus(omnibox, params.view !== "log");
+  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup");
   const [filter, setFilter] = useState<HomeGroupId | null>(null);
   const [selected, setSelected] = useState<string | null>(() => params.item ?? (params.select ? `agent:${params.select}` : null));
   const openAgentRow = useMemo(() => navigation ? (row: InboxRow) => navigation.openAgent({ agentId: row.agentId }) : undefined, [navigation]);

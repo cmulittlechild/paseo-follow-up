@@ -116,7 +116,7 @@ test("the mode's words: Catch up, counts cards, All caught up", () => {
   assert.equal(MODE.finished, "All caught up");
   assert.equal(MODE.endOfDeck, "End of the deck", "a deck ended with cards skipped or waiting does not claim All caught up");
   assert.equal(CONTEXT_ASKS[0].label, "I don't get it", "Tom: the question usually just needs explaining");
-  assert.ok(CATCH_UP_KEYS.some(k => k.key === "?"));
+  assert.ok(CATCH_UP_KEYS.some(k => k.key === "S" && k.action === "keys"), "the keys sheet is S: Paseo binds ?");
 });
 
 const request = (patch: Partial<ContextRequest> = {}): ContextRequest => contextRequestSchema.parse({

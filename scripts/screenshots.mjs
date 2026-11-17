@@ -2072,6 +2072,13 @@ async function catchUpShots({ shoot, call }) {
       await page.waitForTimeout(600);
     });
   }
+  // The keys (desktop): S shows the sheet, B picks by key, R and ↓ walk the queue, M then 2 picks a More context ask.
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-keys-sheet-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("s"); await page.getByRole("dialog", { name: "Catch up keys" }).waitFor(); });
+  }
+  await shoot("cu-keys-pick-desktop-dark", DESKTOP, "dark", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("b"); await page.waitForTimeout(400); });
+  await shoot("cu-keys-rail-desktop-light", DESKTOP, "light", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("r"); await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown"); page.keepFocus = true; await page.waitForTimeout(400); });
+  await shoot("cu-keys-more-desktop-dark", DESKTOP, "dark", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("m"); await page.keyboard.press("2"); await page.waitForTimeout(700); });
   // a-focused-field-and-its-send-stay-in-view: writing your own answer on a phone, the keyboard down (390x844) and up
   // (390x508, the page resized for it). The bar steps aside; the field and its Send stay in view.
   const KB_UP = { width: PHONE.width, height: 508 };
