@@ -2,7 +2,7 @@
 
 Follow-up checks npm for a newer version of itself, and can install it, watch it, and roll it back. The UI is the
 Updates part of Settings → General (`UpdatesSections` in `client/updates.tsx`), Home's one-line notice
-(`UpdateNotice`: a rollback, or in Tell me a new major only, per `announcesUpdate` in `shared/changelog.ts`), and setup's Updates step (`UpdatesStep`). Users read about it in README's "Updates" section.
+(`UpdateNotice`: a rollback, or in Tell me a new major only, per `announcesUpdate` in `shared/changelog.ts`), and setup's Updates step (`UpdatesStep`). Settings → General also holds **Show What's new after updates** (`enable_whats_new`, [settings.md](settings.md#release-notes-whats-new-and-updates)). Users read about it in README's "Updates" section.
 
 ## Files
 
@@ -22,7 +22,7 @@ Updates part of Settings → General (`UpdatesSections` in `client/updates.tsx`)
 - `follow.updates` returns the view. `{ check: "settings" }` asks npm unless the mode is Off or a check ran in the
   last minute; `{ check: "manual" }` always asks.
   - Tools: `updates_status` (read) and `check_updates` (write, no plan).
-- `follow.set-updates` sets `{ mode, channel }`. Tool: `set_updates` (planned).
+- `follow.set-updates` sets `{ mode, channel, enable_whats_new }`. Tool: `set_updates` (planned).
 - `follow.install-update` takes `{ version, anyway? }`. Tool: `install_update` (planned).
   - It refuses a version whose provenance failed, even with `anyway`.
   - Without `anyway` it installs at once if nothing is busy, otherwise it waits.

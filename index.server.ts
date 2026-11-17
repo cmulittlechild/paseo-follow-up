@@ -960,8 +960,8 @@ export default function contribute(server: PluginServerContext) {
   // Record the version at start (in the background), so "Updated to X 2h ago" counts from the reload, not first view.
   void ready.then(() => selfInstall()).catch(() => undefined);
   const releaseNotesView = async (): Promise<ReleaseNotesView> => {
-    const me = await selfInstall(); const file = await versions.read();
-    return demoOverride(directory, "release-notes", releaseNotesViewSchema, { version: me.version, name: me.name ?? PLUGIN_NAME, installKind: me.installKind, previous: file.previous ?? null, updatedAt: file.startedAt ?? null, hostSeen: file.hostSeen ?? null, notes: me.notes });
+    const [me, file, updates] = await Promise.all([selfInstall(), versions.read(), updatesStore.read()]);
+    return demoOverride(directory, "release-notes", releaseNotesViewSchema, { version: me.version, name: me.name ?? PLUGIN_NAME, installKind: me.installKind, previous: file.previous ?? null, updatedAt: file.startedAt ?? null, hostSeen: file.hostSeen ?? null, enable_whats_new: updates.enable_whats_new !== false, notes: me.notes });
   };
   handle(rpc.releaseNotesRpc, async () => releaseNotesView());
   handle(rpc.whatsNewSeenRpc, async ({ version }) => { await versions.seen(version); return releaseNotesView(); });
@@ -1046,7 +1046,7 @@ export default function contribute(server: PluginServerContext) {
     if (check) await updater.check(check).catch(() => undefined);
     return updatesView();
   });
-  handle(rpc.setUpdatesRpc, async ({ mode, channel }) => { await updater.setSettings({ mode, channel }); return updatesView(); });
+  handle(rpc.setUpdatesRpc, async ({ mode, channel, enable_whats_new }) => { await updater.setSettings({ mode, channel, enable_whats_new }); return updatesView(); });
   handle(rpc.installUpdateRpc, async ({ version, anyway }) => { await updater.install(version, !!anyway); return updatesView(); });
   handle(rpc.retryMoveRpc, async () => { await pluginMove.retry(); return updatesView(); });
   handle(rpc.dismissUpdateNoticeRpc, async ({ id }) => { await updater.dismiss(id); return updatesView(); });

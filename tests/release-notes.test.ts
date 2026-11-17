@@ -81,7 +81,7 @@ test("recent: Home's Updated line lasts three days after a real update", () => {
 
 test("demo override: only with FOLLOW_UP_UPDATES_DEMO=1, relative times become absolute", async () => {
   const d = await dir(); await mkdir(d, { recursive: true });
-  const view = { version: "1.4.0-beta.21", name: "Follow-up", installKind: "npm" as const, previous: null, updatedAt: null, hostSeen: null, notes: [] };
+  const view = { version: "1.4.0-beta.21", name: "Follow-up", installKind: "npm" as const, previous: null, updatedAt: null, hostSeen: null, enable_whats_new: true, notes: [] };
   await writeFile(join(d, "release-notes-demo.json"), JSON.stringify({ previous: "1.4.0-beta.20", updatedAt: "-60000" }));
   assert.deepEqual(await demoOverride(d, "release-notes", releaseNotesViewSchema, view, {}), view);
   const out = await demoOverride(d, "release-notes", releaseNotesViewSchema, view, { FOLLOW_UP_UPDATES_DEMO: "1" });

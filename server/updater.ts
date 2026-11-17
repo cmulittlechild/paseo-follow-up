@@ -129,9 +129,10 @@ export class Updater {
   /** A turn started or ended somewhere: if an update is waiting for a quiet moment, look again. */
   activity(): void { void this.d.read().then(f => { if (f.ready) return this.evaluate(); }).catch(() => undefined); }
 
-  async setSettings(change: { mode?: UpdateMode; channel?: Channel }): Promise<void> {
+  async setSettings(change: { mode?: UpdateMode; channel?: Channel; enable_whats_new?: boolean }): Promise<void> {
     const file = await this.d.read();
-    const next: UpdatesFile = { ...file, ...(change.mode ? { mode: change.mode } : {}), ...(change.channel ? { channel: change.channel } : {}) };
+    const next: UpdatesFile = { ...file, ...(change.mode ? { mode: change.mode } : {}), ...(change.channel ? { channel: change.channel } : {}),
+      ...(typeof change.enable_whats_new === "boolean" ? { enable_whats_new: change.enable_whats_new } : {}) };
     // A channel or mode change re-decides what's waiting.
     if (change.channel && change.channel !== file.channel) delete next.ready;
     if (change.mode && change.mode !== "auto" && next.ready && !next.ready.manual) delete next.ready;
@@ -262,12 +263,12 @@ export class Updater {
   }
 
   async view(): Promise<UpdatesView> {
-    const { file, me, mode, channel } = await this.settings();
+    const { file, me, mode, channel, enable_whats_new } = await this.settings();
     const snap = await this.d.registry.snapshot();
     const now = this.now();
     const events = await readEvents(this.d.directory);
     const channels = { stable: offerVersion("stable", snap), beta: offerVersion("beta", snap) };
-    const base = { version: me.version, installKind: me.installKind, mode, channel, channels, checkedAt: snap.okAt, registryError: snap.error,
+    const base = { version: me.version, installKind: me.installKind, mode, channel, enable_whats_new, channels, checkedAt: snap.okAt, registryError: snap.error,
       nextCheckAt: mode === "off" || me.installKind !== "npm" ? null : (snap.checkedAt ?? now) + CHECK_INTERVAL_MS, pendingNotes: [] as UpdatesView["pendingNotes"], history: historyOf(events) };
     const phase = await this.phase(file, me.version, mode, channel, snap, events, now);
     const dismissed = new Set(file.dismissed ?? []);

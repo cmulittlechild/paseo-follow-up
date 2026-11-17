@@ -85,7 +85,7 @@ test("Tell me: a new major gets a Home notice until dismissed", async () => {
   assert.deepEqual(r.spawned, []);
 });
 
-test("grid (update-announcements-major-only): an available update has a Home notice only when announcesUpdate says so", async () => {
+test("grid (update-notice-major-only): an available update has a Home notice only when announcesUpdate says so", async () => {
   const cases: [string, string][] = [["1.4.0-beta.23", "1.4.0-beta.24"], ["1.4.0-beta.23", "1.4.0"], ["1.4.0", "1.4.1"], ["1.4.0", "1.5.0"],
     ["1.4.0", "2.0.0-beta.0"], ["2.0.0-beta.0", "2.0.0"], ["1.4.0-beta.23", "2.0.0"], ["2.0.0", "2.1.0-beta.0"], ["2.0.0", "3.0.0"]];
   for (const [installed, offered] of cases) {
@@ -303,7 +303,7 @@ test("pending notes: read from the new version's verified tarball, only versions
 
 test("status copy: a reason without a full stop never runs into the next sentence; settling says the next minute", async () => {
   const { statusCopy } = await import("../shared/updates");
-  const view = { version: "1.4.0-beta.24", installKind: "npm" as const, mode: "auto" as const, channel: "beta" as const, channels: { stable: null, beta: null }, checkedAt: 0, nextCheckAt: null, registryError: null, pendingNotes: [], history: [], notice: null };
+  const view = { version: "1.4.0-beta.24", installKind: "npm" as const, mode: "auto" as const, channel: "beta" as const, enable_whats_new: true, channels: { stable: null, beta: null }, checkedAt: 0, nextCheckAt: null, registryError: null, pendingNotes: [], history: [], notice: null };
   const rolled = statusCopy({ ...view, phase: { kind: "rolled-back", version: "1.4.0-beta.25", from: "1.4.0-beta.24", reason: "It reported an error: couldn't open its saved state", at: 0 } }, 0);
   assert.match(rolled.detail, /saved state\. You're on 1\.4\.0-beta\.24 again\./);
   const failed = statusCopy({ ...view, phase: { kind: "install-failed", version: "1.4.0-beta.25", reason: "Paseo couldn't install it.", at: 0 } }, 0);
@@ -352,4 +352,17 @@ test("updatePhaseViolations: flags a version-tied phase at or below the running 
   assert.deepEqual(updatePhaseViolations({ kind: "settling", version: "2.0.0-rc.2", from: "2.0.0-rc.1", at: 0, until: 1 }, "2.0.0-rc.2", true), []);
   assert.equal(updatePhaseViolations({ kind: "installing", version: "2.0.0-rc.2", since: 0 }, "2.0.0-rc.2", false).length, 1);
   assert.deepEqual(updatePhaseViolations({ kind: "updated", version: "2.0.0-rc.2", from: "2.0.0-rc.1", at: 0 }, "2.0.0-rc.2", false), []);
+});
+
+test("Show What's new after updates: on by default, saved in updates.json, readable and settable like mode and channel", async () => {
+  const r = await rig({ file: { mode: "notify" } });
+  assert.equal((await r.updater.view()).enable_whats_new, true, "absent means on");
+  await r.updater.setSettings({ enable_whats_new: false });
+  assert.equal(r.file.enable_whats_new, false);
+  assert.equal(r.file.mode, "notify", "mode untouched");
+  assert.equal((await r.updater.view()).enable_whats_new, false);
+  await r.updater.setSettings({ mode: "auto" });
+  assert.equal(r.file.enable_whats_new, false, "a mode change keeps it");
+  await r.updater.setSettings({ enable_whats_new: true });
+  assert.equal((await r.updater.view()).enable_whats_new, true);
 });

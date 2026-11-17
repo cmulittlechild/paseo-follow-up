@@ -107,7 +107,7 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "updates_status", rpc: "follow.updates", kind: "read", input: none },
   { name: "check_updates", rpc: "follow.updates", kind: "write", input: none, toRpc: () => ({ check: "manual" }) },
   { name: "set_updates", rpc: "follow.set-updates", kind: "planned", before: { rpc: "follow.updates", input: () => ({}) },
-    input: z.strictObject({ mode: z.enum(UPDATE_MODES).optional(), channel: z.enum(["stable", "beta"]).optional(), ...confirm }) },
+    input: z.strictObject({ mode: z.enum(UPDATE_MODES).optional(), channel: z.enum(["stable", "beta"]).optional(), enable_whats_new: z.boolean().optional(), ...confirm }) },
   { name: "install_update", rpc: "follow.install-update", kind: "planned", before: { rpc: "follow.updates", input: () => ({}) },
     input: z.strictObject({ version: z.string().trim().min(1).max(64), anyway: z.boolean().optional(), ...confirm }) },
   // Settings → General: 2.0's move to the new plugin id (status is in updates_status), Try again

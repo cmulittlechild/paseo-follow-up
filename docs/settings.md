@@ -109,12 +109,18 @@ First, pick where it lives:
 
 - **Release notes.** `shared/changelog.ts` parses `CHANGELOG.md` and picks the What's new notes.
   `shared/version.ts` orders versions (semver with prerelease identifiers) and selects channels.
-- **Only a major version gets a popup.** `announcesUpdate(from, to)` in `shared/changelog.ts` is the one rule for
-  every prompt about Follow-up's own updates: true only when a new major is released (1.x to 2.0.0; a 2.0.0 beta still
-  counts as 1.x). What's new and any update notice or prompt must go through it; everything else is recorded quietly
-  or shown as a Settings row, never a sheet or toast. Home's "Updated to X · What's new" needs notes of X's own. The
-  invariant is `update-announcements-major-only`, and `tests/update-announcements.test.ts` has a grid test: add any
-  new update surface to it.
+- **What's new opens after every stable update.** The rule: What's new opens after a stable update that brings new release notes, unless the switch is off; betas never do (only
+  stables carry notes). New notes means a CHANGELOG.md section newer than the version that device last saw; with none,
+  no sheet. `whatsNew()` in `shared/changelog.ts` is the one place it lives. The sheet opens once per device (a major's
+  rc carries the major's section and counts as its release). A first install, onboarding and a downgrade are recorded quietly too. Settings → General's **Show What's new after updates**
+  switch (`enable_whats_new` in `updates.json`, default on; agents: `updates_status`, `set_updates`) turns it off:
+  each update is then recorded as seen without the sheet, so turning it back on never brings old notes, and Home's
+  footer and Release notes still open it by hand. The invariant is `whats-new-after-every-stable-update`, with a grid
+  test in `tests/update-announcements.test.ts`. Home's "Updated to X · What's new" needs notes of X's own.
+- **Home's available-update line stays major-only.** `announcesUpdate(from, to)` decides the Tell me notice
+  ("Follow-up X is available"): true only when a new major is released (1.x to 2.0.0; a 2.0.0 beta still counts as
+  1.x). Other versions wait in Settings → General. Invariant `update-notice-major-only`, grid test in
+  `tests/updater.test.ts`. Any new update prompt besides What's new goes through it, or is a Settings row.
 - **The installed version.** `server/release-notes.ts` reads Follow-up's own install row from the daemon's plugin
   list (`describeSelf`) and the package's `CHANGELOG.md`. It records `versions.json`: the current version, the
   previous one, and the host-wide "seen" record.

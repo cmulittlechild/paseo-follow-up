@@ -221,6 +221,9 @@ PLAYWRIGHT_CORE=<playwright-core dir> CHROMIUM=<chromium binary> ~/paseo-harness
   into `docs/screenshots/`: `home` and `phone` on Paseo 0.15, then `sidebar` on Paseo 0.16 (`HARNESS_PASEO=0.16`),
   each through `harness-slot` and shown as the latest stable tag. Re-run it whenever Home's rows, the panel's copy or
   the fixture change, then read every image before committing.
+- **`--whats-new-review`** (review evidence, not README images): the sheet after a minor update (`2.0.1` to `2.1.0`,
+  this repo's own section) on desktop and phone, and Settings → General's "Show What's new after updates" switch on
+  and off (set through `set_updates`), desktop and phone, into `--out`.
 - **What's new** is shot after a reinstall as `2.0.0-rc.0` over `1.4.0-beta.32`. It shows the repo's CHANGELOG.md
   `## 2.0.0` section when there is one, else a built-in stand-in; `--whats-new-changelog <file>` uses that file instead.
 - **Size** (aim under ~300 KB each). With `pngquant` (lossy palette) or `oxipng` on PATH, shots are taken at
