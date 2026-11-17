@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, park, prevPos, pruneContext, settle, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, openInWorkspace, park, prevPos, pruneContext, settle, skipWorkspace, swipeLock, swipeOutcome, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
 import type { NeedItem } from "../shared/attention";
 import type { Workstream } from "../shared/home";
 
@@ -51,6 +51,61 @@ test("skipping everything ends: one second pass for skipped cards, then All caug
   x = settle(x, "skipped");
   assert.equal(x.pos, x.order.length, "skipped twice: finished, never round again");
   assert.deepEqual(statsOf(x), { done: 1, skipped: 2, later: 0, gone: 0, waiting: 0 });
+});
+
+test("Skip workspace skips every open card of the workspace, counts each, and they come back on the second pass", () => {
+  let x = startSession(cards("a|1", "b|1", "b|2", "b|3", "c|1"));
+  x = settle(x, "done");
+  assert.equal(x.order[x.pos], "b|1");
+  assert.deepEqual(openInWorkspace(x), ["b|1", "b|2", "b|3"], "three left: Skip workspace shows");
+  x = skipWorkspace(x);
+  assert.equal(x.order[x.pos], "c|1", "the next workspace");
+  assert.equal(statsOf(x).skipped, 3, "N skipped counts cards");
+  assert.equal(x.order[prevPos(x)], "b|1", "Back returns to the card Skip workspace was pressed on");
+  x = settle(x, "done");
+  assert.equal(x.order[x.pos], "b|1", "the second pass picks them up");
+  x = settle(x, "done");
+  assert.equal(x.order[x.pos], "b|2");
+  assert.equal(x.order[prevPos(x)], "b|1", "away from where it landed, Back is the card before again");
+});
+
+test("Skip workspace on the second pass moves past the rest of that workspace; with one card left it is plain Skip", () => {
+  let x = startSession(cards("a|1", "a|2", "b|1", "c|1"));
+  x = skipWorkspace(x);
+  assert.equal(x.order[x.pos], "b|1");
+  x = settle(x, "done"); x = settle(x, "done");
+  assert.equal(x.order[x.pos], "a|1"); assert.ok(x.lapped);
+  x = skipWorkspace(x);
+  assert.equal(x.pos, x.order.length, "the end, not a|2");
+  assert.equal(statsOf(x).skipped, 2);
+  assert.equal(x.order[prevPos(x)], "a|1", "Back from the end returns to where it was pressed");
+  const one = startSession(cards("a|1", "b|1"));
+  assert.deepEqual(openInWorkspace(one), ["a|1"], "one card left: no Skip workspace");
+  assert.deepEqual(skipWorkspace(one).pos, settle(one, "skipped").pos);
+});
+
+test("a live change keeps the second pass and Back after Skip workspace", () => {
+  let x = startSession(cards("a|1", "a|2", "b|1"));
+  x = skipWorkspace(x);
+  x = sync(x, cards("a|1", "a|2", "b|1", "d|1"), none);
+  assert.equal(x.order[prevPos(x)], "a|1");
+  x = { ...x, lapped: true };
+  assert.equal(sync(x, cards("a|1", "a|2", "b|1", "d|1"), none).lapped, true, "sync never drops lapped");
+});
+
+test("the phone drag locks its direction early and commits on distance or a fling", () => {
+  assert.equal(swipeLock(3, 2), null, "too soon to tell");
+  assert.equal(swipeLock(-12, 4), "x");
+  assert.equal(swipeLock(6, 12), "y", "a scroll stays a scroll");
+  assert.equal(swipeLock(9, 8), "y", "diagonal is a scroll");
+  const w = 390;
+  assert.equal(swipeOutcome({ dx: -195, vx: 0, width: w, canBack: true }), "skip", "held halfway and let go");
+  assert.equal(swipeOutcome({ dx: -60, vx: 0, width: w, canBack: true }), "stay", "springs back");
+  assert.equal(swipeOutcome({ dx: -60, vx: -0.9, width: w, canBack: true }), "skip", "a fling");
+  assert.equal(swipeOutcome({ dx: -200, vx: 0.9, width: w, canBack: true }), "skip", "far enough, whatever the last flick");
+  assert.equal(swipeOutcome({ dx: 40, vx: -0.9, width: w, canBack: true }), "stay", "a fling against the drag");
+  assert.equal(swipeOutcome({ dx: 200, vx: 0, width: w, canBack: true }), "back");
+  assert.equal(swipeOutcome({ dx: 200, vx: 0, width: w, canBack: false }), "stay", "nothing to go back to");
 });
 
 test("a card handled elsewhere is gone, never pulled from under the developer; a new card joins at the end", () => {

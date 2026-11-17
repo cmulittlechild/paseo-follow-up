@@ -631,7 +631,9 @@ function makeShooter({ browser, port, out, scheme: forced, optimiser, results, c
     const crash = await crashed();
     if (crash) throw new Error(`the harness daemon crashed during ${name}: ${crash}`);
   };
-  const shoot = guard(async (name, viewport, theme, drive, options) => { const { png, colorScheme } = await capture(name, viewport, theme, drive, options); await save(name, png, colorScheme); });
+  // --shot <regex>: render only the matching shots of the chosen set (a quick re-render of a few).
+  const shotFilter = argv.includes("--shot") ? new RegExp(argv[argv.indexOf("--shot") + 1]) : null;
+  const shoot = guard(async (name, viewport, theme, drive, options) => { if (shotFilter && !shotFilter.test(name)) return; const { png, colorScheme } = await capture(name, viewport, theme, drive, options); await save(name, png, colorScheme); });
   /** A frame taken mid-drive (merge-click's "Merging…"), saved like a shot. */
   shoot.now = async (name, page, theme) => save(name, await page.screenshot({ animations: "disabled" }), forced ?? theme);
   /** Several captures side by side on one canvas (the phone shot: the list and a detail). */
@@ -2025,16 +2027,16 @@ async function catchUpShots({ shoot, call }) {
     const here = () => typeof find === "string" ? page.locator("[data-catch-up-card]").getByText(find).filter({ visible: true }).first() : page.getByRole("heading", { name: find }).filter({ visible: true }).first();
     if (find) for (let i = 0; !(await here().isVisible()); i++) {
       if (i > 30) throw new Error(`catch-up: no card shows ${find}`);
-      await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
       await page.waitForTimeout(250);
     }
     await page.waitForTimeout(1200);
   };
-  const skips = async (page, n) => { for (let i = 0; i < n; i++) { await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(200); } await page.waitForTimeout(1000); };
+  const skips = async (page, n) => { for (let i = 0; i < n; i++) { await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(200); } await page.waitForTimeout(1000); };
   const finish = async page => {
     for (let i = 0; !(await visible(page, /^(All caught up|End of the deck)$/).isVisible()); i++) {
       if (i > 80) throw new Error("catch-up: the deck never finished");
-      await page.getByRole("button", { name: /^Skip$/ }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
       await page.waitForTimeout(150);
     }
     await page.waitForTimeout(800);
@@ -2107,6 +2109,40 @@ async function catchUpShots({ shoot, call }) {
       await page.locator("[data-catch-up-card]").getByRole("radio", { name: /^Something else/ }).filter({ visible: true }).first().click();
       await page.getByLabel(/^Your answer.*required$/).filter({ visible: true }).first().fill("Retry soft declines once after a day; hard declines go straight to dunning.");
       page.keepFocus = true; if (kb === "kb-up") await page.setViewportSize(KB_UP); await page.waitForTimeout(800);
+    });
+  }
+  // Tom's notes, round 2: two skips named apart, and the phone drag. A card whose workspace has more cards left shows
+  // Skip workspace beside the card's Skip ("Skip question"); ⇧J moves past the whole workspace.
+  const skipWs = page => page.getByRole("button", { name: /^Skip this workspace's/ }).filter({ visible: true }).first();
+  const toMany = async (page, size) => {
+    await enter(page, size);
+    for (let i = 0; !(await skipWs(page).isVisible()); i++) {
+      if (i > 30) throw new Error("catch-up: no workspace with more than one card");
+      await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(800);
+  };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-skips-phone-${theme}`, PHONE, theme, page => toMany(page, PHONE));
+    await shoot(`cu-skips-desktop-${theme}`, DESKTOP, theme, async page => { await toMany(page, DESKTOP); await skipWs(page).hover(); await page.waitForTimeout(900); });
+  }
+  await shoot("cu-skip-workspace-done-desktop-light", DESKTOP, "light", async page => { await toMany(page, DESKTOP); await page.keyboard.press("Shift+J"); await page.waitForTimeout(800); });
+  // A drag held halfway: the real gesture (mouse down, move left half the card, still held), so the card follows the
+  // finger and the next card's peek shows underneath.
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-drag-half-phone-${theme}`, PHONE, theme, async page => {
+      // The harness renders with reduced motion, where the drag rightly doesn't follow the finger: this shot wants motion.
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await enter(page, PHONE, "fail with card_declined retry");
+      const box = await page.locator("[data-catch-up-drag]").filter({ visible: true }).first().boundingBox();
+      if (!box) throw new Error("catch-up: no draggable card");
+      const y = box.y + 150; const x0 = box.x + box.width * 0.8;
+      await page.mouse.move(x0, y); await page.mouse.down();
+      for (let i = 1; i <= 12; i++) { await page.mouse.move(x0 - (box.width * 0.45) * i / 12, y + i * 0.3); await page.waitForTimeout(16); }
+      await page.waitForTimeout(400);
+      // Still held: the capture must not park the pointer, which would carry the drag on to the screen's edge.
+      page.keepPointer = true;
     });
   }
   for (const theme of ["light", "dark"]) {

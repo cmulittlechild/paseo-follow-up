@@ -249,9 +249,20 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
 - **The session** (`Session`, `startSession`, `settle`, `park`, `sync`, `nextPos`): pure, so the screen and the tests
   agree. A card that leaves Needs you elsewhere is `gone`, never pulled from under the developer; a new one joins at
   the end; Skip moves a card behind the rest (a second pass picks it up); done cards stay so Back can show them.
+- **Two skips** (view-only, no server state; `VIEW_PARITY`): the card's Skip names what it skips ("Skip question",
+  "Skip permission", "Skip merge", else "Skip card"), and its tooltip and accessible name say it comes back after the
+  rest. Skip workspace (`skipWorkspace`) skips every card of the workspace still to act on at once, each counted as one
+  skipped card, and moves to the next workspace; they come back on the second pass. It shows only while the workspace
+  has more than one card left (with one it equals Skip): a row above the phone's bar, a button beside Skip on desktop
+  (⇧J). Back right after it returns to the card it was pressed on (`Session.back`).
+- **The phone drag**: the card follows the finger (translateX only), the card the release would show peeks underneath,
+  and a drag held halfway stays there. The direction locks in the first 8 px (`swipeLock`), so a vertical scroll stays
+  a scroll; on release, past 35 % of the width or a fling (`swipeOutcome`), left skips the card (the same Skip as the
+  bar's) and right goes Back, otherwise it springs back. Reduced motion: no follow, just the move. Paseo's plugin UI
+  has no gesture primitive, so it is React Native's PanResponder and Animated (native driver off the web).
 - **Keys** (desktop web): every move has one, from the one list `CATCH_UP_KEYS` (`shared/catch-up.ts`) that the
-  handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip,
-  K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the agent), N adds a note, L Later,
+  handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip the card,
+  ⇧J skip the workspace, K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the agent), N adds a note, L Later,
   O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), S shows the keys, X leaves. None is a combo
   Paseo binds (`PASEO_BOUND`): Paseo keeps ? (its shortcuts) and Esc (interrupt agent), so the sheet is S and leaving
   is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). Buttons name their key in their
@@ -260,7 +271,7 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   More context and Later open as a sheet above the phone's bar and as a popover on their desktop button, with focus
   on their first choice; Add a note focuses its field; Open chat leaves for the chat; R focuses the card's row in the
   queue. Once a question card has an answer to send, Send to agent joins the bar (on a phone it reads Send, and Skip
-  and More context shrink to icons), running the question's own Send. Other cards keep their one action in the card:
+  shrinks to an icon), running the question's own Send. Other cards keep their one action in the card:
   a permission is two choices (Allow or Deny), a merge belongs next to what it merges, a brief can hold several
   questions, and a finished turn's Sign off is already beside its one line.
 - **More context** (invariant `context-never-blocks-the-deck`): the developer asks the card's workspace main agent (a
