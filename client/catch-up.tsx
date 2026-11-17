@@ -15,7 +15,7 @@ import { age, snoozeUntil } from "../shared/inbox";
 import { laterChoices } from "../shared/row-menu";
 import { errorText } from "../shared/errors";
 import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN } from "../shared/display";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, deckCards, groupOf, park, prevPos, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, park, prevPos, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
 import type { Workspace } from "../shared/model";
 import type { ListWorkspace } from "../shared/list";
 import { bottomInset, Button, IconButton, text, type Theme } from "./kit";
@@ -38,6 +38,8 @@ import { PRIMARY_FORM } from "./dock";
 const CARD_MARK = { dataSet: { catchUpCard: "1" } } as object;
 const RAIL_MIN_PX = 240;
 const CARD_MIN_PX = 480;
+
+const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test((navigator as { platform?: string }).platform ?? "");
 
 export type CatchUpDeps = { sources: HomeSources; briefDeps: BriefDeps; openHome(): void; openPanel(workspaceId: string): void };
 type Nav = { openAgent(a: { agentId: string }): void; openWorkspace(a: { workspaceId: string }): void } | undefined;
@@ -91,6 +93,13 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   useEffect(() => { void extras.refreshContext(); }, [session.pos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [more, setMore] = useState(false);
+  // M opens More context below the card's answers; bring it into view so the key's result is never off screen.
+  useEffect(() => {
+    if (!more || Platform.OS !== "web") return;
+    const t = setTimeout(() => (globalThis as { document?: { querySelector(q: string): { scrollIntoView?(o: object): void } | null } }).document
+      ?.querySelector("[data-catch-up-more]")?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }), 50);
+    return () => clearTimeout(t);
+  }, [more]);
   const key = session.order[session.pos];
   const card = cardOf(key);
   const gone = !!key && session.outcomes[key] === "gone";
@@ -112,22 +121,53 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     if (out.request.state === "asking") setSession(s => park(s, out.request.id, card.key));
   };
 
-  // Desktop keys: option letters pick, J/K or the arrows move, M asks for context, Esc leaves. Never while typing.
+  // Desktop keys (CATCH_UP_KEYS, catchUpKey in shared/catch-up.ts): every move has one. The card's controls are found
+  // by the names they already carry (option letters, Later (L), Open chat (O)), so a key does exactly what a click does.
+  const [keysOpen, setKeysOpen] = useState(false);
   useEffect(() => {
     if (Platform.OS !== "web" || compact) return;
-    type Ev = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; isComposing: boolean; target: unknown; preventDefault(): void };
-    type El = { tagName?: string; isContentEditable?: boolean; click?(): void };
-    const doc = (globalThis as { document?: { querySelector(q: string): El | null; addEventListener(t: string, f: (e: Ev) => void): void; removeEventListener(t: string, f: (e: Ev) => void): void } }).document; if (!doc) return;
+    type Ev = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean; target: unknown; preventDefault(): void };
+    type El = { tagName?: string; isContentEditable?: boolean; click?(): void; focus?(): void; closest?(q: string): El | null };
+    type Doc = { querySelector(q: string): El | null; querySelectorAll(q: string): ArrayLike<El>; activeElement?: El | null; addEventListener(t: string, f: (e: Ev) => void): void; removeEventListener(t: string, f: (e: Ev) => void): void };
+    const doc = (globalThis as { document?: Doc }).document; if (!doc) return;
+    const mac = isMac();
+    const inCard = (q: string) => doc.querySelector(`[data-catch-up-card] ${q}`);
+    const railItems = () => Array.from(doc.querySelectorAll("[data-catch-up-rail] [role=\"button\"]"));
     const onKey = (e: Ev) => {
       const el = e.target as El | null;
-      if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
-      const k = e.key.toLowerCase();
-      if (k === "j" || e.key === "ArrowRight") skip();
-      else if (k === "k" || e.key === "ArrowLeft") back();
-      else if (k === "m" && !finished) setMore(v => !v);
-      else if (e.key === "Escape") onExit();
-      else if (/^[a-h]$/.test(k)) { doc.querySelector(`[data-catch-up-card] [role="radio"][aria-label^="${k.toUpperCase()}. "]`)?.click?.(); }
-      else return;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || !!el.isContentEditable);
+      const hit = catchUpKey({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, composing: e.isComposing, mac },
+        { typing, inMore: !!el?.closest?.("[data-catch-up-more]"), moreOpen: more, inRail: !!el?.closest?.("[data-catch-up-rail]") });
+      if (!hit || finished && !["back", "keys", "leave", "rail"].includes(hit.action)) return;
+      const click = (q: string) => { const b = doc.querySelector(q); b?.click?.(); return !!b; };
+      switch (hit.action) {
+        case "skip": skip(); break;
+        case "back": back(); break;
+        case "more": setMore(v => !v); break;
+        case "keys": setKeysOpen(v => !v); break;
+        case "leave": onExit(); break;
+        case "pick": inCard(`[role="radio"][aria-label^="${hit.arg}. "]`)?.click?.(); break;
+        case "own": inCard('[role="radio"][aria-label^="Something else"]')?.click?.(); break;
+        case "send": { const b = inCard('[aria-label^="Send your"]') ?? inCard('[aria-label^="Send "]'); if (!b) return; b.click?.(); break; }
+        case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else doc.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
+        case "later": if (!click('[aria-label="Later (L)"]')) return; setTimeout(() => doc.querySelector('[data-catch-up-later] [role="button"]')?.focus?.(), 0); break;
+        case "chat": if (!click('[aria-label="Open chat (O)"]')) return; break;
+        case "chip": doc.querySelectorAll("[data-catch-up-more] [role=\"radio\"]")[Number(hit.arg) - 1]?.click?.(); break;
+        case "ask-overseer": if (!click('[data-catch-up-more] [aria-label="Ask the Overseer"]')) return; break;
+        case "ask-agent": if (!click('[data-catch-up-more] [data-ask-agent] [role="button"]')) return; break;
+        case "rail": {
+          const items = railItems();
+          if (el?.closest?.("[data-catch-up-rail]")) { (el as { blur?(): void }).blur?.(); break; }
+          (doc.querySelector("[data-catch-up-rail] [data-catch-up-here]") ?? items[0])?.focus?.();
+          break;
+        }
+        case "rail-up": case "rail-down": {
+          const items = railItems(); const i = items.indexOf(el as El);
+          items[Math.max(0, Math.min(items.length - 1, i + (hit.action === "rail-up" ? -1 : 1)))]?.focus?.();
+          break;
+        }
+        default: return;
+      }
       e.preventDefault();
     };
     doc.addEventListener("keydown", onKey);
@@ -148,10 +188,10 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const progress = <View style={{ gap: 6, paddingHorizontal: compact ? 16 : 20, paddingTop: compact ? 8 : 14, paddingBottom: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, minHeight: compact ? 44 : 32 }}>
       {/* Phones: the host header's ← is the only back control (DESIGN.md "One header"). */}
-      {!compact && <IconButton theme={theme} compact={compact} icon="X" label={`Leave ${MODE.name} (Esc)`} tooltip onPress={onExit} />}
+      {!compact && <IconButton theme={theme} compact={compact} icon="X" label={`Leave ${MODE.name} (X)`} tooltip onPress={onExit} />}
       <Text accessibilityRole="header" style={[t.title, { flex: 1 }]}>{finished || !total ? MODE.name : <>{MODE.name} <Text style={{ color: c.foregroundMuted, fontWeight: "400", fontVariant: ["tabular-nums"] }}>{MODE.progress(session.pos + 1, total).slice(MODE.name.length + 1)}</Text></>}</Text>
       {waitingChip}
-      {!compact && !finished && <Text style={t.small}>J skip · K back · M more context</Text>}
+      {!compact && <Pressable accessibilityRole="button" accessibilityLabel="Show the keys (S)" onPress={() => setKeysOpen(v => !v)}><Text style={t.small}>{finished ? "S keys · X leave" : "J skip · K back · M more context · S keys · X leave"}</Text></Pressable>}
     </View>
     {/* One segment per card: done in the foreground colour, skipped hollow, waiting for context amber-tinted, the current one amber. */}
     {total > 0 && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", gap: 3 }}>
@@ -172,7 +212,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       sameWorkspace={session.order.filter(k => cardOf(k)?.s.key === card.s.key)}
       onDone={() => settle("done")} onSkip={skip} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} />;
 
-  const rail = <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
+  const rail = <ScrollView {...({ dataSet: { catchUpRail: "1" } } as object)} contentContainerStyle={{ paddingVertical: 8 }}>
     {session.order.map((k, i) => {
       const x = cardOf(k); if (!x) return null;
       const xw = x.s.workspaceId ? live.get(x.s.workspaceId) : undefined;
@@ -182,7 +222,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       const label = cardLabel(x, xw);
       return <View key={k}>
         {firstOfWs && <Text numberOfLines={1} style={[t.small, { paddingHorizontal: 16, paddingTop: i ? 10 : 2, paddingBottom: 2, fontWeight: "600" }]}>{x.s.title}</Text>}
-        <Pressable accessibilityRole="button" accessibilityState={{ selected: here }} accessibilityLabel={`${label}${o ? `, ${o === "gone" ? "handled elsewhere" : o}` : waiting ? ", getting context" : ""}`} onPress={() => jump(i)}
+        <Pressable {...({ dataSet: here ? { catchUpHere: "1" } : {} } as object)} accessibilityRole="button" accessibilityState={{ selected: here }} accessibilityLabel={`${label}${o ? `, ${o === "gone" ? "handled elsewhere" : o}` : waiting ? ", getting context" : ""}`} onPress={() => jump(i)}
           style={state => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 32, paddingHorizontal: 16, backgroundColor: here ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent",
             borderLeftWidth: 2, borderLeftColor: here ? c.statusWarning : "transparent" })}>
           <Icon name={o === "done" ? "CircleCheck" : o === "skipped" ? "CornerUpRight" : o === "later" ? "AlarmClock" : o === "gone" ? "CircleCheck" : waiting ? "Hourglass" : cardIcon(x)} size={13}
@@ -198,6 +238,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     {progress}
     <View style={{ flex: 1, borderTopWidth: 1, borderTopColor: c.border }}>
       {/* Desktop: the queue rail beside the card, resizable (side-panes-are-resizable); its width is the Display field catch_up_rail_fraction. */}
+      {keysOpen && !compact && <KeysSheet theme={theme} onClose={() => setKeysOpen(false)} />}
       {!compact && total > 0 && !finished
         ? <DisplaySplit theme={theme} main={main} side={rail} field="catch_up_rail_fraction" testID="follow-up-catch-up-split" label="Resize the queue"
           defaultFraction={CATCH_UP_RAIL_DEFAULT} range={[CATCH_UP_RAIL_MIN, CATCH_UP_RAIL_MAX]} minSide={RAIL_MIN_PX} minMain={CARD_MIN_PX} />
@@ -268,21 +309,21 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   const contextBlock = request && <ContextAnswer theme={theme} compact={compact} request={request} waiting={waiting} agent={agentName} openChat={openChat} />;
   const moreBlock = more && <MorePanel theme={theme} compact={compact} agent={agentName} hasAgent={!!s.agentId} overseerOn={overseerOn} onClose={() => setMore(false)} onAsk={onAsk} />;
   const later = (until: string) => { setLaterOpen(false); if (s.agentId) void deps.sources.inbox.snooze([s.agentId], until); onLater(); };
-  const laterRow = laterOpen && <View accessibilityRole="menu" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: 8 }}>
+  const laterRow = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: 8 }}>
     {laterChoices(new Date()).map(([k, label]) => <Button key={k} theme={theme} compact={compact} kind="ghost" icon="AlarmClock" title={label} onPress={() => later(snoozeUntil(k, new Date()))} />)}
   </View>;
 
   // The deck's moves: in thumb reach on phones, under the card on desktop. One primary lives in the card (Send,
   // Merge, Allow); these stay secondary. Icon-only moves carry their name for screen readers and as a desktop tooltip.
   const moves = <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
-    <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
+    <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
     {compact ? <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="Sparkles" title="Context" accessibilityLabel="More context" onPress={() => setMore(v => !v)} /></View>
-      : <Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" onPress={() => setMore(v => !v)} />}
+      : <Tip label="More context (M)"><Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" onPress={() => setMore(v => !v)} /></Tip>}
     <IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={() => setLaterOpen(v => !v)} />
     <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? "Open chat" : "Open chat (O)"} tooltip={!compact} disabled={!navigation} onPress={openChat} />
     {!compact && <View style={{ flex: 1 }} />}
     {compact ? <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title="Skip" onPress={onSkip} /></View>
-      : <Button theme={theme} icon="ArrowRight" title="Skip" accessibilityHint="J" onPress={onSkip} />}
+      : <Tip label="Skip (J or →)"><Button theme={theme} icon="ArrowRight" title="Skip" accessibilityHint="J" onPress={onSkip} /></Tip>}
   </View>;
 
   // a-focused-field-and-its-send-stay-in-view: the phone's bar is DockedPane's dock, so while a field has focus or the
@@ -354,14 +395,14 @@ function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk
     onAsk(target, words.trim()).catch(e => setError(errorText(e))).finally(() => setBusy(null));
   };
   const agentLabel = agent === "the agent" ? "Ask the agent" : `Ask ${agent}`;
-  return <View style={{ gap: 10, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
+  return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Icon name="Sparkles" size={14} color={c.foreground} />
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>More context</Text>
       <IconButton theme={theme} compact={compact} icon="X" label="Close more context" onPress={onClose} />
     </View>
     <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-      {CONTEXT_ASKS.map(x => <Pressable key={x.id} accessibilityRole="radio" accessibilityState={{ checked: picked === x.id }} onPress={() => { setPicked(x.id); setWords(x.text); }}
+      {CONTEXT_ASKS.map((x, i) => <Pressable key={x.id} accessibilityLabel={compact ? x.label : `${x.label} (${i + 1})`} accessibilityRole="radio" accessibilityState={{ checked: picked === x.id }} onPress={() => { setPicked(x.id); setWords(x.text); }}
         style={{ minHeight: compact ? 36 : 28, justifyContent: "center", paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: picked === x.id ? c.foreground : c.border, backgroundColor: picked === x.id ? c.surface2 : "transparent" }}>
         <Text style={[t.meta, { color: picked === x.id ? c.foreground : c.foregroundMuted }]}>{x.label}</Text>
       </Pressable>)}
@@ -373,9 +414,9 @@ function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk
     {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       {overseerOn && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessagesSquare" title="Ask the Overseer" loading={busy === "overseer"} disabled={!words.trim() || !!busy}
-        accessibilityHint="Answers from what Follow-up and the chats already hold; wakes nobody" onPress={() => send("overseer")} />}
-      {hasAgent && <Button theme={theme} compact={compact} grow={compact} kind={overseerOn ? "secondary" : "primary"} icon="MessageSquareText" title={agentLabel} loading={busy === "agent"} disabled={!words.trim() || !!busy}
-        accessibilityHint="Sends it to the agent, which may wake it" onPress={() => send("agent")} />}
+        accessibilityHint={compact ? "Answers from what Follow-up and the chats already hold; wakes nobody" : `Answers from what Follow-up and the chats already hold; wakes nobody. ${keyLabel("⌘↵", isMac())}`} onPress={() => send("overseer")} />}
+      {hasAgent && <View {...({ dataSet: { askAgent: "1" } } as object)} style={compact ? { flexGrow: 1 } : null}><Button theme={theme} compact={compact} grow={compact} kind={overseerOn ? "secondary" : "primary"} icon="MessageSquareText" title={agentLabel} loading={busy === "agent"} disabled={!words.trim() || !!busy}
+        accessibilityHint={compact ? "Sends it to the agent, which may wake it" : `Sends it to the agent, which may wake it. ${keyLabel("⌘⇧↵", isMac())}`} onPress={() => send("agent")} /></View>}
     </View>
     </View>
     <Text style={t.small}>This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.</Text>
@@ -404,15 +445,32 @@ function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: 
   </ScrollView>;
 }
 
-/** The keys, from the one list the handler reads (shared/catch-up.ts). */
-export function KeysSheet({ theme }: { theme: Theme }) {
+/** S: the keys, from the one list the handler reads (shared/catch-up.ts). A dialog over the card; S or its X closes it. */
+export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => void }) {
   const c = theme.colors; const t = text(c, false);
-  return <View style={{ position: "absolute", right: 20, bottom: 20, width: 260, padding: 14, gap: 6, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
-    <Text style={[t.label, { fontWeight: "600" }]}>Keys</Text>
-    {CATCH_UP_KEYS.map(k => <View key={k.key} style={{ flexDirection: "row", gap: 10 }}>
-      <Text style={[t.meta, { width: 64, color: c.foreground, fontVariant: ["tabular-nums"] }]}>{k.key}</Text><Text style={t.meta}>{k.what}</Text>
-    </View>)}
+  const row = (k: typeof CATCH_UP_KEYS[number]) => <View key={`${k.action}-${k.key}`} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+    <View style={{ minWidth: 64 }}><Text style={[t.meta, { alignSelf: "flex-start", paddingHorizontal: 6, borderRadius: 4, borderWidth: 1, borderColor: c.border, color: c.foreground, fontVariant: ["tabular-nums"] }]}>{keyLabel(k.key, isMac())}</Text></View>
+    <Text style={t.meta}>{k.what}</Text>
   </View>;
+  const section = (title: string, keys: readonly typeof CATCH_UP_KEYS[number][]) => <View style={{ gap: 6 }}>
+    <Text style={[t.small, { fontWeight: "600" }]}>{title}</Text>{keys.map(row)}
+  </View>;
+  return <View accessibilityRole={"dialog" as never} accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
+      <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />
+    </View>
+    {section("On a card", CATCH_UP_KEYS.filter(k => !k.when))}
+    {section("In More context", CATCH_UP_KEYS.filter(k => k.when === "more"))}
+    {section("In the queue", CATCH_UP_KEYS.filter(k => k.when === "rail"))}
+  </View>;
+}
+
+/** A desktop hover title on any control (react-native-web drops `title` on a Pressable; IconButton does the same). */
+function Tip({ label, children }: { label: string; children: ReactNode }) {
+  const ref = useRef<View>(null);
+  useEffect(() => { if (Platform.OS === "web") (ref.current as unknown as { setAttribute?: (k: string, v: string) => void } | null)?.setAttribute?.("title", label); }, [label]);
+  return Platform.OS === "web" ? <View ref={ref}>{children}</View> : <>{children}</>;
 }
 
 /**
