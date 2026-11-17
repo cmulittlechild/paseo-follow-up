@@ -7,10 +7,11 @@ import { join } from "node:path";
 import { Engine, answerItemId, type Gateway, type Runtime } from "../server/engine";
 import { Store } from "../server/store";
 import { askQuestion, developerAnswer } from "../server/questions";
-import { DeliveryDeferred } from "../server/delivery";
+import { ConversationGone, DeliveryDeferred } from "../server/delivery";
 import { MessageQueue, QUEUE_FILE, queueTimeScale } from "../server/message-queue";
-import { AMBIGUOUS_MS, NEVER_LEFT_MS, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema } from "../shared/queue";
+import { AMBIGUOUS_MS, NEVER_LEFT_MS, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, QUEUE_RECENT, deliveryStatus, queueFileSchema, queueItemStop } from "../shared/queue";
 import { clock, workspace, pr } from "./fixtures";
+import { markerInFile, markerSince } from "../server/transcript";
 import { testQueue } from "./support/queue";
 
 /**
@@ -90,18 +91,105 @@ test("a send that never left never fails: 15 s, 1 min, then every 5 min, and at 
   assert.equal(calls, 8);
 });
 
-test("an ambiguous send whose arrival can't be known climbs 15 s, 1 min, 5 min, 15 min, then fails; Retry resends without asking", async t => {
-  let calls = 0;
-  const f = await setup(t, { deliver: async target => { calls++; if (calls === 1) throw new Error("connection reset"); return target.recipients[0]!; }, arrived: async () => null });
+test("live bug (2026-11-17): an answer whose arrival can't be known climbs 15 s, 1 min, 5 min, 15 min, then keeps checking every 15 min; it never ends Failed", async t => {
+  let calls = 0; let known: boolean | null = null;
+  const f = await setup(t, { deliver: async target => { calls++; if (calls === 1) throw new Error("Timeout waiting for message (60000ms)"); return target.recipients[0]!; }, arrived: async () => known });
   await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
   const waits: number[] = [];
-  while (f.timers.pending.length) { waits.push(await f.timers.fire()); await f.engine.idle(); }
-  assert.deepEqual(waits, [...AMBIGUOUS_MS]);
+  for (let i = 0; i < AMBIGUOUS_MS.length + 3 && f.timers.pending.length; i++) { waits.push(await f.timers.fire()); await f.engine.idle(); }
+  assert.deepEqual(waits, [...AMBIGUOUS_MS, AMBIGUOUS_MS.at(-1)!, AMBIGUOUS_MS.at(-1)!, AMBIGUOUS_MS.at(-1)!], "the last step repeats");
   const d = await f.delivery();
-  assert.equal(d.state, "failed"); assert.equal(calls, 1, "never resent blind");
+  assert.equal(d.state, "retrying", "still the queue's to deliver, never Failed with nothing next");
+  assert.ok(d.nextAt, "it says when it checks again");
+  assert.equal(deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt }).action, "try-now");
+  assert.equal(calls, 1, "never resent blind");
+  // The chat can tell at last (the agent loaded, or its transcript covers the send): it isn't there, so it goes once.
+  known = false;
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal(calls, 2); assert.equal((await f.delivery()).state, "sent");
+  assert.deepEqual(f.timers.pending, [], "no timer once it is sent");
+});
+
+test("live bug (2026-11-17), the agent Paseo couldn't load: every send times out and the chat says it isn't there; resends back off and it goes once the agent loads", async t => {
+  // A plugin's refresh took the agent out of Paseo's agent manager for 27 minutes: each send waited on the load until
+  // the client's 60 s timeout, and its transcript (written last before the send) showed the answer wasn't there.
+  let loads = false; let sends = 0;
+  const f = await setup(t, { deliver: async target => { sends++; if (!loads) throw new Error("Timeout waiting for message (60000ms)"); return target.recipients[0]!; }, arrived: async () => false });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  const waits: number[] = [];
+  for (let i = 0; i < 6 && f.timers.pending.length; i++) { waits.push(await f.timers.fire()); await f.engine.idle(); }
+  assert.deepEqual(waits, [...AMBIGUOUS_MS, AMBIGUOUS_MS.at(-1)!, AMBIGUOUS_MS.at(-1)!], "backs off like a check that can't tell, never a resend every 15 s");
+  assert.equal(sends, 7, "one send per step, each after the chat showed it missing");
+  assert.equal((await f.delivery()).state, "retrying");
+  loads = true;
+  await f.timers.fire(); await f.engine.idle();
+  assert.equal((await f.delivery()).state, "sent", "the agent is back: delivered");
+  assert.equal(f.delivered.length, 1, "it reached the agent once");
+});
+
+test("only a gone conversation ends Failed; Retry there resends without asking", async t => {
+  let calls = 0;
+  const f = await setup(t, { deliver: async target => { calls++; if (calls === 1) throw new ConversationGone("main-agent", "No conversation found"); return target.recipients[0]!; } });
+  await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); await f.engine.idle();
+  const d = await f.delivery();
+  assert.equal(d.state, "failed"); assert.match(d.reason!, /conversation is gone/);
+  assert.deepEqual(f.timers.pending, [], "nothing scheduled: the target can't take messages");
   assert.equal(deliveryStatus({ state: "failed", reason: d.reason }).action, "retry");
   await f.engine.answer(f.wid, "Q1", "A", undefined, "resend"); await f.engine.idle();
   assert.equal(calls, 2); assert.equal((await f.delivery()).state, "sent");
+});
+
+test("a restart resumes what it left: sending reads back uncertain, and an old Failed with no gone target goes back to checking", async t => {
+  const f = await setup(t);
+  const base = { kind: "answer" as const, key: "w", ref: { workspaceId: f.wid, questionId: "Q404" }, text: "Follow-up answer Q404 (x): A", createdAt: "2026-11-16T08:00:00.000Z" };
+  await writeFile(join(f.root, QUEUE_FILE), JSON.stringify({ version: 1, items: [
+    { ...base, id: "a", messageId: "m-a", state: "sending", envelope: { messageId: "m-a", to: null, at: "2026-11-16T08:00:01.000Z" } },
+    { ...base, id: "b", messageId: "m-b", state: "failed", unknowns: 4, reason: "Follow-up couldn't confirm the agent got it.", envelope: { messageId: "m-b", to: null, at: "2026-11-16T08:00:01.000Z" } },
+    { ...base, id: "c", messageId: "m-c", state: "failed", gone: "old-agent", reason: "The agent's conversation is gone, so it can't take messages.", envelope: { messageId: "m-c", to: "old-agent", at: "2026-11-16T08:00:01.000Z" } },
+  ] }));
+  const next = await testQueue(f.root, { arrived: async () => null });
+  f.stops.push(async () => { next.queue.stop(); await next.queue.writer.flush().catch(() => undefined); });
+  const state = (id: string) => next.queue.get(id)!;
+  assert.equal(state("a").state, "uncertain"); assert.equal(state("b").state, "uncertain"); assert.equal(state("c").state, "failed");
+  for (const id of ["a", "b"]) assert.ok(state(id).nextAt, `${id} has a next try`);
+  assert.equal(queueItemStop(state("c")), null, "a gone target may stay Failed");
+});
+
+/**
+ * a-queued-message-never-stops-short (the class of 2026-11-17's lost answer): every way out of a send ends in exactly
+ * one of delivered (confirmed, or found in the chat), a scheduled next try, or Failed because its target is gone, with
+ * the reason. A grid over every send outcome and every arrival answer, followed past the whole ladder.
+ */
+test("invariant grid: no outcome leaves an item failed or waiting with nothing next, unless its target is gone", async t => {
+  type Send = "ok" | "deferred" | "unreachable" | "error" | "hang" | "gone";
+  const sends: Send[] = ["ok", "deferred", "unreachable", "error", "hang", "gone"];
+  const answers: (boolean | null | "throws")[] = [true, false, null, "throws"];
+  for (const first of sends) for (const answer of answers) {
+    let calls = 0;
+    const f = await setup(t, {
+      deliver: async target => {
+        calls++;
+        const outcome = calls === 1 ? first : "error";
+        if (outcome === "deferred") throw new DeliveryDeferred("waiting for the agent's permission prompt");
+        if (outcome === "unreachable") throw new DeliveryDeferred("Paseo unreachable");
+        if (outcome === "error") throw new Error("Timeout waiting for message (60000ms)");
+        if (outcome === "hang") return new Promise<string>(() => undefined);
+        if (outcome === "gone") throw new ConversationGone(target.recipients[0]!, "No conversation found");
+        return target.recipients[0]!;
+      },
+      arrived: async () => { if (answer === "throws") throw new Error("socket closed"); return answer; },
+    });
+    await f.engine.answer(f.wid, "Q1", "A", undefined, "send"); void f.engine.idle();
+    for (let i = 0; i < 12 && f.timers.pending.length; i++) {
+      await f.timers.fire(); await f.queue.idle();
+      for (const item of f.queue.list().items) {
+        const why = queueItemStop(item);
+        assert.equal(why, null, `${first}/${String(answer)} step ${i}: ${why}`);
+      }
+    }
+    for (const item of [...f.queue.list().items, ...f.queue.list().recent]) assert.equal(queueItemStop(item), null, `${first}/${String(answer)} at the end: ${queueItemStop(item)}`);
+    f.queue.stop();
+  }
 });
 
 test("saved before sent: when Paseo hears of the message, queue.json already holds it as sending under that messageId", async t => {
@@ -270,3 +358,33 @@ test("a waiting item's status line says when the next try is, not the state's ow
   assert.equal(deliveryStatus({ state: "queued", reason: null, nextAt: null }, clock).detail, "Queued.");
   for (const state of ["queued", "retrying"] as const) assert.doesNotMatch(JSON.stringify(deliveryStatus({ state, reason: "Paseo unreachable", nextAt }, clock)), /retrying at/i);
 });
+
+test("an unloaded agent's transcript says \"not there\" only when what was read reaches back to the send", () => {
+  const since = Date.parse("2026-11-16T09:00:00.000Z");
+  const line = (at: string, text: string) => JSON.stringify({ type: "user", timestamp: at, message: { role: "user", content: text } });
+  const marker = "Follow-up answer Q7 (Cache policy): A";
+  const before = line("2026-11-16T08:59:00.000Z", "earlier work"), after = line("2026-11-16T09:01:00.000Z", "later work");
+  assert.equal(markerSince([before, line("2026-11-16T09:00:05.000Z", `${marker}\n\nmore`)], false, since, marker), true, "found");
+  assert.equal(markerSince([before, after], false, since, marker), false, "the tail reaches back past the send and has no marker");
+  assert.equal(markerSince([after], false, since, marker), null, "the tail starts after the send: it may have scrolled out");
+  assert.equal(markerSince([after], true, since, marker), false, "the whole file was read");
+  assert.equal(markerSince(["not json", "{}"], false, since, marker), null, "no dated line: unknown");
+  assert.equal(markerSince([before], false, since, ""), null, "no marker to look for: unknown");
+});
+
+test("an unloaded agent's transcript is read back to the send, past a fixed tail: a busy agent's megabytes don't make it unknown", async t => {
+  const root = await mkdtemp(join(tmpdir(), "follow-queue-transcript-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const since = Date.parse("2026-11-16T09:00:00.000Z");
+  const marker = "Follow-up answer Q7 (Cache policy): A";
+  const line = (at: string, text: string) => JSON.stringify({ type: "assistant", timestamp: at, message: { content: text } });
+  // 6 MB written after the send (far more than the 512 KB tail), an hour of older work before it.
+  const busy = Array.from({ length: 3_000 }, (_, i) => line(new Date(since + 5_000 + i * 100).toISOString(), "x".repeat(2_000))).join("\n");
+  const older = Array.from({ length: 1_000 }, (_, i) => line(new Date(since - 3_600_000 + i * 1_000).toISOString(), "y".repeat(2_000))).join("\n");
+  const missing = join(root, "missing.jsonl"), found = join(root, "found.jsonl");
+  await writeFile(missing, `${older}\n${busy}\n`);
+  await writeFile(found, `${older}\n${line(new Date(since + 1_000).toISOString(), marker)}\n${busy}\n`);
+  assert.equal(await markerInFile(missing, since, marker), false, "read back past the send: not there");
+  assert.equal(await markerInFile(found, since, marker), true, "found behind 6 MB of later work");
+  assert.equal(await markerInFile(missing, since, marker, 2 * 1024 * 1024), null, "past the read cap: unknown, never a guess");
+});
+

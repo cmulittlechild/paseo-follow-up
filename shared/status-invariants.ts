@@ -23,6 +23,7 @@ import { foldedAsk, needsYouBlock, onceViolation } from "./needs-block";
 import { compactPrStatus, prLink, prPresentation } from "./presentation";
 import { agentMerges } from "./pr-workflow";
 import { mergeScope } from "./merge-click";
+import { GONE_REASON } from "./queue";
 
 /**
  * Status invariants: what must hold for any workspace, whatever path changed it. Pure, no IO, and never throwing:
@@ -279,6 +280,19 @@ export const INVARIANTS: Invariant[] = [
         if (!d.messageId) return `${q.id}'s answer is ${d.state} without a messageId, so its chat can't be checked`;
         if ((d.state === "failed" || d.state === "cancelled") && !d.reason) return `${q.id}'s answer is ${d.state} without saying why`;
         if (d.state === "retrying" && !d.nextAt) return `${q.id}'s answer is retrying without saying when`;
+      }
+      return null;
+    },
+  },
+  {
+    id: "a-queued-message-never-stops-short",
+    why: "2026-11-17: an answer whose send timed out sat through four arrival checks that couldn't tell (the agent wasn't loaded, so only its transcript was read, and only a find counted), then ended Failed with no next try; the agent never got it. An answer on its way is delivered, has a next try, or is Failed only because its agent's conversation is gone (server/message-queue.ts, queueItemStop).",
+    check(w) {
+      for (const q of w.questions) {
+        const d = q.answer?.delivery;
+        if (!d) continue;
+        if (d.state === "failed" && d.reason !== GONE_REASON) return `${q.id}'s answer is Failed though its agent can still take messages: "${d.reason ?? "no reason"}"`;
+        if (d.state === "queued" && d.reason && !d.nextAt) return `${q.id}'s answer waits ("${d.reason}") with no next try`;
       }
       return null;
     },

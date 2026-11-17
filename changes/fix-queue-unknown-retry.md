@@ -1,0 +1,2 @@
+- An answer Follow-up couldn't confirm no longer ends as Failed and waits for you. It keeps checking the agent's chat and sends it again once the chat shows it never arrived.
+- Answers that an older version gave up on go back to checking after the update.
