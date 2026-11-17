@@ -60,7 +60,9 @@ export type SessionStats = { done: number; skipped: number; later: number; gone:
  * A Catch up session. `order` is every card key seen this session (done ones stay, so Back works); `pos` is the card
  * on screen, `order.length` once nothing is left. `parked` maps a workstream waiting for More context to its request.
  */
-export type Session = { order: string[]; pos: number; outcomes: Record<string, Outcome>; parked: Record<string, string>; lapped?: boolean };
+export type Session = { order: string[]; pos: number; outcomes: Record<string, Outcome>; parked: Record<string, string>; lapped?: boolean;
+  /** Skip workspace jumped from `to` and landed on `from` (undefined: the finished screen): Back from there returns to `to`. */
+  back?: { to: string; from: string | undefined } };
 
 export const startSession = (cards: readonly Pick<DeckCard, "key">[]): Session => ({ order: cards.map(c => c.key), pos: 0, outcomes: {}, parked: {} });
 
@@ -81,8 +83,58 @@ export function advance(s: Session, from: number): Pick<Session, "pos" | "lapped
 }
 export const nextPos = (s: Session, from: number): number => advance(s, from).pos;
 
-/** Back: the card before, whatever happened to it (done cards show what was sent; a parked one shows it is asking). */
-export const prevPos = (s: Session): number => Math.max(0, Math.min(s.pos, s.order.length) - 1);
+/**
+ * Back: the card before, whatever happened to it (done cards show what was sent; a parked one shows it is asking).
+ * Right after Skip workspace, Back returns to the card it was pressed on, not the last card of the skipped workspace.
+ */
+export function prevPos(s: Session): number {
+  if (s.back && s.order[s.pos] === s.back.from) { const i = s.order.indexOf(s.back.to); if (i >= 0) return i; }
+  return Math.max(0, Math.min(s.pos, s.order.length) - 1);
+}
+
+/** The cards of the on-screen card's workspace still to act on, the current one included: Skip workspace shows only above one. */
+export function openInWorkspace(s: Session, key = s.order[s.pos]): string[] {
+  if (key === undefined) return [];
+  const g = groupOf(key);
+  return s.order.filter(k => groupOf(k) === g && open(s, k));
+}
+
+/**
+ * Skip workspace: every card of this workspace still to act on is skipped at once (each counts as one skipped card) and
+ * the deck moves to the next workspace. They come back on the second pass like any skipped card; on the second pass
+ * itself it moves past the rest of them.
+ */
+export function skipWorkspace(s: Session): Session {
+  const key = s.order[s.pos];
+  if (key === undefined) return s;
+  const g = groupOf(key);
+  const outcomes = { ...s.outcomes };
+  for (const k of openInWorkspace(s)) outcomes[k] = "skipped";
+  const next: Session = { ...s, outcomes };
+  let at = advance(next, s.pos);
+  while (at.pos < s.order.length && groupOf(s.order[at.pos]) === g) at = advance({ ...next, lapped: at.lapped }, at.pos);
+  return { ...next, ...at, back: { to: key, from: s.order[at.pos] } };
+}
+
+/** Phone drag: which way a touch is going, decided once it has moved this far, so a vertical scroll stays a scroll. */
+export const SWIPE_LOCK_PX = 8;
+export function swipeLock(dx: number, dy: number): "x" | "y" | null {
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_LOCK_PX) return null;
+  return Math.abs(dx) > 1.5 * Math.abs(dy) ? "x" : "y";
+}
+/**
+ * A released drag: past `SWIPE_COMMIT` of the card's width, or flung faster than `SWIPE_FLING` px/ms the same way, left
+ * skips the card and right goes Back (when there is a card to go back to); anything else springs back.
+ */
+export const SWIPE_COMMIT = 0.35;
+export const SWIPE_FLING = 0.5;
+export function swipeOutcome(g: { dx: number; vx: number; width: number; canBack: boolean }): "skip" | "back" | "stay" {
+  const far = Math.abs(g.dx) > SWIPE_COMMIT * g.width;
+  const fling = Math.abs(g.vx) > SWIPE_FLING && Math.sign(g.vx) === Math.sign(g.dx);
+  if (!far && !fling) return "stay";
+  if (g.dx < 0) return "skip";
+  return g.canBack && g.dx > 0 ? "back" : "stay";
+}
 
 /** Records what happened to the card on screen and moves on. */
 export function settle(s: Session, outcome: Outcome, key = s.order[s.pos]): Session {
@@ -127,7 +179,7 @@ export function sync(s: Session, live: readonly Pick<DeckCard, "key">[], settled
     order = [...rest.slice(0, at), ...back, ...rest.slice(at)];
     pos = current === undefined ? at : order.indexOf(current);
   }
-  return { order, pos, outcomes, parked };
+  return { ...s, order, pos, outcomes, parked };
 }
 
 /** The progress line's numbers: the card on screen out of every card this session, and what is waiting for context. */
@@ -146,7 +198,7 @@ export function statsOf(s: Session): SessionStats {
  * anywhere presets. Paseo takes Shift+? (its shortcuts dialog) and Escape (interrupt agent) when focus is outside a
  * field, which is exactly when these fire, so the sheet is S and leaving is X.
  */
-export type CatchUpAction = "pick" | "own" | "send" | "skip" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
+export type CatchUpAction = "pick" | "own" | "send" | "skip" | "skip-workspace" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
 /**
  * a-move-bar-action-opens-in-view: where each move-bar action opens what it opens, so its result is where the eye
  * already is and never appended below the fold. `sheet`: drawn in the phone's dock, above the bar, kept above the
@@ -170,7 +222,8 @@ export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchU
   { key: "A–H", what: "Pick an option", action: "pick", combos: ["A", "B", "C", "D", "E", "F", "G", "H"] },
   { key: "W", what: "Write your own answer", action: "own", combos: ["W"] },
   { key: "⌘↵", what: "Send", action: "send", combos: ["Cmd+Enter", "Ctrl+Enter"] },
-  { key: "J / →", what: "Skip", action: "skip", combos: ["J", "ArrowRight"] },
+  { key: "J / →", what: "Skip this card (it comes back after the rest)", action: "skip", combos: ["J", "ArrowRight"] },
+  { key: "⇧J", what: "Skip workspace (all its cards come back after the rest)", action: "skip-workspace", combos: ["Shift+J"] },
   { key: "K / ←", what: "Back", action: "back", combos: ["K", "ArrowLeft"] },
   { key: "M", what: "More context", action: "more", combos: ["M"] },
   { key: "1–4", what: "Pick a More context ask", action: "chip", combos: ["Digit"], when: "more" },
@@ -203,6 +256,7 @@ export function catchUpKey(e: KeyPress, at: { typing: boolean; inMore: boolean; 
   if (e.key === "ArrowRight") return { action: "skip" };
   if (e.key === "ArrowLeft") return { action: "back" };
   if (at.moreOpen && /^[1-4]$/.test(e.key)) return { action: "chip", arg: e.key };
+  if (e.shift && e.key.toLowerCase() === "j") return { action: "skip-workspace" };
   if (e.shift || e.key.length !== 1) return null;
   const k = e.key.toLowerCase();
   if (/^[a-h]$/.test(k)) return { action: "pick", arg: k.toUpperCase() };

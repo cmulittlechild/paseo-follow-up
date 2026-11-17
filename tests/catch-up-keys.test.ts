@@ -41,8 +41,8 @@ test("within Catch up, no two actions share a key in the same place", () => {
 test("every action in the list is reachable through catchUpKey, and the handler reads only the list's actions", () => {
   const reached = new Set<string>();
   const states = [idle, { ...idle, moreOpen: true }, { ...idle, inRail: true }, { ...idle, moreOpen: true, typing: true, inMore: true }];
-  const keys = ["a", "h", "w", "j", "k", "m", "n", "l", "o", "r", "s", "x", "1", "4", "ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Enter"];
-  for (const at of states) for (const key of keys) for (const mods of [{}, { meta: true }, { meta: true, shift: true }]) {
+  const keys = ["a", "h", "w", "j", "k", "m", "n", "l", "o", "r", "s", "x", "1", "4", "ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Enter", "J"];
+  for (const at of states) for (const key of keys) for (const mods of [{}, { shift: true }, { meta: true }, { meta: true, shift: true }]) {
     const hit = catchUpKey(press(key, mods), at); if (hit) reached.add(hit.action);
   }
   for (const k of CATCH_UP_KEYS) assert.ok(reached.has(k.action), `${k.key} (${k.action}) has no key`);
@@ -60,6 +60,9 @@ test("keys never fire while typing, except More context's ask; ⌘↵ follows th
   assert.equal(catchUpKey(press("j", { meta: true }), idle), null, "⌘J is the browser's");
   assert.deepEqual(catchUpKey(press("B"), idle), { action: "pick", arg: "B" });
   assert.equal(catchUpKey(press("B", { shift: true }), idle), null);
+  assert.deepEqual(catchUpKey(press("J", { shift: true }), idle), { action: "skip-workspace" }, "⇧J skips the workspace");
+  assert.deepEqual(catchUpKey(press("j"), idle), { action: "skip" }, "J skips the card");
+  assert.equal(catchUpKey(press("J", { shift: true }), typing), null);
   assert.deepEqual(catchUpKey(press("2"), { ...idle, moreOpen: true }), { action: "chip", arg: "2" });
   assert.equal(catchUpKey(press("2"), idle), null, "digits are More context's only while it is open");
   assert.deepEqual(catchUpKey(press("ArrowDown"), { ...idle, inRail: true }), { action: "rail-down" });
@@ -72,7 +75,7 @@ test("Home's own keys are off while Catch up shows: its list isn't mounted and /
   assert.match(home, /if \(params\.view === "catchup"\) return <View/, "Catch up replaces Home's list, so the list walk's keys aren't mounted");
   const screen = await readFile(join(ROOT, "client/catch-up.tsx"), "utf8");
   assert.match(screen, /S keys · X leave/, "the hint line names the sheet and Leave keys");
-  for (const label of ["Leave ${MODE.name} (X)", "Back (K or ←)", "Later (L)", "Open chat (O)", "More context (M)", "Skip (J or →)", "Close the keys (S)"]) assert.ok(screen.includes(label), `tooltip ${label}`);
+  for (const label of ["Leave ${MODE.name} (X)", "Back (K or ←)", "Later (L)", "Open chat (O)", "More context (M)", "${skipCardHint(noun)} (J or →)", "${skipWorkspaceHint(wsLeft)} (⇧J)", "Close the keys (S)"]) assert.ok(screen.includes(label), `tooltip ${label}`);
 });
 
 test("the keys read as this platform spells them: ⌘ on a Mac, Ctrl elsewhere, as Send's own hint does", () => {

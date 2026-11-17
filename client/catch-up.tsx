@@ -3,7 +3,7 @@
 // the answer flow is the shared one, never a fork (one-answer-flow-for-every-question). The deck's order and every
 // move are the pure session in shared/catch-up.ts (context-never-blocks-the-deck, the-card-on-screen-never-moves).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { PanResponder, Platform, View } from "react-native";
+import { Animated, PanResponder, Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
@@ -15,7 +15,7 @@ import { age, snoozeUntil } from "../shared/inbox";
 import { laterChoices } from "../shared/row-menu";
 import { errorText } from "../shared/errors";
 import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN } from "../shared/display";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, park, prevPos, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, nextPos, openInWorkspace, park, prevPos, skipWorkspace, swipeLock, swipeOutcome, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
 import type { Workspace } from "../shared/model";
 import type { ListWorkspace } from "../shared/list";
 import { bottomInset, Button, focusSoon, IconButton, SubmitScope, text, type Theme } from "./kit";
@@ -32,6 +32,7 @@ import { mergedColor, withAlpha, tint } from "./theme";
 import { RichText } from "./rich-text";
 import { DisplaySplit, PermissionBlock, useAgentLive } from "./home";
 import { DockedPane } from "./docked-pane";
+import { useReducedMotion } from "./motion";
 import { PRIMARY_FORM } from "./dock";
 
 /** react-native-web's data attribute, so the option-letter keys find this card's radios. */
@@ -66,6 +67,16 @@ function cardWord(card: DeckCard): string {
 }
 const cardIcon = (card: DeckCard) => card.kind === "permission" ? "ShieldQuestion" : card.kind === "question" ? "MessageCircleQuestion"
   : card.item?.kind === "merge" ? "GitMerge" : card.item?.kind === "reviewers" ? "UserPlus" : card.item?.kind === "send" ? "Send" : card.kind === "finished" ? "Flag" : card.s.icon;
+/**
+ * The card Skip names what it skips, so it never reads as the workspace (Tom, beta.3: "at first I thought it skips the
+ * workspace"): the card's kind where one word says it, else "card", the deck's own word ("N skipped" counts cards).
+ */
+export function skipNoun(card: Pick<DeckCard, "kind" | "item">): string {
+  return card.kind === "question" ? "question" : card.kind === "permission" ? "permission" : card.item?.kind === "merge" ? "merge" : "card";
+}
+/** The card Skip's tooltip and accessible name: what it does and that the card comes back. */
+export const skipCardHint = (noun: string) => `Skip this ${noun}. It comes back after the rest`;
+export const skipWorkspaceHint = (n: number) => `Skip this workspace's ${n} cards. They come back after the rest`;
 /** The newest ask about this card, if any. */
 const askFor = (context: readonly ContextRequest[], key: string) => [...context].reverse().find(r => r.cardKey === key) ?? null;
 
@@ -99,6 +110,8 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const finished = session.pos >= session.order.length;
   const settle = (outcome: Outcome) => { setMore(false); setSession(s => settleCard(s, outcome)); };
   const skip = () => settle("skipped");
+  const skipWs = () => { setMore(false); setSession(skipWorkspace); };
+  const wsLeft = openInWorkspace(session).length;
   const back = () => { setMore(false); setSession(s => ({ ...s, pos: prevPos(s) })); };
   const jump = (i: number) => { setMore(false); setSession(s => ({ ...s, pos: i })); };
   const w = card?.s.workspaceId ? live.get(card.s.workspaceId) : undefined;
@@ -135,6 +148,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       const click = (q: string) => { const b = doc.querySelector(q); b?.click?.(); return !!b; };
       switch (hit.action) {
         case "skip": skip(); break;
+        case "skip-workspace": if (wsLeft < 2) return; skipWs(); break;
         case "back": back(); break;
         case "more": if (!click('[data-catch-up-card-moves] [aria-label="More context"]')) setMore(v => !v); break;
         case "keys": setKeysOpen(v => !v); break;
@@ -166,11 +180,48 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     doc.addEventListener("keydown", onKey);
     return () => doc.removeEventListener("keydown", onKey);
   });
-  // Phones: swipe left to skip, right to go back. Answers are never a swipe: a stray thumb must not decide anything.
+  // Phones: the card follows the finger (Paseo's sidebar drag): left skips this card, right goes Back, the card about to
+  // show peeks underneath, and a drag held halfway stays there. The direction locks in the first SWIPE_LOCK_PX, so a
+  // vertical scroll stays a scroll. Answers are never a swipe: a stray thumb must not decide anything. Reduced motion:
+  // no follow, just the move on release. Transforms only (translateX), on the native driver where there is one.
+  const reduced = useReducedMotion();
+  const drag = useRef(new Animated.Value(0)).current;
+  const [dragDir, setDragDir] = useState<"skip" | "back" | null>(null);
+  const width = useRef(390);
+  const lock = useRef<"x" | "y" | null>(null);
+  // The finger's own offset from where it went down: react-native-web's accumulated gestureState.dx runs ahead of a
+  // mouse drag, so the card would outrun the pointer. Every touch start passes the capture phase, so it is read there.
+  const origin = useRef({ x: 0, y: 0 });
+  type Touch = { nativeEvent: { pageX: number; pageY: number } };
+  const offset = (e: Touch) => ({ dx: e.nativeEvent.pageX - origin.current.x, dy: e.nativeEvent.pageY - origin.current.y });
+  const canBack = session.pos > 0;
   const pan = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_e, g) => compact && Math.abs(g.dx) > 24 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
-    onPanResponderRelease: (_e, g) => { if (g.dx < -80) skip(); else if (g.dx > 80) back(); },
-  }), [compact, key]); // eslint-disable-line react-hooks/exhaustive-deps
+    onStartShouldSetPanResponderCapture: e => { origin.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }; lock.current = null; return false; },
+    onMoveShouldSetPanResponderCapture: e => {
+      if (!compact || finished) return false;
+      const { dx, dy } = offset(e);
+      const l = swipeLock(dx, dy);
+      if (!l) return false;
+      lock.current ??= l;
+      return lock.current === "x";
+    },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: e => {
+      const { dx } = offset(e);
+      setDragDir(dx < 0 ? "skip" : canBack ? "back" : null);
+      // Nothing behind the first card: the drag resists instead of revealing an empty space.
+      if (!reduced) drag.setValue(dx > 0 && !canBack ? dx * 0.25 : dx);
+    },
+    onPanResponderRelease: (e, g) => {
+      lock.current = null;
+      const out = swipeOutcome({ dx: offset(e).dx, vx: g.vx, width: width.current, canBack });
+      const act = () => { drag.setValue(0); setDragDir(null); if (out === "skip") skip(); else if (out === "back") back(); };
+      if (out === "stay") { setDragDir(null); if (!reduced) Animated.spring(drag, { toValue: 0, bounciness: 0, speed: 20, useNativeDriver: Platform.OS !== "web" }).start(); else drag.setValue(0); return; }
+      if (reduced) { act(); return; }
+      Animated.timing(drag, { toValue: (out === "skip" ? -1 : 1) * width.current, duration: 160, useNativeDriver: Platform.OS !== "web" }).start(act);
+    },
+    onPanResponderTerminate: () => { lock.current = null; setDragDir(null); drag.setValue(0); },
+  }), [compact, key, finished, canBack, reduced]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = statsOf(session);
   const total = session.order.length;
@@ -184,7 +235,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       {!compact && <IconButton theme={theme} compact={compact} icon="X" label={`Leave ${MODE.name} (X)`} tooltip onPress={onExit} />}
       <Text accessibilityRole="header" style={[t.title, { flex: 1 }]}>{finished || !total ? MODE.name : <>{MODE.name} <Text style={{ color: c.foregroundMuted, fontWeight: "400", fontVariant: ["tabular-nums"] }}>{MODE.progress(session.pos + 1, total).slice(MODE.name.length + 1)}</Text></>}</Text>
       {waitingChip}
-      {!compact && <Pressable accessibilityRole="button" accessibilityLabel="Show the keys (S)" onPress={() => setKeysOpen(v => !v)}><Text style={t.small}>{finished ? "S keys · X leave" : "J skip · K back · M more context · S keys · X leave"}</Text></Pressable>}
+      {!compact && <Pressable accessibilityRole="button" accessibilityLabel="Show the keys (S)" onPress={() => setKeysOpen(v => !v)}><Text style={t.small}>{finished ? "S keys · X leave" : "J skip card · ⇧J skip workspace · K back · M more context · S keys"}</Text></Pressable>}
     </View>
     {/* One segment per card: done in the foreground colour, skipped hollow, waiting for context amber-tinted, the current one amber. */}
     {total > 0 && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", gap: 3 }}>
@@ -203,7 +254,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     : <CardView key={card.key} card={card} w={w} theme={theme} compact={compact} deps={deps} navigation={navigation} gone={gone} more={more} setMore={setMore}
       request={askFor(context, card.key)} waiting={!!session.parked[card.s.key]} onAsk={ask}
       sameWorkspace={session.order.filter(k => cardOf(k)?.s.key === card.s.key)}
-      onDone={() => settle("done")} onSkip={skip} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} />;
+      onDone={() => settle("done")} onSkip={skip} onSkipWorkspace={wsLeft > 1 ? skipWs : undefined} wsLeft={wsLeft} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} />;
 
   const rail = <ScrollView {...({ dataSet: { catchUpRail: "1" } } as object)} contentContainerStyle={{ paddingVertical: 8 }}>
     {session.order.map((k, i) => {
@@ -226,7 +277,22 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     })}
   </ScrollView>;
 
-  const main = <View style={{ flex: 1, minWidth: 0 }} {...pan.panHandlers}>{body}</View>;
+  // Under the dragged card: the one the release would show, so the drag says where it goes.
+  const peekKey = dragDir === "skip" ? session.order[nextPos(session, session.pos)] : dragDir === "back" ? session.order[prevPos(session)] : undefined;
+  const peekCard = cardOf(peekKey);
+  const peek = compact && dragDir && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
+    style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.surface1, justifyContent: "center", alignItems: dragDir === "skip" ? "flex-end" : "flex-start", paddingHorizontal: 20 }}>
+    <View style={{ maxWidth: "42%", gap: 4, alignItems: dragDir === "skip" ? "flex-end" : "flex-start" }}>
+      <Icon name={dragDir === "skip" ? "ArrowRight" : "ChevronLeft"} size={18} color={c.foregroundMuted} />
+      <Text style={[t.small, { fontWeight: "600" }]}>{dragDir === "skip" ? `Skip ${card ? skipNoun(card) : "card"}` : "Back"}</Text>
+      <Text numberOfLines={2} style={[t.meta, { textAlign: dragDir === "skip" ? "right" : "left" }]}>{peekCard ? `${peekCard.s.title} · ${cardLabel(peekCard, peekCard.s.workspaceId ? live.get(peekCard.s.workspaceId) : undefined)}` : MODE.endOfDeck}</Text>
+    </View>
+  </View>;
+  const main = <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }} onLayout={e => { width.current = e.nativeEvent.layout.width; }} {...pan.panHandlers}>
+    {peek}
+    <Animated.View {...({ dataSet: { catchUpDrag: "1" } } as object)} style={{ flex: 1, backgroundColor: c.surface0, transform: [{ translateX: drag }],
+      ...(dragDir ? { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } } : {}) }}>{body}</Animated.View>
+  </View>;
   return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
     {progress}
     <View style={{ flex: 1, borderTopWidth: 1, borderTopColor: c.border }}>
@@ -241,10 +307,10 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
 }
 
 /** One card: who and what, the ask through its own surface's component, then the deck's moves pinned to the bottom. */
-function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMore, request, waiting, onAsk, sameWorkspace, onDone, onSkip, onBack, onLater }: {
+function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMore, request, waiting, onAsk, sameWorkspace, onDone, onSkip, onSkipWorkspace, wsLeft, onBack, onLater }: {
   card: DeckCard; w: ListWorkspace | undefined; theme: Theme; compact: boolean; deps: CatchUpDeps; navigation: Nav; gone: boolean; more: boolean; setMore: (v: boolean | ((v: boolean) => boolean)) => void;
   request: ContextRequest | null; waiting: boolean; onAsk: (words: string) => Promise<void>;
-  sameWorkspace: string[]; onDone: () => void; onSkip: () => void; onBack?: () => void; onLater: () => void;
+  sameWorkspace: string[]; onDone: () => void; onSkip: () => void; onSkipWorkspace?: () => void; wsLeft: number; onBack?: () => void; onLater: () => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const s = card.s;
@@ -258,6 +324,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   const q = card.kind === "question" ? ws?.questions.find(x => x.id === card.questionId) ?? null : null;
   const nth = sameWorkspace.indexOf(card.key);
   const agentName = s.agent ?? "the agent";
+  const noun = skipNoun(card);
 
   const head = <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -323,15 +390,18 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     : <Button theme={theme} kind="primary" icon="Send" title="Send to agent" shortcut disabled={ready.busy} onPress={ready.send} />);
   const moves = <View {...({ dataSet: { catchUpCardMoves: "1" } } as object)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
     <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
-    {compact ? ready ? <IconButton theme={theme} compact icon="Sparkles" label="More context" onPress={toggleMore} />
-        : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="Sparkles" title="Context" accessibilityLabel="More context" onPress={toggleMore} /></View>
+    {compact ? <IconButton theme={theme} compact icon="Sparkles" label="More context" onPress={toggleMore} />
       : <View>{popover(moreBlock, "More context", 560)}<Tip label="More context (M)"><Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
     <View>{!compact && popover(laterBlock, "Later", 380)}<IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={toggleLater} /></View>
     <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? "Open chat" : "Open chat (O)"} tooltip={!compact} disabled={!navigation} onPress={openChat} />
     {!compact && <View style={{ flex: 1 }} />}
-    {compact ? ready ? <IconButton theme={theme} compact icon="ArrowRight" label="Skip" onPress={onSkip} />
-        : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title="Skip" onPress={onSkip} /></View>
-      : <Tip label="Skip (J or →)"><Button theme={theme} icon="ArrowRight" title="Skip" accessibilityHint="J" onPress={onSkip} /></Tip>}
+    {/* Two skips, named apart: this card (J), and the whole workspace (⇧J), shown only while it has more than one card left. */}
+    {compact ? ready ? <IconButton theme={theme} compact icon="ArrowRight" label={skipCardHint(noun)} onPress={onSkip} />
+        : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title={`Skip ${noun}`} accessibilityLabel={skipCardHint(noun)} onPress={onSkip} /></View>
+      : <>
+        {onSkipWorkspace && <Tip label={`${skipWorkspaceHint(wsLeft)} (⇧J)`}><Button theme={theme} kind="ghost" icon="ChevronsRight" title="Skip workspace" accessibilityLabel={skipWorkspaceHint(wsLeft)} accessibilityHint="Shift+J" onPress={onSkipWorkspace} /></Tip>}
+        <Tip label={`${skipCardHint(noun)} (J or →)`}><Button theme={theme} icon="ArrowRight" title={`Skip ${noun}`} accessibilityLabel={skipCardHint(noun)} accessibilityHint="J" onPress={onSkip} /></Tip>
+      </>}
     {send}
   </View>;
 
@@ -343,6 +413,9 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}
     dock={({ yields, typingInContent }) => compact && (sheet && !typingInContent || !yields) && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
       {sheet && !typingInContent && <MoveResult place="sheet" theme={theme} label={moreBlock ? "More context" : "Later"}>{sheet}</MoveResult>}
+      {!yields && !sheet && onSkipWorkspace && <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 12, paddingTop: 6 }}>
+        <Button theme={theme} compact kind="ghost" icon="ChevronsRight" title={`Skip workspace · ${wsLeft} cards`} accessibilityLabel={skipWorkspaceHint(wsLeft)} onPress={onSkipWorkspace} />
+      </View>}
       {!yields && moves}
     </View>}>
     {goneBanner}

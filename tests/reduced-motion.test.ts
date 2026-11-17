@@ -27,8 +27,9 @@ test("invariant: nothing reads reduced motion only at mount", async () => {
   for (const name of (await readdir("client")).filter(n => n.endsWith(".tsx"))) {
     const source = await readFile(join("client", name), "utf8");
     if (!source.includes("useReducedMotion()")) continue;
-    // A mount-only effect that reads it: decides once, before the answer arrives.
-    for (const m of source.matchAll(/use(?:Layout)?Effect\(\(\) => \{([\s\S]*?)\}, \[\]\)/g)) if (/\breduced\b/.test(m[1])) offenders.push(`${name}: a mount-only effect reads reduced (add it to the deps)`);
+    // A mount-only effect that reads it: decides once, before the answer arrives. The match stops at the next effect, so
+    // an effect without a deps array never stretches to a later one's `}, [])`.
+    for (const m of source.matchAll(/use(?:Layout)?Effect\(\(\) => \{((?:(?!use(?:Layout)?Effect\()[\s\S])*?)\}, \[\]\)/g)) if (/\breduced\b/.test(m[1])) offenders.push(`${name}: a mount-only effect reads reduced (add it to the deps)`);
     // State seeded from it: the seed is the not-yet-known value and never updates. Derive it in render instead.
     for (const m of source.matchAll(/useState\(([^;\n]*)\)/g)) if (/\breduced\b/.test(m[1])) offenders.push(`${name}: useState(${m[1].trim()}) seeds state from reduced (derive it in render)`);
   }
