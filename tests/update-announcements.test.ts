@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { announcesUpdate, parseChangelog, quietRelease, recentUpdate, whatsNew, type WhatsNewInput } from "../shared/changelog";
 import { compareVersions } from "../shared/version";
 
-// Invariant (whats-new-after-every-stable-update): What's new opens once after an update to any newer stable version
-// (major, minor or patch) or a major's rc that has notes since the device last looked. A first install, onboarding, a
-// downgrade, a beta and the setting off are recorded quietly; the setting off records the installed version, so turning
-// it back on never brings old notes. whatsNew in shared/changelog.ts is the one rule; the grid below enforces it.
+// Invariant (whats-new-after-every-stable-update): What's new opens after a stable update that brings new release notes, unless the switch is off; betas never do.
+// New notes means a CHANGELOG section newer than the version the device last saw; with none, no sheet ("no-notes").
+// It opens once per device (a major's rc carries the major's section and counts as its release). A first install, onboarding, a downgrade, a beta and the
+// switch off are recorded quietly; the switch off records the installed version, so turning it back on never brings
+// old notes. whatsNew in shared/changelog.ts is the one rule; the grid below enforces it.
 // Home's "Follow-up X is available" line is a separate notice and stays major-only (update-notice-major-only,
 // announcesUpdate, tests/updater.test.ts).
 
@@ -35,6 +36,8 @@ test("quiet cases: first install, onboarding, downgrade, seen, beta, no notes, a
   assert.deepEqual(at("2.1.0", "2.1.0"), { show: false, reason: "seen", record: null });
   assert.deepEqual(at("2.0.1", "2.1.0-beta.0"), { show: false, reason: "prerelease", record: "2.1.0-beta.0" });
   assert.deepEqual(at("2.0.0", "2.0.1", { notes: [] }), { show: false, reason: "no-notes", record: "2.0.1" });
+  const older = notes.filter(n => n.version === "2.0.0" || n.version === "1.5.0");
+  assert.deepEqual(at("2.0.0", "2.0.1", { notes: older }), { show: false, reason: "no-notes", record: "2.0.1" }, "a stable with no section newer than the device's last seen version: no sheet");
   assert.deepEqual(at("2.0.0", "2.1.0", { enabled: false }), { show: false, reason: "off", record: "2.1.0" }, "off: no sheet, the version is recorded");
   assert.ok(at("2.1.0", "3.0.0", { enabled: true }).show, "on again: only versions after the recorded one");
   assert.deepEqual(at("2.1.0", "2.1.0", { enabled: true }), { show: false, reason: "seen", record: null }, "turning it back on brings no old notes");

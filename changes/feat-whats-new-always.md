@@ -1,2 +1,2 @@
-- What's new now opens after every update, not only a major one, with what changed since you last looked. Betas still install quietly.
+- What's new now opens after any update that brings new release notes, not only a major one. Betas still install quietly.
 - Don't want it? Turn off Show What's new after updates in Settings → General. Release notes stay one tap away.

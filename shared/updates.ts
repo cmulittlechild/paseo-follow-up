@@ -44,7 +44,7 @@ export const updatesViewSchema = z.object({
   installKind: z.enum(INSTALL_KINDS),
   mode: z.enum(UPDATE_MODES),
   channel: z.enum(["stable", "beta"]),
-  /** What's new opens after an update (major, minor or patch; betas stay quiet). Applies to every install kind. */
+  /** What's new opens after an update that brings new release notes (stables only). Applies to every install kind. */
   enable_whats_new: z.boolean().default(true),
   /** Newest version on each channel per the last check (null: nothing published, or never checked). */
   channels: z.object({ stable: z.string().nullable(), beta: z.string().nullable() }),
@@ -68,7 +68,7 @@ export type UpdatesChange = z.infer<typeof setUpdatesInputSchema>;
 /** Settings → General's What's new switch: its label and the hint for each state. */
 export const WHATS_NEW_LABEL = "Show What's new after updates";
 export const whatsNewHint = (on: boolean) => on
-  ? "Opens once after each update with the changes since you last looked. Betas stay quiet."
+  ? "Opens once after an update that brings new release notes. Betas stay quiet."
   : "Updates install quietly. Release notes below still show every version.";
 
 const ago = (ms: number) => {

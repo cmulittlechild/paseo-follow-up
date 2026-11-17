@@ -1,6 +1,6 @@
 # Release notes
 
-What changed in each version of Follow-up, newest first. Follow-up shows the curated part of each stable release in "What's new" after the update (betas install quietly; Settings → General can turn it off), and every version's notes from Home's version line.
+What changed in each version of Follow-up, newest first. Follow-up shows "What's new" after an update that brings new release notes: the curated part of each stable release since you last looked (betas install quietly; Settings → General can turn it off), and every version's notes from Home's version line.
 
 ## 2.1.0 (2026-11-17)
 

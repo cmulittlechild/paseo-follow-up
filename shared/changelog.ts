@@ -159,10 +159,11 @@ export function announcesUpdate(from: string | null, to: string): boolean {
 export const quietRelease = (version: string): boolean => (parseVersion(version)?.pre.length ?? 0) > 0 && !isMajorRc(version);
 
 /**
- * Whether this device shows "What's new" now (invariant `whats-new-after-every-stable-update`). It opens after an
- * update to any newer stable version (major, minor or patch) or a major's rc, when there are notes since the version
- * the device last saw. Quiet, recording the installed version: a first install (no baseline at all; onboarding covers
- * it), a downgrade, a beta, and the setting off (so turning it back on never brings old notes). Onboarding wins over the
+ * Whether this device shows "What's new" now (invariant `whats-new-after-every-stable-update`): What's new opens after a stable update that brings new release notes, unless the switch is off; betas never do
+ * (only stables carry notes). New means a CHANGELOG section newer than the version this device last saw; with none, no
+ * sheet ("no-notes"). A major's rc carries the major's section and counts as its release. Quiet, recording the
+ * installed version: a first install (no baseline at all; onboarding covers it), a downgrade, a beta, and the switch
+ * off (so turning it back on never brings old notes). Onboarding wins over the
  * sheet and leaves the stored version alone, so the sheet can come after onboarding ends.
  */
 export function whatsNew({ installed, deviceSeen, previous, onboarding, enabled = true, notes }: WhatsNewInput): WhatsNew {

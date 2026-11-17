@@ -109,10 +109,10 @@ First, pick where it lives:
 
 - **Release notes.** `shared/changelog.ts` parses `CHANGELOG.md` and picks the What's new notes.
   `shared/version.ts` orders versions (semver with prerelease identifiers) and selects channels.
-- **What's new opens after every stable update.** `whatsNew()` in `shared/changelog.ts` is the one rule for the
-  sheet: it opens once per device after an update to any newer stable version (major, minor or patch) or a major's
-  rc, showing the notes since the version that device last saw. A first install, onboarding, a downgrade and a beta
-  (betas carry no notes in the app) are recorded quietly. Settings → General's **Show What's new after updates**
+- **What's new opens after every stable update.** The rule: What's new opens after a stable update that brings new release notes, unless the switch is off; betas never do (only
+  stables carry notes). New notes means a CHANGELOG.md section newer than the version that device last saw; with none,
+  no sheet. `whatsNew()` in `shared/changelog.ts` is the one place it lives. The sheet opens once per device (a major's
+  rc carries the major's section and counts as its release). A first install, onboarding and a downgrade are recorded quietly too. Settings → General's **Show What's new after updates**
   switch (`enable_whats_new` in `updates.json`, default on; agents: `updates_status`, `set_updates`) turns it off:
   each update is then recorded as seen without the sheet, so turning it back on never brings old notes, and Home's
   footer and Release notes still open it by hand. The invariant is `whats-new-after-every-stable-update`, with a grid
