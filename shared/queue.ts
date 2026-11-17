@@ -46,6 +46,10 @@ export const queueItemSchema = z.object({
   nextAt: z.string().nullable().default(null),
   /** Why it waits, failed or was cancelled, in a few plain words. */
   reason: z.string().max(400).nullable().default(null),
+  /** Every messageId an envelope carrying this item went out under: the arrival check looks for each. */
+  sentIds: z.array(z.string()).max(50).default([]),
+  /** Bumped when Paseo refuses the messageId for good (idRefused): the next send, after the chat shows it missing, goes under a fresh id derived from it. */
+  generation: z.number().int().min(0).default(0),
   /** The last send that left or may have: the arrival check reads the chat for this messageId. */
   envelope: z.object({ messageId: z.string(), to: z.string().nullable(), at: z.string() }).nullable().default(null),
   /** The agent whose provider conversation is gone (a send's ConversationGone), so its channel can say so. */

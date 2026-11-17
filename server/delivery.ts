@@ -4,6 +4,14 @@ export class DeliveryDeferred extends Error {}
 /** The provider no longer has the agent's conversation: every send fails, so Follow-up stops sending to it. */
 export class ConversationGone extends Error { constructor(readonly agentId: string, reason: string) { super(reason); this.name = "ConversationGone"; } }
 
+/**
+ * Paseo 0.16 refused the messageId itself (its per-agent, per-messageId receipt): agent_request_outcome_unknown (a
+ * receipt left pending by a daemon that died mid-send; every later send under that id is refused for good) or
+ * agent_request_key_conflict (the id was used for other text). Nothing was sent now; whether the first one landed is
+ * for the chat to say.
+ */
+export const idRefused = (error: unknown): boolean => /agent_request_(outcome_unknown|key_conflict)/.test(error instanceof Error ? error.message : String(error));
+
 /** A UUID-shaped id fixed by `seed`: the same answer always goes out under the same messageId. */
 export function stableMessageId(seed: string): string {
   const h = createHash("sha256").update(seed).digest("hex");

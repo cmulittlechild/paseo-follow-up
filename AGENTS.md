@@ -588,13 +588,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    transcript is read back from its end to the send (`markerInFile`, `server/transcript.ts`, at most
    `MARKER_READ_MAX_BYTES`), so "not there" holds even after a busy agent wrote megabytes, and the message is resent
    instead of waiting on a load that may never come; Paseo's per-messageId receipts make a resend behind a send still
-   in flight wait for it, never run twice. A restart resumes what it left: `sending` reads
+   in flight wait for it, never run twice. A loaded agent whose timeline read can't tell (a busy one wrote more than its
+   pages since the send) falls back to the same transcript search, so it too gets a "not there". A messageId Paseo
+   refuses for good (`agent_request_outcome_unknown`, a receipt a dying daemon left pending, or
+   `agent_request_key_conflict`; `idRefused`) is replaced: once the chat shows it missing, the resend goes under a
+   fresh id derived from it (`generation`), and every arrival check looks for every id the item went out under
+   (`sentIds`). A restart resumes what it left: `sending` reads
    back `uncertain` and an old Failed whose target isn't gone goes back to checking, both due at once. No new timer:
    the item's own retry time is the only wake-up, and nothing reads an agent that isn't loaded. 2026-11-17: another
    plugin's refresh took the agent out of Paseo's agent manager for 27 minutes (its turn had ended); the answer's send
    waited on the reload until the client's 60 s timeout, four checks couldn't tell (the agent wasn't loaded, and its
    transcript counted only a find), and it ended Failed 22 minutes later with no next try, never reaching the agent.
-   Guarded by `queueItemStop` (`shared/queue.ts`) over a grid of send outcomes and arrival answers in
+   Later the same day: a refused id was resent under the same id forever, and a busy loaded agent's checks stayed
+   unknown forever. Guarded by `queueItemStop` (`shared/queue.ts`) over a grid of send outcomes and arrival answers in
    `tests/message-queue.test.ts`, `tests/queue-tools.test.ts` and `INVARIANTS`.
 
 ## Bugs
