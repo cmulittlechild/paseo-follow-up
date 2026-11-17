@@ -146,7 +146,23 @@ export function statsOf(s: Session): SessionStats {
  * anywhere presets. Paseo takes Shift+? (its shortcuts dialog) and Escape (interrupt agent) when focus is outside a
  * field, which is exactly when these fire, so the sheet is S and leaving is X.
  */
-export type CatchUpAction = "pick" | "own" | "send" | "skip" | "back" | "more" | "chip" | "ask-overseer" | "ask-agent" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
+export type CatchUpAction = "pick" | "own" | "send" | "skip" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
+/**
+ * a-move-bar-action-opens-in-view: where each move-bar action opens what it opens, so its result is where the eye
+ * already is and never appended below the fold. `sheet`: drawn in the phone's dock, above the bar, kept above the
+ * keyboard. `popover`: anchored to its button on desktop. `focus`: a field or row takes focus, and DockedPane (phone)
+ * or the browser (desktop) scrolls it into view. `navigates`: leaves Catch up for the chat.
+ */
+export type MovePlace = "sheet" | "popover" | "focus" | "navigates";
+export const MOVE_OPENS: Readonly<Record<"more" | "later" | "note" | "chat" | "rail", { phone: MovePlace | null; desktop: MovePlace }>> = {
+  more: { phone: "sheet", desktop: "popover" },
+  later: { phone: "sheet", desktop: "popover" },
+  note: { phone: "focus", desktop: "focus" },
+  chat: { phone: "navigates", desktop: "navigates" },
+  // The queue rail is desktop only.
+  rail: { phone: null, desktop: "focus" },
+};
+
 /** A key as this platform spells it: ⌘ on a Mac, Ctrl elsewhere (as the Send button's own hint reads). */
 export const keyLabel = (key: string, mac: boolean) => mac ? key : key.replace("⌘", "Ctrl ");
 
@@ -158,8 +174,7 @@ export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchU
   { key: "K / ←", what: "Back", action: "back", combos: ["K", "ArrowLeft"] },
   { key: "M", what: "More context", action: "more", combos: ["M"] },
   { key: "1–4", what: "Pick a More context ask", action: "chip", combos: ["Digit"], when: "more" },
-  { key: "⌘↵", what: "Ask the Overseer", action: "ask-overseer", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
-  { key: "⌘⇧↵", what: "Ask the agent", action: "ask-agent", combos: ["Cmd+Shift+Enter", "Ctrl+Shift+Enter"], when: "more" },
+  { key: "⌘↵", what: "Ask the agent", action: "ask", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
   { key: "N", what: "Add a note", action: "note", combos: ["N"] },
   { key: "L", what: "Later", action: "later", combos: ["L"] },
   { key: "O", what: "Open chat", action: "chat", combos: ["O"] },
@@ -179,8 +194,8 @@ export function catchUpKey(e: KeyPress, at: { typing: boolean; inMore: boolean; 
   if (e.composing || e.alt) return null;
   const mod = e.mac ? e.meta : e.ctrl;
   if (e.key === "Enter" && mod && (e.mac ? !e.ctrl : !e.meta)) {
-    if (e.shift) return at.moreOpen && (!at.typing || at.inMore) ? { action: "ask-agent" } : null;
-    if (at.moreOpen && (!at.typing || at.inMore)) return { action: "ask-overseer" };
+    if (e.shift) return null;
+    if (at.moreOpen && (!at.typing || at.inMore)) return { action: "ask" };
     return at.typing ? null : { action: "send" };
   }
   if (at.typing || e.meta || e.ctrl) return null;
@@ -215,7 +230,11 @@ export const MODE = {
 
 // More context ------------------------------------------------------------------------------------------------------
 
-/** Who answers: the Overseer from what it already knows (wakes no one), or the card's own agent (Tom asked, so it may wake). */
+/**
+ * Who answered. Every ask goes to the card's workspace's main agent (`agent`; asking may wake it, because the developer
+ * asked). `overseer` is only read from files written by 2.2.0-beta.3, which could route an ask to the Overseer: it never
+ * had context_reply, so those settle as `chat` on load (an-ask-goes-only-to-an-agent-that-can-answer-it).
+ */
 export const CONTEXT_TARGETS = ["overseer", "agent"] as const;
 export type ContextTarget = typeof CONTEXT_TARGETS[number];
 /** asking → answered (the reply came with context_reply), chat (the agent ended its turn without it: read its chat), failed. */
@@ -246,7 +265,7 @@ export const contextRequestSchema = z.object({
   target: z.enum(CONTEXT_TARGETS),
   /** The developer's words, or a suggestion's text. */
   ask: z.string().min(1).max(2000),
-  /** The agent that should reply (the card's agent, or the Overseer once it is known). */
+  /** The agent that should reply: the workspace's main agent (an Overseer's id on beta.3 files). */
   askedOf: z.string().nullable(),
   state: z.enum(CONTEXT_STATES),
   answer: z.string().max(CONTEXT_ANSWER_MAX).nullable(),
@@ -284,15 +303,12 @@ export function agentContextPrompt(r: Pick<ContextRequest, "id" | "card" | "ask"
   ].join("\n");
 }
 
-/** The Overseer's version: it answers from what it can read without waking anyone, and doesn't forward the ask. */
-export function overseerContextPrompt(r: Pick<ContextRequest, "id" | "card" | "ask">, workspace: string): string {
-  return [
-    `The developer is catching up on what needs them and is looking at a card from ${workspace}: ${r.card}`,
-    `They want more context before they answer: "${r.ask}"`,
-    `Answer from what you can read (workstreams, agent_digest) without waking agents and without forwarding this to the agent. Plain words, short (under ${CONTEXT_ANSWER_MAX} characters).`,
-    `Reply with ${REPLY_TOOL} and requestId "${r.id}" so the answer shows on their card.`,
-  ].join("\n");
-}
+/**
+ * an-ask-goes-only-to-an-agent-that-can-answer-it: the role a More context ask is routed to. context_reply is a tool
+ * of this role only (server/mcp-source.ts toolList: contributors, recovery agents and untracked agents such as the
+ * Overseer don't get it), so an ask is only ever delivered where its answer can reach the card.
+ */
+export const CONTEXT_REPLY_ROLE = "main" as const;
 
 /** A request older than CONTEXT_KEEP_MS goes, then the oldest past CONTEXT_MAX; an asking one is kept while it is young. */
 export function pruneContext(requests: readonly ContextRequest[], now: number): ContextRequest[] {

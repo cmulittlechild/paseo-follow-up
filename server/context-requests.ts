@@ -9,8 +9,21 @@ export const CONTEXT_FILE = "context.json";
 export type AskInput = { workspaceId: string | null; agentId: string | null; cardKey: string; card: string; target: ContextTarget; ask: string };
 
 /**
+ * an-ask-goes-only-to-an-agent-that-can-answer-it: who a More context ask goes to. Always the card's workspace's main
+ * agent (CONTEXT_REPLY_ROLE), the only role that has context_reply, whoever is named on the card: a contributor's
+ * question, or a recovery agent's, is still the workstream's, and its main agent answers. A workspace Follow-up doesn't
+ * track has no main agent, so nothing there could answer on the card, and the ask is refused with a way on. A main
+ * agent that was closed is still asked: the queue resumes it, or fails the ask if it is gone, and the card comes back.
+ */
+export function contextRecipient(workspace: { enable_tracking: boolean; mainAgentId: string } | undefined, caller: string | null): { agentId: string } | { error: string } {
+  if (!workspace?.enable_tracking || !workspace.mainAgentId) return { error: "Follow-up doesn't track this card's workspace, so no agent can answer on the card. Open its chat to ask there." };
+  if (caller && workspace.mainAgentId === caller) return { error: "ask_context asks another agent about its card for the developer; explain your own ask in your reply." };
+  return { agentId: workspace.mainAgentId };
+}
+
+/**
  * Catch up's More context requests (docs/needs-you.md#catch-up): what the developer asked about a card, who answers
- * (the Overseer or the card's agent), and the answer once `context_reply` brings it. The value lives in memory and
+ * (the card's workspace's main agent), and the answer once `context_reply` brings it. The value lives in memory and
  * saves behind the reply (an-ack-never-waits-on-the-disk); a change calls `onChange`, which pushes Home's feed, so the
  * client learns an answer arrived without polling. Small by construction: at most CONTEXT_MAX requests, none older
  * than CONTEXT_KEEP_MS.
@@ -29,7 +42,13 @@ export class ContextRequests {
     let value: ContextFile;
     try { value = contextFileSchema.parse(JSON.parse(await readFile(join(this.directory, CONTEXT_FILE), "utf8"))); }
     catch { value = { requests: [] }; } // Lost context requests cost a re-ask, never a broken Home.
-    this.value ??= value;
+    if (this.value) return this.value;
+    // 2.2.0-beta.3 could ask the Overseer, which has no context_reply: an ask of it still open never ends on its own.
+    // Its answer, if any, is in the Overseer's chat (an-ask-goes-only-to-an-agent-that-can-answer-it).
+    const at = new Date(this.now()).toISOString();
+    const stuck = value.requests.some(r => r.target === "overseer" && r.state === "asking");
+    this.value = stuck ? { requests: value.requests.map(r => r.target === "overseer" && r.state === "asking" ? { ...r, state: "chat" as const, settledAt: at } : r) } : value;
+    if (stuck) this.persist.set(this.value);
     return this.value;
   }
   private save(requests: ContextRequest[]): void {
@@ -67,11 +86,6 @@ export class ContextRequests {
     return next;
   }
 
-  /** Who replies is learnt after the send (the Overseer's id). */
-  setAskedOf(id: string, askedOf: string): Promise<ContextRequest | null> {
-    return this.update(id, r => r.askedOf === askedOf ? r : { ...r, askedOf });
-  }
-
   /**
    * The asked agent's answer (context_reply). Only the agent it was asked of may answer it (ownership comes from the
    * daemon, invariant 5); an answer to a settled request replaces it, so a corrected reply wins.
@@ -85,12 +99,12 @@ export class ContextRequests {
     return (await this.update(id, x => ({ ...x, state: "answered", answer, error: null, settledAt: new Date(this.now()).toISOString() })))!;
   }
 
-  /** The send failed for good (no Overseer, the agent archived): the card comes back saying so. */
+  /** The send failed for good (the agent is gone): the card comes back saying so. */
   fail(id: string, error: string): Promise<ContextRequest | null> {
     return this.update(id, r => r.state !== "asking" ? r : { ...r, state: "failed", error: error.slice(0, 500), settledAt: new Date(this.now()).toISOString() });
   }
 
-  /** The ask reached its agent (the queue sent it; the Overseer took it). Earlier deliveries win: it is the first. */
+  /** The ask reached its agent (the queue sent it). Earlier deliveries win: it is the first. */
   delivered(id: string, at: string): Promise<ContextRequest | null> {
     return this.update(id, r => r.state !== "asking" || r.deliveredAt ? r : { ...r, deliveredAt: at });
   }

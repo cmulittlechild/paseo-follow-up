@@ -14,8 +14,8 @@ import { agentSetSpec, developerSetSpec } from "./server/spec";
 import type { PluginServerContext, PluginHandlerContext, PluginHookContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import type { PluginRpcContract, PluginSubscriptionContract } from "@getpaseo/plugin";
 import { ValueFeed, WorkspacesFeed } from "./server/feeds";
-import { ContextRequests } from "./server/context-requests";
-import { agentContextPrompt, deckCards, overseerContextPrompt } from "./shared/catch-up";
+import { ContextRequests, contextRecipient } from "./server/context-requests";
+import { agentContextPrompt, deckCards } from "./shared/catch-up";
 import { buildHome } from "./shared/home";
 import { needsYou } from "./shared/attention";
 import type { SortMode } from "./shared/sort";
@@ -490,7 +490,7 @@ export default function contribute(server: PluginServerContext) {
       const rows = await gateway.directory.read().catch(() => null);
       const status = new Map((rows?.agents ?? []).map(({ agent }) => [agent.id, agent.status]));
       await contextRequests.reconcile(r => {
-        const item = r.target === "agent" ? queue.get(`message:${r.askedOf}:${r.id}`) : null;
+        const item = queue.get(`message:${r.askedOf}:${r.id}`);
         return { sent: item?.state === "sent" ? item.settledAt ?? null : null, failed: item?.state === "cancelled" || item?.state === "failed" && item.gone ? item.reason ?? "The ask couldn't reach the agent." : null,
           idle: rows ? status.get(r.askedOf!) !== "running" : false };
       });
@@ -953,31 +953,19 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.overseerStatusRpc, async () => { await requireReady(); return overseerStatus(); });
   handle(rpc.overseerStartRpc, async (_input, { paseo }) => { await requireReady(); seen(paseo); await overseer!.start(paseo as unknown as OverseerPaseo); return overseerStatus(); });
   handle(rpc.overseerAskRpc, async ({ text }, { paseo }) => { await requireReady(); seen(paseo); await overseer!.ask(paseo as unknown as OverseerPaseo, text); return overseerStatus(); });
-  // Catch up's More context: the ask is recorded and answered at once; the Overseer's send runs after the reply (it may
-  // start the Overseer), the agent's goes through the message queue (invariant 36). Asking the card's agent may wake
-  // it: the developer asked, the one exception to never-wake (invariant 1). The Overseer reads without waking anyone.
+  // Catch up's More context: the ask is recorded and answered at once, and goes through the message queue (invariant
+  // 36) to the card's workspace's main agent, the only role with context_reply (an-ask-goes-only-to-an-agent-that-can-
+  // answer-it). Asking may wake it: the developer asked, the one exception to never-wake (invariant 1).
   handle(rpc.contextAskRpc, async (input, context) => {
     await requireReady();
     const actor = actorOf(context);
-    if (actor.kind === "agent" && input.target === "agent" && input.agentId === actor.agentId) throw new Error("ask_context asks another agent about its card for the developer; explain your own ask in your reply.");
-    if (input.target === "agent" && !input.agentId) throw new Error("This card has no agent to ask. Ask the Overseer instead.");
-    // Recorded at once, never waiting on Paseo (an-ack-never-waits): the Overseer's id is learnt after its send.
-    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : null);
-    if (!out.fresh) return out;
-    const r = out.request;
-    if (input.target === "agent") enqueueMessage(input.agentId!, agentContextPrompt(r), r.id, actorBy(actor));
-    else {
-      const paseo = (context as { paseo?: unknown }).paseo;
-      void (async () => {
-        try {
-          const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
-          if (!await overseerOn()) throw new Error("The Overseer is off. Turn it on in Settings → Agents, or ask the agent.");
-          const s = await overseer!.ask(paseo as unknown as OverseerPaseo, overseerContextPrompt(r, workspace));
-          if (s.agentId) { await contextRequests.setAskedOf(r.id, s.agentId); await contextRequests.delivered(r.id, new Date().toISOString()); }
-        } catch (error) { await contextRequests.fail(r.id, error instanceof Error ? error.message : String(error)); }
-      })();
-    }
-    return out;
+    // The worker's own snapshot, never a daemon read (an-ack-never-waits).
+    const w = input.workspaceId ? (await store.snapshot()).workspaces.find(x => x.id === input.workspaceId) : undefined;
+    const to = contextRecipient(w, actor.kind === "agent" ? actor.agentId : null);
+    if ("error" in to) throw new Error(to.error);
+    const out = await contextRequests.ask({ ...input, target: "agent" }, actorBy(actor), to.agentId);
+    if (out.fresh) enqueueMessage(to.agentId, agentContextPrompt(out.request), out.request.id, actorBy(actor));
+    return input.target === "overseer" ? { ...out, note: "More context always asks the card's own main agent, which can answer on the card; the Overseer can't, so target is ignored." } : out;
   });
   // Built when read (a-derived-view-is-built-when-read), from state the worker holds: no daemon request but the
   // directory's cached workspace list.
@@ -997,9 +985,6 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.contextListRpc, async ({ workspaceId }) => ({ requests: await contextRequests.list(workspaceId ? { workspaceId } : {}) }));
   handle(rpc.contextReplyRpc, async ({ agentId, requestId, text }) => {
     await requireReady();
-    const r = (await contextRequests.list()).find(x => x.id === requestId);
-    // The Overseer may have been (re)started by the ask itself, so its id is checked now, not when it was asked.
-    if (r?.target === "overseer" && r.askedOf !== agentId && (await overseerStatus().catch(() => null))?.agentId === agentId) await contextRequests.setAskedOf(r.id, agentId);
     await contextRequests.reply(requestId, agentId, text);
     return { ok: true };
   });

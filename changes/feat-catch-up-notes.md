@@ -1,0 +1,2 @@
+- Catch up: once a question has an answer, Send to agent is on the move bar too. More context and Later open right where you are, a sheet above the phone's bar or a popover on desktop, never below the card.
+- More context always asks the workspace's own agent, so its answer always lands on the card. An earlier ask of the Overseer now shows a link to its chat.

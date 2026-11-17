@@ -52,8 +52,8 @@ test("keys never fire while typing, except More context's ask; ⌘↵ follows th
   const typing = { ...idle, typing: true };
   for (const key of ["a", "j", "x", "s", "ArrowRight"]) assert.equal(catchUpKey(press(key), typing), null);
   assert.equal(catchUpKey(press("Enter", { meta: true }), typing), null, "a card field's ⌘↵ is its SubmitScope's");
-  assert.deepEqual(catchUpKey(press("Enter", { meta: true }), { ...typing, moreOpen: true, inMore: true }), { action: "ask-overseer" });
-  assert.deepEqual(catchUpKey(press("Enter", { meta: true, shift: true }), { ...typing, moreOpen: true, inMore: true }), { action: "ask-agent" });
+  assert.deepEqual(catchUpKey(press("Enter", { meta: true }), { ...typing, moreOpen: true, inMore: true }), { action: "ask" });
+  assert.equal(catchUpKey(press("Enter", { meta: true, shift: true }), { ...typing, moreOpen: true, inMore: true }), null, "one Ask: no second target key");
   assert.deepEqual(catchUpKey(press("Enter", { meta: true }), idle), { action: "send" });
   assert.equal(catchUpKey(press("Enter", { ctrl: true }), idle), null, "Ctrl+Enter isn't Send on a Mac");
   assert.deepEqual(catchUpKey(press("Enter", { ctrl: true, mac: false }), idle), { action: "send" });

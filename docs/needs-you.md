@@ -251,22 +251,33 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   the end; Skip moves a card behind the rest (a second pass picks it up); done cards stay so Back can show them.
 - **Keys** (desktop web): every move has one, from the one list `CATCH_UP_KEYS` (`shared/catch-up.ts`) that the
   handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip,
-  K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the Overseer, ⌘⇧↵ the agent), N adds a note, L Later,
+  K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the agent), N adds a note, L Later,
   O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), S shows the keys, X leaves. None is a combo
   Paseo binds (`PASEO_BOUND`): Paseo keeps ? (its shortcuts) and Esc (interrupt agent), so the sheet is S and leaving
   is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). Buttons name their key in their
   tooltip.
-- **More context** (invariant `context-never-blocks-the-deck`): the developer asks the Overseer (it answers from what
-  it can read and wakes no one) or the card's agent (a queued message, invariant 36; asking may wake it, because the
-  developer asked). "I don't get it" is the first suggestion. The ask is recorded (`server/context-requests.ts`,
+- **The move bar** (invariant `a-move-bar-action-opens-in-view`, `MOVE_OPENS`): every move opens its result in view.
+  More context and Later open as a sheet above the phone's bar and as a popover on their desktop button, with focus
+  on their first choice; Add a note focuses its field; Open chat leaves for the chat; R focuses the card's row in the
+  queue. Once a question card has an answer to send, Send to agent joins the bar (on a phone it reads Send, and Skip
+  and More context shrink to icons), running the question's own Send. Other cards keep their one action in the card:
+  a permission is two choices (Allow or Deny), a merge belongs next to what it merges, a brief can hold several
+  questions, and a finished turn's Sign off is already beside its one line.
+- **More context** (invariant `context-never-blocks-the-deck`): the developer asks the card's workspace main agent (a
+  queued message, invariant 36; asking may wake it, because the developer asked). There is one Ask and no choice of
+  who: the main agent is the only role with `context_reply`, so only it can answer on the card
+  (`an-ask-goes-only-to-an-agent-that-can-answer-it`, `contextRecipient`); a contributor's or recovery agent's card
+  asks the main agent too, and a workspace Follow-up doesn't track is refused with a way to its chat. `ask_context`
+  still accepts `target` and ignores it. 2.2.0-beta.3 could ask the Overseer, which can't reply on a card: such an ask
+  still open settles as `chat` on load, with Open Overseer on the card. "I don't get it" is the first suggestion. The ask is recorded (`server/context-requests.ts`,
   `context.json`) and answered at once; the deck moves on to the next workstream, and every card of the asked one
   waits. When the answer arrives (`context_reply`), or the agent ends a turn without it (`chat`: read its chat), or
   the ask fails, the workstream comes back as the very next card, right after the one on screen and never in its
   place, with the answer on the card. The answer reaches the client on `follow.home-feed` (`context`), so nothing
   polls. A finished deck still counts the cards waiting for context, and Back reaches a waiting card at any time,
   which the card and the More context panel say.
-- **An ask always ends.** The ask records when it was delivered (`deliveredAt`: the queue's settle for the card's
-  agent, the Overseer taking it), and the first turn end after that without a `context_reply` settles it as `chat`,
+- **An ask always ends.** The ask records when it was delivered (`deliveredAt`: the queue's settle for the main
+  agent), and the first turn end after that without a `context_reply` settles it as `chat`,
   so a prompt steered into a turn already running counts. After a worker restart, an ask still open is re-derived
   from the queue's record and the cached agent list (delivered to an idle agent: `chat`; a send that failed for good:
   `failed`), never by waking anyone. The prompt carries who asked (`by`): the developer, or the agent that called

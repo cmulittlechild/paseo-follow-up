@@ -1,7 +1,7 @@
 // The question dialog and its answer form. The layout of options with a recommendation, the
 // "what the agent does meanwhile" line and Copy are adapted from Progress
 // (@stevecastaneda/paseo-progress, MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text, copyable } from "./text";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -92,18 +92,26 @@ export function OptionCard({ theme, letter, label, consequence, recommended, sel
 
 const inputStyle = (c: Colors, compact: boolean, lines: number) => ({ minHeight: compact ? 44 : 18 * lines + 16, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface1, fontSize: 13, lineHeight: 18, textAlignVertical: "top" as const });
 
+/** A sendable answer, handed to a surface that also offers Send outside the form (Catch up's move bar). */
+export type SendReady = { send: () => void; busy: boolean };
+
 /**
  * One question with its answer form. Send records the answer and messages the asking agent straight
  * away; Copy records it and puts a reply on the clipboard instead. The one answer flow every question surface draws
  * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
  * (`one-answer-flow-for-every-question`), never from the surface.
  */
-export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false }: {
+export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady }: {
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
   /** Inside the Needs you block: its header says the title and when it was asked, its footer what the agent does meanwhile. */
   inline?: boolean;
   /** The dialog's close: Send and Copy close it at once and report the outcome as a toast. */
   onClose?: () => void;
+  /**
+   * Catch up's move bar: told whenever this answer becomes sendable (or stops being), with this form's own Send, so a
+   * Send outside the card runs exactly this flow (`one-answer-flow-for-every-question`), never a copy of it.
+   */
+  onSendReady?: (send: SendReady | null) => void;
 }) {
   const c = theme.colors; const t = text(c);
   const toast = useToast(); const cache = useQueryClient();
@@ -189,6 +197,11 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     });
     onClose?.(); onAnswered?.();
   };
+  // The footer's Send calls the latest quick through a ref, so it never sends a stale choice or words.
+  const quickRef = useRef(quick); quickRef.current = quick;
+  const sendable = open && !!answer;
+  useEffect(() => { onSendReady?.(sendable ? { send: () => quickRef.current("send"), busy: run.isPending } : null); }, [sendable, run.isPending]);
+  useEffect(() => () => onSendReady?.(null), []);
   // The body says Not sent · Retry itself, with the button; the state line stays on what the agent is doing.
   const state = meanwhile(w, q, null);
   const delivery = deliveryLine(w, q, now);
