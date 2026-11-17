@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { undeliveredEntry } from "../server/message-queue";
-import { DeliveryDeferred } from "../server/delivery";
+import { ConversationGone, DeliveryDeferred } from "../server/delivery";
 import { MESSAGE_STUCK_MS, queueView } from "../shared/queue";
 import { needsYou } from "../shared/attention";
 import { workspaceHeadline } from "../shared/headline";
@@ -45,10 +45,9 @@ test("a forward that never left raises Needs you after MESSAGE_STUCK_MS, with th
   assert.equal(undeliveredEntry(f.queue.get(f.item.id)!, now + MESSAGE_STUCK_MS * 2, "Billing agent", entry.since), null, "sent: the row clears");
 });
 
-test("a Failed forward raises Needs you at once; Cancel drops it and the row clears", async t => {
-  const f = await forward(t, { deliver: async () => { throw new Error("connection reset"); }, arrived: async () => null });
+test("a forward whose conversation is gone raises Needs you at once; Cancel drops it and the row clears", async t => {
+  const f = await forward(t, { deliver: async target => { throw new ConversationGone(target.recipients[0]!, "No conversation found"); } });
   await f.queue.idle();
-  for (let i = 0; i < 4 && f.timers.pending.length; i++) { await f.timers.fire(); await f.queue.idle(); }
   const failed = f.queue.get(f.item.id)!;
   assert.equal(failed.state, "failed");
   const entry = undeliveredEntry(failed, Date.parse(failed.createdAt) + 1_000, null, null)!;
@@ -58,6 +57,16 @@ test("a Failed forward raises Needs you at once; Cancel drops it and the row cle
   const cancelled = f.queue.get(f.item.id)!;
   assert.equal(queueView(cancelled).state, "cancelled");
   assert.equal(undeliveredEntry(cancelled, Date.now(), null, entry.since), null);
+});
+
+test("a forward whose arrival can't be known keeps checking and shows as stuck, never Failed (a-queued-message-never-stops-short)", async t => {
+  const f = await forward(t, { deliver: async () => { throw new Error("connection reset"); }, arrived: async () => null });
+  await f.queue.idle();
+  for (let i = 0; i < 6 && f.timers.pending.length; i++) { await f.timers.fire(); await f.queue.idle(); }
+  const item = f.queue.get(f.item.id)!;
+  assert.equal(item.state, "uncertain"); assert.ok(item.nextAt, "a next check is scheduled");
+  const entry = undeliveredEntry(item, Date.parse(item.createdAt) + MESSAGE_STUCK_MS, null, null)!;
+  assert.equal(entry.state, "queued", "past the stuck window it shows on the workspace, still retrying on its own");
 });
 
 test("queueView never carries the message text, only its first line", async t => {

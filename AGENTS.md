@@ -514,7 +514,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    about 15 s of Paseo coming back), and at once on worker start and whenever the worker's connection reopens. Paseo does not refuse a
    resend by messageId (it skips only the timeline row; the provider runs the prompt again), so a send that may have
    left is never repeated blind: the agent's chat is read for its messageId first (an unloaded agent's transcript on
-   disk, never waking it), and only a ladder of unknowns (15 s, 1 min, 5 min, 15 min) ends in Failed with Retry. The
+   disk, never waking it); a check that can't tell waits 15 s, 1 min, 5 min, then every 15 min, and never ends in
+   Failed (invariant 44). The
    recipient is resolved when it goes out. Every card words it one way (`deliveryStatus`, `shared/queue.ts`).
    2026-11-16: an unconfirmed Q answer was never retried, and a card answer that timed out but arrived went out twice.
    Guarded by `tests/message-queue.test.ts`, `tests/answer-ack.test.ts` and `INVARIANTS`
@@ -578,6 +579,29 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    unchanged versions, downgrades, Install automatically and Off get no available-update line. Dismissal stays per
    version (`available:<version>`). `announcesUpdate` in `shared/changelog.ts` is the one version rule; the updater
    applies the mode and dismissal. Guarded by `tests/updater.test.ts` and `tests/update-announcements.test.ts`.
+
+44. **A queued message never stops short** (`a-queued-message-never-stops-short`). Every way out of a send ends in
+   exactly one of: delivered (confirmed, or found in the agent's chat), a scheduled next try, or Failed because its
+   target can't take messages (its conversation is gone: `gone` and `GONE_REASON`, shown with Retry). An arrival check
+   that can't tell is not a no: it climbs `AMBIGUOUS_MS` and repeats the last step, and so does every unconfirmed
+   resend (an agent Paseo can't load yet is tried at 15 s, 1 min, 5 min, then every 15 min). An unloaded agent's
+   transcript is read back from its end to the send (`markerInFile`, `server/transcript.ts`, at most
+   `MARKER_READ_MAX_BYTES`), so "not there" holds even after a busy agent wrote megabytes, and the message is resent
+   instead of waiting on a load that may never come; Paseo's per-messageId receipts make a resend behind a send still
+   in flight wait for it, never run twice. A loaded agent whose timeline read can't tell (a busy one wrote more than its
+   pages since the send) falls back to the same transcript search, so it too gets a "not there". A messageId Paseo
+   refuses for good (`agent_request_outcome_unknown`, a receipt a dying daemon left pending, or
+   `agent_request_key_conflict`; `idRefused`) is replaced: once the chat shows it missing, the resend goes under a
+   fresh id derived from it (`generation`), and every arrival check looks for every id the item went out under
+   (`sentIds`). A restart resumes what it left: `sending` reads
+   back `uncertain` and an old Failed whose target isn't gone goes back to checking, both due at once. No new timer:
+   the item's own retry time is the only wake-up, and nothing reads an agent that isn't loaded. 2026-11-17: another
+   plugin's refresh took the agent out of Paseo's agent manager for 27 minutes (its turn had ended); the answer's send
+   waited on the reload until the client's 60 s timeout, four checks couldn't tell (the agent wasn't loaded, and its
+   transcript counted only a find), and it ended Failed 22 minutes later with no next try, never reaching the agent.
+   Later the same day: a refused id was resent under the same id forever, and a busy loaded agent's checks stayed
+   unknown forever. Guarded by `queueItemStop` (`shared/queue.ts`) over a grid of send outcomes and arrival answers in
+   `tests/message-queue.test.ts`, `tests/queue-tools.test.ts` and `INVARIANTS`.
 
 45. **More context never blocks the deck** (`context-never-blocks-the-deck`). In Catch up, asking for more context
    about a card (the Overseer or the card's agent) records the ask and moves the deck on to the next workstream at

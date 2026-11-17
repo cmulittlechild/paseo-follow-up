@@ -358,8 +358,17 @@ Overseer forwards and reports handed to an agent (`message`).
 - **Left unconfirmed: read the chat first.** An error after the message went out, or the attempt's 2-minute deadline,
   makes it `uncertain` (Retrying). Paseo doesn't refuse a resend by messageId, so before any resend `arrivedMessage`
   (`server/daemon.ts`) looks for it: a loaded agent's timeline by clientMessageId, an unloaded agent's provider
-  transcript on disk by its first line (never waking it). Found: Sent. Not there: resent. Unknown: the next
-  `AMBIGUOUS_MS` step (15 s, 1 min, 5 min, 15 min); after the last, Failed with Retry, which resends without asking.
+  transcript on disk by its first line, read back from its end to the send (`markerInFile`, at most
+  `MARKER_READ_MAX_BYTES`; never waking it, and "not there" only when the read reaches back past the send). Found:
+  Sent. Not there: resent. Unknown: the next `AMBIGUOUS_MS` step (15 s, 1 min, 5 min, then every 15 min), never Failed
+  (`a-queued-message-never-stops-short`). Every unconfirmed resend climbs the same ladder, so an agent Paseo can't
+  load yet isn't sent to every 15 s. A loaded agent whose timeline read can't tell (a busy one) falls back to the same
+  transcript search. A messageId Paseo refuses for good (a stuck receipt or a key conflict, `idRefused`) is replaced
+  by a fresh derived id on the resend that follows a "not there", and the check looks for every id the item used
+  (`sentIds`).
+- **Failed means gone.** Only a send whose agent's conversation is gone (`ConversationGone`) ends Failed, with
+  `GONE_REASON` and Retry, which resends without asking. A Failed item from an older version whose target isn't gone
+  goes back to checking when the worker loads the queue.
 - **A reload mid-send** reads `sending` back as `uncertain`, so the chat is checked before it goes again.
 - **Small file.** Sent and cancelled items leave `queue.json` once their record shows it; the newest `QUEUE_RECENT`
   stay, without text.

@@ -196,8 +196,9 @@ function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
     const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");
     items.push({ kind: "check", key: `check:${a.id}`, actionId: a.id, ...(a.prs.length === 1 ? linkFor(a.prs[0]) : {}), title: `Check the ${a.kind === "merge" ? "merge" : a.kind === "request_reviewers" ? "reviewer request" : "merge-when-ready change"} on ${numbers}`, detail: a.result });
   }
-  // The queue's rare loud case (a-message-is-saved-before-sent-and-arrives-once): the chat couldn't confirm the answer
-  // after the whole retry ladder, so it is the developer's to check and Retry. Everything else retries on its own.
+  // The queue's rare loud case (a-message-is-saved-before-sent-and-arrives-once): the agent's conversation is gone, so
+  // it is the developer's to check and Retry. Everything else, an unknown arrival included, retries on its own
+  // (a-queued-message-never-stops-short).
   for (const q of questions.filter(q => q.answer?.delivery.state === "failed"))
     items.push({ kind: "answer", key: `answer:${q.id}`, questionId: q.id, title: `Your ${q.id} answer: Failed`, detail: deliveryStatus({ state: "failed", reason: q.answer!.delivery.reason }).detail });
   // A message with no card of its own that didn't go out (a-message-is-saved-before-sent-and-arrives-once).

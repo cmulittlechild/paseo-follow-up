@@ -160,6 +160,62 @@ const HEAD_BYTES = 256 * 1024;
 export type TranscriptItem = { type: "user_message" | "assistant_message" | "tool_call"; text?: string; name?: string; detail?: { output: string } };
 
 /** The first and last bytes of a file; lines cut at the edges are dropped. */
+/**
+ * Whether a transcript's read part holds `marker` since `sinceMs`: true when a line has it; false only when the read
+ * part provably reaches back to `sinceMs` (the whole file was read, or its first dated line is no later) and no line has
+ * it; null otherwise. Lines are JSONL (Claude and Codex both date each line with `timestamp`).
+ */
+export function markerSince(lines: readonly string[], whole: boolean, sinceMs: number, marker: string): boolean | null {
+  if (!marker) return null;
+  const needle = JSON.stringify(marker).slice(1, -1);
+  if (lines.some(line => line.includes(needle))) return true;
+  return whole || reachesBack(lines, sinceMs) ? false : null;
+}
+/** Whether the first dated line (`"timestamp"`) is no later than `sinceMs`: the lines cover everything since then. */
+function reachesBack(lines: readonly string[], sinceMs: number): boolean {
+  for (const line of lines) {
+    const m = /"timestamp"\s*:\s*"([^"]+)"/.exec(line);
+    if (!m) continue;
+    const at = Date.parse(m[1]!);
+    if (Number.isFinite(at)) return at <= sinceMs;
+  }
+  return false;
+}
+
+
+/** How far back from its end a transcript is read for a send's marker, in chunks. Only an unconfirmed send reads it. */
+export const MARKER_READ_MAX_BYTES = 32 * 1024 * 1024;
+const MARKER_CHUNK_BYTES = 1024 * 1024;
+
+/**
+ * Whether the transcript at `path` holds `marker` since `sinceMs`, read backwards from its end in 1 MB chunks until a
+ * chunk reaches back past `sinceMs`, the file's start, or MARKER_READ_MAX_BYTES: a busy agent writes megabytes between a
+ * send and its check, so a fixed tail can't say "not there". Each chunk is searched raw for the marker first; only the
+ * chunk's first dated line is parsed. Same answers as markerSince.
+ */
+export async function markerInFile(path: string, sinceMs: number, marker: string, maxBytes = MARKER_READ_MAX_BYTES): Promise<boolean | null> {
+  if (!marker) return null;
+  const needle = Buffer.from(JSON.stringify(marker).slice(1, -1));
+  const handle = await open(path, "r");
+  try {
+    const size = (await handle.stat()).size;
+    let end = size; let carry = Buffer.alloc(0);
+    while (end > 0 && size - end < maxBytes) {
+      const start = Math.max(0, end - MARKER_CHUNK_BYTES);
+      const buf = Buffer.alloc(end - start);
+      const { bytesRead } = await handle.read(buf, 0, buf.length, start);
+      // The chunk plus the next one's head, so a marker cut at the edge is still found.
+      const joined = Buffer.concat([buf.subarray(0, bytesRead), carry.subarray(0, needle.length)]);
+      if (joined.includes(needle)) return true;
+      if (start === 0) return false;
+      const lines = buf.subarray(0, bytesRead).toString("utf8").split("\n"); lines.shift();
+      if (reachesBack(lines, sinceMs)) return false;
+      carry = buf.subarray(0, bytesRead); end = start;
+    }
+    return null;
+  } finally { await handle.close(); }
+}
+
 export async function headAndTail(path: string): Promise<{ head: string[]; tail: string[] }> {
   const handle = await open(path, "r");
   try {

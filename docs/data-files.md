@@ -23,7 +23,7 @@ Everything lives in `$PASEO_HOME/plugin-data/follow-up/`.
 | `tools-instance.json` | `index.server.ts` | This worker's instance id, to detect detached native tools. |
 | `brief.json` | `index.server.ts` | Whether the inbox and the nudge are on, plus agents with a permission prompt showing. Read by the hook and the bridge. |
 | `inbox.json` | `server/inbox.ts` | One Needs-you flag per root agent, snoozes, finish flags, briefs, the delivery ledger (`by: "agent:<id>"` for agent actions), the `outbox` 2.0 kept brief answers in (moved to `queue.json` once, then empty), and per tracked PR the state each PR flag last notified (`notified`). |
-| `queue.json` | `server/message-queue.ts` | The message queue: every message to an agent waiting, in flight or retrying (answers today), with its state, retry time and last envelope messageId; the newest settled ones without text; the one-time moves done (`migrations`). Saved before each send. |
+| `queue.json` | `server/message-queue.ts` | The message queue: every message to an agent waiting, in flight or retrying (answers today), with its state, retry time, last envelope messageId and every messageId it went out under (`sentIds`); the newest settled ones without text; the one-time moves done (`migrations`). Saved before each send. |
 | `agents.json` | `server/agent-settings.ts` | Settings → Agents: per-role provider, model, effort and mode, plus `enable_wait`. |
 | `reviewers.json` | `server/reviewer-config.ts` | Reviewer lists per repository, plus a default. |
 | `context.json` | `server/context-requests.ts` | Catch up's More context asks and their answers: at most 50, none older than 24 h. Saved behind the reply; losing it costs a re-ask. |

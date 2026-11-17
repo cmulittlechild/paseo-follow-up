@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, AMBIGUOUS_MS, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
-import { ConversationGone, DeliveryDeferred, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
+import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, ambiguousDelay, GONE_REASON, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
+import { ConversationGone, DeliveryDeferred, idRefused, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
 import type { Workspace } from "../shared/model";
 
@@ -17,7 +17,8 @@ import type { Workspace } from "../shared/model";
  *   forever, and at once on worker start and when the daemon connection comes back. It never ends in failed.
  * - A send that left unconfirmed (an error after the message went out, the attempt's deadline) is `uncertain`: before
  *   any resend the agent's chat is read for the messageId (Courier.arrived). There: sent. Not there: resent. Unknown:
- *   the next AMBIGUOUS_MS step, and failed only after the whole ladder. Paseo never refuses a resend by messageId (it
+ *   the next AMBIGUOUS_MS step, its last step repeating until the chat can tell: never failed. Only a gone conversation
+ *   (ConversationGone) ends failed, the one way out that isn't delivered or a next try. Paseo never refuses a resend by messageId (it
  *   only skips the timeline row; the provider runs the prompt again), so a blind resend arrives twice.
  * - The recipient is resolved when the envelope goes out (Channel.resolve), never at enqueue: an answer whose asker was
  *   archived reaches the workspace's agent, and a workspace no longer followed cancels it with a reason on the card.
@@ -49,6 +50,8 @@ export interface Courier {
 }
 
 export const QUEUE_FILE = "queue.json";
+/** Why an uncertain item waits (Retrying's reason): the same words the card shows from the first unconfirmed send. */
+export const UNKNOWN_REASON = "Paseo didn't confirm it";
 
 /**
  * FOLLOW_UP_QUEUE_TIME_SCALE shrinks the retry ladder, for harness runs only. It counts only when the data dir is under
@@ -99,13 +102,18 @@ export class MessageQueue {
 
   register(kind: QueueKind, channel: Channel): void { this.channels.set(kind, channel); }
 
-  /** Reads queue.json. A send a reload interrupted is `uncertain`: its chat is read before anything is resent. */
+  /**
+   * Reads queue.json. A send a reload interrupted is `uncertain`: its chat is read before anything is resent. A Failed
+   * item whose target isn't gone (an older version gave up after the ladder of unknowns) goes back to checking, so no
+   * message stays stopped short across an upgrade (a-queued-message-never-stops-short).
+   */
   async load(): Promise<void> {
     let file: QueueFile = { version: 1, items: [], recent: [], migrations: [] };
     try { file = queueFileSchema.parse(JSON.parse(await readFile(join(this.directory, QUEUE_FILE), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.warn(`[follow-up] queue.json unreadable, starting empty: ${error instanceof Error ? error.message : String(error)}`); }
     for (const item of file.items) {
       if (item.state === "sending") Object.assign(item, { state: "uncertain", reason: "Follow-up reloaded mid-send", nextAt: this.iso() });
+      else if (item.state === "failed" && !item.gone) Object.assign(item, item.envelope ? { state: "uncertain", reason: UNKNOWN_REASON, nextAt: this.iso() } : { state: "queued", reason: null, nextAt: this.iso() });
       this.items.set(item.id, item);
     }
     this.recent = file.recent; this.migrations = file.migrations; this.loaded = true;
@@ -265,9 +273,10 @@ export class MessageQueue {
       const arrived = await this.check(item, r.target);
       if (arrived.found) { await this.settle(item, "sent", null, arrived.found); return null; }
       if (arrived.unknown) {
+        // An unknown isn't a no: check again on the ladder, its last step for as long as the chat can't tell. Never
+        // failed here (a-queued-message-never-stops-short): only a gone target stops a message.
+        Object.assign(item, { reason: UNKNOWN_REASON, nextAt: this.iso(ambiguousDelay(item.unknowns) * this.scale) });
         item.unknowns++;
-        if (item.unknowns >= AMBIGUOUS_MS.length) { item.state = "failed"; item.nextAt = null; item.reason = "Follow-up couldn't confirm the agent got it."; }
-        else item.nextAt = this.iso(AMBIGUOUS_MS[item.unknowns] * this.scale);
         await this.project(item); this.save();
         return null;
       }
@@ -277,9 +286,13 @@ export class MessageQueue {
   private async check(item: QueueItem, target: Target): Promise<{ found: string | null; unknown: boolean }> {
     const env = item.envelope!;
     const marker = item.text.split("\n")[0]!.slice(0, 200);
+    // Every id it went out under: a resend under a fresh id (a refused one) mustn't hide that the first one landed.
+    const ids = [...new Set([...item.sentIds, env.messageId])];
+    // An earlier id went out before this envelope: read back to the item's start for it.
+    const since = ids.length > 1 ? item.createdAt : env.at;
     let unknown = false;
-    for (const agentId of env.to ? [env.to] : target.recipients) {
-      const seen = await this.courier.arrived(agentId, env.messageId, env.at, marker).catch(() => null);
+    for (const agentId of env.to ? [env.to] : target.recipients) for (const id of ids) {
+      const seen = await this.courier.arrived(agentId, id, since, marker).catch(() => null);
       if (seen === true) return { found: agentId, unknown: false };
       if (seen === null) unknown = true;
     }
@@ -291,9 +304,12 @@ export class MessageQueue {
    * the chat showed it missing is the same message again.
    */
   private async send(items: QueueItem[], target: Target): Promise<void> {
-    const messageId = items.length === 1 ? items[0]!.messageId : stableMessageId(`envelope:${items.map(i => i.id).join("|")}`);
+    const base = items.length === 1 ? items[0]!.messageId : stableMessageId(`envelope:${items.map(i => i.id).join("|")}`);
+    // A messageId Paseo refused for good (a stuck receipt) is replaced by one derived from it, the same on every resend.
+    const generation = Math.max(...items.map(i => i.generation));
+    const messageId = generation ? stableMessageId(`${base}:${generation}`) : base;
     const at = this.iso();
-    for (const item of items) Object.assign(item, { state: "sending", envelope: { messageId, to: null, at }, nextAt: null });
+    for (const item of items) Object.assign(item, { state: "sending", envelope: { messageId, to: null, at }, nextAt: null, sentIds: item.sentIds.includes(messageId) ? item.sentIds : [...item.sentIds, messageId].slice(-50) });
     await this.saveNow();
     for (const item of items) await this.project(item);
     if (this.stopped) return;
@@ -308,8 +324,14 @@ export class MessageQueue {
       if (this.stopped) return;
       for (const item of items) {
         if (error instanceof DeliveryDeferred) { item.envelope = null; await this.neverLeft(item, error.message); continue; }
-        if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, gone: error.agentId, reason: "The agent's conversation is gone, so it can't take messages." }); await this.project(item); continue; }
-        Object.assign(item, { state: "uncertain", reason: "Paseo didn't confirm it", nextAt: this.iso(AMBIGUOUS_MS[Math.min(item.unknowns, AMBIGUOUS_MS.length - 1)] * this.scale) });
+        if (error instanceof ConversationGone) { Object.assign(item, { state: "failed", nextAt: null, gone: error.agentId, reason: GONE_REASON }); await this.project(item); continue; }
+        // Each unconfirmed send climbs the same ladder as a check that can't tell, so an agent Paseo can't load yet
+        // (every send times out, every check says it isn't there) is tried at 15 s, 1 min, 5 min, then every 15 min,
+        // not every 15 s.
+        Object.assign(item, { state: "uncertain", reason: UNKNOWN_REASON, nextAt: this.iso(ambiguousDelay(item.unknowns) * this.scale) });
+        item.unknowns++;
+        // Paseo refused this id for good: the resend (only after the chat shows it missing) goes under a fresh one.
+        if (idRefused(error) && item.generation === generation) item.generation++;
         await this.project(item);
       }
       if (!(error instanceof DeliveryDeferred)) console.warn(`[follow-up] message to ${target.recipients.join(", ")} not confirmed: ${error instanceof Error ? error.message : String(error)}`);
