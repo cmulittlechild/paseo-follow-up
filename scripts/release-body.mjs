@@ -15,7 +15,7 @@
 // major's, see notesVersion), including the collapsed "Full changelog" under it. A beta renders the changes/
 // fragments added since the previous tag, as they are; they stay in changes/ for the next stable or rc. Betas from
 // before fragments existed use their own CHANGELOG.md section where one was written. This is the GitHub page only:
-// What's new in the app stays major-only.
+// What's new in the app shows a stable's or an rc's curated section after the update; betas stay quiet there.
 // Everything is read from git at the tag (CHANGELOG.md, paseo-plugin.json, changes/), so it renders old tags too.
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

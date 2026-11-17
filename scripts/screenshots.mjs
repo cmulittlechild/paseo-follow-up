@@ -1,6 +1,7 @@
 // Re-shoots every README image from the current UI: `npm run shots` (through ~/paseo-harness/tools/harness-slot).
 // Usage: node scripts/screenshots.mjs [--out <dir>] [--only home,panel,...] [--scheme dark|light] [--scale <n>]
-//                                     [--whats-new-changelog <CHANGELOG.md>] [--whats-new-all] [--notes-review] [--keep]
+//                                     [--whats-new-changelog <CHANGELOG.md>] [--whats-new-all] [--notes-review]
+//                                     [--whats-new-review] [--keep]
 //                                     [--as-version <X.Y.Z>]
 // `--as-version` installs the packed plugin under that version, so Home and the panel read "vX.Y.Z" (stable notes
 // and README images never show an rc). The notes shots set their own scale: notes-home 2x, notes-panel 3x.
@@ -1006,6 +1007,7 @@ async function putInChatShots({ shoot, seeded, call, billing }) {
 
 async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("feeds")) return checkFeeds({ seeded, call, cli, home });
+  if (argv.includes("--whats-new-review")) return whatsNewReview({ shoot, seeded, plugin, home, cli, call });
   const billing = WORKSPACES.find(w => w.key === "billing");
   // Review evidence for Rename title with AI (not README images): the row menu item, the panel's More button and menu, the
   // dialog suggesting, ready, edited and failed, the toast with Undo and the Undo link; desktop and phone, dark and light.
@@ -2150,6 +2152,54 @@ const SAMPLE_2_0 = `## 2.0.0
 - The composer pill shows what needs you in the chat you're in.
 - Getting started checks GitHub and the helper agents, and shows what Follow-up does on its own.
 `;
+/**
+ * Review evidence for "What's new after every update" (not README images): the sheet after a minor update (2.0.1 to
+ * 2.1.0, this repo's own 2.1.0 section) on desktop and phone, and Settings → General's switch on and off, desktop and
+ * phone. The off state is set the way an agent would, through set_updates.
+ */
+async function whatsNewReview({ shoot, seeded, plugin, home, cli, call }) {
+  const FROM = "2.0.1", TO = "2.1.0";
+  const installed = (await cli("plugin", "ls")).find(row => row.id === "follow-up")?.path ?? plugin;
+  const pkgPath = join(installed, "package.json");
+  const pkg = JSON.parse(await fs.readFile(pkgPath, "utf8"));
+  await fs.writeFile(pkgPath, JSON.stringify({ ...pkg, version: TO }, null, 2));
+  await fs.writeFile(join(installed, "CHANGELOG.md"), await fs.readFile("CHANGELOG.md", "utf8"));
+  await fs.writeFile(join(home, "plugin-data/follow-up/versions.json"), JSON.stringify({ running: FROM, previous: null, startedAt: null, hostSeen: FROM }));
+  await cli("plugin", "reload", "follow-up");
+  let seenVersion = null;
+  await until(() => `the ${TO} worker (it reports ${seenVersion})`, async () => (seenVersion = (await call("follow.release-notes", {}).catch(() => ({ version: null }))).version) === TO, { tries: 120, every: 500 });
+  const sheet = phone => async page => {
+    await openHome(page, { keepDialogs: true });
+    if (phone) await page.setViewportSize(PHONE);
+    await page.getByText(`What's new in Follow-up ${TO}`).first().waitFor();
+    await page.waitForFunction(() => [...document.images].every(i => i.complete), null, { timeout: 30000 });
+  };
+  await shoot("whats-new-minor", DESKTOP, "dark", sheet(false), { seen: FROM });
+  await shoot("whats-new-minor-phone", PHONE, "light", sheet(true), { seen: FROM });
+  const serverId = (await fs.readFile(join(home, "server-id"), "utf8")).trim();
+  const LABEL = "Show What's new after updates";
+  const general = phone => async page => {
+    await page.goto(`${new URL(page.url()).origin}/settings/hosts/${serverId}/plugins/follow-up/projects`);
+    if (phone) {
+      await page.setViewportSize(PHONE);
+      const row = page.getByText("General", { exact: true }).filter({ visible: true });
+      await row.or(page.getByText(LABEL)).first().waitFor({ state: "visible" });
+      if (!(await page.getByText(LABEL).first().isVisible())) await row.first().click();
+    }
+    const label = page.getByText(LABEL).first();
+    await label.waitFor();
+    await label.evaluate(el => el.scrollIntoView({ block: "center" }));
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    if (overflow) throw new Error("horizontal overflow");
+    return null;
+  };
+  await shoot("whats-new-setting-on", DESKTOP, "dark", general(false), { seen: TO });
+  await shoot("whats-new-setting-on-phone", PHONE, "light", general(true), { seen: TO });
+  await actPlanned(call, seeded.workspaces.find(w => w.key === "audit").agentId, "set_updates", { enable_whats_new: false });
+  await shoot("whats-new-setting-off", DESKTOP, "dark", general(false), { seen: TO });
+  await shoot("whats-new-setting-off-phone", PHONE, "light", general(true), { seen: TO });
+}
+
 /** The CHANGELOG for the What's new shot: --whats-new-changelog, else this repo's with a `## 2.0.0` section in front if it has none. */
 async function whatsNewChangelog() {
   if (changelogArg) return fs.readFile(changelogArg, "utf8");

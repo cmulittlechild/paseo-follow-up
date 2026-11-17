@@ -7,7 +7,7 @@ export type { InstallKind } from "./changelog";
 /**
  * Settings → General: the view the server sends, and the words each state shows. Pure, so every state's copy is
  * testable without rendering. Also the contract for onboarding's Updates step: it reads `follow.updates` and writes
- * `follow.set-updates` with `{ mode, channel }`, exactly like Settings.
+ * `follow.set-updates` with `{ mode, channel }`, exactly like Settings (which also writes `enable_whats_new`).
  */
 
 export const UPDATE_MODES = ["auto", "notify", "off"] as const;
@@ -44,6 +44,8 @@ export const updatesViewSchema = z.object({
   installKind: z.enum(INSTALL_KINDS),
   mode: z.enum(UPDATE_MODES),
   channel: z.enum(["stable", "beta"]),
+  /** What's new opens after an update that brings new release notes (stables only). Applies to every install kind. */
+  enable_whats_new: z.boolean().default(true),
   /** Newest version on each channel per the last check (null: nothing published, or never checked). */
   channels: z.object({ stable: z.string().nullable(), beta: z.string().nullable() }),
   checkedAt: z.number().nullable(),
@@ -61,7 +63,13 @@ export const updatesViewSchema = z.object({
 });
 export type UpdatesView = z.infer<typeof updatesViewSchema>;
 
-export const setUpdatesInputSchema = z.strictObject({ mode: z.enum(UPDATE_MODES).optional(), channel: z.enum(["stable", "beta"]).optional() });
+export const setUpdatesInputSchema = z.strictObject({ mode: z.enum(UPDATE_MODES).optional(), channel: z.enum(["stable", "beta"]).optional(), enable_whats_new: z.boolean().optional() });
+export type UpdatesChange = z.infer<typeof setUpdatesInputSchema>;
+/** Settings → General's What's new switch: its label and the hint for each state. */
+export const WHATS_NEW_LABEL = "Show What's new after updates";
+export const whatsNewHint = (on: boolean) => on
+  ? "Opens once after an update that brings new release notes. Betas stay quiet."
+  : "Updates install quietly. Release notes below still show every version.";
 
 const ago = (ms: number) => {
   const m = Math.round(ms / 60_000);

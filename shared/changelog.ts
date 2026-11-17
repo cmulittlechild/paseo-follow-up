@@ -119,12 +119,17 @@ export type WhatsNewInput = {
   previous: string | null;
   /** Onboarding is showing or not finished: never cover it. */
   onboarding: boolean;
+  /** Settings → General's "Show What's new after updates" (`enable_whats_new`); absent means on. */
+  enabled?: boolean;
   notes: readonly ReleaseNote[];
 };
 export type WhatsNew =
   | { show: true; notes: ReleaseNote[] }
-  /** `record` is the version to store as seen without showing anything (first install, downgrade, nothing new). */
-  | { show: false; reason: "first-run" | "onboarding" | "seen" | "older" | "not-major" | "no-notes"; record: string | null };
+  /**
+   * `record` is the version to store as seen without showing anything (first install, downgrade, a beta, the setting
+   * off, nothing new).
+   */
+  | { show: false; reason: "first-run" | "onboarding" | "seen" | "older" | "off" | "prerelease" | "no-notes"; record: string | null };
 
 /**
  * The major a version belongs to once released: a beta of X.0.0 (2.0.0-beta.1) is still before X, while a release
@@ -137,9 +142,9 @@ function releasedMajor(v: string): number | null {
 }
 
 /**
- * The one rule for every prompt Follow-up makes about its own updates (the What's new sheet, and any update notice):
- * only a newly released major version earns one (1.x to 2.0). Betas, minors and patches are recorded quietly; their
- * changes wait in changes/ and ship in the next stable release's notes. A first install (no `from`) is never announced.
+ * Home's "Follow-up X is available" line (Tell me mode, server/updater.ts) shows only for a newly released major
+ * (1.x to 2.0). Betas, minors and patches wait in Settings → General. A first install (no `from`) is never announced.
+ * Not What's new's rule: that sheet opens after any update with notes (`whatsNew`).
  */
 export function announcesUpdate(from: string | null, to: string): boolean {
   if (!from) return false;
@@ -148,19 +153,28 @@ export function announcesUpdate(from: string | null, to: string): boolean {
 }
 
 /**
- * Whether this device shows "What's new" now. With no baseline at all (no device record and no previous daemon
- * version) this is a first install: onboarding covers it, so the installed version is recorded silently. Onboarding
- * wins over the sheet and leaves the stored version alone, so the sheet can come after onboarding ends. Only a new
- * major opens it (announcesUpdate); any other update records the installed version silently.
+ * A beta (any prerelease but a major's rc, which carries the major's curated section). Betas ship no notes of their
+ * own in the app, so What's new records them quietly; the next stable shows everything since the device last looked.
  */
-export function whatsNew({ installed, deviceSeen, previous, onboarding, notes }: WhatsNewInput): WhatsNew {
+export const quietRelease = (version: string): boolean => (parseVersion(version)?.pre.length ?? 0) > 0 && !isMajorRc(version);
+
+/**
+ * Whether this device shows "What's new" now (invariant `whats-new-after-every-stable-update`): What's new opens after a stable update that brings new release notes, unless the switch is off; betas never do
+ * (only stables carry notes). New means a CHANGELOG section newer than the version this device last saw; with none, no
+ * sheet ("no-notes"). A major's rc carries the major's section and counts as its release. Quiet, recording the
+ * installed version: a first install (no baseline at all; onboarding covers it), a downgrade, a beta, and the switch
+ * off (so turning it back on never brings old notes). Onboarding wins over the
+ * sheet and leaves the stored version alone, so the sheet can come after onboarding ends.
+ */
+export function whatsNew({ installed, deviceSeen, previous, onboarding, enabled = true, notes }: WhatsNewInput): WhatsNew {
   if (onboarding) return { show: false, reason: "onboarding", record: null };
   const lastSeen = deviceSeen ?? previous;
   if (!lastSeen) return { show: false, reason: "first-run", record: installed };
   const c = compareVersions(installed, lastSeen);
   if (c === 0) return { show: false, reason: "seen", record: deviceSeen ? null : installed };
   if (c < 0) return { show: false, reason: "older", record: installed };
-  if (!announcesUpdate(lastSeen, installed)) return { show: false, reason: "not-major", record: installed };
+  if (!enabled) return { show: false, reason: "off", record: installed };
+  if (quietRelease(installed)) return { show: false, reason: "prerelease", record: installed };
   const since = notesSince(notes, lastSeen, installed);
   return since.length ? { show: true, notes: since } : { show: false, reason: "no-notes", record: installed };
 }
@@ -201,6 +215,8 @@ export const releaseNotesViewSchema = z.object({
   updatedAt: z.number().nullable(),
   /** The last version anyone on this host closed What's new for: the "seen" record for apps without local storage. */
   hostSeen: z.string().nullable(),
+  /** Settings → General's "Show What's new after updates" (updates.json); off records each update as seen quietly. */
+  enable_whats_new: z.boolean().default(true),
   /** Every shipped release note, newest first. */
   notes: z.array(releaseNoteSchema),
 });

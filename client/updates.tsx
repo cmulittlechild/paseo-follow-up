@@ -2,11 +2,11 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, copyText, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dismissUpdateNoticeRpc, installUpdateRpc, retryMoveRpc, setUpdatesRpc, updatesRpc } from "../shared/contracts";
 import { moveLine } from "../shared/plugin-move";
-import { MODE_HINT, MODE_LABEL, UPDATE_MODES, channelHint, checkedText, copyCommand, statusCopy, versionMark, type StatusAction, type UpdateMode, type UpdatesView } from "../shared/updates";
+import { MODE_HINT, MODE_LABEL, UPDATE_MODES, WHATS_NEW_LABEL, channelHint, checkedText, copyCommand, statusCopy, versionMark, whatsNewHint, type StatusAction, type UpdateMode, type UpdatesChange, type UpdatesView } from "../shared/updates";
 import { writeCategory } from "../shared/settings-nav";
 import type { Channel } from "../shared/version";
 import { Button, errorText, space, text, useNow, type Theme } from "./kit";
@@ -14,7 +14,7 @@ import { Spinner } from "./motion";
 import { Disclosure } from "./settings-shell";
 import { withAlpha } from "./theme";
 import { OptionCard } from "./questions";
-import { ReleaseNotesSheet, VersionNotes } from "./release-notes";
+import { ReleaseNotesSheet, VersionNotes, releaseNotesKey } from "./release-notes";
 
 export const updatesKey = ["follow-up", "updates"];
 
@@ -142,7 +142,8 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
   const write = useRpc(setUpdatesRpc); const cache = useQueryClient(); const toast = useToast();
   // null: closed; false: What's new (since the last update); true: every version.
   const [sheet, setSheet] = useState<boolean | null>(null);
-  const save = useMutation({ mutationFn: (input: { mode?: UpdateMode; channel?: Channel }) => write(input), onSuccess: v => cache.setQueryData(updatesKey, v), onError: e => toast.error(errorText(e)) });
+  // The What's new gate reads the switch from the release notes view, so a change refreshes that too.
+  const save = useMutation({ mutationFn: (input: UpdatesChange) => write(input), onSuccess: (v, input) => { cache.setQueryData(updatesKey, v); if (input.enable_whats_new != null) void cache.invalidateQueries({ queryKey: releaseNotesKey }); }, onError: e => toast.error(errorText(e)) });
   const view = query.data;
   if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label="Loading updates" />;
   if (!view) return <SettingsSection title="Updates"><Text accessibilityRole="alert" style={{ color: c.statusDanger }}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text></SettingsSection>;
@@ -160,6 +161,7 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
           options={[{ value: "stable", label: "Stable" }, { value: "beta", label: "Beta" }]}
           onValueChange={channel => save.mutate({ channel }, { onSuccess: () => toast.show(channel === "stable" ? "Switched to Stable. Nothing changes until a newer stable is out." : "Switched to Beta. The next check looks for betas.") })} />
         </>}
+        <SettingsSwitch label={WHATS_NEW_LABEL} hint={whatsNewHint(view.enable_whats_new)} value={view.enable_whats_new} disabled={save.isPending} onValueChange={enable_whats_new => save.mutate({ enable_whats_new })} />
         <SettingsAction label="Release notes" hint={`Every version up to ${view.version}, newest first.`} actionLabel="See all" onPress={() => setSheet(true)} />
       </SettingsCard>
     </SettingsSection>

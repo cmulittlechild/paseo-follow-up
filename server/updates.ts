@@ -7,6 +7,8 @@ import type { UpdateMode } from "../shared/updates";
 export type UpdatesFile = {
   mode?: UpdateMode;
   channel?: Channel;
+  /** Show What's new after an update (Settings → General); absent means on. Off records each version as seen quietly. */
+  enable_whats_new?: boolean;
   /** Home notices the developer closed, by id. */
   dismissed?: string[];
   /** A newer version allowed to install, waiting for a quiet moment. `manual`: Install now asked for it. */
@@ -39,7 +41,7 @@ export class UpdatesStore {
  * Defaults: the channel follows the installed version. An existing install starts at Tell me; a fresh one at Install
  * automatically, which setup shows pre-selected and saves when passed or skipped.
  */
-export function settingsOf(file: UpdatesFile, version: string, fallback: UpdateMode = "notify"): { mode: UpdateMode; channel: Channel } {
-  return { mode: file.mode ?? fallback, channel: isChannel(file.channel) ? file.channel : defaultChannel(version) };
+export function settingsOf(file: UpdatesFile, version: string, fallback: UpdateMode = "notify"): { mode: UpdateMode; channel: Channel; enable_whats_new: boolean } {
+  return { mode: file.mode ?? fallback, channel: isChannel(file.channel) ? file.channel : defaultChannel(version), enable_whats_new: file.enable_whats_new !== false };
 }
 

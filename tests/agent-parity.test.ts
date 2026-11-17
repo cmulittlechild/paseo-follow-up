@@ -154,3 +154,16 @@ test("search_shortcut round-trips through set_display and display_settings", asy
   await f.agent.run("a", "set_display", { confirm: true, planId: plan.planId });
   assert.equal((await f.agent.run("a", "display_settings", {}) as { values: { search_shortcut: string } }).values.search_shortcut, "none");
 });
+
+test("set_updates enable_whats_new: Settings → General's What's new switch, planned and audited like mode and channel", async () => {
+  const f = rpcFixture();
+  const plan = await f.agent.run("orchestrator", "set_updates", { enable_whats_new: false }) as { dryRun: boolean; planId: string; change: unknown; before: unknown };
+  assert.equal(plan.dryRun, true);
+  assert.deepEqual(plan.change, { enable_whats_new: false });
+  assert.deepEqual(f.calls.map(c => c.method), ["follow.updates"], "the dry run only read updates_status");
+  await f.agent.run("orchestrator", "set_updates", { confirm: true, planId: plan.planId });
+  assert.deepEqual(f.calls.at(-1), { method: "follow.set-updates", input: { enable_whats_new: false } });
+  assert.deepEqual(f.notes, ["agent:orchestrator>orchestrator:set_updates"], "audited in the ledger as the agent");
+  const tool = actionTools.find((t: unknown[]) => t[0] === "set_updates") as unknown as [string, string, string, Record<string, unknown>];
+  assert.ok("enable_whats_new" in tool[3] && /What's new/.test(tool[1]), "the tool takes and describes the switch");
+});
