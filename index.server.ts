@@ -14,6 +14,11 @@ import { agentSetSpec, developerSetSpec } from "./server/spec";
 import type { PluginServerContext, PluginHandlerContext, PluginHookContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import type { PluginRpcContract, PluginSubscriptionContract } from "@getpaseo/plugin";
 import { ValueFeed, WorkspacesFeed } from "./server/feeds";
+import { ContextRequests } from "./server/context-requests";
+import { agentContextPrompt, deckCards, overseerContextPrompt } from "./shared/catch-up";
+import { buildHome } from "./shared/home";
+import { needsYou } from "./shared/attention";
+import type { SortMode } from "./shared/sort";
 import type { ZodType, output as zOutput } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isTimeZone } from "./shared/inbox";
@@ -207,6 +212,8 @@ export default function contribute(server: PluginServerContext) {
   prWorkflow.onChanged = () => { void store.snapshot().then(state => store.onChanged(state)).catch(() => undefined); };
   const browser = new BrowserBridge();
   const reviewerStore = new ReviewerConfigStore(directory);
+  const contextRequests = new ContextRequests(directory);
+  contextRequests.onChange = () => feeds.home();
   // an-ack-never-waits-on-the-disk (server/write-behind.ts): these files save behind the reply; one still failing after
   // SURFACE_AFTER attempts shows as the worker's error line until it lands.
   const writeHealth = new WriteHealth();
@@ -472,7 +479,7 @@ export default function contribute(server: PluginServerContext) {
     await inbox.adoptOutbox().catch(error => console.warn(`[follow-up] couldn't move the answer outbox onto the queue: ${error instanceof Error ? error.message : String(error)}`));
     queue.start();
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
-  for (const file of [store, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
+  for (const file of [store, contextRequests.persist, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
   const requireReady = async () => { if (waiting) throw new Error(waiting); await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
   // 1.4.0-beta.2: Follow-up's tools per agent: natively through Paseo's MCP when the host serves plugin tools,
   // otherwise the stdio bridge for this launch only. FOLLOW_UP_TOOLS tells the hooks which names the agent has.
@@ -929,6 +936,55 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.overseerStatusRpc, async () => { await requireReady(); return overseerStatus(); });
   handle(rpc.overseerStartRpc, async (_input, { paseo }) => { await requireReady(); seen(paseo); await overseer!.start(paseo as unknown as OverseerPaseo); return overseerStatus(); });
   handle(rpc.overseerAskRpc, async ({ text }, { paseo }) => { await requireReady(); seen(paseo); await overseer!.ask(paseo as unknown as OverseerPaseo, text); return overseerStatus(); });
+  // Catch up's More context: the ask is recorded and answered at once; the Overseer's send runs after the reply (it may
+  // start the Overseer), the agent's goes through the message queue (invariant 36). Asking the card's agent may wake
+  // it: the developer asked, the one exception to never-wake (invariant 1). The Overseer reads without waking anyone.
+  handle(rpc.contextAskRpc, async (input, context) => {
+    await requireReady();
+    const actor = actorOf(context);
+    if (actor.kind === "agent" && input.target === "agent" && input.agentId === actor.agentId) throw new Error("ask_context asks another agent about its card for the developer; explain your own ask in your reply.");
+    if (input.target === "agent" && !input.agentId) throw new Error("This card has no agent to ask. Ask the Overseer instead.");
+    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : (await overseerStatus().catch(() => null))?.agentId ?? null);
+    if (!out.fresh) return out;
+    const r = out.request;
+    if (input.target === "agent") enqueueMessage(input.agentId!, agentContextPrompt(r), r.id, "developer");
+    else {
+      const paseo = (context as { paseo?: unknown }).paseo;
+      const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
+      void (async () => {
+        try {
+          if (!await overseerOn()) throw new Error("The Overseer is off. Turn it on in Settings → Agents, or ask the agent.");
+          const s = await overseer!.ask(paseo as unknown as OverseerPaseo, overseerContextPrompt(r, workspace));
+          if (s.agentId) await contextRequests.setAskedOf(r.id, s.agentId);
+        } catch (error) { await contextRequests.fail(r.id, error instanceof Error ? error.message : String(error)); }
+      })();
+    }
+    return out;
+  });
+  // Built when read (a-derived-view-is-built-when-read), from state the worker holds: no daemon request but the
+  // directory's cached workspace list.
+  handle(rpc.catchUpDeckRpc, async () => {
+    await requireReady();
+    const [state, list, paseoList, priorities, settings, context] = await Promise.all([store.snapshot(), inbox.list(), paseoWorkspaces(), priorityStore.read(), inboxSettings(), contextRequests.list()]);
+    const tracked = state.workspaces.filter(w => w.enable_tracking);
+    const byId = new Map(tracked.map(w => [w.id, w]));
+    const model = buildHome({ rows: list.rows, tracked, paseo: paseoList, now: Date.now(), sort: (settings as { home_sort?: SortMode }).home_sort, priorities });
+    const cards = deckCards({ model, rows: list.rows, items: id => { const w = byId.get(id); return w ? needsYou(w) : []; } });
+    return { cards: cards.map(c => {
+      const r = [...context].reverse().find(x => x.cardKey === c.key);
+      return { key: c.key, kind: c.kind, workspaceId: c.s.workspaceId, agentId: c.s.agentId, title: c.s.title, line: c.s.line, questionId: c.questionId ?? null,
+        item: c.item && "title" in c.item ? String((c.item as { title?: unknown }).title ?? "") || null : null, context: r ? { id: r.id, state: r.state, target: r.target } : null };
+    }) };
+  });
+  handle(rpc.contextListRpc, async ({ workspaceId }) => ({ requests: await contextRequests.list(workspaceId ? { workspaceId } : {}) }));
+  handle(rpc.contextReplyRpc, async ({ agentId, requestId, text }) => {
+    await requireReady();
+    const r = (await contextRequests.list()).find(x => x.id === requestId);
+    // The Overseer may have been (re)started by the ask itself, so its id is checked now, not when it was asked.
+    if (r?.target === "overseer" && r.askedOf !== agentId && (await overseerStatus().catch(() => null))?.agentId === agentId) await contextRequests.setAskedOf(r.id, agentId);
+    await contextRequests.reply(requestId, agentId, text);
+    return { ok: true };
+  });
   handle(rpc.overseerRestartRpc, async (_input, { paseo }) => { await requireReady(); seen(paseo); await overseer!.restart(paseo as unknown as OverseerPaseo); return overseerStatus(); });
   // The provider catalog for Settings → Agents: read only when that screen asks, cached ten minutes.
   const providerCatalog = new ProviderCatalog(async () => {
@@ -1303,9 +1359,9 @@ export default function contribute(server: PluginServerContext) {
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list() };
     },
-    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive]),
+    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
     onFirst: () => { usageWatch = usage.watch(() => void homeFeed.changed()); },
     onLast: () => { usageWatch?.close(); usageWatch = null; },
@@ -1449,6 +1505,8 @@ export default function contribute(server: PluginServerContext) {
     // handlers below read the patched rows.
     server.on("agent.turn_started", async event => gateway.directory.turnStarted(event.agent, event.turnId)),
     server.on("agent.turn_ended", async event => gateway.directory.turnEnded(event.agent, event.outcome)),
+    server.on("agent.turn_started", async event => contextRequests.turnStarted(event.agent.id)),
+    server.on("agent.turn_ended", async event => contextRequests.turnEnded(event.agent.id)),
     server.on("agent.permission_requested", async event => gateway.directory.permissionRequested(event.agent.id, event.request as { id?: string })),
     server.on("agent.permission_resolved", async event => gateway.directory.permissionResolved(event.agent.id, event.requestId)),
     server.on("agent.archived", async event => gateway.directory.agentArchived(event.agent.id, event.archivedAt)),
@@ -1570,7 +1628,7 @@ export default function contribute(server: PluginServerContext) {
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ files: [reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [contextRequests, reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   })();
   return stop;
 }

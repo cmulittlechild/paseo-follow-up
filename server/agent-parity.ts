@@ -69,6 +69,14 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "overseer_start", rpc: "follow.overseer-start", kind: "planned", before: { rpc: "follow.overseer-status" }, input: z.strictObject({ ...confirm }) },
   { name: "overseer_restart", rpc: "follow.overseer-restart", kind: "planned", before: { rpc: "follow.overseer-status" }, input: z.strictObject({ ...confirm }) },
   { name: "overseer_ask", rpc: "follow.overseer-ask", kind: "planned", input: z.strictObject({ text: z.string().trim().min(1).max(2000).optional(), ...confirm }) },
+  // Catch up: the deck, and More context (ask, read the asks); the asked agent answers with context_reply
+  { name: "catch_up_deck", rpc: "follow.catch-up-deck", kind: "read", input: none },
+  { name: "context_requests", rpc: "follow.context-list", kind: "read", input: z.strictObject({ workspaceId: id.optional() }) },
+  { name: "ask_context", rpc: "follow.context-ask", kind: "planned", before: { rpc: "follow.context-list", input: a => ({ workspaceId: a.workspaceId ?? undefined }) },
+    input: z.strictObject({ workspaceId: id.nullable().optional(), agentId: id.nullable().optional(), cardKey: z.string().min(1).max(400).optional(), card: z.string().trim().min(1).max(300).optional(),
+      target: z.enum(["overseer", "agent"]).optional(), ask: z.string().trim().min(1).max(2000).optional(), ...confirm }),
+    toRpc: a => ({ workspaceId: a.workspaceId ?? null, agentId: a.agentId ?? null, cardKey: a.cardKey, card: a.card, target: a.target, ask: a.ask }),
+    guard: (a, caller) => a.target === "agent" && a.agentId === caller ? "ask_context asks another agent about its card; explain your own ask in your reply." : null },
   // Needs-you: the brief card and the inbox's other actions
   // The message queue: what waits to go to agents, and Retry or Cancel on one item (a card's Retry, Needs you's message row).
   { name: "queue_list", rpc: "follow.queue-list", kind: "read", input: z.strictObject({ workspaceId: id.optional(), agentId: id.optional() }) },
@@ -206,5 +214,6 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
  * note says where an agent finds what the developer found.
  */
 export const VIEW_PARITY: Record<string, { tools: readonly string[]; note: string }> = {
+  "catch-up": { tools: ["catch_up_deck", "answer_question", "brief_action", "inbox_act", "snooze", "ask_context"], note: "Catch up deals Needs you one card at a time; moving between cards (Skip, Back) changes only the developer's view. catch_up_deck reads the same deck, and every act on a card is a tool: answer_question, brief_action, inbox_act and snooze (Later), ask_context (More context). A permission is Paseo's own respond_to_permission." },
   "section-search": { tools: ["workspace_status", "list_prs"], note: "The panel's Pull requests, Tasks and Activity search filters lists an agent already reads whole: workspace_status returns the workspace's PRs (title, branch, failed checks), tasks with their evidence, questions with their answers, and the sends, merges and PR actions the timeline is drawn from; list_prs returns every tracked PR with its checks." },
 };

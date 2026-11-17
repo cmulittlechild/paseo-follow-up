@@ -236,6 +236,28 @@ Queued with when it retries, Retrying, Failed with **Retry**, Not sent) and clea
   ([ai-roles.md](ai-roles.md)).
 - **Priority sort** reads `follow.priorities` ([ai-roles.md](ai-roles.md)).
 
+## Catch up
+
+Catch up deals Needs you one card at a time: act, next, act, next. Design and Tom's picks:
+[design/catch-up.md](design/catch-up.md).
+
+- **The deck** (`deckCards`, `shared/catch-up.ts`): one card per ask, in Home's Needs-you order (the tiers, then
+  `home_sort`). Inside a workstream: a pending permission, each open question, every other Needs-you item, then the
+  agent's own brief ask when nothing above speaks for it; a finished turn with nothing to decide is one card. Cards of
+  one workstream sit together, so its context is read once. The client deals it from Home's model (no read of its
+  own); `catch_up_deck` deals the same deck for an agent.
+- **The session** (`Session`, `startSession`, `settle`, `park`, `sync`, `nextPos`): pure, so the screen and the tests
+  agree. A card that leaves Needs you elsewhere is `gone`, never pulled from under the developer; a new one joins at
+  the end; Skip moves a card behind the rest (a second pass picks it up); done cards stay so Back can show them.
+- **More context** (invariant `context-never-blocks-the-deck`): the developer asks the Overseer (it answers from what
+  it can read and wakes no one) or the card's agent (a queued message, invariant 36; asking may wake it, because the
+  developer asked). "I don't get it" is the first suggestion. The ask is recorded (`server/context-requests.ts`,
+  `context.json`) and answered at once; the deck moves on to the next workstream, and every card of the asked one
+  waits. When the answer arrives (`context_reply`), or the agent ends a turn without it (`chat`: read its chat), or
+  the ask fails, the workstream comes back as the very next card, right after the one on screen and never in its
+  place, with the answer on the card. The answer reaches the client on `follow.home-feed` (`context`), so nothing
+  polls. A finished deck still counts the cards waiting for context.
+
 ## Answers waiting to be sent
 
 `an-answer-leaves-needs-you-only-when-delivered`. Copy and Put in chat move the developer's own words without

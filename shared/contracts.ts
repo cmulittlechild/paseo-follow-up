@@ -9,6 +9,7 @@ import { aboutViewSchema } from "./about";
 import { LINKED_KINDS, linkedItemSchema } from "./linked";
 import { AGENT_ROLES, agentSettingsViewSchema, savedRoleSchema } from "./agent-settings";
 import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
+import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
 import { z } from "zod";
 import { inboxRowSchema } from "./inbox";
@@ -205,6 +206,18 @@ export const overseerStatusSchema = z.object({ enabled: z.boolean(), agentId: z.
 export const overseerStatusRpc = defineRpc({ name: "follow.overseer-status", input: z.object({}), output: overseerStatusSchema });
 export const overseerStartRpc = defineRpc({ name: "follow.overseer-start", input: z.object({}), output: overseerStatusSchema });
 export const overseerAskRpc = defineRpc({ name: "follow.overseer-ask", input: z.strictObject({ text: z.string().trim().min(1).max(2000) }), output: overseerStatusSchema });
+// Catch up's More context (docs/needs-you.md#catch-up): ask the Overseer or the card's agent, list the asks, and the
+// asked agent's reply. The ask answers once it is recorded; the send to the agent goes through the message queue.
+export const contextAskRpc = defineRpc({ name: "follow.context-ask", input: z.strictObject({
+  workspaceId: z.string().min(1).max(200).nullable(), agentId: z.string().min(1).max(200).nullable(), cardKey: z.string().min(1).max(400),
+  card: z.string().trim().min(1).max(300), target: z.enum(CONTEXT_TARGETS), ask: z.string().trim().min(1).max(2000) }),
+  output: z.object({ request: contextRequestSchema, fresh: z.boolean() }) });
+export const contextListRpc = defineRpc({ name: "follow.context-list", input: z.strictObject({ workspaceId: z.string().max(200).optional() }), output: z.object({ requests: z.array(contextRequestSchema) }) });
+/** Catch up's deck as the developer's Home would deal it (agent parity: an agent sees what the developer goes through). */
+export const catchUpDeckRpc = defineRpc({ name: "follow.catch-up-deck", input: z.strictObject({}), output: z.object({
+  cards: z.array(z.object({ key: z.string(), kind: z.string(), workspaceId: z.string().nullable(), agentId: z.string().nullable(), title: z.string(), line: z.string(),
+    questionId: z.string().nullable(), item: z.string().nullable(), context: contextRequestSchema.pick({ id: true, state: true, target: true }).nullable() })) }) });
+export const contextReplyRpc = defineRpc({ name: "follow.context-reply", input: z.strictObject({ agentId: z.string().min(1).max(200), requestId: z.string().min(1).max(80), text: z.string().trim().min(1).max(CONTEXT_ANSWER_MAX) }), output: z.object({ ok: z.boolean() }) });
 export const rankStatusSchema = z.object({ enabled: z.boolean(), running: z.boolean(), lastRunAt: z.string().nullable(), healthLine: z.string(), error: z.string().nullable(), costUsd: z.number().nullable(), notStarted: z.number().int(),
   last: z.object({ ok: z.boolean(), skipped: z.string().nullable(), top: z.string().nullable(), provider: z.string().nullable(), inputTokens: z.number().nullable(), outputTokens: z.number().nullable() }).nullable() });
 export const rankStatusRpc = defineRpc({ name: "follow.rank-status", input: z.object({}), output: rankStatusSchema });
@@ -296,6 +309,8 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   usage: usageSchema.nullable(),
   /** False when Smart Session's data directory can't be watched: the client reads usage once a minute instead. */
   usageLive: z.boolean(),
+  /** Catch up's More context asks (pushed when one is asked or answered); absent from an older worker. */
+  context: z.array(contextRequestSchema).optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
 export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed] as const;
