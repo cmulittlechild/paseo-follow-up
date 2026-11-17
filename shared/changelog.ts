@@ -132,24 +132,14 @@ export type WhatsNew =
   | { show: false; reason: "first-run" | "onboarding" | "seen" | "older" | "off" | "prerelease" | "no-notes"; record: string | null };
 
 /**
- * The major a version belongs to once released: a beta of X.0.0 (2.0.0-beta.1) is still before X, while a release
- * candidate (2.0.0-rc.0) is X: it carries X's notes, so 1.x to rc.0 announces 2.0 once, and rc.N to X.0.0 doesn't again.
- */
-function releasedMajor(v: string): number | null {
-  const p = parseVersion(v);
-  if (!p) return null;
-  return p.pre.length && p.minor === 0 && p.patch === 0 && !isMajorRc(v) ? p.major - 1 : p.major;
-}
-
-/**
- * Home's "Follow-up X is available" line (Tell me mode, server/updater.ts) shows only for a newly released major
- * (1.x to 2.0). Betas, minors and patches wait in Settings → General. A first install (no `from`) is never announced.
- * Not What's new's rule: that sheet opens after any update with notes (`whatsNew`).
+ * Home's "Follow-up X is available" line (Tell me mode, server/updater.ts) announces every newer stable release.
+ * Prereleases stay in Settings → General, including major release candidates. A first install (no `from`), an
+ * unchanged version and a downgrade are never announced. What's new has its own notes-based rule (`whatsNew`).
  */
 export function announcesUpdate(from: string | null, to: string): boolean {
-  if (!from) return false;
-  const a = releasedMajor(from), b = releasedMajor(to);
-  return a != null && b != null && b > a;
+  if (!from || !parseVersion(from)) return false;
+  const target = parseVersion(to);
+  return target != null && target.pre.length === 0 && compareVersions(to, from) > 0;
 }
 
 /**

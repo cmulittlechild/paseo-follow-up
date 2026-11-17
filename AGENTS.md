@@ -562,6 +562,12 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the attempt finishes, without rejecting shutdown.
    Guarded by `tests/worker-stop.test.ts` and `tests/worker-lock.test.ts`.
 
+41. **Home announces every newer stable in Tell me mode** (`update-notice-every-stable`). Major, minor and patch
+   releases count, including a beta to its stable release. Prereleases stay in Settings → General. First installs,
+   unchanged versions, downgrades, Install automatically and Off get no available-update line. Dismissal stays per
+   version (`available:<version>`). `announcesUpdate` in `shared/changelog.ts` is the one version rule; the updater
+   applies the mode and dismissal. Guarded by `tests/updater.test.ts` and `tests/update-announcements.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

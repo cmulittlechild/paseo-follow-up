@@ -15,7 +15,7 @@ export type UpdateMode = typeof UPDATE_MODES[number];
 export const MODE_LABEL: Record<UpdateMode, string> = { auto: "Install automatically", notify: "Tell me", off: "Off" };
 export const MODE_HINT: Record<UpdateMode, string> = {
   auto: "Installs new versions when no agent is using Follow-up. Checked about every 6 hours.",
-  notify: "Shows new versions here and on Home. You choose when to install.",
+  notify: "Shows new versions here and new stable versions on Home. You choose when to install.",
   off: "No checks on its own. You can still check and install from here.",
 };
 export const MODE_SHORT: Record<UpdateMode, string> = { auto: "installs automatically", notify: "tells you", off: "updates off" };

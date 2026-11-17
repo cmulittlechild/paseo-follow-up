@@ -8,7 +8,7 @@ import { compareVersions } from "../shared/version";
 // It opens once per device (a major's rc carries the major's section and counts as its release). A first install, onboarding, a downgrade, a beta and the
 // switch off are recorded quietly; the switch off records the installed version, so turning it back on never brings
 // old notes. whatsNew in shared/changelog.ts is the one rule; the grid below enforces it.
-// Home's "Follow-up X is available" line is a separate notice and stays major-only (update-notice-major-only,
+// Home's "Follow-up X is available" line announces every newer stable (update-notice-every-stable,
 // announcesUpdate, tests/updater.test.ts).
 
 const VERSIONS = ["1.3.0", "1.4.0-beta.0", "1.4.0-beta.28", "1.4.0-beta.29", "1.4.0", "1.4.1", "1.5.0", "2.0.0-beta.0", "2.0.0-beta.1", "2.0.0", "2.0.1", "2.1.0-beta.0", "2.1.0", "3.0.0"];
@@ -52,14 +52,16 @@ test("grid: a sheet opens exactly for a newer stable with notes, the setting on,
   }
 });
 
-test("announcesUpdate (Home's available-update line): a major counts when it is released, so beta-channel users still see 2.0", () => {
-  assert.equal(announcesUpdate("1.4.0-beta.29", "2.0.0"), true);
-  assert.equal(announcesUpdate("1.4.0", "2.0.0-beta.0"), false, "a 2.0 beta is not 2.0 yet");
-  assert.equal(announcesUpdate("2.0.0-beta.1", "2.0.0"), true, "the 2.0 beta channel still gets the 2.0 line");
-  assert.equal(announcesUpdate("2.0.0", "2.1.0-beta.0"), false);
-  assert.equal(announcesUpdate("1.4.0", "1.5.0"), false);
-  assert.equal(announcesUpdate("2.0.0", "1.4.0"), false, "a downgrade");
-  assert.equal(announcesUpdate(null, "2.0.0"), false, "a first install");
+test("grid (update-notice-every-stable): version eligibility includes first install and downgrade", () => {
+  const cases: [string | null, string, boolean][] = [
+    ["1.4.0-beta.29", "2.0.0", true], ["1.4.0", "1.5.0", true], ["1.4.0", "1.4.1", true],
+    ["1.4.0", "2.0.0-beta.0", false], ["2.0.0", "2.1.0-beta.0", false],
+    ["2.2.0-beta.3", "2.2.0", true], ["2.2.0-beta.3", "2.2.0-beta.4", false],
+    ["1.4.0", "2.0.0-rc.0", false], ["2.0.0-rc.0", "2.0.0", true],
+    [null, "2.0.0", false], ["2.0.0", "1.4.0", false], ["2.0.0", "2.0.0", false],
+    ["invalid", "2.0.0", false], ["1.4.0", "invalid", false],
+  ];
+  for (const [from, to, want] of cases) assert.equal(announcesUpdate(from, to), want, `${from} -> ${to}`);
 });
 
 test("Home's 'Updated to X · What's new' needs notes of X's own", () => {

@@ -275,8 +275,8 @@ export class Updater {
     let notice: UpdatesView["notice"] = null;
     if (me.installKind === "npm") {
       if (phase.kind === "rolled-back") notice = { id: `rolled-back:${phase.version}`, kind: "rolled-back", version: phase.version, from: phase.from };
-      // Only a new major earns a Home notice (announcesUpdate, the one rule for update prompts); any other available
-      // version stays a quiet row in Settings → General. The rollback notice reports a failure, not an update.
+      // Every newer stable earns a Home notice in Tell me mode; prereleases stay in Settings → General.
+      // The rollback notice reports a failure, not an available update.
       else if (phase.kind === "available" && mode === "notify" && announcesUpdate(me.version, phase.version)) notice = { id: `available:${phase.version}`, kind: "available", version: phase.version, from: null };
       if (notice && dismissed.has(notice.id)) notice = null;
     }

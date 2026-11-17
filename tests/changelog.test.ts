@@ -314,7 +314,7 @@ test("what's new: 1.x to 2.0.0-rc.0 shows 2.0's notes once; later rcs and 2.0.0 
   assert.ok(at("2.0.0", "1.4.0-beta.32").show, "but someone skipping the rc still sees 2.0 once");
   assert.deepEqual(at("2.0.0-beta.1", "1.4.0-beta.32"), { show: false, reason: "prerelease", record: "2.0.0-beta.1" }, "a beta of 2.0 stays quiet");
   assert.equal(notesVersion("2.0.0-rc.3"), "2.0.0"); assert.equal(notesVersion("2.0.0-beta.1"), "2.0.0-beta.1"); assert.equal(notesVersion("2.1.0-rc.0"), "2.1.0-rc.0");
-  assert.equal(announcesUpdate("2.0.0-rc.0", "2.0.0"), false); assert.equal(announcesUpdate("1.4.0-beta.32", "2.0.0-rc.0"), true);
+  assert.equal(announcesUpdate("2.0.0-rc.0", "2.0.0"), true); assert.equal(announcesUpdate("1.4.0-beta.32", "2.0.0-rc.0"), false);
   assert.deepEqual(recentNotes({ version: "2.0.0-rc.0", previous: "2.0.0-rc.0", notes: majors }).map(n => n.version), ["2.0.0"], "opened by hand, the rc shows 2.0's notes");
   assert.equal(recentUpdate({ version: "2.0.0-rc.0", previous: "1.4.0-beta.32", updatedAt: 1, notes: majors }, 2), true, "Home's Updated to 2.0.0-rc.0 · What's new line");
 });
