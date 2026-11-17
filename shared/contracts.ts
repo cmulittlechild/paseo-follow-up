@@ -210,8 +210,10 @@ export const overseerAskRpc = defineRpc({ name: "follow.overseer-ask", input: z.
 // asked agent's reply. The ask answers once it is recorded; the send to the agent goes through the message queue.
 export const contextAskRpc = defineRpc({ name: "follow.context-ask", input: z.strictObject({
   workspaceId: z.string().min(1).max(200).nullable(), agentId: z.string().min(1).max(200).nullable(), cardKey: z.string().min(1).max(400),
-  card: z.string().trim().min(1).max(300), target: z.enum(CONTEXT_TARGETS), ask: z.string().trim().min(1).max(2000) }),
-  output: z.object({ request: contextRequestSchema, fresh: z.boolean() }) });
+  card: z.string().trim().min(1).max(300),
+  /** Ignored: every ask goes to the card's workspace's main agent. Still accepted, so older callers don't break. */
+  target: z.enum(CONTEXT_TARGETS).optional(), ask: z.string().trim().min(1).max(2000) }),
+  output: z.object({ request: contextRequestSchema, fresh: z.boolean(), note: z.string().optional() }) });
 export const contextListRpc = defineRpc({ name: "follow.context-list", input: z.strictObject({ workspaceId: z.string().max(200).optional() }), output: z.object({ requests: z.array(contextRequestSchema) }) });
 /** Catch up's deck as the developer's Home would deal it (agent parity: an agent sees what the developer goes through). */
 export const catchUpDeckRpc = defineRpc({ name: "follow.catch-up-deck", input: z.strictObject({}), output: z.object({

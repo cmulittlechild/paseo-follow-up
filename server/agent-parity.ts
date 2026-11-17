@@ -75,8 +75,9 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "ask_context", rpc: "follow.context-ask", kind: "planned", before: { rpc: "follow.context-list", input: a => ({ workspaceId: a.workspaceId ?? undefined }) },
     input: z.strictObject({ workspaceId: id.nullable().optional(), agentId: id.nullable().optional(), cardKey: z.string().min(1).max(400).optional(), card: z.string().trim().min(1).max(300).optional(),
       target: z.enum(["overseer", "agent"]).optional(), ask: z.string().trim().min(1).max(2000).optional(), ...confirm }),
-    toRpc: a => ({ workspaceId: a.workspaceId ?? null, agentId: a.agentId ?? null, cardKey: a.cardKey, card: a.card, target: a.target, ask: a.ask }),
-    guard: (a, caller) => a.target === "agent" && a.agentId === caller ? "ask_context asks another agent about its card; explain your own ask in your reply." : null },
+    // target is accepted and ignored: the server sends every ask to the card's workspace main agent, and refuses an
+    // agent asking itself (an-ask-goes-only-to-an-agent-that-can-answer-it).
+    toRpc: a => ({ workspaceId: a.workspaceId ?? null, agentId: a.agentId ?? null, cardKey: a.cardKey, card: a.card, target: a.target, ask: a.ask }) },
   // Needs-you: the brief card and the inbox's other actions
   // The message queue: what waits to go to agents, and Retry or Cancel on one item (a card's Retry, Needs you's message row).
   { name: "queue_list", rpc: "follow.queue-list", kind: "read", input: z.strictObject({ workspaceId: id.optional(), agentId: id.optional() }) },

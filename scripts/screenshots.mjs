@@ -2079,9 +2079,28 @@ async function catchUpShots({ shoot, call }) {
   await shoot("cu-keys-pick-desktop-dark", DESKTOP, "dark", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("b"); await page.waitForTimeout(400); });
   await shoot("cu-keys-rail-desktop-light", DESKTOP, "light", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("r"); await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown"); page.keepFocus = true; await page.waitForTimeout(400); });
   await shoot("cu-keys-more-desktop-dark", DESKTOP, "dark", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("m"); await page.keyboard.press("2"); await page.waitForTimeout(700); });
+  // Tom's notes on beta.3. Once a card has an answer, Send to agent is on the move bar too.
+  const pickB = page => page.locator("[data-catch-up-card]").getByRole("radio", { name: /^B\. / }).filter({ visible: true }).first().click();
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-footer-send-phone-${theme}`, PHONE, theme, async page => { await enter(page, PHONE, "fail with card_declined retry"); await pickB(page); await page.waitForTimeout(500); });
+    await shoot(`cu-footer-send-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await pickB(page); await page.waitForTimeout(500); });
+  }
+  // a-move-bar-action-opens-in-view: More context and Later open where you are, a sheet above the phone's bar (the
+  // keyboard down and up, the ask box focused) and a popover on the desktop button. Nothing scrolls them into view here.
+  const KB_UP = { width: PHONE.width, height: 508 };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-more-sheet-phone-${theme}`, PHONE, theme, async page => { await enter(page, PHONE, "fail with card_declined retry"); await more(page); page.keepFocus = true; await page.waitForTimeout(600); });
+    await shoot(`cu-more-sheet-kb-up-phone-${theme}`, KB_UP, theme, async page => {
+      await enter(page, PHONE, "fail with card_declined retry"); await more(page);
+      await page.getByLabel("What do you want to know?").filter({ visible: true }).first().focus();
+      page.keepFocus = true; await page.setViewportSize(KB_UP); await page.waitForTimeout(800);
+    });
+    await shoot(`cu-more-popover-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await more(page); page.keepFocus = true; await page.waitForTimeout(600); });
+  }
+  await shoot("cu-later-sheet-phone-dark", PHONE, "dark", async page => { await enter(page, PHONE, "fail with card_declined retry"); await page.getByRole("button", { name: /^Later$/ }).filter({ visible: true }).first().click(); page.keepFocus = true; await page.waitForTimeout(600); });
+  await shoot("cu-later-popover-desktop-light", DESKTOP, "light", async page => { await enter(page, DESKTOP, "fail with card_declined retry"); await page.keyboard.press("l"); page.keepFocus = true; await page.waitForTimeout(600); });
   // a-focused-field-and-its-send-stay-in-view: writing your own answer on a phone, the keyboard down (390x844) and up
   // (390x508, the page resized for it). The bar steps aside; the field and its Send stay in view.
-  const KB_UP = { width: PHONE.width, height: 508 };
   for (const theme of ["light", "dark"]) for (const [kb, frame] of [["kb-down", PHONE], ["kb-up", KB_UP]]) {
     await shoot(`cu-own-${kb}-phone-${theme}`, frame, theme, async page => {
       await enter(page, PHONE, "fail with card_declined retry");

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, overseerContextPrompt, park, prevPos, pruneContext, settle, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, park, prevPos, pruneContext, settle, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
 import type { NeedItem } from "../shared/attention";
 import type { Workstream } from "../shared/home";
 
@@ -126,13 +126,12 @@ const request = (patch: Partial<ContextRequest> = {}): ContextRequest => context
 
 test("context prompts carry the request id and never read as the developer's answer", () => {
   const r = request();
-  for (const text of [agentContextPrompt(r), overseerContextPrompt(r, "acme-billing")]) {
+  for (const text of [agentContextPrompt(r)]) {
     assert.match(text, /ctx-1/);
     assert.match(text, /context_reply/);
     assert.ok(!/\bTom\b/.test(text));
   }
   assert.match(agentContextPrompt(r), /isn't their answer/);
-  assert.match(overseerContextPrompt(r, "acme-billing"), /without waking agents/);
 });
 
 test("context requests are pruned by age and count", () => {

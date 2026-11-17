@@ -633,6 +633,28 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    elsewhere is marked gone in place (with a way on), a new card joins at the end, a skipped card comes round after the
    rest, and a returning workstream lands after the current card. Guarded by `tests/catch-up.test.ts`.
 
+47. **A move-bar action opens in view** (`a-move-bar-action-opens-in-view`). Every action on Catch up's move bar opens
+   its result where the eye already is, never appended below the card for the developer to scroll to. Where each one
+   opens is one table, `MOVE_OPENS` (`shared/catch-up.ts`): More context and Later open as a sheet in the phone's dock,
+   above the bar, and as a popover on their button on desktop (`MoveResult`, which takes focus, its first choice, and
+   scrolls into view the least distance); Add a note focuses its field, which DockedPane or the browser brings into
+   view; Open chat leaves for the chat; R focuses the card's row in the queue. With the keyboard up the sheet stays
+   above it, so the ask box and its Ask buttons stay in view (invariant 43). Once a question card has an answer to
+   send, Send to agent joins the bar too: the question's own Send (`onSendReady` on `QuestionBody`), never a second
+   copy of the flow. 2026-11-17, Tom on 2.2.0-beta.3: "you press it and nothing happens, you need to realize you need to
+   scroll down." Guarded by `tests/move-bar-in-view.test.ts`.
+
+48. **An ask goes only to an agent that can answer it** (`an-ask-goes-only-to-an-agent-that-can-answer-it`). A More
+   context ask (the card's Ask, or `ask_context`) goes to the card's workspace main agent (`contextRecipient`,
+   `server/context-requests.ts`; `CONTEXT_REPLY_ROLE`), the only role whose tool list has `context_reply`, so every
+   answer can reach the card. Contributors, recovery agents and untracked agents (the Overseer among them) don't get
+   `context_reply`, so no ask is routed to them: a contributor's card asks its main agent, an untracked workspace is
+   refused with a way to its chat, and `target` on `ask_context` is accepted and ignored. A closed main agent is still
+   asked (the queue resumes it, or fails the ask). An Overseer ask 2.2.0-beta.3 left open settles as `chat` on load.
+   2026-11-17, Tom: "I chose to add context through the overseer and it worked badly"; the Overseer's reply was refused
+   with "Tracking must be active". Guarded by `tests/context-recipient.test.ts`, which builds the tool list for each
+   role.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

@@ -18,11 +18,11 @@ import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN } from "../
 import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, park, prevPos, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
 import type { Workspace } from "../shared/model";
 import type { ListWorkspace } from "../shared/list";
-import { bottomInset, Button, IconButton, text, type Theme } from "./kit";
+import { bottomInset, Button, focusSoon, IconButton, SubmitScope, text, type Theme } from "./kit";
 import { glyphColor } from "./home-list";
 import { useHomeModel, type HomeSources } from "./home-data";
 import { useInbox } from "./inbox";
-import { QuestionBody } from "./questions";
+import { QuestionBody, type SendReady } from "./questions";
 import { NeedsYouList } from "./needs-you";
 import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
@@ -93,13 +93,6 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   useEffect(() => { void extras.refreshContext(); }, [session.pos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [more, setMore] = useState(false);
-  // M opens More context below the card's answers; bring it into view so the key's result is never off screen.
-  useEffect(() => {
-    if (!more || Platform.OS !== "web") return;
-    const t = setTimeout(() => (globalThis as { document?: { querySelector(q: string): { scrollIntoView?(o: object): void } | null } }).document
-      ?.querySelector("[data-catch-up-more]")?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }), 50);
-    return () => clearTimeout(t);
-  }, [more]);
   const key = session.order[session.pos];
   const card = cardOf(key);
   const gone = !!key && session.outcomes[key] === "gone";
@@ -113,9 +106,9 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const nextCard = cardOf(session.order[session.pos + 1]);
   useWorkspace(live, nextCard?.s.workspaceId ?? "", { enabled: !!nextCard?.s.workspaceId });
 
-  const ask = async (target: "overseer" | "agent", words: string) => {
+  const ask = async (words: string) => {
     if (!card) return;
-    const out = await extras.askContext({ workspaceId: card.s.workspaceId, agentId: card.s.agentId, cardKey: card.key, card: cardLabel(card, w).slice(0, 300), target, ask: words });
+    const out = await extras.askContext({ workspaceId: card.s.workspaceId, agentId: card.s.agentId, cardKey: card.key, card: cardLabel(card, w).slice(0, 300), ask: words });
     setMore(false);
     // context-never-blocks-the-deck: the workstream waits, the deck moves on.
     if (out.request.state === "asking") setSession(s => park(s, out.request.id, card.key));
@@ -143,18 +136,18 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       switch (hit.action) {
         case "skip": skip(); break;
         case "back": back(); break;
-        case "more": setMore(v => !v); break;
+        case "more": if (!click('[data-catch-up-card-moves] [aria-label="More context"]')) setMore(v => !v); break;
         case "keys": setKeysOpen(v => !v); break;
         case "leave": onExit(); break;
         case "pick": inCard(`[role="radio"][aria-label^="${hit.arg}. "]`)?.click?.(); break;
         case "own": inCard('[role="radio"][aria-label^="Something else"]')?.click?.(); break;
         case "send": { const b = inCard('[aria-label^="Send your"]') ?? inCard('[aria-label^="Send "]'); if (!b) return; b.click?.(); break; }
         case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else doc.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
-        case "later": if (!click('[aria-label="Later (L)"]')) return; setTimeout(() => doc.querySelector('[data-catch-up-later] [role="button"]')?.focus?.(), 0); break;
+        // Its sheet or popover takes focus itself (MoveResult).
+        case "later": if (!click('[aria-label="Later (L)"]')) return; break;
         case "chat": if (!click('[aria-label="Open chat (O)"]')) return; break;
         case "chip": doc.querySelectorAll("[data-catch-up-more] [role=\"radio\"]")[Number(hit.arg) - 1]?.click?.(); break;
-        case "ask-overseer": if (!click('[data-catch-up-more] [aria-label="Ask the Overseer"]')) return; break;
-        case "ask-agent": if (!click('[data-catch-up-more] [data-ask-agent] [role="button"]')) return; break;
+        case "ask": if (!click('[data-catch-up-more] [data-ask-agent] [role="button"]')) return; break;
         case "rail": {
           const items = railItems();
           if (el?.closest?.("[data-catch-up-rail]")) { (el as { blur?(): void }).blur?.(); break; }
@@ -250,15 +243,15 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
 /** One card: who and what, the ask through its own surface's component, then the deck's moves pinned to the bottom. */
 function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMore, request, waiting, onAsk, sameWorkspace, onDone, onSkip, onBack, onLater }: {
   card: DeckCard; w: ListWorkspace | undefined; theme: Theme; compact: boolean; deps: CatchUpDeps; navigation: Nav; gone: boolean; more: boolean; setMore: (v: boolean | ((v: boolean) => boolean)) => void;
-  request: ContextRequest | null; waiting: boolean; onAsk: (target: "overseer" | "agent", words: string) => Promise<void>;
+  request: ContextRequest | null; waiting: boolean; onAsk: (words: string) => Promise<void>;
   sameWorkspace: string[]; onDone: () => void; onSkip: () => void; onBack?: () => void; onLater: () => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const s = card.s;
   const { workspace: full } = useWorkspace(deps.sources.live, s.workspaceId ?? "");
   const ws = openRowCopy<ListWorkspace>(w, full);
-  const overseerOn = useSyncExternalStore(deps.sources.extras.subscribe, () => deps.sources.extras.overseer()?.enabled !== false, () => true);
   const [laterOpen, setLaterOpen] = useState(false);
+  const [ready, setReady] = useState<SendReady | null>(null);
   const openChat = () => { if (!navigation) return; if (s.agentId) navigation.openAgent({ agentId: s.agentId }); else if (s.workspaceId) navigation.openWorkspace({ workspaceId: s.workspaceId }); };
   const word = cardWord(card);
   const color = card.item?.kind === "merge" ? mergedColor(c) : card.kind === "finished" ? c.foregroundMuted : c.statusWarning;
@@ -290,7 +283,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     ? <View style={{ gap: 8 }}>
       <RichText plain style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{`${q.id} · ${q.title}`}</RichText>
       <QuestionBody key={q.id} workspace={ws} question={q} theme={theme} compact={compact} inline={false}
-        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} />
+        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} />
     </View>
     : card.kind === "item" && card.item && full
     ? <View style={{ borderRadius: 10, borderWidth: 1, borderColor: withAlpha(c.statusWarning, 0.45), overflow: "hidden" }}>
@@ -306,44 +299,90 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
 
   // Add context without answering: every card that isn't a question has the agent's reply box (a question has its note).
   const reply = card.kind !== "question" && s.agentId && <NoteRow theme={theme} compact={compact} agentId={s.agentId} />;
-  const contextBlock = request && <ContextAnswer theme={theme} compact={compact} request={request} waiting={waiting} agent={agentName} openChat={openChat} />;
-  const moreBlock = more && <MorePanel theme={theme} compact={compact} agent={agentName} hasAgent={!!s.agentId} overseerOn={overseerOn} onClose={() => setMore(false)} onAsk={onAsk} />;
+  const contextBlock = request && <ContextAnswer theme={theme} compact={compact} request={request} waiting={waiting} agent={agentName} openChat={openChat} openAgent={navigation ? id => navigation.openAgent({ agentId: id }) : undefined} />;
+  // a-move-bar-action-opens-in-view (MOVE_OPENS): More context and Later open where the eye is, a sheet above the
+  // phone's bar or a popover on their button on desktop, never appended below the card.
+  const closeMore = () => { setMore(false); if (!compact) focusSoon("catch-up-more"); };
+  const moreBlock = more && <MorePanel theme={theme} compact={compact} onClose={closeMore} onAsk={onAsk} />;
   const later = (until: string) => { setLaterOpen(false); if (s.agentId) void deps.sources.inbox.snooze([s.agentId], until); onLater(); };
-  const laterRow = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: 8 }}>
-    {laterChoices(new Date()).map(([k, label]) => <Button key={k} theme={theme} compact={compact} kind="ghost" icon="AlarmClock" title={label} onPress={() => later(snoozeUntil(k, new Date()))} />)}
+  const laterBlock = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" accessibilityLabel="Later" style={{ gap: 8 }}>
+    <Text style={[t.small, { fontWeight: "600" }]}>Back in your Needs you</Text>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+      {laterChoices(new Date()).map(([k, label]) => <Button key={k} theme={theme} compact={compact} kind="ghost" icon="AlarmClock" title={label} onPress={() => later(snoozeUntil(k, new Date()))} />)}
+    </View>
   </View>;
+  const toggleMore = () => { setLaterOpen(false); setMore(v => !v); };
+  const toggleLater = () => { setMore(false); setLaterOpen(v => !v); };
+  const popover = (open: ReactNode, label: string, width: number) => open && <MoveResult place="popover" theme={theme} label={label} width={width}>{open}</MoveResult>;
 
-  // The deck's moves: in thumb reach on phones, under the card on desktop. One primary lives in the card (Send,
-  // Merge, Allow); these stay secondary. Icon-only moves carry their name for screen readers and as a desktop tooltip.
-  const moves = <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
+  // The deck's moves: in thumb reach on phones, under the card on desktop. Once the card has an answer to send, Send to
+  // agent takes the bar's primary slot: the question's own Send (onSendReady), so one click, one flow. Icon-only moves
+  // carry their name for screen readers and as a desktop tooltip.
+  const send = ready && (compact
+    ? <View style={{ flex: 1 }}><Button theme={theme} compact grow kind="primary" icon="Send" title="Send" accessibilityLabel="Send to agent" shortcut disabled={ready.busy} onPress={ready.send} /></View>
+    : <Button theme={theme} kind="primary" icon="Send" title="Send to agent" shortcut disabled={ready.busy} onPress={ready.send} />);
+  const moves = <View {...({ dataSet: { catchUpCardMoves: "1" } } as object)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
     <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
-    {compact ? <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="Sparkles" title="Context" accessibilityLabel="More context" onPress={() => setMore(v => !v)} /></View>
-      : <Tip label="More context (M)"><Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" onPress={() => setMore(v => !v)} /></Tip>}
-    <IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={() => setLaterOpen(v => !v)} />
+    {compact ? ready ? <IconButton theme={theme} compact icon="Sparkles" label="More context" onPress={toggleMore} />
+        : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="Sparkles" title="Context" accessibilityLabel="More context" onPress={toggleMore} /></View>
+      : <View>{popover(moreBlock, "More context", 560)}<Tip label="More context (M)"><Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
+    <View>{!compact && popover(laterBlock, "Later", 380)}<IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={toggleLater} /></View>
     <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? "Open chat" : "Open chat (O)"} tooltip={!compact} disabled={!navigation} onPress={openChat} />
     {!compact && <View style={{ flex: 1 }} />}
-    {compact ? <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title="Skip" onPress={onSkip} /></View>
+    {compact ? ready ? <IconButton theme={theme} compact icon="ArrowRight" label="Skip" onPress={onSkip} />
+        : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title="Skip" onPress={onSkip} /></View>
       : <Tip label="Skip (J or →)"><Button theme={theme} icon="ArrowRight" title="Skip" accessibilityHint="J" onPress={onSkip} /></Tip>}
+    {send}
   </View>;
 
   // a-focused-field-and-its-send-stay-in-view: the phone's bar is DockedPane's dock, so while a field has focus or the
-  // keyboard is up the bar steps aside and the field (Something else, a note, the More context ask) keeps its Send in view.
+  // keyboard is up the bar steps aside and the field (Something else, a note) keeps its Send in view. An open sheet
+  // stays (the pane stops above the keyboard), so More context's ask box and its Ask buttons stay in view too.
+  const sheet = compact && (moreBlock || laterBlock);
   return <DockedPane compact={compact}
     contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}
-    dock={({ yields }) => compact && !yields && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>{laterRow}{moves}</View>}>
+    dock={({ yields, typingInContent }) => compact && (sheet && !typingInContent || !yields) && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
+      {sheet && !typingInContent && <MoveResult place="sheet" theme={theme} label={moreBlock ? "More context" : "Later"}>{sheet}</MoveResult>}
+      {!yields && moves}
+    </View>}>
     {goneBanner}
     {head}
     {contextBlock}
     <View {...CARD_MARK} style={{ gap: 16 }}>{askBlock}</View>
     {reply}
-    {moreBlock}
-    {!compact && laterRow}
-    {!compact && moves}
+    {/* Desktop: ⌘↵ anywhere on the bar sends, as the bar's Send says (its own SubmitScope). */}
+    {!compact && <SubmitScope enabled={!!ready && !ready.busy} onSubmit={() => ready?.send()}>{moves}</SubmitScope>}
   </DockedPane>;
 }
 
+/**
+ * Where a move's result opens (MOVE_OPENS, a-move-bar-action-opens-in-view): a sheet in the phone's dock or a popover
+ * on its desktop button. Focus moves into it (its first choice), and on the web it scrolls into view the least distance.
+ */
+function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
+  const c = theme.colors;
+  const ref = useRef<View>(null);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const t = setTimeout(() => {
+      const node = ref.current as unknown as { querySelector?(q: string): { focus?(o?: object): void } | null; scrollIntoView?(o: object): void } | null;
+      node?.scrollIntoView?.({ block: "nearest" });
+      // The first choice: More context's suggestions ("I don't get it" leads), else Later's first time.
+      (node?.querySelector?.('[role="radio"]') ?? node?.querySelector?.('[role="menu"] [role="button"]'))?.focus?.({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} accessibilityRole={"dialog" as never} accessibilityLabel={label}
+    style={[{ padding: place === "sheet" ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 },
+      place === "sheet"
+        ? { marginHorizontal: 12, marginTop: 12 }
+        : { position: "absolute", zIndex: 20, left: 0, bottom: "100%", marginBottom: 8, width, shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } }]}>
+    {children}
+  </View>;
+}
+
 /** What came back for this card: the answer, "answered in its chat", a failure, or (seen going Back) that it's still asking. */
-function ContextAnswer({ theme, compact, request, waiting, agent, openChat }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void }) {
+function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const who = request.target === "overseer" ? "Overseer" : agent === "the agent" ? "The agent" : agent;
   const asking = request.state === "asking";
@@ -354,8 +393,11 @@ function ContextAnswer({ theme, compact, request, waiting, agent, openChat }: { 
     </View>
     {request.state === "answered" && request.answer && <RichText selectable style={t.body}>{request.answer}</RichText>}
     {request.state === "chat" && <View style={{ gap: 8 }}>
-      <Text style={t.body}>{`${who} answered in its chat.`}</Text>
-      <View style={{ flexDirection: "row" }}><Button theme={theme} compact={compact} icon="MessageSquare" title="Open chat" onPress={openChat} /></View>
+      <Text style={t.body}>{who === "Overseer" ? "The Overseer answered in its own chat, not here: it can't reply on a card." : `${who} answered in its chat.`}</Text>
+      {/* A 2.2.0-beta.3 ask of the Overseer: its answer is in the Overseer's chat (an-ask-goes-only-to-an-agent-that-can-answer-it). */}
+      <View style={{ flexDirection: "row" }}>{who === "Overseer"
+        ? <Button theme={theme} compact={compact} icon="MessageSquare" title="Open Overseer" disabled={!request.askedOf || !openAgent} onPress={() => request.askedOf && openAgent?.(request.askedOf)} />
+        : <Button theme={theme} compact={compact} icon="MessageSquare" title="Open chat" onPress={openChat} />}</View>
     </View>}
     {request.state === "failed" && <Text style={t.body}>{request.error ?? "The ask didn't go through. Try again, or open the chat."}</Text>}
   </View>;
@@ -378,24 +420,23 @@ function BriefAsk({ s, theme, compact, deps }: { s: DeckCard["s"]; theme: Theme;
 }
 
 /**
- * More context: "I don't get it" first (most asks just need explaining), then the developer's own words. The Overseer
- * answers from what it already reads and wakes nobody; the card's agent knows best and may wake, because the
- * developer asked. Either way the deck moves on and this workspace comes back when the answer is ready.
+ * More context: "I don't get it" first (most asks just need explaining), then the developer's own words, to one place:
+ * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
+ * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
  */
-function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk }: { theme: Theme; compact: boolean; agent: string; hasAgent: boolean; overseerOn: boolean; onClose: () => void; onAsk: (target: "overseer" | "agent", words: string) => Promise<void> }) {
+function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
   const c = theme.colors; const t = text(c, compact);
   const [words, setWords] = useState<string>(CONTEXT_ASKS[0].text);
   const [picked, setPicked] = useState<string>(CONTEXT_ASKS[0].id);
-  const [busy, setBusy] = useState<"overseer" | "agent" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const send = (target: "overseer" | "agent") => {
+  const send = () => {
     if (!words.trim() || busy) return;
-    setBusy(target); setError(null);
+    setBusy(true); setError(null);
     // The words stay unless the ask is recorded.
-    onAsk(target, words.trim()).catch(e => setError(errorText(e))).finally(() => setBusy(null));
+    onAsk(words.trim()).catch(e => setError(errorText(e))).finally(() => setBusy(false));
   };
-  const agentLabel = agent === "the agent" ? "Ask the agent" : `Ask ${agent}`;
-  return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
+  return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Icon name="Sparkles" size={14} color={c.foreground} />
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>More context</Text>
@@ -410,13 +451,11 @@ function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk
     <View {...PRIMARY_FORM} style={{ gap: 10 }}>
     <TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
       onChangeText={v => { setWords(v); setPicked(CONTEXT_ASKS.find(x => x.text === v)?.id ?? ""); }}
-      style={{ minHeight: compact ? 44 : 36, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
+      style={{ minHeight: compact ? 84 : 56, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
     {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      {overseerOn && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessagesSquare" title="Ask the Overseer" loading={busy === "overseer"} disabled={!words.trim() || !!busy}
-        accessibilityHint={compact ? "Answers from what Follow-up and the chats already hold; wakes nobody" : `Answers from what Follow-up and the chats already hold; wakes nobody. ${keyLabel("⌘↵", isMac())}`} onPress={() => send("overseer")} />}
-      {hasAgent && <View {...({ dataSet: { askAgent: "1" } } as object)} style={compact ? { flexGrow: 1 } : null}><Button theme={theme} compact={compact} grow={compact} kind={overseerOn ? "secondary" : "primary"} icon="MessageSquareText" title={agentLabel} loading={busy === "agent"} disabled={!words.trim() || !!busy}
-        accessibilityHint={compact ? "Sends it to the agent, which may wake it" : `Sends it to the agent, which may wake it. ${keyLabel("⌘⇧↵", isMac())}`} onPress={() => send("agent")} /></View>}
+    <View {...({ dataSet: { askAgent: "1" } } as object)} style={{ flexDirection: "row" }}>
+      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title="Ask the agent" loading={busy} disabled={!words.trim() || busy}
+        accessibilityHint={compact ? "Asks this workspace's main agent, which may wake it" : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
     </View>
     </View>
     <Text style={t.small}>This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.</Text>

@@ -102,7 +102,7 @@ test("after a restart an open ask is re-derived: delivered to an idle agent sett
 
 test("context asks ride the queue under the asker's own label, and the queue's settle is their delivery", async () => {
   const source = await readFile("index.server.ts", "utf8");
-  assert.match(source, /enqueueMessage\(input\.agentId!, agentContextPrompt\(r\), r\.id, actorBy\(actor\)\)/, "an agent's ask_context isn't labelled the developer");
+  assert.match(source, /enqueueMessage\(to\.agentId, agentContextPrompt\(out\.request\), out\.request\.id, actorBy\(actor\)\)/, "an agent's ask_context isn't labelled the developer");
   assert.match(source, /item\.messageId\?\.startsWith\("ctx-"\)[\s\S]{0,200}contextRequests\.delivered\(item\.messageId/);
   assert.match(source, /contextRequests\.reconcile\(/);
   assert.doesNotMatch(source, /contextRequests\.turnStarted/);
@@ -110,11 +110,11 @@ test("context asks ride the queue under the asker's own label, and the queue's s
 
 test("a failed send settles the ask as failed with the reason", async t => {
   const { store } = await fixture(t);
-  const { request } = await store.ask({ ...input, target: "overseer", agentId: null }, "developer", null);
-  await store.fail(request.id, "The Overseer is off.");
+  const { request } = await store.ask(input, "developer", "a1");
+  await store.fail(request.id, "The agent was archived.");
   const r = (await store.list())[0];
   assert.equal(r.state, "failed");
-  assert.equal(r.error, "The Overseer is off.");
+  assert.equal(r.error, "The agent was archived.");
 });
 
 test("asks expire after a day", async t => {
@@ -122,4 +122,22 @@ test("asks expire after a day", async t => {
   await store.ask(input, "developer", "a1");
   tick(25 * 3_600_000);
   assert.deepEqual(await store.list(), []);
+});
+
+test("an Overseer ask left open by 2.2.0-beta.3 settles as chat on load, so nothing hangs in asking", async t => {
+  const { directory } = await fixture(t);
+  const at = "2026-11-17T09:00:00.000Z";
+  const row = (id: string, target: "overseer" | "agent", state: string) => ({ id, workspaceId: "w1", agentId: "a1", cardKey: `k-${id}`, card: "Q1", target, ask: "I don't get it",
+    askedOf: target === "overseer" ? "overseer-1" : "a1", state, answer: null, error: null, askedAt: at, settledAt: null, deliveredAt: at, by: "developer" });
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(join(directory, CONTEXT_FILE), JSON.stringify({ requests: [row("o1", "overseer", "asking"), row("a1", "agent", "asking")] }));
+  let now = Date.parse("2026-11-17T10:00:00.000Z");
+  const store = trackPersistence(directory, new ContextRequests(directory, () => now));
+  const list = await store.list();
+  assert.equal(list.find(r => r.id === "o1")!.state, "chat", "the Overseer never had context_reply: its answer is in its chat");
+  assert.equal(list.find(r => r.id === "o1")!.askedOf, "overseer-1", "the card can open the Overseer's chat");
+  assert.equal(list.find(r => r.id === "a1")!.state, "asking", "an ask of the card's agent is untouched");
+  await store.flush();
+  assert.equal(JSON.parse(await readFile(join(directory, CONTEXT_FILE), "utf8")).requests[0].state, "chat", "and it is saved");
+  now += 1;
 });
