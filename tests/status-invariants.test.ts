@@ -8,6 +8,7 @@ import { liveLine, needsYou } from "../shared/attention";
 import { buildHome, trackedGroup } from "../shared/home";
 import { agentCard, FINISH_LINE } from "../shared/status";
 import { clock, pr, snapshot, workspace } from "./fixtures";
+import { GONE_REASON } from "../shared/queue";
 
 // Every status invariant over a grid of workspaces, plus one named fixture per reported bug. Extend the grid's axes
 // and add invariants to shared/status-invariants.ts; a fixture stays once its bug is fixed.
@@ -236,4 +237,13 @@ test("regression 2026-11-12: queued repairs with an unreadable PR never say 'sen
   const refused = workspace({ enable_auto_sends: true, prs: [pr()], batches: [batch("repairs", "pending", { refusal: { reason: "Task dependencies changed", at: at(10_000) } })] });
   assert.match(agentCard(refused, clock)?.line ?? "", /didn't send: Task dependencies changed/);
   assert.deepEqual(violations(refused, clock), []);
+});
+
+test("fixture (2026-11-17, a lost answer): an answer Failed after checks that couldn't tell breaks a-queued-message-never-stops-short; a gone agent's doesn't", () => {
+  const at = new Date(clock).toISOString();
+  const answered = (reason: string) => questionSchema.parse({ id: "Q1", title: "Retry window", question: "How long?", options: opts("An hour", "A day"), recommend: "A", askedBy: "main-agent", askedAt: at, mode: "work-around",
+    answer: { choice: "other", words: "Something else", at, by: "developer", delivery: { state: "failed", to: null, messageId: "m-1", at, reason } } });
+  const of = (reason: string) => violations(workspace({ questions: [answered(reason)] }), clock).filter(v => v.id === "a-queued-message-never-stops-short");
+  assert.equal(of("Follow-up couldn't confirm the agent got it.").length, 1);
+  assert.deepEqual(of(GONE_REASON), []);
 });

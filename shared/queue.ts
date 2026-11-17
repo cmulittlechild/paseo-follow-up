@@ -16,7 +16,8 @@ export type QueueKind = typeof QUEUE_KINDS[number];
  * - queued: waiting to go out (fresh, or a send that never left: Paseo unreachable, no agent, a permission prompt).
  * - sending: the send is out and Paseo hasn't answered yet.
  * - uncertain: a send left (or may have) without a confirmation; the chat is read before anything is resent.
- * - failed: the chat couldn't tell after the whole ladder; the developer's Retry resends.
+ * - failed: only when the target can't take messages (its conversation is gone, `gone` names it); Retry resends.
+ *   An unknown arrival is never failed: it keeps checking (a-queued-message-never-stops-short).
  * - sent, cancelled: settled; kept only in the file's short tail.
  */
 export const QUEUE_STATES = ["queued", "sending", "uncertain", "failed", "sent", "cancelled"] as const;
@@ -91,7 +92,10 @@ export const QUEUE_QUIET_MS = 2_000;
 export const QUEUE_CAP_MS = 8_000;
 /** A send that never left retries on this ladder, its last step forever: it never ends in failed. */
 export const NEVER_LEFT_MS = [15_000, 60_000, 300_000] as const;
-/** A send that left unconfirmed: the chat is read after each step; when none could tell, it ends in failed. */
+/**
+ * A send that left unconfirmed: the chat is read after each step, and the last step repeats until the chat can tell
+ * (found: sent; not there: resent). It never ends in failed: an unknown isn't a no (a-queued-message-never-stops-short).
+ */
 export const AMBIGUOUS_MS = [15_000, 60_000, 300_000, 900_000] as const;
 /** One attempt's cap: past it the send counts as left but unconfirmed. */
 export const QUEUE_ATTEMPT_MS = 120_000;
@@ -107,6 +111,7 @@ export const PROBE_MS = 15_000;
 export const PROBE_SLOW_MS = 60_000;
 export const PROBE_BACKOFF_AFTER_MS = 10 * 60_000;
 
+export const ambiguousDelay = (unknowns: number) => AMBIGUOUS_MS[Math.min(Math.max(unknowns, 0), AMBIGUOUS_MS.length - 1)];
 export const neverLeftDelay = (attempts: number) => NEVER_LEFT_MS[Math.min(Math.max(attempts, 1), NEVER_LEFT_MS.length) - 1];
 
 /**
@@ -143,6 +148,8 @@ export type DeliveryStatus = {
 };
 const hhmm = (iso: string) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
 
+/** The one reason a queued message ends Failed: its target can't take messages (a-queued-message-never-stops-short). */
+export const GONE_REASON = "The agent's conversation is gone, so it can't take messages.";
 export const RETRYING_DETAIL = "Not confirmed yet. Follow-up reads the agent's chat before sending again, so it never arrives twice.";
 export const FAILED_DETAIL = "Follow-up couldn't confirm the agent got it. Check the agent's chat, then Retry.";
 
@@ -155,6 +162,20 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
     case "failed": return { label: "Failed", detail: d.reason ? `${d.reason} Check the agent's chat, then Retry.` : FAILED_DETAIL, tone: "warning", action: "retry", pending: false };
     case "cancelled": return { label: "Not sent", detail: d.reason ?? "Follow-up didn't send it.", tone: "muted", action: null, pending: false };
     case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };
+  }
+}
+
+/**
+ * a-queued-message-never-stops-short: an item still in the queue is either due again (queued or uncertain with a next
+ * try, or fresh and inside its quiet window), going out (sending), or Failed because its target is gone, with the
+ * reason. Null when that holds; otherwise what is wrong. Settled items (sent, cancelled) always hold.
+ */
+export function queueItemStop(item: Pick<QueueItem, "state" | "nextAt" | "reason" | "gone" | "envelope">): string | null {
+  switch (item.state) {
+    case "sent": case "cancelled": case "sending": return null;
+    case "failed": return item.gone && item.reason ? null : item.gone ? "failed without saying why" : "failed with no next try, though its target isn't gone";
+    case "uncertain": return item.nextAt ? null : "uncertain with no next check";
+    case "queued": return item.nextAt || (!item.reason && !item.envelope) ? null : "queued with no next try";
   }
 }
 

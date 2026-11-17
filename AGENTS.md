@@ -514,7 +514,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    about 15 s of Paseo coming back), and at once on worker start and whenever the worker's connection reopens. Paseo does not refuse a
    resend by messageId (it skips only the timeline row; the provider runs the prompt again), so a send that may have
    left is never repeated blind: the agent's chat is read for its messageId first (an unloaded agent's transcript on
-   disk, never waking it), and only a ladder of unknowns (15 s, 1 min, 5 min, 15 min) ends in Failed with Retry. The
+   disk, never waking it); a check that can't tell waits 15 s, 1 min, 5 min, then every 15 min, and never ends in
+   Failed (invariant 44). The
    recipient is resolved when it goes out. Every card words it one way (`deliveryStatus`, `shared/queue.ts`).
    2026-11-16: an unconfirmed Q answer was never retried, and a card answer that timed out but arrived went out twice.
    Guarded by `tests/message-queue.test.ts`, `tests/answer-ack.test.ts` and `INVARIANTS`
@@ -578,6 +579,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    unchanged versions, downgrades, Install automatically and Off get no available-update line. Dismissal stays per
    version (`available:<version>`). `announcesUpdate` in `shared/changelog.ts` is the one version rule; the updater
    applies the mode and dismissal. Guarded by `tests/updater.test.ts` and `tests/update-announcements.test.ts`.
+
+44. **A queued message never stops short** (`a-queued-message-never-stops-short`). Every way out of a send ends in
+   exactly one of: delivered (confirmed, or found in the agent's chat), a scheduled next try, or Failed because its
+   target can't take messages (its conversation is gone: `gone` and `GONE_REASON`, shown with Retry). An arrival check
+   that can't tell is not a no: it climbs `AMBIGUOUS_MS` and repeats the last step, and an unloaded agent's transcript
+   answers "not there" once the part read reaches back to the send (`markerSince`, `server/transcript.ts`), so the
+   message is resent instead of waiting on a load that may never come. A restart resumes what it left: `sending` reads
+   back `uncertain` and an old Failed whose target isn't gone goes back to checking, both due at once. No new timer:
+   the item's own retry time is the only wake-up, and nothing reads an agent that isn't loaded. 2026-11-17: an answer
+   whose send timed out (Paseo held it 60 s) met four checks that couldn't tell (the agent wasn't loaded, and its
+   transcript counted only a find), ended Failed 22 minutes later with no next try, and never reached the agent.
+   Guarded by `queueItemStop` (`shared/queue.ts`) over a grid of send outcomes and arrival answers in
+   `tests/message-queue.test.ts`, `tests/queue-tools.test.ts` and `INVARIANTS`.
 
 ## Bugs
 

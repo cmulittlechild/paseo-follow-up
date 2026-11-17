@@ -160,6 +160,25 @@ const HEAD_BYTES = 256 * 1024;
 export type TranscriptItem = { type: "user_message" | "assistant_message" | "tool_call"; text?: string; name?: string; detail?: { output: string } };
 
 /** The first and last bytes of a file; lines cut at the edges are dropped. */
+/**
+ * Whether a transcript's read part holds `marker` since `sinceMs`: true when a line has it; false only when the read
+ * part provably reaches back to `sinceMs` (the whole file was read, or its first dated line is no later) and no line has
+ * it; null otherwise. Lines are JSONL (Claude and Codex both date each line with `timestamp`).
+ */
+export function markerSince(lines: readonly string[], whole: boolean, sinceMs: number, marker: string): boolean | null {
+  if (!marker) return null;
+  const needle = JSON.stringify(marker).slice(1, -1);
+  if (lines.some(line => line.includes(needle))) return true;
+  if (whole) return false;
+  for (const line of lines) {
+    const m = /"timestamp"\s*:\s*"([^"]+)"/.exec(line);
+    if (!m) continue;
+    const at = Date.parse(m[1]!);
+    if (Number.isFinite(at)) return at <= sinceMs ? false : null;
+  }
+  return null;
+}
+
 export async function headAndTail(path: string): Promise<{ head: string[]; tail: string[] }> {
   const handle = await open(path, "r");
   try {

@@ -35,11 +35,11 @@ await harness();
 const exec = promisify(execFile);
 const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : fallback; };
 const baseline = process.argv.includes("--baseline");
-// --renders: its own daemon (web UI on, FOLLOW_UP_QUEUE_TIME_SCALE so Retrying and Failed come within minutes).
+// --renders: its own daemon (web UI on, FOLLOW_UP_QUEUE_TIME_SCALE so Retrying and the whole unknown ladder pass within minutes).
 const renders = process.argv.includes("--renders");
 /** --renders --only message: only Needs you's row for a forward that didn't go out (needs the Overseer path). */
 const rendersOnly = renders ? arg("--only", null) : null;
-/** 0.25: the attempt deadline is 30 s (long enough to shoot Sending), Failed comes ~5 min after an unconfirmed send. */
+/** 0.25: the attempt deadline is 30 s (long enough to shoot Sending), the unknown ladder passes ~5.5 min after an unconfirmed send. */
 const RENDER_TIME_SCALE = 0.25;
 const ALL_CASES = ["unreachable-then-back", "back-within-20s", "reload-mid-send", "permission-prompt", "card-answer", "reply-timing", "busy-agent", "answer-plus-repair", "reply-timing-b"];
 /**
@@ -47,7 +47,7 @@ const ALL_CASES = ["unreachable-then-back", "back-within-20s", "reload-mid-send"
  * shrinks every attempt deadline and retry, which would change what the other cases see.
  */
 const SCALED_CASES = ["forward-stuck"];
-/** forward-stuck's scale: stuck after 30 s (MESSAGE_STUCK_MS × scale), an attempt deadline of 6 s, Failed in ~70 s. */
+/** forward-stuck's scale: stuck after 30 s (MESSAGE_STUCK_MS × scale), an attempt deadline of 6 s, the unknown ladder in ~70 s. */
 const STUCK_TIME_SCALE = 0.05;
 /** Cases still to write (recorded in the JSON as todo); none left. */
 const LATER_CASES = [];
@@ -284,10 +284,10 @@ const cases = {
 
   /**
    * Renders every delivery state on the three surfaces that show it: the question dialog's answer block, the chat brief
-   * card after its answer, and Home's Needs you row for a Failed answer. Light and dark, desktop and phone; no
-   * horizontal overflow at 390. One item per surface goes Sending → Retrying → Failed: its send is held at the proxy
-   * past the (scaled) attempt deadline, then every worker timeline read drops its connection, so each arrival check is
-   * unknown until the ladder ends in Failed.
+   * card after its answer. Light and dark, desktop and phone; no horizontal overflow at 390. One item per surface goes
+   * Sending → Retrying: its send is held at the proxy past the (scaled) attempt deadline, then every worker timeline
+   * read drops its connection, so each arrival check is unknown, and past the whole ladder it still reads Retrying
+   * (a-queued-message-never-stops-short).
    */
   async renders() {
     const r = report.cases.renders = { timeScale: RENDER_TIME_SCALE, shots: [], states: {} };
@@ -476,13 +476,14 @@ const cases = {
     await wait("the new answers wait as Queued", async () => await qState("queued") === "queued" && await cState("queued") === "queued", 30_000);
     await shootAll("dialog", "queued", "queued", WORDS.queued); await shootAll("card", "queued", "queued", WORDS.queued);
 
-    // Retrying, then Failed: Paseo is back, but every worker timeline read drops, so no arrival check can tell.
+    // Retrying: Paseo is back, but every worker timeline read drops, so no arrival check can tell. Past the whole
+    // AMBIGUOUS_MS ladder they still read Retrying, never Failed (a-queued-message-never-stops-short); only a gone
+    // conversation ends Failed, which this daemon can't stage.
     await proxy.kill(/"fetch_agent_timeline_request"/);
     await shootAll("dialog", "retrying", "inflight", WORDS.retrying); await shootAll("card", "retrying", "inflight", WORDS.retrying);
-    await wait("the unconfirmed answers end Failed", async () => await qState("inflight") === "failed" && await cState("inflight") === "failed", 600_000);
-    r.states.failed = { question: await qState("inflight"), card: await cState("inflight"), timelineReadsDropped: proxy.matched };
-    await shootAll("dialog", "failed", "inflight", WORDS.failed); await shootAll("card", "failed", "inflight", WORDS.failed);
-    await shootAll("needsyou", "failed", "inflight", null);
+    await sleep((15 + 60 + 300 + 900 + 60) * 1000 * RENDER_TIME_SCALE);
+    r.states.pastLadder = { question: await qState("inflight"), card: await cState("inflight"), timelineReadsDropped: proxy.matched };
+    check("renders: past the whole ladder, unknown arrivals still read Retrying", r.states.pastLadder.question === "retrying" && r.states.pastLadder.card === "retrying", r.states.pastLadder);
     await proxy.pass();
     r.pngs = r.shots.map(s => s.file);
   },
@@ -721,19 +722,24 @@ const cases = {
     await proxy.pass();
     await sleep(3_000);
     check("stuck (never left): the cancelled forward never reached the agent", (await allPrompts(w.agentId)).every(t => !t.includes("new filter")));
-    // Failed: the send is held past the (scaled) deadline, then every timeline read drops, so no arrival check can tell.
+    // Unknown: the send is held past the (scaled) deadline, then every timeline read drops, so no arrival check can tell.
+    // It keeps checking (a-queued-message-never-stops-short) and shows on the workspace once stuck, never Failed.
     await proxy.hold(/"send_agent_message_request"/, "up", "drop");
     await forward(o.agentId, w.agentId, "Please also check the totals.");
     await waitUntil("the forward is out and unanswered", async () => (await messageItems(w.agentId)).items.some(i => i.state === "sending"), { baseMs: 20_000 });
     await waitUntil("it reads uncertain past the deadline", async () => (await messageItems(w.agentId)).items.some(i => i.state === "uncertain"), { baseMs: 30_000 });
     await proxy.refuse();
     await proxy.kill(/"fetch_agent_timeline_request"/);
-    const failedEntry = await waitUntil("the forward ends Failed on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.state === "failed") ?? null, { baseMs: 180_000, everyMs: 1000 }).catch(() => null);
-    r.failed = failedEntry;
-    check("stuck (failed): the workspace shows it as failed", !!failedEntry, { entry: failedEntry });
-    if (failedEntry) {
-      await rpc("follow.queue-action", { itemId: failedEntry.id, action: "cancel" });
-      check("stuck (failed): Cancel clears it", await waitUntil("cancel clears it", async () => !(await undelivered(w.workspaceId)).some(m => m.id === failedEntry.id), { baseMs: 20_000 }).then(() => true, () => false));
+    const stuckEntry = await waitUntil("the unknown forward shows on the workspace", async () => (await undelivered(w.workspaceId)).find(m => m.state === "queued" && !m.reason?.includes("unreachable")) ?? null, { baseMs: 180_000, everyMs: 1000 }).catch(() => null);
+    r.unknown = stuckEntry;
+    check("stuck (unknown): the workspace shows it, still retrying", !!stuckEntry, { entry: stuckEntry });
+    await sleep((15 + 60 + 300 + 900 + 60) * 1000 * STUCK_TIME_SCALE);
+    const pastLadder = (await messageItems(w.agentId)).items.map(i => ({ state: i.state, nextAt: i.nextAt }));
+    r.unknownPastLadder = pastLadder;
+    check("stuck (unknown): past the whole ladder it is never Failed and has a next check", pastLadder.length > 0 && pastLadder.every(i => i.state !== "failed" && !!i.nextAt), { items: pastLadder });
+    if (stuckEntry) {
+      await rpc("follow.queue-action", { itemId: stuckEntry.id, action: "cancel" });
+      check("stuck (unknown): Cancel clears it", await waitUntil("cancel clears it", async () => !(await undelivered(w.workspaceId)).some(m => m.id === stuckEntry.id), { baseMs: 20_000 }).then(() => true, () => false));
     }
     await proxy.pass();
   },
