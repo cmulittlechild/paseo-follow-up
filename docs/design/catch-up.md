@@ -1,6 +1,6 @@
 # Going through Needs you, one card at a time (design)
 
-Status: design for review (phase 1). This is not built yet: The renders come from a working prototype (`client/catch-up.tsx`, `shared/catch-up.ts`)
+Status: design for review (phase 1). The renders come from a working prototype (`client/catch-up.tsx`, `shared/catch-up.ts`)
 drawn with Follow-up's own components and synthetic data (`scripts/screenshots.mjs --only catch-up`). Nothing here
 ships until the developer picks the open decisions below.
 
