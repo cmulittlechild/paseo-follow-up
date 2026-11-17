@@ -331,6 +331,12 @@ export default function contribute(server: PluginServerContext) {
     // No card of its own: one that didn't go out (Failed, or Queued past MESSAGE_STUCK_MS) shows in its workspace's
     // Needs you with Retry and Cancel, and leaves it once sent or cancelled.
     async project(item) {
+      // A More context ask rides the queue under its request id: the send's settle is its delivery, a send that can't
+      // happen fails it (context-never-blocks-the-deck: the card comes back either way).
+      if (item.messageId?.startsWith("ctx-")) {
+        if (item.state === "sent") await contextRequests.delivered(item.messageId, item.settledAt ?? new Date().toISOString());
+        else if (item.state === "cancelled" || item.state === "failed" && item.gone) await contextRequests.fail(item.messageId, item.reason ?? "The ask couldn't reach the agent.");
+      }
       const w = (await store.snapshot()).workspaces.find(w => w.id === item.key && w.enable_tracking && !w.archived);
       if (!w) return;
       const has = w.undelivered?.find(m => m.id === item.id);
@@ -478,6 +484,17 @@ export default function contribute(server: PluginServerContext) {
     await engine.adoptBatches().catch(error => console.warn(`[follow-up] couldn't move batches onto the queue: ${error instanceof Error ? error.message : String(error)}`));
     await inbox.adoptOutbox().catch(error => console.warn(`[follow-up] couldn't move the answer outbox onto the queue: ${error instanceof Error ? error.message : String(error)}`));
     queue.start();
+    // An ask still open from before a restart is re-derived from the queue's record and the cached agent list: nothing
+    // is woken, and nothing waits on it (context-never-blocks-the-deck).
+    void (async () => {
+      const rows = await gateway.directory.read().catch(() => null);
+      const status = new Map((rows?.agents ?? []).map(({ agent }) => [agent.id, agent.status]));
+      await contextRequests.reconcile(r => {
+        const item = r.target === "agent" ? queue.get(`message:${r.askedOf}:${r.id}`) : null;
+        return { sent: item?.state === "sent" ? item.settledAt ?? null : null, failed: item?.state === "cancelled" || item?.state === "failed" && item.gone ? item.reason ?? "The ask couldn't reach the agent." : null,
+          idle: rows ? status.get(r.askedOf!) !== "running" : false };
+      });
+    })().catch(error => console.warn(`[follow-up] couldn't re-check open context asks: ${error instanceof Error ? error.message : String(error)}`));
   })().catch(() => { loadError = "Follow-up could not start. Check its saved state and worker lock."; });
   for (const file of [store, contextRequests.persist, reviewerStore.persist, agentSettings.persist, prWorkflow.persist, inbox.store.persist]) file.health = writeHealth;
   const requireReady = async () => { if (waiting) throw new Error(waiting); await ready; if (loadError || stopped) throw new Error(loadError ?? "Follow-up is stopping"); };
@@ -944,18 +961,19 @@ export default function contribute(server: PluginServerContext) {
     const actor = actorOf(context);
     if (actor.kind === "agent" && input.target === "agent" && input.agentId === actor.agentId) throw new Error("ask_context asks another agent about its card for the developer; explain your own ask in your reply.");
     if (input.target === "agent" && !input.agentId) throw new Error("This card has no agent to ask. Ask the Overseer instead.");
-    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : (await overseerStatus().catch(() => null))?.agentId ?? null);
+    // Recorded at once, never waiting on Paseo (an-ack-never-waits): the Overseer's id is learnt after its send.
+    const out = await contextRequests.ask(input, actorBy(actor), input.target === "agent" ? input.agentId : null);
     if (!out.fresh) return out;
     const r = out.request;
-    if (input.target === "agent") enqueueMessage(input.agentId!, agentContextPrompt(r), r.id, "developer");
+    if (input.target === "agent") enqueueMessage(input.agentId!, agentContextPrompt(r), r.id, actorBy(actor));
     else {
       const paseo = (context as { paseo?: unknown }).paseo;
-      const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
       void (async () => {
         try {
+          const workspace = input.workspaceId ? (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === input.workspaceId)?.name ?? "a workspace" : "a workspace";
           if (!await overseerOn()) throw new Error("The Overseer is off. Turn it on in Settings → Agents, or ask the agent.");
           const s = await overseer!.ask(paseo as unknown as OverseerPaseo, overseerContextPrompt(r, workspace));
-          if (s.agentId) await contextRequests.setAskedOf(r.id, s.agentId);
+          if (s.agentId) { await contextRequests.setAskedOf(r.id, s.agentId); await contextRequests.delivered(r.id, new Date().toISOString()); }
         } catch (error) { await contextRequests.fail(r.id, error instanceof Error ? error.message : String(error)); }
       })();
     }
@@ -1505,7 +1523,6 @@ export default function contribute(server: PluginServerContext) {
     // handlers below read the patched rows.
     server.on("agent.turn_started", async event => gateway.directory.turnStarted(event.agent, event.turnId)),
     server.on("agent.turn_ended", async event => gateway.directory.turnEnded(event.agent, event.outcome)),
-    server.on("agent.turn_started", async event => contextRequests.turnStarted(event.agent.id)),
     server.on("agent.turn_ended", async event => contextRequests.turnEnded(event.agent.id)),
     server.on("agent.permission_requested", async event => gateway.directory.permissionRequested(event.agent.id, event.request as { id?: string })),
     server.on("agent.permission_resolved", async event => gateway.directory.permissionResolved(event.agent.id, event.requestId)),

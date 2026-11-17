@@ -1,13 +1,14 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
+import { contextAskRpc, contextListRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
-import type { RpcOutput } from "@getpaseo/plugin";
+import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { Priority } from "../shared/priorities";
 import { DEFAULT_SORT, isSortMode, type SortMode } from "../shared/sort";
 import { homeSortSync } from "../shared/display";
 import type { AgentLite } from "../shared/search";
 import { NO_USAGE, USAGE_POLL_MS, type Usage } from "../shared/usage";
 import { onVisible, whileVisible } from "./visibility";
+import type { ContextRequest } from "../shared/catch-up";
 
 /**
  * What Home adds on top of the inbox, live and Paseo stores (1.3.0-beta.2): the sort choice, external
@@ -41,6 +42,10 @@ export function createHomeExtras(client: PluginClientContext) {
   let usage: Usage = NO_USAGE;
   let overseer: RpcOutput<typeof overseerStatusRpc> | null = null;
   let rank: RpcOutput<typeof rankStatusRpc> | null = null;
+  /** Catch up's More context asks: pushed on the home feed; read when Catch up opens or moves, never on a timer of their own. */
+  let context: ContextRequest[] = [];
+  const setContext = (next: ContextRequest[]) => { if (JSON.stringify(next) === JSON.stringify(context)) return false; context = next; return true; };
+  const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
   const agents = new Map<string, AgentLite>();
   let version = 0;
   let focusToken = 0; let focusPending = false;
@@ -91,7 +96,9 @@ export function createHomeExtras(client: PluginClientContext) {
     poll(PRIORITY_POLL_MS, readRank),
     poll(15_000, async () => {
       const next = await client.rpc(overseerStatusRpc, {});
-      if (JSON.stringify(next) === JSON.stringify(overseer)) return false;
+      // Without the feed, an ask still open is read on the Overseer's existing poll: no poll of its own.
+      const asked = context.some(r => r.state === "asking") ? await readContext().catch(() => false) : false;
+      if (JSON.stringify(next) === JSON.stringify(overseer)) return asked;
       overseer = next; return true;
     }),
     pollUsage(),
@@ -110,6 +117,7 @@ export function createHomeExtras(client: PluginClientContext) {
     event: event => {
       if (stopped) return;
       priorities = event.priorities; rank = event.rank; overseer = event.overseer;
+      if (event.context) setContext(event.context);
       if (event.usage) usage = { ...event.usage, resources: usage.resources };
       if (!event.rank.running) { for (const done of rankWaiters) done(); rankWaiters.clear(); }
       // Smart Session's files can't be watched: read the meters once a minute instead.
@@ -221,6 +229,16 @@ export function createHomeExtras(client: PluginClientContext) {
     async askOverseer(text: string) { overseer = await client.rpc(overseerAskRpc, { text }); emit(); return overseer; },
     /** Settings → Agents changed: a new Overseer on the configured agent, handed the old one's last steps. */
     async restartOverseer() { overseer = await client.rpc(overseerRestartRpc, {}); emit(); return overseer; },
+    /** Catch up's More context asks and their answers. */
+    context: () => context,
+    /** Reads the asks once (Catch up opening or moving on, so a 0.15 host or a dropped feed is never stale for long). */
+    async refreshContext() { if (await readContext().catch(() => false)) emit(); },
+    /** Asks the Overseer or the card's agent; the ask shows at once, its answer arrives on the feed. */
+    async askContext(input: RpcInput<typeof contextAskRpc>) {
+      const out = await client.rpc(contextAskRpc, input);
+      setContext([...context.filter(r => r.id !== out.request.id), out.request]); emit();
+      return out;
+    },
     agents: () => [...agents.values()],
     /** Bumped by ⌘K "Follow-up: Search" and the search key; the visible search field focuses when it changes. */
     focusToken: () => focusToken,

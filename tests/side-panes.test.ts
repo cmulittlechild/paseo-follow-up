@@ -4,7 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SIDE_PANE_ALLOWED } from "../client/pane-allowlist";
 import { paneBounds, sideWidth, toFraction } from "../shared/split";
-import { displayPreferences, HOME_DETAIL_DEFAULT, HOME_DETAIL_MAX, HOME_DETAIL_MIN } from "../shared/display";
+import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN, displayPreferences, HOME_DETAIL_DEFAULT, HOME_DETAIL_MAX, HOME_DETAIL_MIN } from "../shared/display";
 
 /**
  * side-panes-are-resizable (2026-11-16): Home's right pane (the brief, or the selected item) was `width: "42%"` capped
@@ -77,6 +77,16 @@ test("Home draws its list and right pane through ResizableSplit, keyed to the Di
   assert.match(src, /<ResizableSplit\b/);
   assert.match(src, /home_detail_fraction/);
   assert.doesNotMatch(src, /width: "42%"/);
+});
+
+test("Catch up's queue rail is a ResizableSplit too, keyed to its own Display field", async () => {
+  const src = await readFile(join(root, "client/catch-up.tsx"), "utf8");
+  assert.match(src, /<DisplaySplit\b/);
+  assert.match(src, /catch_up_rail_fraction/);
+  const schema = displayPreferences.schema;
+  assert.equal(schema.parse({ catch_up_rail_fraction: 0.3 }).catch_up_rail_fraction, 0.3);
+  assert.equal(schema.safeParse({ catch_up_rail_fraction: 0.9 }).success, false);
+  assert.ok(CATCH_UP_RAIL_DEFAULT > CATCH_UP_RAIL_MIN && CATCH_UP_RAIL_DEFAULT < CATCH_UP_RAIL_MAX);
 });
 
 test("the pane's width is a clamped share of the split", () => {

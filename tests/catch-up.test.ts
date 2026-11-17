@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, overseerContextPrompt, park, prevPos, pruneContext, settle, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, overseerContextPrompt, park, prevPos, pruneContext, settle, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
 import type { NeedItem } from "../shared/attention";
 import type { Workstream } from "../shared/home";
 
@@ -40,6 +40,17 @@ test("acting moves on; skipped cards come round again after the rest; done cards
   assert.equal(x.pos, x.order.length, "finished");
   assert.equal(x.order[prevPos(x)], "b|1", "Back from finished shows the last card");
   assert.deepEqual(statsOf(x), { done: 3, skipped: 0, later: 0, gone: 0, waiting: 0 });
+});
+
+test("skipping everything ends: one second pass for skipped cards, then All caught up with them counted", () => {
+  let x = startSession(cards("a|1", "b|1", "c|1"));
+  x = settle(x, "skipped"); x = settle(x, "skipped"); x = settle(x, "done");
+  assert.equal(x.order[x.pos], "a|1", "the second pass starts at the first skipped card");
+  x = settle(x, "skipped");
+  assert.equal(x.order[x.pos], "b|1");
+  x = settle(x, "skipped");
+  assert.equal(x.pos, x.order.length, "skipped twice: finished, never round again");
+  assert.deepEqual(statsOf(x), { done: 1, skipped: 2, later: 0, gone: 0, waiting: 0 });
 });
 
 test("a card handled elsewhere is gone, never pulled from under the developer; a new card joins at the end", () => {
@@ -103,6 +114,7 @@ test("the mode's words: Catch up, counts cards, All caught up", () => {
   assert.equal(MODE.command, "Follow-up: Catch up on what needs you");
   assert.equal(MODE.progress(3, 17), "Catch up 3 of 17");
   assert.equal(MODE.finished, "All caught up");
+  assert.equal(MODE.endOfDeck, "End of the deck", "a deck ended with cards skipped or waiting does not claim All caught up");
   assert.equal(CONTEXT_ASKS[0].label, "I don't get it", "Tom: the question usually just needs explaining");
   assert.ok(CATCH_UP_KEYS.some(k => k.key === "?"));
 });
@@ -136,3 +148,9 @@ test("context requests are pruned by age and count", () => {
 // Type-level: a DeckCard keeps its workstream for the card's header.
 const _card: Pick<DeckCard, "s"> = { s: s("agent:a") };
 void _card;
+
+test("a context answer shows as plain words, and the card quotes the ask's first sentence", () => {
+  assert.equal(plainAnswer("## Short version\n**Update** keeps one contact; __skip__ drops the row. See https://example.com/a**b"), "Short version\nUpdate keeps one contact; skip drops the row. See https://example.com/a**b");
+  assert.equal(askHeadline(CONTEXT_ASKS[0].text), "I don't get it.");
+  assert.equal(askHeadline("why"), "why");
+});

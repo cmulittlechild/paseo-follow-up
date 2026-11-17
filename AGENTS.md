@@ -77,7 +77,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
-| Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `shared/catch-up.ts`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
+| Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `shared/catch-up.ts`, `client/catch-up.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
@@ -582,12 +582,12 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 
 43. **A focused field and its Send stay in view** (`a-focused-field-and-its-send-stay-in-view`). On a phone, neither a
    bar docked under the content nor the keyboard covers what is being typed or the action that sends it. Every pane
-   with a docked bar (Home's detail pane, the Overseer's pane, setup) draws through `DockedPane`
+   with a docked bar (Home's detail pane, the Overseer's pane, setup, Catch up's card) draws through `DockedPane`
    (`client/docked-pane.tsx`): while a field in the pane has focus or the keyboard is up, the dock drops its extras
-   (Sign off, Sign off & next, Later; setup's Back and Continue), the pane stops above a keyboard that overlays the
+   (Sign off, Sign off & next, Later; setup's Back and Continue; Catch up's whole move bar), the pane stops above a keyboard that overlays the
    page, and the focused field's primary form (the field with its Send, marked `PRIMARY_FORM`) scrolls into view,
    again whenever the keyboard or the dock changes size (`client/dock.ts`). Every answer form marks itself:
-   `QuestionBody`'s field with its actions, the brief card's answer and note fields. No pane keeps its own typing or
+   `QuestionBody`'s field with its actions, the brief card's answer and note fields, Catch up's More context ask and note. No pane keeps its own typing or
    keyboard state for its dock. 2026-11-17: on Home on a phone, the question card's Send sat under the dock after
    Something else opened its field, because the dock hid its Sign off row only while its own reply box had focus.
    Guarded by `tests/dock-in-view.test.ts` and `scripts/screenshots.mjs --only dock-in-view` (390 wide, the keyboard
@@ -617,12 +617,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 
 45. **More context never blocks the deck** (`context-never-blocks-the-deck`). In Catch up, asking for more context
    about a card (the Overseer or the card's agent) records the ask and moves the deck on to the next workstream at
-   once; every card of the asked workstream waits. When the answer arrives (`context_reply`), the agent ends a turn
-   without it, or the ask fails, that workstream comes back as the very next card, right after the one on screen and
+   once; every card of the asked workstream waits. When the answer arrives (`context_reply`), the agent ends its first
+   turn after the ask was delivered (`deliveredAt`, so a steered prompt counts) without it, or the ask fails, that
+   workstream comes back as the very next card, right after the one on screen and
    never in its place. A card handled elsewhere meanwhile doesn't come back; Back still reaches a waiting card; a
    finished deck counts what is still getting context. The answer reaches the client on `follow.home-feed`, so nothing
    polls, and only the agent it was asked of (or the Overseer, for its asks) can answer. The session is pure
-   (`shared/catch-up.ts`), so the screen, `catch_up_deck` and the tests agree. 2026-11-17, Tom: "Getting more context
+   (`shared/catch-up.ts`), so the screen, `catch_up_deck` and the tests agree. An ask open across a worker restart is
+   re-derived from the queue's record, so none stays asking until the 24 h prune. 2026-11-17, Tom: "Getting more context
    may take a bit, so make it skip to the next workspace and then have the workspace come back to the top of the
    queue when ready." Guarded by `tests/catch-up.test.ts` and `tests/context-requests.test.ts`.
 

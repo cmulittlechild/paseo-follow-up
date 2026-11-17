@@ -86,6 +86,12 @@ test("a-focused-field-and-its-send-stay-in-view: every docked pane draws through
   assert.match(home, /\{!yields && moves\}/, "Sign off's row yields for any field, not only the reply box");
   assert.match(home, /dock=\{\(\{ yields, typingInContent \}\) => s\.agentId && !typingInContent && /, "typing an answer hides the reply box too");
   assert.doesNotMatch(home, /setTyping|!typing\b/, "no pane-local typing state decides the dock");
+  // Catch up's phone card: its bar (Back, Context, Later, Open chat, Skip) under a scrolling card, the case #233 fixed.
+  const catchUp = await src("client/catch-up.tsx");
+  assert.equal((catchUp.match(/<DockedPane /g) ?? []).length, 1, "Catch up's card draws through DockedPane");
+  assert.match(catchUp, /dock=\{\(\{ yields \}\) => compact && !yields && /, "the bar steps aside while a field has focus or the keyboard is up");
+  assert.match(catchUp, /<View \{\.\.\.PRIMARY_FORM\} style=\{\{ gap: 10 \}\}>\s*<TextInput accessibilityLabel="What do you want to know\?"/, "More context's ask box keeps its Ask buttons in view");
+  assert.match(catchUp, /<View \{\.\.\.PRIMARY_FORM\}[^>]*>\s*<TextInput accessibilityLabel="Tell the agent something"/, "the note keeps its Send in view");
   const setup = await src("client/onboarding.tsx");
   assert.match(setup, /<DockedPane /);
   assert.doesNotMatch(setup, /useKeyboardUp/, "setup reads the keyboard through DockedPane");

@@ -52,18 +52,60 @@ test("only the asked agent answers, and the answer settles the ask", async t => 
   assert.ok(answered.settledAt);
 });
 
-test("a turn that ends without context_reply settles the ask as chat; a turn from before the ask doesn't", async t => {
+test("the first turn end after delivery without context_reply settles the ask as chat; one before delivery doesn't", async t => {
   const { store, tick } = await fixture(t);
-  store.turnStarted("a1"); // a turn already running before the ask: no ask open yet, nothing remembered
   const { request } = await store.ask(input, "developer", "a1");
   await store.turnEnded("a1");
-  assert.equal((await store.list())[0].state, "asking", "the turn that was running when they asked isn't the reply");
+  assert.equal((await store.list())[0].state, "asking", "not delivered yet (queued behind a running turn): that turn's end isn't the reply");
   tick(1000);
-  store.turnStarted("a1");
+  await store.delivered(request.id, new Date(Date.parse("2026-11-17T10:00:01.000Z")).toISOString());
   tick(5000);
+  await store.turnEnded("someone-else");
+  assert.equal((await store.list())[0].state, "asking");
   await store.turnEnded("a1");
   const r = (await store.list()).find(x => x.id === request.id)!;
   assert.equal(r.state, "chat");
+});
+
+test("a prompt steered into a turn already running counts: no turn start needed, only the delivery", async t => {
+  const { store, tick } = await fixture(t);
+  const { request } = await store.ask(input, "developer", "a1");
+  await store.delivered(request.id, "2026-11-17T10:00:00.000Z"); // steered into the running turn at once
+  tick(30_000);
+  await store.turnEnded("a1"); // the running turn ends: there was never a turn_started after the ask
+  assert.equal((await store.list())[0].state, "chat");
+});
+
+test("after a restart an open ask is re-derived: delivered to an idle agent settles as chat, a failed send fails, a busy one waits", async t => {
+  const { directory, store } = await fixture(t);
+  const a = (await store.ask(input, "developer", "a1")).request;
+  const b = (await store.ask({ ...input, cardKey: "agent:a2|Q1", agentId: "a2" }, "developer", "a2")).request;
+  const c = (await store.ask({ ...input, cardKey: "agent:a3|Q1", agentId: "a3" }, "developer", "a3")).request;
+  const d = (await store.ask({ ...input, cardKey: "agent:a4|Q1", agentId: "a4" }, "developer", "a4")).request;
+  await store.flush();
+  // A new worker: nothing in memory but the file.
+  const again = trackPersistence(directory, new ContextRequests(directory, () => Date.parse("2026-11-17T10:05:00.000Z")));
+  await again.reconcile(r => r.id === a.id ? { sent: "2026-11-17T10:00:02.000Z", failed: null, idle: true }
+    : r.id === b.id ? { sent: null, failed: "The agent was archived, so the message wasn't sent.", idle: true }
+    : r.id === c.id ? { sent: "2026-11-17T10:00:02.000Z", failed: null, idle: false }
+    : { sent: null, failed: null, idle: true });
+  const by = new Map((await again.list()).map(r => [r.id, r]));
+  assert.equal(by.get(a.id)!.state, "chat", "its turn ended while the worker was down");
+  assert.equal(by.get(b.id)!.state, "failed");
+  assert.match(by.get(b.id)!.error!, /archived/);
+  assert.equal(by.get(c.id)!.state, "asking", "still in its turn: its turn end settles it");
+  assert.equal(by.get(c.id)!.deliveredAt, "2026-11-17T10:00:02.000Z");
+  assert.equal(by.get(d.id)!.state, "asking", "not delivered yet: the queue still owns it");
+  await again.turnEnded("a3");
+  assert.equal((await again.list()).find(r => r.id === c.id)!.state, "chat");
+});
+
+test("context asks ride the queue under the asker's own label, and the queue's settle is their delivery", async () => {
+  const source = await readFile("index.server.ts", "utf8");
+  assert.match(source, /enqueueMessage\(input\.agentId!, agentContextPrompt\(r\), r\.id, actorBy\(actor\)\)/, "an agent's ask_context isn't labelled the developer");
+  assert.match(source, /item\.messageId\?\.startsWith\("ctx-"\)[\s\S]{0,200}contextRequests\.delivered\(item\.messageId/);
+  assert.match(source, /contextRequests\.reconcile\(/);
+  assert.doesNotMatch(source, /contextRequests\.turnStarted/);
 });
 
 test("a failed send settles the ask as failed with the reason", async t => {

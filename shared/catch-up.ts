@@ -60,7 +60,7 @@ export type SessionStats = { done: number; skipped: number; later: number; gone:
  * A Catch up session. `order` is every card key seen this session (done ones stay, so Back works); `pos` is the card
  * on screen, `order.length` once nothing is left. `parked` maps a workstream waiting for More context to its request.
  */
-export type Session = { order: string[]; pos: number; outcomes: Record<string, Outcome>; parked: Record<string, string> };
+export type Session = { order: string[]; pos: number; outcomes: Record<string, Outcome>; parked: Record<string, string>; lapped?: boolean };
 
 export const startSession = (cards: readonly Pick<DeckCard, "key">[]): Session => ({ order: cards.map(c => c.key), pos: 0, outcomes: {}, parked: {} });
 
@@ -70,14 +70,16 @@ const open = (s: Session, key: string) => { const o = s.outcomes[key]; return !o
 const landable = (s: Session, key: string) => open(s, key) && !s.parked[groupOf(key)];
 
 /**
- * The next card after `from`: the next landable one in order, else the first skipped one from the start (a second
- * pass), else `order.length` (finished). Never returns `from` itself unless it is the only one left.
+ * The next card after `from`: the next landable one in order, else the first skipped one from the start (one second
+ * pass, `lapped`), else `order.length` (finished). On the second pass a skip moves forward only, so skipping everything
+ * ends at the finished screen with "Catch up on N skipped" instead of going round for ever.
  */
-export function nextPos(s: Session, from: number): number {
-  for (let i = from + 1; i < s.order.length; i++) if (landable(s, s.order[i]) && s.outcomes[s.order[i]] !== "skipped") return i;
-  for (let i = 0; i < s.order.length; i++) if (i !== from && landable(s, s.order[i])) return i;
-  return from < s.order.length && landable(s, s.order[from]) ? from : s.order.length;
+export function advance(s: Session, from: number): Pick<Session, "pos" | "lapped"> {
+  for (let i = from + 1; i < s.order.length; i++) if (landable(s, s.order[i]) && (s.lapped || s.outcomes[s.order[i]] !== "skipped")) return { pos: i, lapped: s.lapped };
+  if (!s.lapped) for (let i = 0; i < s.order.length; i++) if (i !== from && landable(s, s.order[i])) return { pos: i, lapped: true };
+  return { pos: s.order.length, lapped: s.lapped };
 }
+export const nextPos = (s: Session, from: number): number => advance(s, from).pos;
 
 /** Back: the card before, whatever happened to it (done cards show what was sent; a parked one shows it is asking). */
 export const prevPos = (s: Session): number => Math.max(0, Math.min(s.pos, s.order.length) - 1);
@@ -86,7 +88,7 @@ export const prevPos = (s: Session): number => Math.max(0, Math.min(s.pos, s.ord
 export function settle(s: Session, outcome: Outcome, key = s.order[s.pos]): Session {
   if (key === undefined) return s;
   const next = { ...s, outcomes: { ...s.outcomes, [key]: outcome } };
-  return s.order[s.pos] === key ? { ...next, pos: nextPos(next, s.pos) } : next;
+  return s.order[s.pos] === key ? { ...next, ...advance(next, s.pos) } : next;
 }
 
 /**
@@ -97,7 +99,7 @@ export function settle(s: Session, outcome: Outcome, key = s.order[s.pos]): Sess
 export function park(s: Session, requestId: string, key = s.order[s.pos]): Session {
   if (key === undefined) return s;
   const next = { ...s, parked: { ...s.parked, [groupOf(key)]: requestId } };
-  return s.order[s.pos] !== undefined && groupOf(s.order[s.pos]) === groupOf(key) ? { ...next, pos: nextPos(next, s.pos) } : next;
+  return s.order[s.pos] !== undefined && groupOf(s.order[s.pos]) === groupOf(key) ? { ...next, ...advance(next, s.pos) } : next;
 }
 
 /**
@@ -164,6 +166,8 @@ export const MODE = {
   progress: (at: number, of: number) => `Catch up ${at} of ${of}`,
   waiting: (n: number) => `${n} getting context`,
   finished: "All caught up",
+  /** The end of a deck with cards still skipped or waiting: not caught up, so it does not say so. */
+  endOfDeck: "End of the deck",
   empty: "Nothing needs you",
 } as const;
 
@@ -207,6 +211,12 @@ export const contextRequestSchema = z.object({
   error: z.string().max(500).nullable(),
   askedAt: iso,
   settledAt: iso.nullable(),
+  /**
+   * When the ask actually reached `askedOf` (the queue sent it, or the Overseer took it). The first turn end after this
+   * without a context_reply settles it as `chat`, so a prompt steered into a running turn counts too. Absent in files
+   * from before it existed.
+   */
+  deliveredAt: iso.nullable().default(null),
   /** Who asked: "developer" or "agent:<id>" (agent parity). */
   by: z.string().max(120),
 });
@@ -247,3 +257,14 @@ export function pruneContext(requests: readonly ContextRequest[], now: number): 
   const young = requests.filter(r => now - Date.parse(r.askedAt) < CONTEXT_KEEP_MS);
   return young.slice(Math.max(0, young.length - CONTEXT_MAX));
 }
+
+/**
+ * A context answer as the card shows it: plain words. Agents often answer in Markdown, which the card would show as
+ * literal ** and # marks, so emphasis, heading and quote marks go; links and line breaks stay.
+ */
+export function plainAnswer(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_m, a, b) => a ?? b).replace(/^\s{0,3}(#{1,6}|>)\s+/gm, "").trim();
+}
+
+/** The ask as the card's header quotes it: its first sentence ("I don't get it."), not the whole prompt. */
+export const askHeadline = (ask: string): string => (ask.match(/^.+?[.?!](?=\s|$)/)?.[0] ?? ask).slice(0, 120);

@@ -179,6 +179,8 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.overseer-restart": { tools: ["overseer_restart"] },
   "follow.overseer-ask": { tools: ["overseer_ask"] },
   "follow.inbox-list": { tools: ["inbox_list"] },
+  "follow.context-ask": { tools: ["ask_context"] },
+  "follow.context-list": { tools: ["context_requests"] },
   "follow.inbox-brief": { tools: ["inbox_brief"] },
   "follow.queue-action": { tools: ["queue_action"] },
   "follow.inbox-act": { tools: ["sign_off", "snooze", "set_finish_flags", "inbox_act"] },
