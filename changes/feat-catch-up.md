@@ -1,0 +1,1 @@
+- Go through everything that needs you one card at a time, on your phone or with the keyboard: answer, merge or sign off, and the next card is already there.

@@ -43,7 +43,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -415,7 +415,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("catch-up") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("catch-up") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1611,6 +1611,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
+  if (only.includes("catch-up")) await catchUpShots({ shoot });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -2001,6 +2002,46 @@ async function mergeClickShots({ shoot, billing }) {
   await shoot("mc-done-panel-light", TALL, "light", click(receipts, "light", panel, "panel"));
   const digest = { title: MERGE_CLICK_STATES[2].title, prompt: MERGE_CLICK_STATES[2].prompt, button: "Merge pull request #256", merged: /Merged #256/, gone: true };
   await shoot("mc-done-home-phone-dark", PHONE, "dark", click(digest, "dark", phone, "home-phone"));
+}
+
+/**
+ * catch-up (docs/design/catch-up.md): the design review's renders of going through Needs you one card at a time.
+ * Opens it the way the developer does (Home's "Go through N"), with review knobs in localStorage picking the card, the
+ * layout and the demo states (client/catch-up.tsx reviewKnobs). Phone 390×844 and desktop, light and dark.
+ */
+async function catchUpShots({ shoot }) {
+  const knobs = (page, k) => page.evaluate(v => localStorage.setItem("follow-up-catch-up-review", JSON.stringify(v)), k);
+  const enter = async (page, k, size) => {
+    await openHome(page); if (size === PHONE) await page.setViewportSize(PHONE);
+    await knobs(page, k);
+    await page.getByRole("button", { name: /^Go through \d+$/ }).filter({ visible: true }).first().click();
+    // The mode's header line ("Go through 4 of 17"; phones have no Leave button, the host's ← is the way back).
+    await page.getByRole("heading", { name: /^Go through( \d+ of \d+)?$/ }).filter({ visible: true }).first().waitFor();
+    await page.waitForTimeout(1500);
+  };
+  const TALL = { width: 390, height: 844 };
+  await shoot("cu-entry-phone-light", PHONE, "light", async page => { await openHome(page); await page.setViewportSize(PHONE); await page.getByRole("button", { name: /^Go through \d+$/ }).filter({ visible: true }).first().waitFor(); });
+  await shoot("cu-entry-desktop-dark", DESKTOP, "dark", async page => { await openHome(page); await page.getByRole("button", { name: /^Go through \d+$/ }).filter({ visible: true }).first().waitFor(); });
+  // Every card in the deck, in order, on a phone (light): the deck's order and each kind of card.
+  for (let i = 0; i < 16; i++) await shoot(`cu-deck-${String(i).padStart(2, "0")}-phone-light`, TALL, "light", page => enter(page, { at: String(i) }, PHONE));
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-question-a-phone-${theme}`, PHONE, theme, page => enter(page, { find: "Retry declined", layout: "a" }, PHONE));
+    await shoot(`cu-question-b-phone-${theme}`, PHONE, theme, page => enter(page, { find: "Retry declined", layout: "b" }, PHONE));
+    await shoot(`cu-rail-desktop-${theme}`, DESKTOP, theme, page => enter(page, { find: "Retry declined" }, DESKTOP));
+  }
+  await shoot("cu-norail-desktop-dark", DESKTOP, "dark", page => enter(page, { find: "Retry declined", rail: "0" }, DESKTOP));
+  await shoot("cu-keys-desktop-dark", DESKTOP, "dark", page => enter(page, { find: "Retry declined", demo: "keys" }, DESKTOP));
+  await shoot("cu-merge-phone-dark", PHONE, "dark", page => enter(page, { find: "#151" }, PHONE));
+  await shoot("cu-more-phone-light", PHONE, "light", async page => { await enter(page, { find: "Retry declined", demo: "more" }, PHONE); await page.getByText("More context", { exact: true }).filter({ visible: true }).first().scrollIntoViewIfNeeded(); });
+  await shoot("cu-overseer-phone-light", PHONE, "light", async page => { await enter(page, { find: "Retry declined", demo: "overseer" }, PHONE); await page.getByText(/^Overseer · /).filter({ visible: true }).first().scrollIntoViewIfNeeded(); });
+  await shoot("cu-overseer-desktop-dark", DESKTOP, "dark", async page => { await enter(page, { find: "Retry declined", demo: "overseer" }, DESKTOP); await page.getByText(/^Overseer · /).filter({ visible: true }).first().scrollIntoViewIfNeeded(); });
+  await shoot("cu-asked-phone-dark", PHONE, "dark", page => enter(page, { find: "Duplicate contacts", demo: "asked" }, PHONE));
+  await shoot("cu-gone-phone-light", PHONE, "light", page => enter(page, { find: "Duplicate contacts", demo: "gone" }, PHONE));
+  await shoot("cu-arrived-phone-light", PHONE, "light", page => enter(page, { find: "Duplicate contacts", demo: "arrived" }, PHONE));
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-finished-phone-${theme}`, PHONE, theme, page => enter(page, { demo: "finished" }, PHONE));
+    await shoot(`cu-finished-desktop-${theme}`, DESKTOP, theme, page => enter(page, { demo: "finished" }, DESKTOP));
+  }
 }
 
 async function sendingShots({ shoot, seeded, call, home }) {

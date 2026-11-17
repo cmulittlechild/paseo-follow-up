@@ -34,6 +34,8 @@ import { withAlpha, isLight, mergedColor, type Colors } from "./theme";
 import { UpdateNotice, VersionMark } from "./updates";
 import { WhatsNewGate } from "./release-notes";
 import { ViewSync } from "./view-store";
+import { CatchUp, CatchUpButton, reviewKnobs } from "./catch-up";
+import { deckCards } from "../shared/catch-up";
 import { ResizableSplit } from "./split";
 import type { SearchKey } from "./search-key";
 
@@ -61,6 +63,8 @@ export type HomeDeps = {
   /** Docks the workspace's own panel in its explorer column. */
   openPanel(workspaceId: string): void;
   openLog(): void;
+  /** Catch up: Needs you one card at a time (`?view=catchup`). */
+  openCatchUp?(): void;
   openHome(): void;
   /** Phones: open one Home item as its own screen, so the host's ← (and Android back) returns to the list. */
   openItem?(key: string, extra?: { question?: string }): void;
@@ -116,6 +120,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const current = selected ? model.byKey.get(selected) ?? (selected.startsWith("agent:") ? [...model.byKey.values()].find(x => x.agentId === selected.slice(6)) ?? null : null) : null;
   const tracked = useSyncExternalStore(deps.sources.live.subscribe, deps.sources.live.version, deps.sources.live.version);
   const rows = useInbox(inbox, () => inbox.rows());
+  // Go through's count is its cards (one per ask), the same deck the mode opens on.
+  const deckSize = useMemo(() => deckCards({ model, rows, items: id => { const w = deps.sources.live.get(id); return w ? needsYou(w as never) : []; } }).length, [model, rows, tracked, deps.sources.live]);
   const pane = useMemo(() => briefPane({ model, rows, tracked: deps.sources.live.all(), now: Date.now() }), [model, rows, tracked, deps.sources.live]);
   const rank = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.rank, deps.sources.extras.rank);
   const overseerStatus = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.overseer, deps.sources.extras.overseer);
@@ -183,13 +189,18 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     <WhatsNewGate surface="home" theme={theme} compact={compact} />
     <ToastHost theme={theme} compact={compact} />
   </>;
+  if (params.view === "catchup") return <View style={{ flex: 1 }}>
+    <CatchUp theme={theme} compact={compact} deps={{ sources: deps.sources, briefDeps: deps.briefDeps, openHome: deps.openHome, openPanel: deps.openPanel }} navigation={navigation as never}
+      knobs={{ ...reviewKnobs(), ...(params.layout ? { layout: params.layout } : {}), ...(params.demo ? { demo: params.demo } : {}) }} onExit={deps.openHome} />
+    {updateSheets}
+  </View>;
   if (params.view === "log") return <LogView theme={theme} compact={compact} sources={deps.sources} onHome={deps.openHome} onOpen={key => { setSelected(key); deps.openHome(); }} />;
 
   const detail = selected === OVERSEER_KEY && overseer
     ? <OverseerPane theme={theme} compact={compact} o={overseer} focus={replyFocus} pending={pendingAsk} agentId={overseerStatus?.agentId ?? null} model={overseerStatus?.model ?? null} restartWith={overseerStatus?.restartWith ?? null} configured={overseerStatus?.configured ?? null} deps={deps} navigation={navigation} onBack={compact && !route ? () => setSelected(null) : undefined} />
     : current
     ? <DetailPane key={current.key} s={current} model={model} theme={theme} compact={compact} deps={deps} openFull={openFull} signOffNext={signOffNext} ask={ask?.key === current.key ? ask : null} onBack={compact && !route ? () => setSelected(null) : undefined} />
-    : <BriefPane theme={theme} compact={compact} pane={pane} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources} />;
+    : <BriefPane theme={theme} compact={compact} pane={pane} catchUp={deps.openCatchUp} deckSize={deckSize} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources} />;
   // Nothing followed at all: no sort, no meters, just the empty state and its action.
   const nothing = model.groups.every(g => !g.items.length);
   // Enter on a row: its chat, as Open full does. The brief has nothing to open; the Overseer opens once it runs.
@@ -228,6 +239,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       {/* No title row on phones. The strip has the row to itself, so every chip is reachable (Q51: "Sending" pushed
           Waiting, Quiet and Later behind the version); the version is at the end of the list. */}
       <StatusStrip theme={theme} model={model} filter={filter} onFilter={setFilter} touch dense />
+      {model.needs > 0 && deps.openCatchUp && <View style={{ paddingHorizontal: 16 }}><CatchUpButton theme={theme} compact count={deckSize} onPress={deps.openCatchUp} /></View>}
       {updateNotice}
       {model.needs === 0 && <SetupOffer theme={theme} compact view={props.onboarding} />}
     </View> : updateNotice} />;
@@ -292,7 +304,7 @@ function ListHeader({ theme, compact, onSettings }: { theme: Theme; compact: boo
 type Permission = { id: string; name: string; title?: string; description?: string; detail?: Record<string, unknown>; input?: Record<string, unknown>; actions?: { id: string; label: string; behavior: "allow" | "deny"; variant?: string }[] };
 
 /** The selected agent's live state: pending permissions and status, from its own handle (never the whole list). */
-function useAgentLive(agentId: string | null) {
+export function useAgentLive(agentId: string | null) {
   const paseo = usePaseo();
   const handle = useMemo(() => agentId ? paseo.agents.ref(agentId) : null, [paseo, agentId]);
   const [, bump] = useState(0);
@@ -660,7 +672,7 @@ function permissionText(p: Permission): string {
   return typeof v === "string" ? v : p.description ?? "";
 }
 
-function PermissionBlock({ p, theme, compact, busy, primary, onRespond }: { p: Permission; theme: Theme; compact: boolean; busy: boolean; primary: boolean; onRespond: (r: { behavior: "allow" | "deny"; selectedActionId?: string; message?: string }) => void }) {
+export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }: { p: Permission; theme: Theme; compact: boolean; busy: boolean; primary: boolean; onRespond: (r: { behavior: "allow" | "deny"; selectedActionId?: string; message?: string }) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const command = permissionText(p);
   // Provider-defined choices ("Always for this session") show as extra secondaries; Allow and Deny always exist.
@@ -730,7 +742,7 @@ function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in 
 
 // ---------- brief pane ----------
 
-function BriefPane({ theme, compact, pane, onSelect, openLog, sources }: { theme: Theme; compact: boolean; pane: ReturnType<typeof briefPane>; onSelect: (key: string) => void; openLog: () => void; sources: HomeSources }) {
+function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, deckSize = 0 }: { theme: Theme; compact: boolean; pane: ReturnType<typeof briefPane>; onSelect: (key: string) => void; openLog: () => void; sources: HomeSources; catchUp?: () => void; deckSize?: number }) {
   const c = theme.colors; const t = text(c, compact);
   useTick(30_000);
   const now = Date.now();
@@ -747,7 +759,7 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources }: { theme
     {!compact && <Text style={t.meta}>{date} · {time}</Text>}
     <Text accessibilityRole="header" style={t.headline}>{pane.headline}</Text>
     {compact && <Text style={t.meta}>Morning brief · {date} · {time}</Text>}
-    {pane.first && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="ArrowRight" title={`Open ${pane.first.title.length > 40 ? `${pane.first.title.slice(0, 40)}…` : pane.first.title}`} onPress={() => onSelect(pane.first!.key)} />}
+    {catchUp && deckSize > 0 ? <CatchUpButton theme={theme} compact={compact} count={deckSize} onPress={catchUp} /> : pane.first && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="ArrowRight" title={`Open ${pane.first.title.length > 40 ? `${pane.first.title.slice(0, 40)}…` : pane.first.title}`} onPress={() => onSelect(pane.first!.key)} />}
     {!!pane.waiting && <Text style={t.body}><Text style={{ color: c.foregroundMuted }}>Waiting on others: </Text>{pane.waiting}</Text>}
     <Text style={t.body}><Text style={{ color: c.foregroundMuted }}>Cleared since {sinceLabel(now)}: </Text>{pane.cleared ?? "nothing yet"}.</Text>
 

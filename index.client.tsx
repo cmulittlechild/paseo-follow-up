@@ -6,6 +6,7 @@ import { openExternalUrl, type PluginClientContext, type PluginButtonRegistratio
 import { Dimensions } from "react-native";
 import { FollowSettings } from "./client/settings";
 import { FollowHome, HOME_SCREEN } from "./client/home";
+import { MODE } from "./shared/catch-up";
 import { FollowPanel } from "./client/panel";
 import { createPaseoWorkspaces } from "./client/home-data";
 import { createHomeExtras } from "./client/home-view";
@@ -54,6 +55,7 @@ export default function contribute(host: PluginClientContext) {
   const openSettings = (category?: string) => { if (isCategory(category)) writeCategory(category); client.openSettings("projects"); };
   const openOverview = () => client.openScreen({ screenId: OVERVIEW });
   const openLog = () => client.openScreen({ screenId: OVERVIEW, params: { view: "log" } });
+  const openCatchUp = () => client.openScreen({ screenId: OVERVIEW, params: { view: "catchup", at: "0", n: String(Date.now()) } });
   const openLarge = (workspaceId: string) => client.openScreen({ screenId: LARGE_SCREEN, params: { workspaceId } });
   // "Set up Follow-up again" (Settings and ⌘K): restart the flow on the server, then open Home, which shows it.
   // `resume`: setup is already in progress, so open it where it was left instead of from the top.
@@ -91,7 +93,7 @@ export default function contribute(host: PluginClientContext) {
     noteDone: (agentId, cancel) => inbox.noteDone(agentId, cancel), endDone: agentId => inbox.endDone(agentId),
   };
   const openItem = (key: string, extra: { question?: string } = {}) => client.openScreen({ screenId: OVERVIEW, params: { item: key, ...(extra.question ? { question: extra.question } : {}) } });
-  const homeDeps = { sources, openSettings, openPanel, openLog, openHome: openOverview, openItem, briefDeps, searchKey };
+  const homeDeps = { sources, openSettings, openPanel, openLog, openCatchUp, openHome: openOverview, openItem, briefDeps, searchKey };
   const Overview = (props: PluginScreenProps) => <><FollowHome {...props} deps={homeDeps} />{reportHost(props)}</>;
   const Panel = (props: PluginWorkspacePanelProps) => <><FollowPanel {...props} openSettings={openSettings} openOverview={openOverview} openLarge={openLarge} inbox={inbox} live={store} briefDeps={briefDeps} sources={sources} />{reportHost(props)}</>;
   const Large = (props: PluginScreenProps) => <FollowLarge {...props} openSettings={openSettings} openOverview={openOverview} live={store} />;
@@ -112,6 +114,7 @@ export default function contribute(host: PluginClientContext) {
       // The dialog lives in Follow-up's surfaces: open the panel, which mounts a host, then ask.
       openPanel(PANEL, { location: location() }); setTimeout(() => openRename({ workspaceId: workspace.id }), 0); } }),
     client.addCommandCenterItem({ id: "follow-up-overview", title: "Follow-up: Home", icon: "House", keywords: ["home", "workspaces", "needs you", "inbox", "attention", "brief", "overview"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); } }),
+    client.addCommandCenterItem({ id: "follow-up-catch-up", title: MODE.command, icon: "Layers", keywords: ["catch up", "inbox", "needs you", "triage", "answer", "questions", "one by one"], context: "global", onSelect() { openCatchUp(); } }),
     client.addCommandCenterItem({ id: "follow-up-log", title: "Follow-up: Done while you were away", icon: "History", keywords: ["log", "overnight", "away", "repairs", "activity"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { view: "log" } }); } }),
     client.addCommandCenterItem({ id: "follow-up-settings", title: "Follow-up: settings", icon: "Settings", keywords: ["default", "following", "project", "display", "sidebar", "pill", "header", "inbox", "questions"], context: "global", onSelect() { openSettings(); } }),
     // "Set up Follow-up again": the setup flow from the top, on Home.
