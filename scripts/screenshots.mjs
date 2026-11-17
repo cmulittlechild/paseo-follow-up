@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -416,7 +416,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("catch-up") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("catch-up") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("dock-in-view") || only.includes("catch-up") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1645,6 +1645,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     }
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
+  if (only.includes("dock-in-view")) await dockInViewShots({ shoot });
   if (only.includes("pick-notes")) {
     // Decision cards with a note (a-pick-note-reaches-the-agent): one decision and two; the note link closed, then
     // open with text.
@@ -2071,6 +2072,17 @@ async function catchUpShots({ shoot, call }) {
       await page.waitForTimeout(600);
     });
   }
+  // a-focused-field-and-its-send-stay-in-view: writing your own answer on a phone, the keyboard down (390x844) and up
+  // (390x508, the page resized for it). The bar steps aside; the field and its Send stay in view.
+  const KB_UP = { width: PHONE.width, height: 508 };
+  for (const theme of ["light", "dark"]) for (const [kb, frame] of [["kb-down", PHONE], ["kb-up", KB_UP]]) {
+    await shoot(`cu-own-${kb}-phone-${theme}`, frame, theme, async page => {
+      await enter(page, PHONE, "fail with card_declined retry");
+      await page.locator("[data-catch-up-card]").getByRole("radio", { name: /^Something else/ }).filter({ visible: true }).first().click();
+      await page.getByLabel(/^Your answer.*required$/).filter({ visible: true }).first().fill("Retry soft declines once after a day; hard declines go straight to dunning.");
+      page.keepFocus = true; if (kb === "kb-up") await page.setViewportSize(KB_UP); await page.waitForTimeout(800);
+    });
+  }
   for (const theme of ["light", "dark"]) {
     await shoot(`cu-finished-phone-${theme}`, PHONE, theme, async page => { await enter(page, PHONE); await finish(page); });
     await shoot(`cu-finished-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP); await finish(page); });
@@ -2242,6 +2254,40 @@ async function ownAnswerShots({ shoot }) {
     await shoot(name(`own-dialog-${theme}`), DESKTOP, theme, async page => { await dialog(lone, "Missing keys")(page); await own(page); });
     await shoot(name(`two-panel-${theme}`), TALL, theme, panel(two, "Limit scope"));
     await shoot(name(`two-home-phone-${theme}`), PHONE, theme, homePhone(two, "Limit scope"));
+  }
+}
+
+/**
+ * dock-in-view (a-focused-field-and-its-send-stay-in-view): Home's detail pane on a phone while typing, the keyboard
+ * down (390x844) and up (390x508: the page resized for it, as `interactive-widget=resizes-content` does). Writing your
+ * own answer, a note on a picked option, and a decision card's Something else. The field keeps focus for the shot
+ * (page.keepFocus), since the dock yields only while a field has it. `--dock-before` names the shots `before-`.
+ */
+async function dockInViewShots({ shoot }) {
+  const before = argv.includes("--dock-before");
+  const name = n => `${before ? "before-" : ""}dv-${n}`;
+  const KB_UP = { width: PHONE.width, height: 508 };
+  const lone = pick("ny-lone"), card = pick("pn-one");
+  const visible = l => l.filter({ visible: true }).first();
+  const open = (s, wait) => async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, s.title)).click(); await visible(page.getByText(wait)).waitFor(); };
+  const keyboard = async (page, up) => { page.keepFocus = true; if (up) await page.setViewportSize(KB_UP); await page.waitForTimeout(800); };
+  const own = async page => {
+    await visible(page.getByRole("radio", { name: /^Something else/ })).click();
+    await visible(page.getByLabel("Your answer to Q1, required")).fill("Show the key itself, and log it so we add the translation.");
+  };
+  const note = async page => {
+    await visible(page.getByRole("radio", { name: /^A\. The English text/ })).click();
+    await visible(page.getByRole("button", { name: "Add a note for the agent about Q1" })).click();
+    await visible(page.getByLabel("Note for the agent, sent with A on Q1, optional")).fill("Only in production; staging should show the key.");
+  };
+  const cardOwn = async page => {
+    await visible(page.getByRole("radio", { name: /^Something else/ })).click();
+    await visible(page.getByLabel(/^Your answer.*required$/)).fill("Write UTF-8 with the BOM, so Excel opens it right.");
+  };
+  for (const theme of ["light", "dark"]) for (const [kb, frame] of [["kb-down", PHONE], ["kb-up", KB_UP]]) {
+    await shoot(name(`own-${kb}-${theme}`), frame, theme, async page => { await open(lone, "Missing keys")(page); await own(page); await keyboard(page, kb === "kb-up"); });
+    await shoot(name(`note-${kb}-${theme}`), frame, theme, async page => { await open(lone, "Missing keys")(page); await note(page); await keyboard(page, kb === "kb-up"); });
+    await shoot(name(`card-${kb}-${theme}`), frame, theme, async page => { await open(card, "Which encoding should the export use?")(page); await cardOwn(page); await keyboard(page, kb === "kb-up"); });
   }
 }
 

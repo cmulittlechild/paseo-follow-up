@@ -31,6 +31,8 @@ import { openRowCopy, useWorkspace } from "./workspace-data";
 import { mergedColor, withAlpha, tint } from "./theme";
 import { RichText } from "./rich-text";
 import { DisplaySplit, PermissionBlock, useAgentLive } from "./home";
+import { DockedPane } from "./docked-pane";
+import { PRIMARY_FORM } from "./dock";
 
 /** react-native-web's data attribute, so the option-letter keys find this card's radios. */
 const CARD_MARK = { dataSet: { catchUpCard: "1" } } as object;
@@ -272,7 +274,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
 
   // The deck's moves: in thumb reach on phones, under the card on desktop. One primary lives in the card (Send,
   // Merge, Allow); these stay secondary. Icon-only moves carry their name for screen readers and as a desktop tooltip.
-  const moves = <View style={[{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }, compact ? bottomInset(true) : null]}>
+  const moves = <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
     <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
     {compact ? <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="Sparkles" title="Context" accessibilityLabel="More context" onPress={() => setMore(v => !v)} /></View>
       : <Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" onPress={() => setMore(v => !v)} />}
@@ -283,8 +285,11 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
       : <Button theme={theme} icon="ArrowRight" title="Skip" accessibilityHint="J" onPress={onSkip} />}
   </View>;
 
-  const scroll = <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled"
-    contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}>
+  // a-focused-field-and-its-send-stay-in-view: the phone's bar is DockedPane's dock, so while a field has focus or the
+  // keyboard is up the bar steps aside and the field (Something else, a note, the More context ask) keeps its Send in view.
+  return <DockedPane compact={compact}
+    contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}
+    dock={({ yields }) => compact && !yields && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>{laterRow}{moves}</View>}>
     {goneBanner}
     {head}
     {contextBlock}
@@ -293,11 +298,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     {moreBlock}
     {!compact && laterRow}
     {!compact && moves}
-  </ScrollView>;
-  return <View style={{ flex: 1 }}>
-    {scroll}
-    {compact && <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }}>{laterRow}{moves}</View>}
-  </View>;
+  </DockedPane>;
 }
 
 /** What came back for this card: the answer, "answered in its chat", a failure, or (seen going Back) that it's still asking. */
@@ -365,6 +366,7 @@ function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk
         <Text style={[t.meta, { color: picked === x.id ? c.foreground : c.foregroundMuted }]}>{x.label}</Text>
       </Pressable>)}
     </View>
+    <View {...PRIMARY_FORM} style={{ gap: 10 }}>
     <TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
       onChangeText={v => { setWords(v); setPicked(CONTEXT_ASKS.find(x => x.text === v)?.id ?? ""); }}
       style={{ minHeight: compact ? 44 : 36, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
@@ -374,6 +376,7 @@ function MorePanel({ theme, compact, agent, hasAgent, overseerOn, onClose, onAsk
         accessibilityHint="Answers from what Follow-up and the chats already hold; wakes nobody" onPress={() => send("overseer")} />}
       {hasAgent && <Button theme={theme} compact={compact} grow={compact} kind={overseerOn ? "secondary" : "primary"} icon="MessageSquareText" title={agentLabel} loading={busy === "agent"} disabled={!words.trim() || !!busy}
         accessibilityHint="Sends it to the agent, which may wake it" onPress={() => send("agent")} />}
+    </View>
     </View>
     <Text style={t.small}>This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.</Text>
   </View>;
@@ -428,7 +431,7 @@ function NoteRow({ theme, compact, agentId }: { theme: Theme; compact: boolean; 
   const c = theme.colors;
   const agent = useAgentLive(agentId);
   const [words, setWords] = useState("");
-  return <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+  return <View {...PRIMARY_FORM} style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
     <TextInput accessibilityLabel="Tell the agent something" placeholder="Tell the agent something" placeholderTextColor={c.foregroundMuted} value={words} onChangeText={setWords} multiline
       style={{ flex: 1, minHeight: compact ? 44 : 36, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
     <IconButton theme={theme} compact={compact} icon="Send" label="Send to the agent" tooltip={!compact} disabled={!words.trim()} onPress={() => { void agent.handle?.send(words.trim()); setWords(""); }} />
