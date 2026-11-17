@@ -62,8 +62,9 @@ stop.
      curated section. A beta with no fragments says "Maintenance release; no user-visible changes." The install
      command appears once, at the top; `## Install` holds the update command, the dist-tag note, the Paseo floor and,
      only when that run did those checks, the verification sentence. Preview a body
-     with `node scripts/release-body.mjs <tag>`. This is the GitHub page only: What's new in the app stays
-     major-only. `tests/release-body.test.ts` covers the format and that the workflow uses the renderer.
+     with `node scripts/release-body.mjs <tag>`. This is the GitHub page only: What's new in the app shows a
+     stable's or a major rc's curated section once after the update (betas stay quiet; Settings → General can turn it
+     off), so every stable section, a patch's included, is written for that sheet. `tests/release-body.test.ts` covers the format and that the workflow uses the renderer.
 5. `scripts/publish-npm.mjs` waits up to 45 minutes for matching registry integrity **and** the expected dist-tag.
    Every probe uses cache revalidation headers and a fresh query key so cached 404s cannot end verification early.
    The publish job allows 90 minutes, leaving the full verification window after its checks. An npm acceptance

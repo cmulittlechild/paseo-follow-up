@@ -609,7 +609,7 @@ See [docs/releasing.md](docs/releasing.md). In short:
   Betas get no CHANGELOG section; a stable or a major's rc gets a CURATED one (release:notes writes a draft that
   check:notes refuses until it's rewritten). A major's rc (`2.0.0-rc.0`) carries the major's section, `## 2.0.0`.
 - Every GitHub release has notes in one format (`scripts/release-body.mjs`): a beta's page renders the fragments
-  added since the previous tag, a stable's or an rc's its curated section. In-app What's new stays major-only.
+  added since the previous tag, a stable's or an rc's its curated section. In-app What's new shows a stable's or an rc's curated section after the update; betas stay quiet.
 - **An accepted publication waits for registry visibility** (`accepted-publish-waits-for-registry`): verify integrity
   and the dist-tag with cache-bypassed reads for up to 45 minutes after npm accepts a version. A visibility timeout
   is pending publication, never permission to rewrite its tag or cut a replacement version. Release notes wait for
@@ -622,7 +622,8 @@ Semver by what users get (`version-is-picked-at-release`, `features-ship-in-a-mi
 
 - **Patch** (`2.0.2`): fixes and speed-ups only.
 - **Minor** (`2.1.0`): anything new a user can use, such as a feature, setting, screen or agent tool.
-- **Major** (`3.0.0`): a big or breaking change. Only a major gets the What's new popup. It's Tom's call.
+- **Major** (`3.0.0`): a big or breaking change. It's Tom's call. Every stable update (major, minor or patch) opens
+  What's new with its curated section, so even a patch's section is written for the person reading it.
 
 Pick the version right before the release, never by keeping the betas' number:
 

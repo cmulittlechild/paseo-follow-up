@@ -290,7 +290,8 @@ const subscribeClaim = (l: () => void) => { listeners.add(l); return () => { lis
 
 /**
  * Shows "What's new" once per device per version, on whichever Follow-up surface mounts first (Home, the workspace
- * panel or the sidebar item). Never on a first install and never while setup is showing or still loading.
+ * panel or the sidebar item), after an update with notes (shared/changelog.ts `whatsNew`). Never on a first install,
+ * after a beta, with Settings → General's switch off, or while setup is showing or still loading.
  */
 export function WhatsNewGate({ surface, theme, compact }: { surface: string; theme: Theme; compact: boolean }) {
   const query = useReleaseNotes();
@@ -304,7 +305,7 @@ export function WhatsNewGate({ surface, theme, compact }: { surface: string; the
   const viewVersion = useViewVersion();
   const decision = useMemo(() => {
     const deviceSeen = view ? seenOnDevice(view) : undefined;
-    return view && deviceSeen !== undefined ? whatsNew({ installed: view.version, deviceSeen, previous: view.previous, onboarding, notes: view.notes }) : null;
+    return view && deviceSeen !== undefined ? whatsNew({ installed: view.version, deviceSeen, previous: view.previous, onboarding, enabled: view.enable_whats_new, notes: view.notes }) : null;
   }, [view, onboarding, viewVersion]);
   useEffect(() => {
     if (!decision || !view) return;

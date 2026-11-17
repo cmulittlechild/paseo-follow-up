@@ -110,7 +110,7 @@ test("since last seen: every version after it up to the installed one, newest fi
   assert.deepEqual(notesSince(notes, null, "1.4.0-beta.13"), []);
 });
 
-test("what's new: shows once, after a major update, from the device's record or the daemon's previous version", () => {
+test("what's new: shows once, after an update, from the device's record or the daemon's previous version", () => {
   const majors = parseChangelog(["2.1.0", "2.0.0", "1.5.0", "1.4.0"].map(v => `## ${v} (2026-11-10)\n\n- Note ${v}.`).join("\n\n"));
   const base = { installed: "2.1.0", onboarding: false, notes: majors };
   const shown = whatsNew({ ...base, deviceSeen: "1.4.0", previous: "1.5.0" });
@@ -119,7 +119,7 @@ test("what's new: shows once, after a major update, from the device's record or 
   assert.ok(newDevice.show && newDevice.notes.length === 2);
   assert.deepEqual(whatsNew({ ...base, deviceSeen: "2.1.0", previous: "1.5.0" }), { show: false, reason: "seen", record: null }, "once per device per version");
   assert.deepEqual(whatsNew({ ...base, installed: "1.5.0", deviceSeen: "2.1.0", previous: null }), { show: false, reason: "older", record: "1.5.0" }, "a rollback shows nothing and lowers the record");
-  assert.deepEqual(whatsNew({ ...base, installed: "1.4.0-beta.14", deviceSeen: "1.4.0-beta.12", previous: "1.4.0-beta.13", notes }), { show: false, reason: "not-major", record: "1.4.0-beta.14" }, "a beta is recorded quietly");
+  assert.deepEqual(whatsNew({ ...base, installed: "1.4.0-beta.14", deviceSeen: "1.4.0-beta.12", previous: "1.4.0-beta.13", notes }), { show: false, reason: "prerelease", record: "1.4.0-beta.14" }, "a beta is recorded quietly");
 });
 
 test("what's new: no popup on first install, and never on top of onboarding", () => {
@@ -309,10 +309,10 @@ test("what's new: 1.x to 2.0.0-rc.0 shows 2.0's notes once; later rcs and 2.0.0 
   const first = at("2.0.0-rc.0", "1.4.0-beta.32");
   assert.ok(first.show && first.notes.map(n => n.version).join() === "2.0.0", "the rc carries 2.0.0's section, and only it");
   assert.ok(at("2.0.0-rc.0", "1.0.1").show, "from the last stable too");
-  assert.deepEqual(at("2.0.0-rc.1", "2.0.0-rc.0"), { show: false, reason: "not-major", record: "2.0.0-rc.1" });
-  assert.deepEqual(at("2.0.0", "2.0.0-rc.1"), { show: false, reason: "not-major", record: "2.0.0" }, "the final 2.0.0 doesn't pop again");
+  assert.deepEqual(at("2.0.0-rc.1", "2.0.0-rc.0"), { show: false, reason: "no-notes", record: "2.0.0-rc.1" });
+  assert.deepEqual(at("2.0.0", "2.0.0-rc.1"), { show: false, reason: "no-notes", record: "2.0.0" }, "the final 2.0.0 doesn't pop again");
   assert.ok(at("2.0.0", "1.4.0-beta.32").show, "but someone skipping the rc still sees 2.0 once");
-  assert.deepEqual(at("2.0.0-beta.1", "1.4.0-beta.32"), { show: false, reason: "not-major", record: "2.0.0-beta.1" }, "a beta of 2.0 is still 1.x");
+  assert.deepEqual(at("2.0.0-beta.1", "1.4.0-beta.32"), { show: false, reason: "prerelease", record: "2.0.0-beta.1" }, "a beta of 2.0 stays quiet");
   assert.equal(notesVersion("2.0.0-rc.3"), "2.0.0"); assert.equal(notesVersion("2.0.0-beta.1"), "2.0.0-beta.1"); assert.equal(notesVersion("2.1.0-rc.0"), "2.1.0-rc.0");
   assert.equal(announcesUpdate("2.0.0-rc.0", "2.0.0"), false); assert.equal(announcesUpdate("1.4.0-beta.32", "2.0.0-rc.0"), true);
   assert.deepEqual(recentNotes({ version: "2.0.0-rc.0", previous: "2.0.0-rc.0", notes: majors }).map(n => n.version), ["2.0.0"], "opened by hand, the rc shows 2.0's notes");
