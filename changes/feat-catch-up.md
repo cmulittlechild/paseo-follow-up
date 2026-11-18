@@ -1,1 +1,0 @@
-- Catch up walks everything that needs you one card at a time, from Home's "Catch up · N" or ⌘K. Ask for more context and the deck moves on; that workspace comes back as your next card with the answer. Desktop shows the queue beside the card.

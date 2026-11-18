@@ -1,2 +1,0 @@
-- Catch up's Skip now says what it skips ("Skip question", "Skip permission") and that the card comes back after the rest, and a new Skip workspace (⇧J on desktop) moves past every card of a workspace at once.
-- On a phone the card follows your finger: drag left to skip it, right to go back, or let go early and it springs back.

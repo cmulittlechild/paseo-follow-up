@@ -2,6 +2,51 @@
 
 What changed in each version of Follow-up, newest first. Follow-up shows "What's new" after an update that brings new release notes: the curated part of each stable release since you last looked (betas install quietly; Settings → General can turn it off), and every version's notes from Home's version line.
 
+## 2.2.0 (2026-11-18)
+
+Catch up walks you through everything that needs you, one card at a time.
+
+- **Start Catch up from Home or ⌘K.** Swipe between cards on a phone, or use the keyboard and queue on desktop. Send from the move bar, skip one card or a whole workspace, or leave it for later.
+- **Ask for More context** right on a card. Your workspace's agent explains it, and the card comes back with the answer. More context and Later open beside the card, above the bar on a phone.
+- **Write your own answer in one step:** pick Something else, type, and send. Use Add note to explain a picked option.
+- **See what's new after stable updates.** Turn off Show What's new after updates in Settings → General if you prefer. Home also announces every available stable version when Updates is set to Tell me.
+- **Steadier answers:** your field and Send stay above the phone keyboard, and unconfirmed messages keep checking and retrying, including answers an older version gave up on. Plus many smaller fixes.
+
+<details><summary>Full changelog since 2.1.0</summary>
+
+### Home and Needs you
+
+- Catch up has a key for every move on desktop: A–H pick, W writes your own, ⌘↵ sends, J/K skip and go back, M asks for context, L later, O opens the chat, R the queue. S shows them all; X leaves.
+- Catch up: once a question has an answer, Send to agent is on the move bar too. More context and Later open right where you are, a sheet above the phone's bar or a popover on desktop, never below the card.
+- Agents can ask another agent, or the Overseer, to explain a card that needs you in plain words, and read what Catch up will show you next. The answer comes back on its own, with no waiting around.
+- Catch up walks everything that needs you one card at a time, from Home's "Catch up · N" or ⌘K. Ask for more context and the deck moves on; that workspace comes back as your next card with the answer. Desktop shows the queue beside the card.
+- On a phone, what you type and its Send button stay on screen. While you write an answer or a note, Sign off and the reply box step aside and the page scrolls the field above the keyboard.
+
+### Questions and answers
+
+- On a phone the card follows your finger: drag left to skip it, right to go back, or let go early and it springs back.
+- A note on a picked option opens with Add note and says which option it goes with.
+- Answers that an older version gave up on go back to checking after the update.
+
+### Repairs and PRs
+
+- A message to a busy agent, or one Paseo kept refusing after a crash, now still reaches the agent: Follow-up checks the agent's chat more thoroughly and sends again when it isn't there.
+
+### Setup, Settings and updates
+
+- What's new now opens after any update that brings new release notes, not only a major one. Betas still install quietly.
+- Don't want it? Turn off Show What's new after updates in Settings → General. Release notes stay one tap away.
+
+### Fixes
+
+- More context always asks the workspace's own agent, so its answer always lands on the card. An earlier ask of the Overseer now shows a link to its chat.
+- Catch up's Skip now says what it skips ("Skip question", "Skip permission") and that the card comes back after the rest, and a new Skip workspace (⇧J on desktop) moves past every card of a workspace at once.
+- Home now says when any new stable version is out, including minor and patch releases, if Updates is set to Tell me. Betas stay in Settings → General.
+- Writing your own answer to a question is one step everywhere. Pick Something else, type, and send. The box no longer sits there as a note before you pick anything, in the panel, on Home or on a phone.
+- An answer Follow-up couldn't confirm no longer ends as Failed and waits for you. It keeps checking the agent's chat and sends it again once the chat shows it never arrived.
+
+</details>
+
 ## 2.1.0 (2026-11-17)
 
 Answers reach the agent even when Paseo is busy, search is one key away, and artifact links have their real names.
