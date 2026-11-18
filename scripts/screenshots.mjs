@@ -901,7 +901,7 @@ async function putInChatShots({ shoot, seeded, call, billing }) {
     await openChat(page, "Billing retries", billing.prompt);
     await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
     await page.getByRole("tab", { name: /^Questions/ }).first().click();
-    await page.getByRole("button", { name: /^Q1, Retry declined cards\?/ }).first().click();
+    await page.getByRole("button", { name: /^Q1,/ }).first().click();
     await page.getByText("Should charges that fail with card_declined retry").last().waitFor();
   };
   const phone = async page => {
@@ -1415,8 +1415,9 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await openChat(page, "Billing retries", billing.prompt);
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
       await page.getByRole("tab", { name: /^Questions/ }).first().click();
-      await page.getByRole("button", { name: /^Q1, Retry declined cards\?/ }).first().click();
+      await page.getByRole("button", { name: /^Q1,/ }).first().click();
       await page.getByText("Retry card_declined once after 24 hours").last().click();
+      await page.getByRole("button", { name: "Add a note for the agent about Q1", exact: true }).last().click();
       await page.getByPlaceholder(/note for the agent/i).last().fill("Only for soft declines. Hard declines still go straight to dunning.");
       await page.getByText("Should charges that fail with card_declined retry").last().waitFor();
     });
