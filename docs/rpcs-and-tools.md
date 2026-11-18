@@ -45,7 +45,7 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | `register_pr` | `follow.register-pr` | Registers a submitted PR and its stack and parent. `agentMerges: true` marks a PR the agent merges itself: Follow-up never asks the developer to review or merge it. In a No review repository every PR counts as `agentMerges` unless the agent sets it false ([review mode](prs.md#review-mode)). |
 | `exclude_stack` | `follow.exclude-stack` | Removes a wrongly registered stack, with an audit (`server/exclusions.ts`). |
 | `update_obligation` | `follow.obligation` | Creates or updates a task (an obligation), with an optional trigger and communication receipt. `status: working` records the caller as the task's agent, or `workingAgentId` (another agent Paseo knows). `ask`, with `blocked`, is the question the developer must answer; only then does the task ask them. |
-| `acknowledge_batch` | `follow.acknowledge` | Records a repair batch's result: completed or blocked. |
+| `acknowledge_batch` | `follow.acknowledge` | Records a repair batch's result: completed or blocked; blocked with `humanOnly` when only a person can move it (a PR item for the developer, not an agent failure). |
 | `ask_question`, `record_answer`, `withdraw_question` | `follow.ask-question`, `follow.record-answer`, `follow.withdraw-question` | Questions for the developer (`server/questions.ts`). |
 | `set_spec` | `follow.set-spec` | The agent's spec link. The developer's own link wins over it. |
 | `link_item`, `unlink_item` | `follow.link-item`, `follow.unlink-item` | Links what the work is about (a Linear key is confirmed with Linear first; a PR is refused), or removes one for good ([linked-items.md](linked-items.md)). Main and contributors. |

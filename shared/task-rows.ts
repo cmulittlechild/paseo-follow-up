@@ -19,7 +19,7 @@ import { sendDecision } from "./send-decision";
 export const REPAIR_KINDS: readonly Task["kind"][] = ["conflict", "review", "checks", "restack"];
 export const isRepair = (t: Pick<Task, "kind">) => REPAIR_KINDS.includes(t.kind);
 
-export type RepairState = "queued" | "sent" | "capped" | "manual" | "done";
+export type RepairState = "queued" | "sent" | "capped" | "manual" | "person" | "done";
 export type RepairRow = {
   task: Task;
   state: RepairState;
@@ -84,14 +84,14 @@ export function repairRows(w: Workspace, doneLimit = 20): { open: RepairRow[]; d
   const add = (task: Task, state: RepairState, text: string) => { if (!isRepair(task) || seen.has(task.key)) return; seen.add(task.key); open.push({ task, state, text, pr: prOf(task) }); };
   for (const t of sentMessage(w)?.tasks ?? []) add(t, "sent", "Sent");
   for (const t of pendingMessage(w)?.tasks ?? []) add(t, "queued", "Queued");
-  for (const h of w.heldTasks ?? []) add(h.task, h.held, h.held === "capped" ? "Needs you · sent twice, no change on GitHub" : "Auto off · stays with you");
+  for (const h of w.heldTasks ?? []) add(h.task, h.held, h.held === "capped" ? "Needs you · sent twice, no change on GitHub" : h.held === "person" ? "Needs you · waits on a person, not the agent" : "Auto off · stays with you");
   const done: RepairRow[] = [];
   // Newest settled message first; a task key still open (another fingerprint) isn't done.
   const settled = w.batches.filter(b => b.state === "completed" && b.sentAt && message(b)).sort((a, b) => Date.parse(b.settledAt ?? b.sentAt!) - Date.parse(a.settledAt ?? a.sentAt!));
   for (const b of settled) for (const t of b.tasks) {
     if (!isRepair(t) || seen.has(t.key) || done.length >= doneLimit) continue;
     seen.add(t.key);
-    done.push({ task: t, state: "done", text: b.unacknowledged ? "Done · resolved on GitHub" : `Done · ${agent(w)} finished it`, at: b.settledAt, pr: prOf(t) });
+    done.push({ task: t, state: "done", text: b.unacknowledged || b.humanOnly ? "Done · resolved on GitHub" : `Done · ${agent(w)} finished it`, at: b.settledAt, pr: prOf(t) });
   }
   return { open, done };
 }

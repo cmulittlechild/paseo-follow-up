@@ -178,6 +178,7 @@ export function workspaceHeadline(items: NeedItem[]): Headline | null {
     case "hold": return { key: "blocked", label: "On hold", line: top.detail || top.title, source: "workspace" };
     case "retry": return { key: "blocked", label: "Tasks stuck", line: top.title, source: "workspace" };
     case "capped": return { key: "blocked", label: "Task unchanged", line: top.title, source: "workspace" };
+    case "person": return { key: "blocked", label: top.review ? "Waits on reviewer" : "Waits on a person", line: top.title, source: "workspace" };
     case "check": return { key: "blocked", label: "Check PR", line: top.title, source: "workspace" };
     case "message": return { key: "blocked", label: "Message not sent", line: top.title, source: "workspace" };
     case "answer": return top.waiting ? { key: "decision", label: "Send answer", line: top.title, source: "workspace" } : { key: "blocked", label: "Check answer", line: top.title, source: "workspace" };

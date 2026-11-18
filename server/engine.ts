@@ -3,7 +3,7 @@ import { taskSchedule } from "../shared/task-trigger";
 import { STOP_WAIT_MS, settleWithin, type Deadline } from "./teardown";
 import { DEVELOPER, type Actor } from "../shared/actor";
 import { randomUUID } from "node:crypto";
-import { completionBlockers, completionCheck, completionGate, revokesDone, type CompletionGate, type Workspace, type State, type Batch } from "../shared/model";
+import { completionBlockers, completionCheck, completionGate, revokesDone, type CompletionGate, type Workspace, type State, type Batch, type Task } from "../shared/model";
 import { Store } from "./store";
 import { Github } from "./github";
 import { batchPrompt, messageText, tasksFor, isRecovery, needsPrObservations, type TaskWording } from "./tasks";
@@ -19,7 +19,7 @@ import { PASEO_UNREACHABLE, deliveryOf, type NewQueueItem, type QueueItem, type 
 import { recordSnapshot } from "./deployment-anchor";
 import { pruneUnsent } from "./batch-archive";
 import { holdSuperseded, liftHold } from "../shared/status";
-import { conditionId, isCapped, readSince, sendDecision, settleUnacknowledged, UNACKNOWLEDGED_MS } from "../shared/send-decision";
+import { conditionId, isCapped, mootReason, personHeld, readSince, sendDecision, settleUnacknowledged, stillApplies, stuckRepair, UNACKNOWLEDGED_MS } from "../shared/send-decision";
 import { isRepair } from "../shared/task-rows";
 export { settleUnacknowledged, UNACKNOWLEDGED_MS, NO_PROGRESS_CAP } from "../shared/send-decision";
 
@@ -133,6 +133,9 @@ export class Engine {
           b.tasks = b.tasks.filter(t => t.kind !== "obligation" || eligible.some(e => e.key === t.key && e.fingerprint === t.fingerprint));
           if (!b.tasks.length) { b.state = "cancelled"; b.result = "No triggered task is due. Unscheduled work remains in Tasks."; }
         }
+        // A batch left blocked or unconfirmed by a release before a-batch-item-leaves-once-nothing-applies, whose PRs
+        // have since merged or changed, settles at start-up, dormant workspaces included (no tick observes those).
+        if (w.enable_tracking && !w.archived) settleMoot(w, eligible, this.now());
         for (const b of w.batches) if (isRecovery(b) && b.state === "pending" && !b.enable_manual_recovery) { b.state = "cancelled"; b.result = "Recovery is now optional. Run recovery when needed; registered work continues independently."; }
         if (["Recovery stopped or failed. Check the recovery agent before retrying.", "Recovery acknowledgment was refused. Check the identity error on this batch."].includes(w.hold ?? "")) w.hold = null;
       }
@@ -642,14 +645,22 @@ export class Engine {
     // One cap (Q49): a send that left a PR condition as it was, acknowledged or not, delivered nothing GitHub shows, so
     // the condition goes out again until it has gone out NO_PROGRESS_CAP times unchanged. An acknowledged one waits
     // for a GitHub read newer than the acknowledgment, so a fix GitHub hasn't shown yet is never sent twice.
-    const delivered = new Set(w.batches.filter(b => ["sending", "sent", "completed", "blocked", "uncertain"].includes(b.state) && !(b.state === "completed" && b.unacknowledged))
+    // A stuck batch re-checks what it asked for like a queued one: once nothing still applies, it settles and leaves
+    // Needs you (a-batch-item-leaves-once-nothing-applies).
+    settleMoot(w, tasks, this.now());
+    // A human-only outcome isn't a delivery that awaits GitHub: its still-open conditions are held as "person" at once.
+    const delivered = new Set(w.batches.filter(b => ["sending", "sent", "completed", "blocked", "uncertain"].includes(b.state) && !(b.state === "completed" && (b.unacknowledged || b.humanOnly)))
       .flatMap(b => b.tasks.filter(t => b.state !== "completed" || !isRepair(t) || !readSince(w, t, b.settledAt)).map(conditionId)));
     const open = tasks.filter(t => !delivered.has(conditionId(t)));
     // One rule for every task in a message (Q49): a task the developer keeps for themselves, or a condition that went
     // out NO_PROGRESS_CAP times unchanged, stays out of it; only that task waits, the rest go out.
     const manual = new Set(w.manualTasks ?? []);
     const held: NonNullable<Workspace["heldTasks"]> = [];
-    for (const t of open) if (t.kind !== "completion" && (manual.has(t.key) || isCapped(w, t))) held.push({ task: t, held: manual.has(t.key) ? "manual" : "capped" });
+    for (const t of open) {
+      if (t.kind === "completion") continue;
+      const why = manual.has(t.key) ? "manual" : personHeld(w, t) ? "person" : isCapped(w, t) ? "capped" : null;
+      if (why) held.push({ task: t, held: why });
+    }
     const fresh = open.filter(t => !held.some(h => h.task === t));
     if (held.length || w.heldTasks?.length) w.heldTasks = held;
     let pending = w.batches.find(b => b.state === "pending" && !isRecovery(b));
@@ -709,7 +720,13 @@ export class Engine {
       return { workspace: w, blockers, unconfirmed: gate.unconfirmed, alreadyDone, next: doneGuidance(gate, alreadyDone) };
     });
   }
-  async acknowledge(agentId: string, batchId: string, outcome: "completed" | "blocked", result: string, workspaceId?: string): Promise<Workspace> {
+  /**
+   * Records an agent's outcome. `humanOnly` (with blocked): nothing is left for an agent, only a person can move what is
+   * still open. The batch settles completed and its still-open conditions wait as the developer's "person" tasks, a PR
+   * item, never "The tasks didn't finish" (a-human-only-outcome-is-a-human-item).
+   */
+  async acknowledge(agentId: string, batchId: string, outcome: "completed" | "blocked", result: string, workspaceId?: string, humanOnly?: boolean): Promise<Workspace> {
+    if (humanOnly && outcome !== "blocked") throw new Error("humanOnly goes with outcome \"blocked\": use it when nothing is left for an agent and only a person can move what is still open.");
     // Resolved on the snapshot, written to that one workspace (a-send-never-clones-the-whole-state), re-checked inside.
     const target = agentWorkspace(await this.store.snapshot(), agentId, "read", workspaceId);
     const w = await this.store.mutateWorkspace(target.id, w => {
@@ -719,7 +736,9 @@ export class Engine {
       if (!b || !["sending", "sent", "blocked", "uncertain"].includes(b.state)) throw new Error("Batch is not awaiting acknowledgment.");
       if ((b.recipientAgentId ?? w.mainAgentId) !== agentId) throw new Error(`Only the assigned agent can acknowledge this batch: expected agent ${b.recipientAgentId ?? w.mainAgentId}, received agent ${agentId}.`);
       if (outcome === "completed" && b.tasks.some(t => t.kind === "obligation" && w.obligations.some(o => o.id === t.target && o.communication && o.status !== "waived" && (o.status !== "done" || !replyRecorded(o.communication))))) throw new Error("Record the sent reply on each communication task before completing this batch, or acknowledge blocked with the posting/access reason.");
-      b.state = outcome; b.result = result; b.acknowledgmentError = null; b.settledAt = new Date(this.now()).toISOString();
+      if (humanOnly && (isRecovery(b) || completionCheck(b))) throw new Error("humanOnly is for repair batches. Acknowledge this one blocked with the reason.");
+      b.state = humanOnly ? "completed" : outcome; b.result = result; b.acknowledgmentError = null; b.settledAt = new Date(this.now()).toISOString();
+      if (humanOnly) b.humanOnly = true; else delete b.humanOnly;
       if (outcome === "completed" && w.inventory) for (const task of b.tasks.filter(t => t.kind === "inventory"))
         w.inventory.syncedRevision = Math.max(w.inventory.syncedRevision, Number(task.fingerprint));
       return w;
@@ -753,6 +772,16 @@ function nextDue(w: Workspace, now: number): number {
 
 export type DoneResult = { workspace: Workspace; blockers: string[]; unconfirmed: string[]; alreadyDone: boolean; next: string };
 /** The declare_done reply in words: what's missing, who can move it, and whether calling again could help. */
+/**
+ * Settles every stuck (blocked or unconfirmed) repair batch that no longer asks for anything (stillApplies over `open`,
+ * the tasks the PRs show now), with the reason and the blocker's own time kept for Activity. The same rule reconcile
+ * applies to a queued batch ("Conditions resolved before delivery"), so a stuck one never outlives what it was about.
+ */
+function settleMoot(w: Workspace, open: readonly Task[], now: number): void {
+  for (const b of w.batches) if (stuckRepair(b) && !stillApplies(w, b, open)) {
+    b.state = "cancelled"; b.result = mootReason(w, b); b.settledAt ??= new Date(now).toISOString();
+  }
+}
 /** Done answers every open Done check: a queued one is cancelled, a sent one counts as acknowledged. */
 function settleDoneChecks(w: Workspace, now: number): void {
   for (const b of w.batches.filter(b => completionCheck(b) && ["pending", "sending", "sent", "blocked", "uncertain"].includes(b.state))) {

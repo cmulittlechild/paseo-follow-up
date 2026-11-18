@@ -805,10 +805,10 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.answerQuestionRpc, async ({ workspaceId, questionId, choice, words, action }, context) => { await requireReady(); return engine.answer(workspaceId, questionId, choice, words, action, actorOf(context)); });
   handle(rpc.declareDoneRpc, async ({ agentId, summary }, { paseo }) => { await requireReady(); return engine.declareDone(agentId, summary, await callerWorkspaceId(agentId, paseo, false)); });
-  handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result }, { paseo }) => {
+  handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly }, { paseo }) => {
     await requireReady();
     const agent = (await paseo.agents.ref(agentId).refresh())?.agent;
-    try { return await engine.acknowledge(agentId, batchId, outcome, result, await callerWorkspaceId(agentId, paseo)); }
+    try { return await engine.acknowledge(agentId, batchId, outcome, result, await callerWorkspaceId(agentId, paseo), humanOnly); }
     catch (error) {
       if (agent?.workspaceId) await store.mutate(state => {
         const w = state.workspaces.find(w => w.id === agent.workspaceId);

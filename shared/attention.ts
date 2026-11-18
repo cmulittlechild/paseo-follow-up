@@ -107,6 +107,12 @@ type NeedItemBase =
   | { kind: "retry"; key: string; batchId: string; title: string; detail: string; exhausted: boolean }
   /** One task that went out NO_PROGRESS_CAP times with no change (Q49): Retry sends that task again; the rest of the queue moves on. */
   | { kind: "capped"; key: string; taskKey: string; title: string; detail: string }
+  /**
+   * A task the agent said only a person can move (Batch.humanOnly): the developer's, never an agent failure
+   * (a-human-only-outcome-is-a-human-item). `review`: a review only its reviewer can change, so the item asks for a
+   * re-review (the PR sheet's reviewers). Send to agent hands it back (retryTask, the retry_batch tool).
+   */
+  | { kind: "person"; key: string; taskKey: string; prKey: string | null; review: boolean; title: string; detail: string }
   /** `finish`: the Done check. It never auto-sends, so it always waits on you. */
   | { kind: "send"; key: string; batchId: string; title: string; tasks: string[]; blocker: string | null; finish?: true }
   | { kind: "decision"; key: string; obligationId: string; title: string; detail: string }
@@ -129,6 +135,11 @@ const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 /** The Needs-you Send while Auto is off: how much waits and why, never the workspace's title (say it once, Q51). */
 export const autoOffLine = (n: number) => `${plural(n, "task")} ready · auto-send is off here`;
 export const agentName = (w: Pick<Workspace, "mainAgentTitle">) => w.mainAgentTitle?.trim() || "the main agent";
+/** A person task's Needs-you title: whom it waits on, never "didn't finish". */
+export function personTitle(t: Pick<Task, "kind" | "title">, number?: number): string {
+  if (number === undefined) return `${t.title}: waits on a person, not the agent`;
+  return t.kind === "review" ? `#${number} waits on its reviewer` : `#${number} waits on a person, not the agent`;
+}
 /** A capped task's Needs-you title: what is still wrong, in plain words. */
 export function cappedTitle(t: Pick<Task, "kind" | "target" | "title">): string {
   const pr = `#${t.target.split("#")[1] ?? t.target}`;
@@ -192,6 +203,12 @@ function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
   for (const h of (w.heldTasks ?? []).filter(h => h.held === "capped"))
     items.push({ kind: "capped", key: `capped:${h.task.key}`, taskKey: h.task.key, title: cappedTitle(h.task), ...linkFor(h.task.target),
       detail: `Sent ${NO_PROGRESS_CAP} times and GitHub shows no change. Check ${agentName(w)}'s chat, then retry.` });
+  for (const h of (w.heldTasks ?? []).filter(h => h.held === "person")) {
+    const why = [...w.batches].reverse().find(b => b.humanOnly && b.state === "completed" && b.tasks.some(t => t.key === h.task.key))?.result;
+    const pr = w.prs.find(p => p.key === h.task.target);
+    items.push({ kind: "person", key: `person:${h.task.key}`, taskKey: h.task.key, prKey: pr?.key ?? null, review: h.task.kind === "review", title: personTitle(h.task, pr?.number), ...linkFor(h.task.target),
+      detail: why || `${capitalize(agentName(w))} says nothing is left for an agent here.` });
+  }
   for (const a of w.prActions.filter(a => a.state === "uncertain")) {
     const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");
     items.push({ kind: "check", key: `check:${a.id}`, actionId: a.id, ...(a.prs.length === 1 ? linkFor(a.prs[0]) : {}), title: `Check the ${a.kind === "merge" ? "merge" : a.kind === "request_reviewers" ? "reviewer request" : "merge-when-ready change"} on ${numbers}`, detail: a.result });
@@ -295,7 +312,9 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
   else parts.push({ text: `${bar.merged} of ${plural(bar.total, "PR")} merged` });
   const need = needsYou(w, now).length;
   if (need) parts.push({ text: `${need} need${need === 1 ? "s" : ""} you`, tone: "warning" });
-  const repair = w.prs.filter(needsRepair).length;
+  // A PR whose only open condition waits on a person (a-human-only-outcome-is-a-human-item) isn't the agent's to fix.
+  const personOnly = (p: Pr) => !p.snapshot?.conflict && !p.snapshot?.failedChecks?.length && !!w.heldTasks?.some(h => h.held === "person" && h.task.target === p.key);
+  const repair = w.prs.filter(p => needsRepair(p) && !personOnly(p)).length;
   if (repair) parts.push({ text: `${repair} to fix`, tone: "danger" });
   return parts;
 }

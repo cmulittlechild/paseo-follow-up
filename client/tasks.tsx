@@ -207,6 +207,7 @@ const chipColor = (r: RepairRow, c: Colors) => r.state === "done" ? c.foreground
 function RepairGlyph({ row, w, colors }: { row: RepairRow; w: Workspace; colors: Colors }) {
   if (row.state === "done") return <Icon name="Check" size={14} color={colors.statusSuccess} />;
   if (row.state === "capped") return <Icon name="CircleAlert" size={14} color={colors.statusWarning} />;
+  if (row.state === "person") return <Icon name="UserRound" size={14} color={colors.statusWarning} />;
   if (row.state === "manual") return <View style={{ width: 14, height: 14, alignItems: "center", justifyContent: "center" }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.foregroundMuted, opacity: 0.6 }} /></View>;
   return <DeliveryGlyph state={row.state} w={w} colors={colors} />;
 }
@@ -223,7 +224,7 @@ function RepairTaskRow({ row, w, theme, compact, onOpen, hit }: { row: RepairRow
         : <RichText plain numberOfLines={3} style={[t.body, row.state === "done" ? { color: c.foregroundMuted } : null]}>{repairTitle(row)}</RichText>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
         <Chip theme={theme} label={row.pr} color={chipColor(row, c)} />
-        <Text style={[t.meta, row.state === "capped" ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{label}</Text>
+        <Text style={[t.meta, row.state === "capped" || row.state === "person" ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{label}</Text>
       </View>
     </View>
     <View style={{ paddingTop: 2 }}><Icon name="ChevronRight" size={14} color={c.foregroundMuted} /></View>
