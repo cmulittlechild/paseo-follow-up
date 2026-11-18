@@ -2,7 +2,7 @@
  * Walking a list of rows from the keyboard (desktop and web), the keys and the step. Home and Paseo's sidebar view
  * walk HomeList with these through one hook (client/list-keys.ts; invariant one-keyboard-walk-for-every-list).
  */
-export type ListMove = "next" | "prev" | "first" | "last" | "open";
+export type ListMove = "next" | "prev" | "first" | "last" | "open" | "keys";
 export type ListKeyEvent = { key: string; metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean };
 
 /**
@@ -20,13 +20,36 @@ export function listMove(e: ListKeyEvent, typing: boolean): ListMove | null {
     case "k": return "prev";
     case "Home": return "first";
     case "End": return "last";
-    case "Enter": return "open";
+    case "Enter": case "o": return "open";
+    // Catch up's letter for the keys sheet: the same letter does the same thing on Home.
+    case "s": return "keys";
     default: return null;
   }
 }
 
+/**
+ * The row Enter (or O) opens (invariant the-selected-workspace-opens-with-enter). A focused row opens itself. On Home
+ * ("select") the selection opens too when nothing has focus: after a click, a ⌘K or search pick, or coming back to
+ * Home the selection is on screen but focus is on the page, not on its row. Enter on any other control (a button, a
+ * chip, a field) stays that control's: the caller never asks then.
+ */
+export function enterTarget(input: { focused: string | null; selectedKey: string | null; mode: "select" | "focus"; onBody: boolean }): string | null {
+  if (input.focused) return input.focused;
+  return input.mode === "select" && input.onBody ? input.selectedKey : null;
+}
+
+/**
+ * Enter in Home's search: the first press picks the active result (the detail pane shows it); a press on the result
+ * that is already selected opens it, as Enter on its row would. With no query, Enter opens the selection.
+ */
+export function searchEnter(input: { item: string | null; selected: string | null; query: string }): "select" | "open" | null {
+  if (!input.query.trim()) return input.selected ? "open" : null;
+  if (!input.item) return null;
+  return input.item === input.selected ? "open" : "select";
+}
+
 /** The row a move lands on: one step, clamped at both ends (no wrap). From no row (or one that left), the first. */
-export function stepKey(order: readonly string[], current: string | null, move: Exclude<ListMove, "open">): string | null {
+export function stepKey(order: readonly string[], current: string | null, move: Exclude<ListMove, "open" | "keys">): string | null {
   if (!order.length) return null;
   if (move === "last") return order[order.length - 1];
   const i = current === null ? -1 : order.indexOf(current);
@@ -68,7 +91,7 @@ export function surfaceVisible(root: Visible | null | undefined, doc: { visibili
  * Where a move lands. From the list's own query field the arrows enter the list: at the selection on Home ("select"),
  * at the first match in the sidebar view ("focus"). Otherwise one step from the focused row, or from the selection.
  */
-export function walkTarget(input: { order: readonly string[]; focused: string | null; selectedKey: string | null; mode: "select" | "focus"; typing: boolean; move: Exclude<ListMove, "open"> }): string | null {
+export function walkTarget(input: { order: readonly string[]; focused: string | null; selectedKey: string | null; mode: "select" | "focus"; typing: boolean; move: Exclude<ListMove, "open" | "keys"> }): string | null {
   const { order, focused, selectedKey, mode, typing, move } = input;
   const from = focused ?? (selectedKey !== null && order.includes(selectedKey) ? selectedKey : null);
   if (typing) return mode === "select" && from ? from : order[0] ?? null;

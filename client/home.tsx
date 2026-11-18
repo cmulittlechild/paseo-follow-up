@@ -36,7 +36,9 @@ import { withAlpha, isLight, mergedColor, type Colors } from "./theme";
 import { UpdateNotice, VersionMark } from "./updates";
 import { WhatsNewGate } from "./release-notes";
 import { ViewSync } from "./view-store";
-import { CatchUp, CatchUpButton } from "./catch-up";
+import { CatchUp, CatchUpButton, KeysSheet } from "./catch-up";
+import { searchEnter } from "../shared/list-keys";
+import { HOME_KEYS } from "../shared/home-keys";
 import { deckCards } from "../shared/catch-up";
 import { ResizableSplit } from "./split";
 import type { SearchKey } from "./search-key";
@@ -119,7 +121,9 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   // host's ← is the only back control and it lands on the list. Desktop selects in place beside the list.
   const route = compact && deps.openItem ? deps.openItem : null;
   const onSelect = useCallback((key: string) => { if (route) route(key); else setSelected(key === BRIEF_KEY ? null : key); }, [route]);
-  const current = selected ? model.byKey.get(selected) ?? (selected.startsWith("agent:") ? [...model.byKey.values()].find(x => x.agentId === selected.slice(6)) ?? null : null) : null;
+  // A key names a row (`ws:…`, an agent row) or, from a ⌘K or chat link, an agent (`agent:<id>`): one lookup for both.
+  const resolve = (key: string | null) => key ? model.byKey.get(key) ?? (key.startsWith("agent:") ? [...model.byKey.values()].find(x => x.agentId === key.slice(6)) ?? null : null) : null;
+  const current = resolve(selected);
   const tracked = useSyncExternalStore(deps.sources.live.subscribe, deps.sources.live.version, deps.sources.live.version);
   const rows = useInbox(inbox, () => inbox.rows());
   // Go through's count is its cards (one per ask), the same deck the mode opens on.
@@ -143,14 +147,25 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   // The omnibox's "Ask the Overseer" row: send, then show the conversation it lands in.
   const [asking, setAsking] = useState(false);
   const [pendingAsk, setPendingAsk] = useState<string | null>(null);
-  const pick = useCallback(async (item: OmniboxItem) => {
+  // Enter in the search (the-selected-workspace-opens-with-enter): the first press shows the result in the pane, a
+  // press on the result already showing opens its chat, and with no query Enter opens what is selected.
+  const openRef = useRef<(key: string) => void>(() => undefined);
+  const selectedRef = useRef<string | null>(null); selectedRef.current = current?.key ?? selected;
+  const pick = useCallback(async (picked: OmniboxItem | null) => {
+    if (!route && (!picked || picked.ask === undefined)) {
+      const move = searchEnter({ item: picked ? resolve(picked.key)?.key ?? picked.key : null, selected: selectedRef.current, query: omnibox.query });
+      if (move === "open") { openRef.current(picked?.key ?? selectedRef.current!); return; }
+    }
+    if (!picked) return;
+    const item = picked;
     if (item.ask === undefined) { if (route) route(item.key); else setSelected(item.key); return; }
     if (asking) return;
     setAsking(true);
     // No toast: the conversation opens on the sent words, which says it more plainly.
     try { await deps.sources.extras.askOverseer(item.ask); omnibox.setQuery(""); omnibox.inputRef.current?.blur(); setPendingAsk(item.ask); if (route) route(OVERSEER_KEY); else setSelected(OVERSEER_KEY); inbox.refresh(); }
     catch (e) { toast.error(errorText(e)); } finally { setAsking(false); }
-  }, [asking, deps.sources.extras, omnibox, inbox, toast, route]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
   // ⌘K "Follow-up: Ask the Overseer" opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
   // shared state, so it works whether Home was already open or mounts fresh.
   const [replyFocus, setReplyFocus] = useState(0);
@@ -207,10 +222,13 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   // Enter on a row: its chat, as Open full does. The brief has nothing to open; the Overseer opens once it runs.
   const openKey = (key: string) => {
     if (key === OVERSEER_KEY) { const id = overseerStatus?.agentId; if (id && navigation) navigation.openAgent({ agentId: id }); return; }
-    const s = model.byKey.get(key); if (s) openFull(s);
+    const s = resolve(key); if (s) openFull(s);
   };
+  openRef.current = openKey;
+  // S: Home's keys (desktop web), from the one list (shared/home-keys.ts).
+  const [keysOpen, setKeysOpen] = useState(false);
   const list = <HomeList model={model} theme={theme} dense={compact} touch={compact} selectedKey={selected} onSelect={onSelect} briefLine={briefLine}
-    keys={{ mode: "select", onOpen: openKey, scope: homeRef, claimBody: true }}
+    keys={{ mode: "select", onOpen: openKey, onKeys: () => setKeysOpen(v => !v), scope: homeRef, claimBody: true }}
     results={omnibox.results} activeResult={omnibox.active} onResult={item => void pick(item)} filter={filter} overseer={overseer} asking={asking} menu={rowMenu} onSendNow={sendNow}
     // Phones: the host header already says Follow-up, so no "Home" title row; search, sort and settings share one row and
     // the meters move to the end of the list.
@@ -222,7 +240,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
     afterNeeds={compact && model.needs > 0 ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
-    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} />}>
+    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} />}>
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
@@ -256,6 +274,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       {updateSheets}
       <View style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}><UndoBar store={inbox} theme={theme} touch={false} /></View>
     </View>} />
+    {keysOpen && <KeysSheet theme={theme} label="Home keys" keyWidth={104} onClose={() => setKeysOpen(false)} sections={[
+      { title: "In the list", keys: HOME_KEYS.filter(k => !k.when) },
+      { title: "In the search", keys: HOME_KEYS.filter(k => k.when === "search").map(k => k.key === "/" && anywhereKey ? { ...k, key: `/ or ${anywhereKey}` } : k) },
+      { title: "Answering", keys: HOME_KEYS.filter(k => k.when === "pane") },
+    ]} />}
   </View>;
 }
 
@@ -296,7 +319,7 @@ export function DisplaySplit({ theme, main, side, field, defaultFraction, range,
 const HOME_DETAIL_MIN_PX = 360;
 const HOME_LIST_MIN_PX = 480;
 
-function ListHeader({ theme, compact, onSettings }: { theme: Theme; compact: boolean; onSettings: () => void }) {
+function ListHeader({ theme, compact, onSettings, onKeys }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16 }}>
     {/* Home first, the version second: a muted caption on the title's line, never a control beside the cog. */}
@@ -304,6 +327,8 @@ function ListHeader({ theme, compact, onSettings }: { theme: Theme; compact: boo
       <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: compact ? 17 : 15, fontWeight: "600" }}>Home</Text>
       <VersionMark theme={theme} touch={compact} openSettings={onSettings} />
     </View>
+    {/* The keys sheet's way in for the mouse (S from the keyboard); desktop web, where the keys are. */}
+    {onKeys && Platform.OS === "web" && <IconButton theme={theme} compact={compact} icon="Keyboard" label="Keys (S)" tooltip onPress={onKeys} />}
     <IconButton theme={theme} compact={compact} icon="Settings" label="Follow-up settings" onPress={onSettings} />
   </View>;
 }
@@ -474,7 +499,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       {onBack && <IconButton theme={theme} compact icon="ChevronLeft" label="Back to Home" onPress={onBack} />}
       <Icon name={s.icon} size={16} color={color} />
       <Text accessibilityRole="header" numberOfLines={2} style={[t.title, { flex: 1, fontSize: 16 }]}>{s.title}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{` › ${s.agent}`}</Text> : null}</Text>
-      <Button theme={theme} compact={compact} icon="PanelRightOpen" title="Open full" accessibilityHint="Opens the agent's chat and docks this list beside it" onPress={() => openFull(s)} />
+      <Button theme={theme} compact={compact} icon="PanelRightOpen" title="Open full" keyHint="↵" accessibilityHint="Opens the agent's chat and docks this list beside it (Enter)" onPress={() => openFull(s)} />
     </View>
     {s.workspaceId && w && <SummaryLine key={s.workspaceId} workspace={w} theme={theme} compact={false} />}
     {s.workspaceId && w && <ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact={false} />}

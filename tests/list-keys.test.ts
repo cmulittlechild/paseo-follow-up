@@ -120,7 +120,8 @@ test("a mounted but hidden Home never takes a body key", async () => {
 
 test("phones and native draw no listener; the sidebar's selected row wears Paseo's selected-item fill", async () => {
   const src = (f: string) => readFile(join(import.meta.dirname, "..", "client", f), "utf8");
-  assert.match(await src("home-list.tsx"), /enabled: !!keys && !touch && !results/);
+  // On while a search shows results (the walk has no rows then; Enter opens the selection): the-selected-workspace-opens-with-enter.
+  assert.match(await src("home-list.tsx"), /enabled: !!keys && !touch, order/);
   assert.match(await src("list-keys.ts"), /Platform\.OS !== "web"/);
   // Light: two steps under the sidebar's surface2 (#f4f4f5 -> about #d4d4d8, Paseo's surface4); dark: surface2.
   const light = { surface0: "#ffffff", surface1: "#fafafa", surface2: "#f4f4f5", foreground: "#1a1a1e" } as never;

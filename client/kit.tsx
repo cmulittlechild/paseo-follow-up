@@ -110,11 +110,12 @@ export function SubmitScope({ enabled, onSubmit, children, style, accessibilityR
 
 export type ButtonKind = "primary" | "secondary" | "ghost" | "danger";
 /** One button vocabulary for the whole plugin: 32px on desktop with a hit slop, 44px on touch layouts. */
-export function Button({ title, onPress, theme, kind = "secondary", disabled = false, loading = false, icon, compact = false, accessibilityLabel, accessibilityHint, grow = false, shortcut = false, nativeID, onInteract }: {
+export function Button({ title, onPress, theme, kind = "secondary", disabled = false, loading = false, icon, compact = false, accessibilityLabel, accessibilityHint, grow = false, shortcut = false, keyHint, nativeID, onInteract }: {
   /** Focus and hover, for a surface that pauses while the button is in use (the Undo bar). */ onInteract?: (event: "focus" | "blur" | "hoverIn" | "hoverOut") => void;
   /** A DOM id on web, so focusSoon can move focus here after the control that had it goes away. */ nativeID?: string;
   title: string; onPress: () => void; theme: Theme; kind?: ButtonKind; disabled?: boolean; loading?: boolean; icon?: string; compact?: boolean; accessibilityLabel?: string; accessibilityHint?: string; grow?: boolean;
   /** The SubmitScope's action: shows a quiet ⌘↵ on desktop web. */ shortcut?: boolean;
+  /** A key that does what this button does from elsewhere on the screen (Home's ↵ for Open full): the same quiet hint. */ keyHint?: string;
 }) {
   const c = theme.colors;
   const fg = kind === "primary" ? c.accentForeground : kind === "danger" ? c.statusDanger : c.foreground;
@@ -130,7 +131,7 @@ export function Button({ title, onPress, theme, kind = "secondary", disabled = f
     })}>
     {loading ? <Spinner color={fg} size={12} /> : icon ? <Icon name={icon} size={compact ? 16 : 14} color={fg} /> : null}
     <Text numberOfLines={1} style={{ color: fg, fontSize: compact ? 14 : 12, lineHeight: compact ? 19 : 16, fontWeight: "600" }}>{title}</Text>
-    {shortcut && !compact && Platform.OS === "web" && <Text accessibilityElementsHidden importantForAccessibility="no" style={{ color: fg, opacity: 0.6, fontSize: 11, lineHeight: 16, fontWeight: "500", marginLeft: 2 }}>{submitHint()}</Text>}
+    {(shortcut || keyHint) && !compact && Platform.OS === "web" && <Text accessibilityElementsHidden importantForAccessibility="no" style={{ color: fg, opacity: 0.6, fontSize: 11, lineHeight: 16, fontWeight: "500", marginLeft: 2 }}>{shortcut ? submitHint() : keyHint}</Text>}
   </PressScale>;
 }
 

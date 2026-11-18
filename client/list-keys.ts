@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import { listMove, ownsKey, surfaceVisible, walkTarget } from "../shared/list-keys";
+import { enterTarget, listMove, ownsKey, surfaceVisible, walkTarget } from "../shared/list-keys";
 import { rowDomId } from "./kit";
 
 type Row = { focus(o?: { preventScroll?: boolean }): void; scrollIntoView?(o?: { block?: string }): void };
@@ -29,6 +29,8 @@ export type ListKeysOptions = {
   claimBody?: boolean;
   onSelect: (key: string) => void;
   onOpen: (key: string) => void;
+  /** S: show this surface's keys (Home's keys sheet). Without it S stays unclaimed. */
+  onKeys?: () => void;
   /** A row the virtualized list hasn't drawn yet: scroll it in, so it can take focus. */
   reveal: (key: string) => void;
 };
@@ -45,7 +47,7 @@ export function useListKeys(options: ListKeysOptions): void {
     const doc = (globalThis as { document?: Doc }).document;
     if (!options.enabled || Platform.OS !== "web" || !doc) return;
     const onKey = (e: DomKey) => {
-      const { order, mode, selectedKey, scope, claimBody, onSelect, onOpen, reveal } = ref.current;
+      const { order, mode, selectedKey, scope, claimBody, onSelect, onOpen, onKeys, reveal } = ref.current;
       const target = e.target as Target;
       const typing = !!target && (!!target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName ?? ""));
       if (typing && !target?.closest?.("[data-list-keys]")) return;
@@ -59,13 +61,20 @@ export function useListKeys(options: ListKeysOptions): void {
       const move = listMove(e, typing);
       if (!move) return;
       const focused = !typing && target?.id ? order.find(k => rowDomId(k) === target.id) ?? null : null;
+      if (move === "keys") {
+        if (!onKeys || typing) return;
+        e.preventDefault(); e.stopPropagation(); onKeys();
+        return;
+      }
       if (move === "open") {
-        // Only a focused row opens: Enter on a header, a chip or a button keeps doing what that control does.
-        if (!focused) return;
-        e.preventDefault(); e.stopPropagation(); onOpen(focused);
+        // A focused row opens itself; on Home, with nothing focused, the selection does (a click, a search or ⌘K pick,
+        // coming back). Enter on a header, a chip or a button keeps doing what that control does.
+        const open = enterTarget({ focused, selectedKey, mode, onBody });
+        if (!open) return;
+        e.preventDefault(); e.stopPropagation(); onOpen(open);
         // The sidebar view: if opening the chat left focus nowhere, give it back to the row, so ↓ ↓ Enter keeps
         // walking. If Paseo put it somewhere (the composer), it stays there: never taken back.
-        if (mode === "focus") keepWalking(doc, scope() ?? doc, focused, reveal);
+        if (mode === "focus") keepWalking(doc, scope() ?? doc, open, reveal);
         return;
       }
       const to = walkTarget({ order, focused, selectedKey, mode, typing, move });

@@ -596,27 +596,37 @@ export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { 
   </ScrollView>;
 }
 
-/** S: the keys, from the one list the handler reads (shared/catch-up.ts). A dialog over the card; S or its X closes it. */
-export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => void }) {
+/** A keys sheet's rows: a key (as spelled in its list) and what it does. */
+export type KeySection = { title: string; keys: readonly { key: string; what: string }[] };
+
+/**
+ * S: the keys, from the one list the handler reads (Catch up: shared/catch-up.ts; Home: shared/home-keys.ts). A dialog
+ * over the screen; S or its X closes it.
+ */
+export function KeysSheet({ theme, onClose, label = "Catch up keys", sections: given, keyWidth = 64 }: { theme: Theme; onClose: () => void; label?: string; sections?: readonly KeySection[]; /** The key column, wide enough for the list's longest key so every description lines up. */ keyWidth?: number }) {
   const dictation = !!hostDictation();
+  const sections = given ?? catchUpSections(dictation);
   const c = theme.colors; const t = text(c, false);
-  const row = (k: typeof CATCH_UP_KEYS[number]) => <View key={`${k.action}-${k.key}`} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-    <View style={{ minWidth: 64 }}><Text style={[t.meta, { alignSelf: "flex-start", paddingHorizontal: 6, borderRadius: 4, borderWidth: 1, borderColor: c.border, color: c.foreground, fontVariant: ["tabular-nums"] }]}>{keyLabel(k.key, isMac())}</Text></View>
-    <Text style={t.meta}>{k.what}</Text>
+  const row = (k: KeySection["keys"][number], i: number) => <View key={`${k.key}-${i}`} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+    <View style={{ width: keyWidth }}><Text style={[t.meta, { alignSelf: "flex-start", paddingHorizontal: 6, borderRadius: 4, borderWidth: 1, borderColor: c.border, color: c.foreground, fontVariant: ["tabular-nums"] }]}>{keyLabel(k.key, isMac())}</Text></View>
+    <Text style={[t.meta, { flex: 1, minWidth: 0 }]}>{k.what}</Text>
   </View>;
-  const section = (title: string, keys: readonly typeof CATCH_UP_KEYS[number][]) => <View style={{ gap: 6 }}>
-    <Text style={[t.small, { fontWeight: "600" }]}>{title}</Text>{keys.map(row)}
-  </View>;
-  return <View role="dialog" accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
+  return <View role="dialog" accessibilityLabel={label} style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 236 + keyWidth, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
       <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />
     </View>
-    {section("On a card", CATCH_UP_KEYS.filter(k => !k.when && (!k.needs || dictation)))}
-    {section("In More context", CATCH_UP_KEYS.filter(k => k.when === "more"))}
-    {section("In the queue", CATCH_UP_KEYS.filter(k => k.when === "rail"))}
+    {sections.filter(s => s.keys.length).map(s => <View key={s.title} style={{ gap: 6 }}>
+      <Text style={[t.small, { fontWeight: "600" }]}>{s.title}</Text>{s.keys.map(row)}
+    </View>)}
   </View>;
 }
+/** Catch up's sheet: the dictation key only where the host has a mic. */
+const catchUpSections = (dictation: boolean): readonly KeySection[] => [
+  { title: "On a card", keys: CATCH_UP_KEYS.filter(k => !k.when && (!k.needs || dictation)) },
+  { title: "In More context", keys: CATCH_UP_KEYS.filter(k => k.when === "more") },
+  { title: "In the queue", keys: CATCH_UP_KEYS.filter(k => k.when === "rail") },
+];
 
 /** A desktop hover title on any control (react-native-web drops `title` on a Pressable; IconButton does the same). */
 function Tip({ label, children }: { label: string; children: ReactNode }) {

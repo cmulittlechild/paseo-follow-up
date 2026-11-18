@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon"];
+const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1652,6 +1652,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
+  if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
@@ -1910,6 +1911,92 @@ async function splitShots({ shoot, seeded, call, out }) {
  * reload. Renders: Settings → Inbox & display's Keyboard row, Home's search chip and the ⌘K row, light and dark.
  * Writes shortcut.json; any failed check fails the run.
  */
+/**
+ * the-selected-workspace-opens-with-enter (AGENTS.md invariant 57): every way of selecting a workspace on Home, then
+ * Enter (or O), lands in its chat; Enter on another control stays that control's; S toggles the keys sheet. Renders:
+ * Home after a search pick (the selection and Open full's ↵ hint), and the keys sheet, light and dark. Writes
+ * `home-keys.json`.
+ */
+async function homeKeysShots({ shoot, out }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`home-keys: ${name}`); log(`home-keys check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const TITLE = "Contact import";
+  const onHome = page => page.url().includes("/surface/follow-up");
+  const settle = async (page, ok) => { for (let i = 0; i < 20; i++) { if (await ok()) return true; await page.waitForTimeout(150); } return false; };
+  const search = page => page.getByRole("textbox", { name: /^(Search, or ask the Overseer|Search workspaces, branches, PRs)$/ }).filter({ visible: true }).first();
+  const paneShows = page => page.getByRole("button", { name: "Open full" }).filter({ visible: true }).count().then(n => n > 0);
+  const searchPick = async page => {
+    await openHome(page);
+    await page.keyboard.press("/");
+    await search(page).fill(TITLE);
+    await page.getByText(TITLE).filter({ visible: true }).first().waitFor();
+    await page.keyboard.press("Enter");
+    return settle(page, () => paneShows(page));
+  };
+  const leftForChat = async (page, before) => settle(page, async () => !onHome(page) || page.url() !== before);
+  await shoot("home-keys-check", DESKTOP, "dark", async page => {
+    // Tom's path: / (or ⌘/), type, Enter shows it, Enter again opens it.
+    check("search: the first Enter shows the result in the pane", await searchPick(page));
+    const at = page.url();
+    const where = () => page.evaluate(() => { const a = document.activeElement; return a === document.body ? "body" : `${a?.tagName}:${a?.getAttribute("aria-label") ?? a?.id ?? ""}`; });
+    check("search: the first Enter stays on Home", onHome(page), { url: at, focus: await where() });
+    await page.keyboard.press("Enter");
+    check("search: Enter again opens the workspace's chat", await leftForChat(page, at), { url: page.url() });
+    // Esc out of the search (clear, then leave): Enter opens the selection.
+    await searchPick(page);
+    await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+    const esc = page.url();
+    check("search: Esc twice leaves the selection on Home", onHome(page) && await paneShows(page), { url: esc, focus: await where(), query: await search(page).inputValue() });
+    await page.keyboard.press("Enter");
+    check("after Esc out of the search, Enter opens the selection", await leftForChat(page, esc), { url: page.url() });
+    // A click on the row, then Enter; and O.
+    for (const key of ["Enter", "o"]) {
+      await openHome(page);
+      await (await homeRow(page, TITLE)).click(); await page.waitForTimeout(300);
+      const before = page.url();
+      await page.keyboard.press(key);
+      check(`a clicked row opens with ${key}`, await leftForChat(page, before), { url: page.url() });
+    }
+    // Coming back to Home with a selection and nothing focused (Paseo's sidebar, or Home's own title).
+    await openHome(page);
+    await (await homeRow(page, TITLE)).click(); await page.waitForTimeout(300);
+    await page.evaluate(() => (document.activeElement)?.blur?.());
+    const body = page.url();
+    await page.keyboard.press("Enter");
+    check("with nothing focused, Enter opens the selection", await leftForChat(page, body), { url: page.url() });
+    // Enter on another control stays that control's: the sort button opens its menu, Home stays.
+    await openHome(page);
+    await (await homeRow(page, TITLE)).click(); await page.waitForTimeout(300);
+    const sort = page.getByRole("button", { name: /^Sort: / }).filter({ visible: true }).first();
+    await sort.focus(); const stay = page.url();
+    await page.keyboard.press("Enter"); await page.waitForTimeout(600);
+    check("Enter on the sort button opens its menu and stays on Home", page.url() === stay && await page.getByRole("menu").filter({ visible: true }).count() > 0, { url: page.url() });
+    await page.keyboard.press("Escape");
+    // S toggles the keys sheet; S typed in the search types.
+    await openHome(page); await page.waitForTimeout(300);
+    await page.evaluate(() => (document.activeElement)?.blur?.());
+    const sheet = () => page.getByRole("dialog", { name: "Home keys" }).filter({ visible: true }).count();
+    await page.keyboard.press("s");
+    check("S shows the keys", await settle(page, async () => await sheet() === 1));
+    await page.keyboard.press("s");
+    check("S again hides them", await settle(page, async () => await sheet() === 0));
+    await page.keyboard.press("/"); await page.keyboard.type("s");
+    check("S in the search types", await search(page).inputValue() === "s" && await sheet() === 0);
+  });
+  for (const theme of ["light", "dark"]) {
+    await shoot(`home-keys-picked-${theme}`, DESKTOP, theme, async page => { await searchPick(page); page.keepFocus = true; });
+    await shoot(`home-keys-sheet-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page); await (await homeRow(page, TITLE)).click(); await page.waitForTimeout(300);
+      await page.evaluate(() => (document.activeElement)?.blur?.());
+      await page.keyboard.press("s");
+      await page.getByRole("dialog", { name: "Home keys" }).filter({ visible: true }).first().waitFor();
+    });
+  }
+  // A run filtered to the renders (--shot '^home-keys-sheet') runs no checks: it leaves an earlier home-keys.json alone
+  // rather than overwriting its record with an empty list.
+  if (checks.length) await fs.writeFile(join(out, "home-keys.json"), JSON.stringify(checks, null, 2));
+}
+
 async function shortcutShots({ shoot, seeded, call, out, billing }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`shortcut: ${name}`); log(`shortcut check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };

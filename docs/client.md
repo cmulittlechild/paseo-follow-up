@@ -151,11 +151,16 @@ query is in "Overseer" or its line, and marks the match the way rows mark theirs
 
 On desktop and web, Home and the sidebar view walk their rows with the same keys, through one hook (`useListKeys`,
 `client/list-keys.ts`, called once in `HomeList`; invariant `one-keyboard-walk-for-every-list`). ↑/↓ and j/k step one
-row, Home/End jump to the first or last, Enter opens. The order is the list as drawn: the Morning brief, the Overseer,
+row, Home/End jump to the first or last, Enter (or O, Catch up's letter) opens. The order is the list as drawn: the Morning brief, the Overseer,
 then every row of an open group (a collapsed group and a closed Quiet fold are skipped; a filter walks only the
 matches). The focus moves with the keys, so the row shows the keyboard focus ring (`focusRing`, `client/kit.tsx`;
 never after a click) and the browser keeps it in view. On Home the selection follows the keys and the detail pane
-with it, and Enter opens the row's chat (Open full). In the sidebar view only the focus moves and Enter opens the chat,
+with it, and Enter opens the selected workspace's chat (Open full, whose button shows a quiet ↵), however it was
+selected: a focused row opens itself, and with nothing focused the selection opens (`enterTarget`, invariant
+`the-selected-workspace-opens-with-enter`). In Home's search the first Enter shows the active result in the pane and
+Enter again on that result opens it; Esc clears the search, a second Esc leaves it, and Enter then opens the selection
+(`searchEnter`). S (or the keyboard button beside settings) shows Home's keys, read from `HOME_KEYS`
+(`shared/home-keys.ts`) in Catch up's sheet (`KeysSheet`). In the sidebar view only the focus moves and Enter opens the chat,
 since each open loads a chat and moves the main pane. If opening leaves focus nowhere, it goes back to the row so ↓ ↓
 Enter keeps walking; if Paseo puts it in the composer, it stays there. The open chat's row wears Paseo's own
 selected-item fill (`sidebarSelected`, `client/theme.ts`: Paseo's `surfaceSidebarSelected`, which the plugin theme
