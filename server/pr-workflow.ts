@@ -1,6 +1,7 @@
 import { access, constants, readFile, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { graphiteAuthToken } from "./graphite";
 import { WriteBehind } from "./write-behind";
 import { repoKey } from "../shared/reviewers";
 import {
@@ -26,9 +27,7 @@ export const fsProbe = (environment: NodeJS.ProcessEnv = process.env): Probe => 
     return false;
   },
   async signedIn() {
-    const config = environment.XDG_CONFIG_HOME ?? join(environment.HOME ?? homedir(), ".config");
-    try { const { authToken } = JSON.parse(await readFile(join(config, "graphite", "auth"), "utf8")); return typeof authToken === "string" && authToken.length > 0; }
-    catch { return false; }
+    return (await graphiteAuthToken(environment)) !== null;
   },
   async initialised(path) {
     const common = await gitCommonDir(path);

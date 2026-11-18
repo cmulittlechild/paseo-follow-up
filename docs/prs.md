@@ -3,8 +3,11 @@
 ## PR workflow: Graphite or plain GitHub
 
 - **Detection** (`shared/pr-workflow.ts`, `server/pr-workflow.ts`, stored in `pr-workflow.json`). `auto` picks
-  Graphite only where it's set up: a `gt` executable on PATH, a sign-in token in `~/.config/graphite/auth`, and the
-  repository's `.graphite_repo_config`. Detection reads only files, never runs `gt`, and caches for 10 minutes.
+  Graphite only where it's set up: a `gt` executable on PATH, a sign-in token from `graphiteAuthToken`
+  (`server/graphite.ts`), and the repository's `.graphite_repo_config`. The shared token reader checks `<config>/graphite/user_config`,
+  `<config>/graphite/auth`, then `~/.graphite_user_config`, skipping missing or invalid files. `<config>` is
+  `$XDG_CONFIG_HOME` or `~/.config`; Graphite API requests use the same reader. Detection reads only files, never runs
+  `gt`, and caches for 10 minutes.
 - **What the setting holds.** The default, per-repository overrides, merge methods, and the review-fix command. The
   first start seeds `/fix-pr` when that command or skill exists.
 - **RPCs and tools.** `follow.pr-workflow` and `follow.set-pr-workflow`; tools `pr_workflow` and `set_pr_workflow`.
