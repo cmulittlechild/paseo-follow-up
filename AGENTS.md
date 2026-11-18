@@ -500,9 +500,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `currentColor`, valid for `findSvgIconProblem`. `assets/icon.svg` (and `assets/icon.png` rendered from it) is the
    same mark on the app tile. Lucide GitPullRequest stays for pull requests only (PR chips, the stacks card, briefs,
    the PR sheet, reviewers). The header button's Needs-you dot sits on the glyph's end dot, clamped inside the icon box
-   (`needDotBox`): Paseo clips a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot
-   drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
-   inside every clipping box, and its amber box as tall as wide within 1 px).
+   (`needDotBox`), bottom right since the 2026-11-18 mark (a cursive l from a start ring to the end dot): Paseo clips
+   a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
+   inside every clipping box, and its amber box as tall as wide within 1 px); `--only icon` renders every brand
+   surface close up, light and dark, into `docs/evidence/follow-up-icon/`.
 36. **A message is saved before it is sent and reaches its agent exactly once**
    (`a-message-is-saved-before-sent-and-arrives-once`). Every message Follow-up sends an agent (Q and brief answers,
    repairs, Done checks, recovery, Overseer forwards, reports handed to an agent) is a `queue.json` item before anything
