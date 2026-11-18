@@ -1,0 +1,1 @@
+- Tapping More context or Later in Catch up on a phone no longer crashes Paseo.

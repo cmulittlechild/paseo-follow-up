@@ -441,7 +441,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
  * Where a move's result opens (MOVE_OPENS, a-move-bar-action-opens-in-view): a sheet in the phone's dock or a popover
  * on its desktop button. Focus moves into it (its first choice), and on the web it scrolls into view the least distance.
  */
-function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
+export function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
   const c = theme.colors;
   const ref = useRef<View>(null);
   useEffect(() => {
@@ -454,7 +454,7 @@ function MoveResult({ place, theme, label, width, children }: { place: "sheet" |
     }, 0);
     return () => clearTimeout(t);
   }, []);
-  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} accessibilityRole={"dialog" as never} accessibilityLabel={label}
+  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} role="dialog" accessibilityLabel={label}
     style={[{ padding: place === "sheet" ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 },
       place === "sheet"
         ? { marginHorizontal: 12, marginTop: 12 }
@@ -464,7 +464,7 @@ function MoveResult({ place, theme, label, width, children }: { place: "sheet" |
 }
 
 /** What came back for this card: the answer, "answered in its chat", a failure, or (seen going Back) that it's still asking. */
-function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
+export function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const who = request.target === "overseer" ? "Overseer" : agent === "the agent" ? "The agent" : agent;
   const asking = request.state === "asking";
@@ -506,7 +506,7 @@ function BriefAsk({ s, theme, compact, deps }: { s: DeckCard["s"]; theme: Theme;
  * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
  * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
  */
-function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
+export function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
   const c = theme.colors; const t = text(c, compact);
   const [words, setWords] = useState<string>(CONTEXT_ASKS[0].text);
   const [picked, setPicked] = useState<string>(CONTEXT_ASKS[0].id);
@@ -544,7 +544,7 @@ function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: 
   </View>;
 }
 
-function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {
+export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {
   const c = theme.colors; const t = text(c, compact);
   // "All caught up" only when it is true: a skipped or waiting card means the developer is not, so the end says so.
   const caughtUp = !stats.skipped && !stats.waiting;
@@ -576,7 +576,7 @@ export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => voi
   const section = (title: string, keys: readonly typeof CATCH_UP_KEYS[number][]) => <View style={{ gap: 6 }}>
     <Text style={[t.small, { fontWeight: "600" }]}>{title}</Text>{keys.map(row)}
   </View>;
-  return <View accessibilityRole={"dialog" as never} accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
+  return <View role="dialog" accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
       <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />
