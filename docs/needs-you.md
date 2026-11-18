@@ -265,12 +265,21 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
 - **Keys** (desktop web): every move has one, from the one list `CATCH_UP_KEYS` (`shared/catch-up.ts`) that the
   handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip the card,
   ⇧J skip the workspace, K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the agent), N adds a note, L Later,
-  O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), S shows the keys, X leaves. None is a combo
+  O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), V dictates (when Paseo has dictation),
+  S shows the keys, X leaves. None is a combo
   Paseo binds (`PASEO_BOUND`): Paseo keeps ? (its shortcuts) and Esc (interrupt agent), so the sheet is S and leaving
   is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). The keys have one owner
   (`every-catch-up-key-works-wherever-focus-is`): a window capture-phase listener that acts when focus is inside the
   screen or on nothing while it is on screen, finds its controls inside its own root, and stops a key it acts on. Buttons name their key in their
   tooltip.
+- **Dictation** (invariant `dictated-text-lands-in-the-field`): on a Paseo whose plugin client exports
+  `usePaseoDictation` (proposed upstream; Paseo 0.16 has none), the answer field (Something else, a free answer, Add
+  note) has a mic in its bottom-right corner (`DictationField`, `client/dictation.tsx`; states in `micView`, `shared/dictation.ts`).
+  Tap to start, tap to stop; the words go into the field's own words at the caret (`insertDictated`), editable, and
+  only Send sends. Unavailable (host offline, no speech-to-text) shows a muted mic that says why in one line when
+  pressed; a failed start says why under the field. V presses the mic (Something else opens first when no field is
+  open) and leaves focus on it, so V again stops. Without the hook there is no mic, no key in the S sheet and no space.
+  `DictationField` wraps any field, so Home and the panel can take it later. Guarded by `tests/catch-up-dictation.test.ts`.
 - **The move bar** (invariant `a-move-bar-action-opens-in-view`, `MOVE_OPENS`): every move opens its result in view.
   More context and Later open as a sheet above the phone's bar and as a popover on their desktop button, with focus
   on their first choice; Add a note focuses its field; Open chat leaves for the chat; R focuses the card's row in the
