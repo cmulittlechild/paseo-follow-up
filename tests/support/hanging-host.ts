@@ -45,7 +45,13 @@ export async function hangingHost(): Promise<HangingHost> {
   const root = await mkdtemp(join(tmpdir(), "fu-rpc-ack-"));
   const sockets = new Set<Socket>();
   let closed = 0;
-  const blackhole: Server = createServer(socket => { sockets.add(socket); socket.on("error", () => undefined); socket.on("close", () => { closed++; }); });
+  const blackhole: Server = createServer(socket => {
+    sockets.add(socket);
+    socket.on("error", () => undefined);
+    socket.on("close", () => { closed++; });
+    // Drain handshake/request bytes so a peer's FIN reaches close; paused sockets hide give-ups.
+    socket.resume();
+  });
   await new Promise<void>(resolve => blackhole.listen(0, "127.0.0.1", resolve));
   const port = (blackhole.address() as { port: number }).port;
   const bin = join(root, "bin");

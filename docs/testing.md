@@ -40,6 +40,9 @@ not a patch for one instance.
     (`tests/support/hanging-host.ts` runs the real `contribute()` in a temp home), or has an `EXEMPT` reason. An
     exemption is stale only when the method replies in time with no slow wait giving up meanwhile
     (`tests/support/ack-ratchet.ts`; `tests/ack-ratchet.test.ts` reproduces the shared-wait flake the clock alone misread).
+    The black hole drains incoming bytes without answering so socket closure records a give-up; `tests/hanging-host.test.ts`
+    reproduces a peer disconnect hidden by an unread handshake. Otherwise a connect timeout inside the 500 ms window
+    can look like a fast reply locally while the same timeout just outside the window passes on CI.
   - `tests/rpc-cached.test.ts`: the polled reads (Needs you's list, usage, the Summary) answer from what the worker
     holds while their slow side hangs, and the slow-RPC log fires at the ack budget.
     `tests/answer-ack.test.ts` covers the answer paths: fast ack, one send per answer, retries, resume after reload.
