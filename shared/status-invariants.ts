@@ -13,7 +13,7 @@ import { asksForReviewers, liveLine, needsYou, type NeedItem } from "./attention
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
 import { freshPriorities, type Priority } from "./priorities";
 import { agentCard, automaticHold, batchView, holdSuperseded } from "./status";
-import { conditionId, isCapped, mainWait, NO_PROGRESS_CAP, sendDecision } from "./send-decision";
+import { conditionId, isCapped, mainWait, NO_PROGRESS_CAP, personHeld, sendDecision, stuckRepair } from "./send-decision";
 import { messageStrip, obligationDelivery, repairRows } from "./task-rows";
 import { followUpObligations } from "./follow-up";
 import { PRESENCE, claimsWorking, taskStatus } from "./task-status";
@@ -137,9 +137,30 @@ export const INVARIANTS: Invariant[] = [
       for (const h of w.heldTasks ?? []) {
         if (h.held === "capped" && !isCapped(w, h.task)) return `${h.task.key} is held as capped below ${NO_PROGRESS_CAP} sends`;
         if (h.held === "manual" && !(w.manualTasks ?? []).includes(h.task.key)) return `${h.task.key} is held as manual without the developer's choice`;
+        if (h.held === "person" && !personHeld(w, h.task)) return `${h.task.key} is held for a person without the agent's human-only outcome`;
         if (pending?.tasks.some(t => conditionId(t) === conditionId(h.task))) return `${h.task.key} is held and in the next message`;
       }
       return null;
+    },
+  },
+  {
+    id: "a-batch-item-leaves-once-nothing-applies",
+    why: "2026-11-18 (2.2.0): a repair batch the agent acknowledged blocked stayed in Needs you as \"The tasks didn't finish\" two hours after its only PR merged; a stuck batch never re-checked what it asked for, while a queued one did. A stuck batch settles once nothing it asked for still applies (every PR merged or closed, or each condition gone).",
+    check(w) {
+      if (!w.enable_tracking || w.archived) return null;
+      const ended = (key: string) => { const p = w.prs.find(p => p.key === key); return !!p && !p.error && !!p.snapshot?.complete && (p.snapshot.state === "MERGED" || p.snapshot.state === "CLOSED"); };
+      const moot = w.batches.find(b => stuckRepair(b) && b.tasks.every(t => t.kind !== "obligation" && ended(t.target)));
+      return moot ? `${moot.id} is ${moot.state} though every PR it was about has merged or closed` : null;
+    },
+  },
+  {
+    id: "a-human-only-outcome-is-a-human-item",
+    why: "2026-11-18 (2.2.0): the agent reported \"nothing for an agent to fix; needs the reviewer to re-review or dismiss\" and Needs you showed it as an agent failure (\"The tasks didn't finish\", Open main agent). Only a person can move it, so it is the developer's PR item, never a stuck batch.",
+    check(w, now) {
+      const stuck = w.batches.find(b => b.humanOnly && b.state !== "completed");
+      if (stuck) return `${stuck.id} is human-only but ${stuck.state}`;
+      const retry = needsYou(w, now).find(i => i.kind === "retry" && w.batches.find(b => b.id === i.batchId)?.humanOnly);
+      return retry ? `${retry.key} shows a human-only outcome as an agent failure` : null;
     },
   },
   {

@@ -34,7 +34,9 @@ export function activity(w: Workspace): Activity[] {
     if (!b.sentAt) continue;
     const n = plural(b.tasks.length, "task");
     rows.push({ key: `sent:${b.id}`, at: b.sentAt, icon: "Send", tone: "muted", text: `Sent ${n} to the main agent`, detail: b.tasks.map(t => shortRefs(t.title, w)).join(" · "), took: null });
-    if (b.settledAt && b.state === "completed") rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "Wrench", tone: "success", text: `Main agent finished ${n}`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
+    // A human-only outcome (Batch.humanOnly) isn't finished work: it waits on a person.
+    if (b.settledAt && b.state === "completed" && b.humanOnly) rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "UserRound", tone: "warning", text: `${n} ${b.tasks.length === 1 ? "waits" : "wait"} on a person, not the agent`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
+    else if (b.settledAt && b.state === "completed") rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "Wrench", tone: "success", text: `Main agent finished ${n}`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
     else if (b.settledAt && ["blocked", "cancelled"].includes(b.state)) rows.push({ key: `stopped:${b.id}`, at: b.settledAt, icon: "OctagonAlert", tone: b.state === "blocked" ? "danger" : "muted", text: b.state === "blocked" ? `${n} didn't finish` : `${n} cancelled`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
   }
   for (const p of w.prs) if (p.snapshot?.state === "MERGED" && p.snapshot.mergedAt)

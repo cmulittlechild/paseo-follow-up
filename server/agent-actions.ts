@@ -81,10 +81,13 @@ export function controlWorkspace(state: State, input: { workspaceId: string; ena
   }
   if (input.clearHold) w.hold = null;
   if (input.retryTask) {
-    // Re-arm one capped condition for NO_PROGRESS_CAP more sends; the next refresh puts it in the next message.
-    const h = w.heldTasks?.find(h => h.held === "capped" && h.task.key === input.retryTask);
+    // Re-arm one capped condition for NO_PROGRESS_CAP more sends; the next refresh puts it in the next message. A
+    // person task (the agent said only a person can move it) goes back to the agent the same way: the developer
+    // disagrees, so the agent's human-only outcome no longer holds it.
+    const h = w.heldTasks?.find(h => (h.held === "capped" || h.held === "person") && h.task.key === input.retryTask);
     if (!h) throw new Error("That task isn't waiting for a retry. Refresh to see its state.");
     const id = conditionId(h.task);
+    if (h.held === "person") for (const b of w.batches) if (b.humanOnly && b.tasks.some(t => conditionId(t) === id)) delete b.humanOnly;
     w.taskRetries = { ...w.taskRetries, [id]: (w.taskRetries?.[id] ?? 0) + noProgressSends(w, h.task) };
     w.heldTasks = w.heldTasks!.filter(x => x !== h);
   }

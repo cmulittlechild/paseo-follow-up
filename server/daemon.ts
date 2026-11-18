@@ -526,7 +526,8 @@ export class PaseoGateway implements Gateway {
     // Subagents only decide the whole workspace's quiet: Done, a sent message's turn, and the Done check's send (a fresh
     // read). Repairs never wait for them (Q96 = A), so a queued repair, or its send, never lists subagents (2026-11-12).
     const doneCheckGoing = (b: Workspace["batches"][number]) => fresh && ["pending", "sending"].includes(b.state) && b.tasks.some(t => t.kind === "completion");
-    const subagentsMatter = !!w.completion || w.batches.some(b => !b.tasks.every(t => t.kind === "inventory") && (b.state === "sent" || doneCheckGoing(b)));
+    // A Done declaration is waiting to be accepted: Done needs the whole workspace quiet, subagents included.
+    const subagentsMatter = !!w.completion || !!w.declaration || w.batches.some(b => !b.tasks.every(t => t.kind === "inventory") && (b.state === "sent" || doneCheckGoing(b)));
     const idleLoaded = members.filter(agent => isLoaded(agent) && !["running", "initializing"].includes(agent.status));
     if (subagentsMatter && !backgroundBusy && idleLoaded.length) await this.connect(async client => {
       for (const listed of idleLoaded) {

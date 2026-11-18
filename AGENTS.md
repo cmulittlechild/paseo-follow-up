@@ -715,7 +715,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tests/own-answer-sent.test.ts` (the real `QuestionBody` under the native stand-in, reading what reached the RPC)
    and `tests/own-answer.test.ts`.
 
-54. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
+54. **A batch's Needs-you item leaves once nothing it asked for applies; a human-only outcome is a human item**
+   (`a-batch-item-leaves-once-nothing-applies`, `a-human-only-outcome-is-a-human-item`). Every refresh re-checks a
+   blocked or unconfirmed repair batch against the PRs as they are now, the same rule a queued batch follows: once no
+   task's condition still applies (every PR merged or closed, or each condition's fingerprint gone: the review
+   dismissed or replaced, checks passing, the conflict resolved) it settles with the reason and leaves Needs you
+   (`settleMoot` in `server/engine.ts`, `stillApplies` in `shared/send-decision.ts`). A PR GitHub didn't answer for
+   still applies. Start-up runs the same pass over every tracked workspace, dormant ones included. An agent outcome
+   only a person can move (`acknowledge_batch` blocked with `humanOnly`: a stale review only its reviewer can change,
+   missing access) is never "The tasks didn't finish": its conditions wait as the developer's `person` tasks, a PR
+   item with Ask for re-review and Send to agent (both agent tools: `add_reviewers`, `retry_batch` with `task`), not
+   re-sent and not holding the queue. 2026-11-18, Tom on 2.2.0: Needs you showed "The tasks didn't finish" with Open
+   main agent for a review the agent said only the reviewer could clear, still there two hours after the PR merged.
+   Guarded by `tests/blocked-batch-resolves.test.ts` and `INVARIANTS`.
+55. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
    soon as the main agent is free, whatever its subagents or the workspace's other agents are doing. Only the main
    agent's own work holds it: its turn, its own background job while Wait for background jobs is on, a permission
    prompt or question, a Session Guard pause, a compaction. One read decides both scopes (`observe`,
@@ -854,3 +867,5 @@ Guarded by `npm run check:notes` and `release:notes` (`scripts/release-notes.mjs
     (invariant `publish-gate-checks-run-on-every-pr`) fails when the publish workflow runs a check PR CI doesn't.
   - Neither has model credentials, so `check-wait` skips there.
   - When you touch Wait, run `npm run test:wait-live` locally.
+
+README screenshot flows select questions by their stable reference, never their extracted title. Keep the dialog and Put in chat capture flows consistent when question wording changes.

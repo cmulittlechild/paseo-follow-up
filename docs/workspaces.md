@@ -112,6 +112,21 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
      `reconcile` doesn't count as delivered). The per-task cap below decides when an unchanged condition stops going
      out. A refused acknowledgment, and the agent's own `blocked` acknowledgment (its reason is the Needs-you text),
      still block.
+   - **A stuck batch leaves once nothing it asked for applies** (`a-batch-item-leaves-once-nothing-applies`). Every
+     `reconcile` re-checks a `blocked` or `uncertain` repair batch against the tasks the PRs show now, as it does a
+     queued one (`stillApplies`, `shared/send-decision.ts`): once no task's condition (key and fingerprint) is still
+     open, because every PR merged or closed or the review was dismissed or replaced, the checks pass or the conflict
+     is gone, it settles `cancelled` with the reason ("No longer needed: #142 merged.") and its blocker's own time, and
+     leaves Needs you. A PR GitHub didn't answer for still applies (unknown is not off). `recover()` runs the same pass
+     at start-up over every tracked workspace, dormant ones included, so a batch an older release left stuck clears.
+   - **A human-only outcome is a human item** (`a-human-only-outcome-is-a-human-item`). `acknowledge_batch` blocked
+     with `humanOnly: true` says nothing is left for an agent: only a person can move it (a reviewer must re-review or
+     dismiss a stale review, access must be granted). The batch settles `completed` with `humanOnly`, and `reconcile`
+     holds each still-open condition as `person` (`personHeld`): never re-sent on its own, never "The tasks didn't
+     finish", and it doesn't hold the queue. Needs you shows a PR item ("#142 waits on its reviewer", the agent's words
+     as detail) with Ask for re-review (the PR sheet's reviewers; `add_reviewers`), Send to agent (`follow.control`
+     `retryTask`, the `retry_batch` tool with `task`) and the PR link. A changed condition (a new review, a new head)
+     has a new fingerprint and goes out as usual; a merged PR ends it.
    - A recovery batch follows the same rule: one that ends without an acknowledgment but caught the PR list up
      (`inventory.syncedRevision`) is done.
    - A reload mid-send makes it `uncertain` (`engine.recover()`). The next refresh reads the recipient's chat for the

@@ -63,11 +63,12 @@ function cardWord(card: DeckCard): string {
   switch (card.item?.kind) {
     case "merge": return "Merge"; case "reviewers": return "Add reviewers"; case "send": return "Send"; case "answer": return "Your answer";
     case "hold": return "Paused"; case "retry": case "capped": case "message": return "Retry"; case "check": return "Check"; case "decision": return "Blocked";
+    case "person": return card.item.review ? "Re-review" : "Someone else";
     default: return card.s.word ?? "Needs you";
   }
 }
 const cardIcon = (card: DeckCard) => card.kind === "permission" ? "ShieldQuestion" : card.kind === "question" ? "MessageCircleQuestion"
-  : card.item?.kind === "merge" ? "GitMerge" : card.item?.kind === "reviewers" ? "UserPlus" : card.item?.kind === "send" ? "Send" : card.kind === "finished" ? "Flag" : card.s.icon;
+  : card.item?.kind === "merge" ? "GitMerge" : card.item?.kind === "reviewers" ? "UserPlus" : card.item?.kind === "person" ? "UserRound" : card.item?.kind === "send" ? "Send" : card.kind === "finished" ? "Flag" : card.s.icon;
 /**
  * The card Skip names what it skips, so it never reads as the workspace (Tom, beta.3: "at first I thought it skips the
  * workspace"): the card's kind where one word says it, else "card", the deck's own word ("N skipped" counts cards).

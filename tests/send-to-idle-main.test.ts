@@ -13,7 +13,7 @@ import type { Workspace } from "../shared/model";
 import { batchView } from "../shared/status";
 import { sendDecision } from "../shared/send-decision";
 import { sendingOf } from "../shared/sending";
-import { messageStrip, nextMessageInfo } from "../shared/task-rows";
+import { messageStrip, nextMessageInfo, repairRows } from "../shared/task-rows";
 import { needsYou } from "../shared/attention";
 import { violations } from "../shared/status-invariants";
 import { clock, workspace, pr, snapshot } from "./fixtures";
@@ -60,6 +60,8 @@ test("the main agent's own provider subagents don't hold its repairs", async t =
   const done = await f.gateway.observe(workspace({ completion: { summary: "Shipped", declaredAt: new Date(clock).toISOString() } }));
   assert.equal(done.backgroundBusy, true, "Done still waits for them");
   assert.equal(done.mainBusy, null);
+  const declared = await f.gateway.observe(workspace({ declaration: { summary: "Shipped", at: new Date(clock).toISOString() } }));
+  assert.equal(declared.backgroundBusy, true, "a Done declaration waiting to be accepted waits for them too");
 });
 
 test("the main agent's own turn and, with Wait for background jobs on, its own background job hold a repair", async t => {
@@ -85,7 +87,7 @@ async function engineFixture(t: any, w: Workspace) {
   const engine = new Engine(store, github, gateway, () => now);
   await queueEngine(engine, gateway, root);
   const get = async () => (await store.snapshot()).workspaces[0];
-  return { engine, sends, get, now: () => now, advance: (ms: number) => { now += ms; }, runtime: (s: Runtime) => { state = s; } };
+  return { engine, sends, get, store, now: () => now, advance: (ms: number) => { now += ms; }, runtime: (s: Runtime) => { state = s; } };
 }
 const conflicted = (patch: Partial<Workspace> = {}) => workspace({ enable_auto_sends: true, prs: [pr({ snapshot: snapshot({ conflict: true }) })], ...patch });
 const subagentAtWork: Runtime = { busy: true, backgroundBusy: true, mainBusy: null, reason: null, archived: false, mainLoaded: true, mainRecent: true };
@@ -163,4 +165,34 @@ test("a subagent at work never shows as the main agent's wait", () => {
   const d = sendDecision(w, clock);
   assert.equal(d.send, true, `the decision waits: "${d.reason}"`);
   assert.doesNotMatch(batchView(w, clock)!.line, /turn ends|background/);
+});
+
+// With #249's rules (a-batch-item-leaves-once-nothing-applies, a-human-only-outcome-is-a-human-item): a free main agent
+// beside a working subagent still never gets a person's task, and a stuck batch still settles once nothing applies.
+test("a person's task is never sent to a free main agent, and a moot stuck batch settles, while a subagent works", async t => {
+  const f = await engineFixture(t, workspace({ enable_auto_sends: true, prs: [pr({ snapshot: snapshot({ reviewDecision: "CHANGES_REQUESTED" }) })] }));
+  f.runtime(subagentAtWork);
+  await f.engine.tick(); f.advance(61_000); await f.engine.tick();
+  assert.equal(f.sends.length, 1, "the review repair went to the free main agent");
+  const sent = (await f.get()).batches.find(b => b.state === "sent")!;
+  await f.engine.acknowledge("main-agent", sent.id, "blocked", "Only the reviewer can clear the stale review.", undefined, true);
+  for (let i = 0; i < 5; i++) { f.advance(120_000); await f.engine.tick(); }
+  let w = await f.get();
+  assert.equal(f.sends.length, 1, "a person's task isn't sent again, though the main agent is free");
+  assert.deepEqual(w.heldTasks?.map(h => h.held), ["person"]);
+  assert.ok(needsYou(w, f.now()).some(i => i.kind === "person"));
+  assert.equal(repairRows(w).open[0]?.text, "Needs you · waits on a person, not the agent");
+  assert.deepEqual(violations(w, f.now()).map(v => v.id), []);
+
+  // A plain blocked batch (not human-only) on a second PR settles once that PR merges, the subagent still at work.
+  await f.store.mutate(s => { s.workspaces[0].prs.push(pr({ key: "example/app#2", number: 2, snapshot: snapshot({ conflict: true }) })); });
+  f.advance(61_000); await f.engine.tick(); f.advance(61_000); await f.engine.tick();
+  const second = (await f.get()).batches.find(b => b.state === "sent")!;
+  assert.ok(second, "the conflict repair went out");
+  await f.engine.acknowledge("main-agent", second.id, "blocked", "Can't rebase yet.");
+  await f.store.mutate(s => { s.workspaces[0].prs[1].snapshot = snapshot({ state: "MERGED" }); });
+  f.advance(61_000); await f.engine.tick();
+  w = await f.get();
+  assert.notEqual(w.batches.find(b => b.id === second.id)?.state, "blocked", "the moot blocked batch settled");
+  assert.ok(!needsYou(w, f.now()).some(i => i.kind === "retry"));
 });
