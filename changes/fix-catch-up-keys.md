@@ -1,0 +1,1 @@
+- Catch up's keys on desktop now work wherever you click on the screen, also when Follow-up's list sits in Paseo's sidebar or another Follow-up screen is open behind a tab.
