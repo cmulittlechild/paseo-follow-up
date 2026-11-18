@@ -21,7 +21,7 @@ test("versions: an existing install's first version with notes starts from the l
   assert.equal(file.previous, LEGACY_BASELINE);
   assert.equal(file.startedAt, 5000, "counts as an update, so Home says Updated to");
   // The baseline itself (or older) is not an update.
-  assert.equal((await new VersionsStore(await dir()).started(LEGACY_BASELINE, true)).previous, null);
+  assert.equal((await new VersionsStore(await dir(), Date.now).started(LEGACY_BASELINE, true)).previous, null);
 });
 
 test("versions: a version change moves the old one to previous and stamps the time; a restart changes nothing", async () => {

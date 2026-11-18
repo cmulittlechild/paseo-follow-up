@@ -679,6 +679,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `accessibilityRole="dialog"`. Guarded by `tests/native-roles.test.ts` (every client file, the enum read from
    react-native's source) and `tests/native-render.test.ts` (Catch up's More context and Later sheets, the end screen,
    every context answer and the keys sheet; add a phone path there when you add one).
+52. **A pinned clock reaches every instance** (`a-pinned-clock-reaches-every-instance`). A test that gives a class a
+   pinned clock (`() => now`) gives that clock to every instance of the class it builds, its fixtures included: a
+   reopened store left on the default `Date.now` compares the test's pinned dates with today, and fails on the day a
+   window (`CONTEXT_KEEP_MS`, a snooze, a staleness bound) runs out, on every run after. A test that wants the real
+   clock names it (`Date.now`, or `// real-clock: <why>` when it checks the defaults). 2026-11-18: the context-requests
+   restart test pinned its ask to 2026-11-17T10:00Z and reopened the store on the real clock; from 10:00Z the next day
+   the reopened `list()` pruned the ask as older than 24 h, and CI failed on every PR. Guarded by
+   `tests/test-clocks.test.ts` (every server class whose constructor defaults `now` to `Date.now`, over every test
+   and the top-level helpers it calls).
 
 ## Bugs
 
