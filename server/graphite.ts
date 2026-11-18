@@ -14,10 +14,22 @@ export function mergeScheduling(status: unknown): Scheduling {
 export class GraphiteWriteError extends Error {
   constructor(message: string, readonly uncertain: boolean) { super(message); }
 }
+/** Shared by sign-in detection and API requests. Never surface config contents or parse errors. */
+export async function graphiteAuthToken(environment: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  const home = environment.HOME ?? homedir();
+  const config = environment.XDG_CONFIG_HOME ?? join(home, ".config");
+  for (const path of [join(config, "graphite", "user_config"), join(config, "graphite", "auth"), join(home, ".graphite_user_config")]) {
+    try {
+      const authToken: unknown = JSON.parse(await readFile(path, "utf8"))?.authToken;
+      if (typeof authToken === "string" && authToken.length > 0) return authToken;
+    } catch { /* Missing, unreadable or invalid files don't prevent checking older locations. */ }
+  }
+  return null;
+}
+
 async function requestGraphite(route: "mergeability-status" | "merge", body: Record<string, unknown>): Promise<unknown> {
-  const config = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  const { authToken } = await readFile(join(config, "graphite", "auth"), "utf8").then(s => JSON.parse(s)).catch(() => { throw new GraphiteWriteError("Graphite CLI authentication is unavailable.", false); });
-  if (typeof authToken !== "string" || !authToken) throw new GraphiteWriteError("Graphite authentication unavailable.", false);
+  const authToken = await graphiteAuthToken();
+  if (!authToken) throw new GraphiteWriteError("Graphite CLI authentication is unavailable.", false);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {

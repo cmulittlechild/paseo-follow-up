@@ -191,6 +191,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      them. `state.json`'s batched write (`Store.flush`) retries and reports the same way. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
      `follow.inbox-list` waited 664 ms behind an `inbox.json` write, `follow.save-reviewers` 1458 ms on an fsync.
      Guarded by `tests/rpc-ack.test.ts` (every fsync 2 s slow) and `tests/ack-disk.test.ts`.
+   - **A fast failure is not an acknowledgement** (`ack-timing-observes-slow-give-ups`): RPC timing tests count
+     every slow dependency that gives up before declaring an exemption stale. Black-hole sockets consume incoming
+     bytes without replying, so peer disconnects reach the close counter even after a handshake was sent.
+     Guarded by `tests/hanging-host.test.ts` and `tests/ack-ratchet.test.ts`.
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`
      (`server/list-cache.ts`) skips a workspace whose frozen object is the one it last serialised, so a state change
      stringifies only the workspaces it touched, never every tracked one. 2026-11-13 (run W, live copy under live
@@ -655,6 +659,36 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-17, Tom: "I chose to add context through the overseer and it worked badly"; the Overseer's reply was refused
    with "Tracking must be active". Guarded by `tests/context-recipient.test.ts`, which builds the tool list for each
    role.
+
+49. **Tool sign-in probes share all known credential locations** (`tool-sign-in-probes-share-known-locations`).
+   Keep each tool's saved-token lookup in one function, checking every known location and falling back past missing,
+   unreadable or invalid files. Graphite detection and API requests both use `graphiteAuthToken` in
+   `server/graphite.ts`: config `graphite/user_config`, config `graphite/auth`, then `~/.graphite_user_config`.
+   Config means `$XDG_CONFIG_HOME` or `~/.config`. Settings, Auto, onboarding and diagnostics consume the shared
+   detection result. Never expose tokens or file contents in logs, errors, diagnostics or test output.
+   Guarded by `tests/pr-workflow.test.ts` and `tests/graphite.test.ts`.
+
+51. **The client renders under the phone's rules** (`client-renders-under-native-rules`). The Paseo phone app is
+   native React Native, which rejects what react-native-web (where every render ran) accepts. Two guards: every
+   `accessibilityRole` the client sets is in React Native's Android `AccessibilityRole` enum, and none is cast past
+   its type (`as never`), because Android's view manager parses it with `AccessibilityRole.fromValue`, which throws on
+   the UI thread for an unknown value, a native crash that takes the whole app down and that no error boundary can
+   catch (roles Android lacks, like dialog, go through the ARIA `role` prop, which it parses leniently); and the phone
+   paths render under a strict native stand-in (`tests/support/native`: no DOM, Platform android, a host view throws
+   on text outside `<Text>` and on a role Android rejects) through react-test-renderer. 2026-11-18, Tom on
+   2.2.0-beta.4 in the phone app: tapping More context in Catch up crashed Paseo; its sheet (`MoveResult`) was
+   `accessibilityRole="dialog"`. Guarded by `tests/native-roles.test.ts` (every client file, the enum read from
+   react-native's source) and `tests/native-render.test.ts` (Catch up's More context and Later sheets, the end screen,
+   every context answer and the keys sheet; add a phone path there when you add one).
+52. **A pinned clock reaches every instance** (`a-pinned-clock-reaches-every-instance`). A test that gives a class a
+   pinned clock (`() => now`) gives that clock to every instance of the class it builds, its fixtures included: a
+   reopened store left on the default `Date.now` compares the test's pinned dates with today, and fails on the day a
+   window (`CONTEXT_KEEP_MS`, a snooze, a staleness bound) runs out, on every run after. A test that wants the real
+   clock names it (`Date.now`, or `// real-clock: <why>` when it checks the defaults). 2026-11-18: the context-requests
+   restart test pinned its ask to 2026-11-17T10:00Z and reopened the store on the real clock; from 10:00Z the next day
+   the reopened `list()` pruned the ask as older than 24 h, and CI failed on every PR. Guarded by
+   `tests/test-clocks.test.ts` (every server class whose constructor defaults `now` to `Date.now`, over every test
+   and the top-level helpers it calls).
 
 ## Bugs
 
