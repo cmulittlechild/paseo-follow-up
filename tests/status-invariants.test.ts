@@ -106,6 +106,9 @@ const TASK_AGENTS: Record<string, Workspace["taskAgents"]> = { "working-live": {
 function* grid(): Generator<[string, Workspace]> {
   for (const [agent, a] of Object.entries(AGENTS)) for (const [b, batches] of Object.entries(BATCHES)) for (const auto of [true, false])
     for (const [p, prs] of Object.entries(PRS)) for (const [t, obligations] of Object.entries(TASKS)) for (const done of [false, true]) for (const hold of [null, "Paused: the agent stopped"]) {
+      // A stuck repair batch about PRs that all merged settles on the engine's next pass (a-batch-item-leaves-once-
+      // nothing-applies), so that state isn't one the engine leaves; the invariant's own fixture covers it.
+      if (b.startsWith("repairs-") && ["stuck", "uncertain"].some(x => b.endsWith(x)) && prs.length && prs.every(x => x.snapshot?.state === "MERGED")) continue;
       const w = workspace({ ...a, batches: batches.map(x => ({ ...x })), enable_auto_sends: auto, prs, obligations, hold, taskAgents: TASK_AGENTS[t],
         completion: done ? { summary: "Shipped", declaredAt: at(60_000) } : null });
       yield [`agent=${agent} batch=${b} auto=${auto} prs=${p} tasks=${t} done=${done} hold=${!!hold}`, w];

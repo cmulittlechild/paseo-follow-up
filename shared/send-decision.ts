@@ -116,3 +116,47 @@ export function settleUnacknowledged(w: Workspace, b: Batch, open: readonly Task
   b.result = !still.length ? "The turn ended without an acknowledgment; GitHub no longer shows these, so they're done."
     : `The turn ended without an acknowledgment.${done ? ` ${done} done on GitHub.` : ""}${again ? ` ${again} still open ${again === 1 ? "goes" : "go"} in the next message.` : ""}${capped.length ? ` ${capped.length} sent ${NO_PROGRESS_CAP} times with no change ${capped.length === 1 ? "waits" : "wait"} for you.` : ""}`;
 }
+
+/**
+ * The agent said only a person can move this condition (Batch.humanOnly) and it is still the same condition: it waits
+ * as the developer's held "person" task, never an agent failure and never sent again on its own. A changed condition
+ * (a new review, a new head) has a new fingerprint and goes out as usual. Invariant a-human-only-outcome-is-a-human-item.
+ */
+export const personHeld = (w: Pick<Workspace, "batches">, t: Pick<Task, "key" | "fingerprint">) => {
+  const id = conditionId(t);
+  return w.batches.some(b => b.state === "completed" && !!b.humanOnly && b.tasks.some(x => conditionId(x) === id));
+};
+
+/** Blocked or unconfirmed: a repair batch whose outcome the developer is shown (Needs you's "The tasks didn't finish"). */
+export const stuckRepair = (b: Pick<Batch, "state" | "tasks">) =>
+  ["blocked", "uncertain"].includes(b.state) && !recoveryBatch(b) && !(b.tasks.length > 0 && b.tasks.every(t => t.kind === "completion"));
+
+/**
+ * Whether GitHub's answer for the task's PR is known (a complete snapshot and no read error), or the task isn't about a
+ * tracked PR (a task's own state is local). Unknown is not off: a PR GitHub didn't answer for still applies.
+ */
+function conditionKnown(w: Pick<Workspace, "prs">, t: Pick<Task, "kind" | "target">): boolean {
+  if (t.kind === "obligation") return true;
+  const pr = w.prs.find(p => p.key === t.target);
+  return !pr || !!pr.snapshot?.complete && !pr.error;
+}
+
+/**
+ * Whether a stuck repair batch still asks for anything: some task's condition (key and fingerprint) is still open in
+ * `open` (server/tasks.ts tasksFor, the PRs as they are now), or its PR's state is unknown. Once nothing applies (every
+ * PR merged or closed, the review dismissed or replaced, the checks passing, the conflict gone) the batch settles on its
+ * own, the same rule reconcile applies to a queued one. Invariant a-batch-item-leaves-once-nothing-applies.
+ */
+export function stillApplies(w: Pick<Workspace, "prs">, b: Pick<Batch, "tasks">, open: readonly Pick<Task, "key" | "fingerprint">[]): boolean {
+  const ids = new Set(open.map(conditionId));
+  return b.tasks.some(t => ids.has(conditionId(t)) || !conditionKnown(w, t));
+}
+
+/** Why a stuck batch that stopped mattering settled, in the developer's words ("No longer needed: #1 merged."). */
+export function mootReason(w: Pick<Workspace, "prs">, b: Pick<Batch, "tasks">): string {
+  const prs = [...new Set(b.tasks.map(t => t.target))].map(key => w.prs.find(p => p.key === key)).filter(p => !!p);
+  const ended = prs.filter(p => p.snapshot?.state === "MERGED" || p.snapshot?.state === "CLOSED");
+  if (prs.length && ended.length === prs.length && ended.length === new Set(b.tasks.map(t => t.target)).size)
+    return `No longer needed: ${ended.map(p => `#${p.number} ${p.snapshot!.state === "MERGED" ? "merged" : "closed"}`).join(", ")}.`;
+  return "No longer needed: GitHub no longer shows what it asked for.";
+}

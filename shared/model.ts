@@ -102,6 +102,12 @@ export const batchSchema = z.object({
   refusal: z.object({ reason: z.string(), at: z.string() }).nullable().optional(),
   /** The agent's turn ended without acknowledge_batch; Follow-up settled it from GitHub instead (settleUnacknowledged). */
   unacknowledged: z.boolean().optional(),
+  /**
+   * The agent acknowledged it blocked with nothing left for an agent: only a person can move what is still open (a
+   * reviewer re-reviews or dismisses a stale review, access is granted). Settled completed, and its still-open
+   * conditions wait as the developer's held "person" tasks (invariant a-human-only-outcome-is-a-human-item).
+   */
+  humanOnly: z.boolean().optional(),
 });
 export const workspaceSchema = z.object({
   id: idSchema, title: textSchema, goal: textSchema, mainAgentId: idSchema,
@@ -158,8 +164,8 @@ export const workspaceSchema = z.object({
   undelivered: z.array(z.object({ id: z.string().max(400), agentId: idSchema, agentTitle: z.string().nullable(), state: z.enum(["queued", "failed"]), reason: z.string().nullable(), since: z.string() })).max(20).optional(),
   /** The main agent's title from Paseo, for "Next message to <title>". Absent: "the main agent". */
   mainAgentTitle: z.string().nullable().optional(),
-  /** Open tasks kept out of the next message (reconcile): capped (sent NO_PROGRESS_CAP times unchanged) or manual (Auto off for that task). */
-  heldTasks: z.array(z.object({ task: taskSchema, held: z.enum(["capped", "manual"]) })).optional(),
+  /** Open tasks kept out of the next message (reconcile): capped (sent NO_PROGRESS_CAP times unchanged), manual (Auto off for that task) or person (the agent said only a person can move it: Batch.humanOnly). */
+  heldTasks: z.array(z.object({ task: taskSchema, held: z.enum(["capped", "manual", "person"]) })).optional(),
   /** Task keys the developer keeps for themselves: never auto-sent (shared/send-decision.ts). */
   manualTasks: z.array(z.string()).optional(),
   /** Per condition ("<key>:<fingerprint>"), the unacknowledged sends counted when the developer pressed Retry. */
