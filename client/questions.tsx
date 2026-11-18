@@ -139,11 +139,12 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const draft = answerDraft(q, { choice, words, noteOpen });
   const other = draft.own;
   const answer = draft.answer;
-  const note = draft.note;
+  // What Send sends with the answer: Something else's words or a pick's note, from the draft (what-you-typed-is-what-gets-sent).
+  const sentWords = draft.words;
   const run = useMutation({
     mutationFn: async (action: "send" | "copy" | "resend") => {
-      if (action === "copy") await copyText(answerMessage(q, q.answer?.choice ?? answer!, q.answer?.words ?? note));
-      return answerRpc({ workspaceId: w.id, questionId: q.id, choice: q.answer?.choice ?? answer!, words: q.answer?.words ?? note, action });
+      if (action === "copy") await copyText(answerMessage(q, q.answer?.choice ?? answer!, q.answer?.words ?? sentWords));
+      return answerRpc({ workspaceId: w.id, questionId: q.id, choice: q.answer?.choice ?? answer!, words: q.answer?.words ?? sentWords, action });
     },
     onSuccess: (result, action) => {
       const d = result.question.answer?.delivery;
@@ -165,7 +166,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
    */
   const putIn = () => {
     if (!answer || !composer) return;
-    const message = answerMessage(q, answer, note);
+    const message = answerMessage(q, answer, sentWords);
     onClose?.();
     void putInChatOrCopy(composer, message, {
       inChat: () => quick("chat"),
@@ -174,9 +175,10 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   };
   const quick = (action: "send" | "copy" | "chat") => {
     if (!answer) return;
-    const input = { workspaceId: w.id, questionId: q.id, choice: answer, words: note, action };
-    if (action === "copy") void copyText(answerMessage(q, answer, note)).catch(() => undefined);
-    setPendingAnswer(w.id, q.id, { choice: answer, words: other ? words.trim() : note });
+    const input = { workspaceId: w.id, questionId: q.id, choice: answer, words: sentWords, action };
+    if (action === "copy") void copyText(answerMessage(q, answer, sentWords)).catch(() => undefined);
+    // The unsent copy keeps exactly what was sent, so Retry (which rebuilds the draft from it) sends it again.
+    setPendingAnswer(w.id, q.id, { choice: answer, words: sentWords });
     const agent = who(w, q.askedBy);
     void runAction({
       label: `Answer to ${q.id}`, toast, run: () => answerRpc(input),

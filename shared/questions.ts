@@ -139,8 +139,12 @@ export type AnswerDraft = {
   own: boolean;
   /** What Send records: a letter, OTHER, the free answer, or null while Send can't send yet. */
   answer: string | null;
-  /** Words sent with a lettered pick. */
-  note?: string;
+  /**
+   * The words Send sends with `answer`, whatever the field's role: Something else's answer, or a lettered pick's
+   * note (undefined with none, and for a free answer, which is `answer` itself). Every send, Retry, Copy and Put in
+   * chat reads it, so what the developer typed is what reaches the agent (what-you-typed-is-what-gets-sent).
+   */
+  words: string | undefined;
   placeholder: string;
   /** The field's visible label, which stays once the placeholder is gone. */
   heading: string | null;
@@ -154,13 +158,13 @@ export type AnswerDraft = {
 };
 export function answerDraft(q: { id: string; options: readonly { letter?: string; label?: string }[] }, s: { choice: string | null; words: string; noteOpen: boolean }): AnswerDraft {
   const words = s.words.trim();
-  if (!q.options.length) return { field: "answer", own: false, answer: words || null, placeholder: "Your answer", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
+  if (!q.options.length) return { field: "answer", own: false, answer: words || null, words: undefined, placeholder: "Your answer", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
   const own = isOther(s.choice) || (!s.choice && !!words);
-  if (own) return { field: "answer", own, answer: words ? OTHER : null, placeholder: "Your answer (required)", heading: "Your answer", label: `Your answer to ${q.id}, required`, hint: words ? null : OWN_ANSWER_HINT, canAddNote: false, canRemoveNote: false };
+  if (own) return { field: "answer", own, answer: words ? OTHER : null, words: words || undefined, placeholder: "Your answer (required)", heading: "Your answer", label: `Your answer to ${q.id}, required`, hint: words ? null : OWN_ANSWER_HINT, canAddNote: false, canRemoveNote: false };
   // A lettered pick: the field is a note, shown once asked for (or once it holds words, e.g. Something else's words
   // kept when the developer picks a letter after all, so they read as the note they now are).
   const field = s.choice && (s.noteOpen || !!words) ? "note" as const : null;
-  return { field, own, answer: s.choice, note: field && words ? words : undefined, placeholder: "Add a note for the agent (optional)", heading: s.choice ? noteHeading(q, s.choice) : null,
+  return { field, own, answer: s.choice, words: field && words ? words : undefined, placeholder: "Add a note for the agent (optional)", heading: s.choice ? noteHeading(q, s.choice) : null,
     label: `Note for the agent, sent with ${s.choice} on ${q.id}, optional`, hint: s.choice ? null : PICK_HINT, canAddNote: !!s.choice && !field, canRemoveNote: field === "note" };
 }
 /** "Note, sent with A · The English text": the option by name too, since it may have scrolled out of view. */
