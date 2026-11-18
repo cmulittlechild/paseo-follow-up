@@ -17,17 +17,19 @@ Catch up walks you through everything that needs you, one card at a time.
 ### Home and Needs you
 
 - Catch up has a key for every move on desktop: A–H pick, W writes your own, ⌘↵ sends, J/K skip and go back, M asks for context, L later, O opens the chat, R the queue. S shows them all; X leaves.
-- Catch up: once a question has an answer, Send to agent is on the move bar too. More context and Later open right where you are, a sheet above the phone's bar or a popover on desktop, never below the card.
+- Catch up: once a question has an answer, Send to agent is on the move bar. More context and Later open right where you are, a sheet above the phone's bar or a popover on desktop, never below the card.
 - Agents can ask the card's workspace main agent to explain it in plain words, and read what Catch up will show you next. The answer comes back on its own, with no waiting around.
 - Catch up walks everything that needs you one card at a time, from Home's "Catch up · N" or ⌘K. Ask for more context and the deck moves on; that workspace comes back as your next card with the answer. Desktop shows the queue beside the card.
+- On a phone the card follows your finger: drag left to skip the whole workspace (shown underneath), right to go back, or let go early and it springs back. Skip on the bar skips one card.
+- Skip workspace, at the top right of the card beside the workspace name, skips every card of that workspace at once (Shift+J on desktop).
+- More context asks the workspace's main agent, so its answer lands on the card.
+- Catch up's Skip says what it skips ("Skip question", "Skip permission") and that the card comes back after the rest.
 - On a phone, what you type and its Send button stay on screen. While you write an answer or a note, Sign off and the reply box step aside and the page scrolls the field above the keyboard.
 
 ### Questions and answers
 
-- On a phone the card follows your finger: drag left to skip the whole workspace (shown underneath), right to go back, or let go early and it springs back. Skip on the bar still skips one card.
 - A note on a picked option opens with Add note and says which option it goes with.
 - Answers that an older version gave up on go back to checking after the update.
-- Skip workspace moved to the top right of the card, beside the workspace's name, on phone and desktop alike.
 
 ### Repairs and PRs
 
@@ -40,8 +42,6 @@ Catch up walks you through everything that needs you, one card at a time.
 
 ### Fixes
 
-- More context always asks the workspace's own agent, so its answer always lands on the card. An earlier ask of the Overseer now shows a link to its chat.
-- Catch up's Skip now says what it skips ("Skip question", "Skip permission") and that the card comes back after the rest, and a new Skip workspace (⇧J on desktop) moves past every card of a workspace at once.
 - Home now says when any new stable version is out, including minor and patch releases, if Updates is set to Tell me. Betas stay in Settings → General.
 - Writing your own answer to a question is one step everywhere. Pick Something else, type, and send. The box no longer sits there as a note before you pick anything, in the panel, on Home or on a phone.
 - An answer Follow-up couldn't confirm no longer ends as Failed and waits for you. It keeps checking the agent's chat and sends it again once the chat shows it never arrived.
