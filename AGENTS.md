@@ -191,6 +191,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      them. `state.json`'s batched write (`Store.flush`) retries and reports the same way. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
      `follow.inbox-list` waited 664 ms behind an `inbox.json` write, `follow.save-reviewers` 1458 ms on an fsync.
      Guarded by `tests/rpc-ack.test.ts` (every fsync 2 s slow) and `tests/ack-disk.test.ts`.
+   - **A fast failure is not an acknowledgement** (`ack-timing-observes-slow-give-ups`): RPC timing tests count
+     every slow dependency that gives up before declaring an exemption stale. Black-hole sockets consume incoming
+     bytes without replying, so peer disconnects reach the close counter even after a handshake was sent.
+     Guarded by `tests/hanging-host.test.ts` and `tests/ack-ratchet.test.ts`.
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`
      (`server/list-cache.ts`) skips a workspace whose frozen object is the one it last serialised, so a state change
      stringifies only the workspaces it touched, never every tracked one. 2026-11-13 (run W, live copy under live
