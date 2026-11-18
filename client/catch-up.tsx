@@ -32,6 +32,7 @@ import { mergedColor, withAlpha, tint } from "./theme";
 import { RichText } from "./rich-text";
 import { DisplaySplit, PermissionBlock, useAgentLive } from "./home";
 import { DockedPane } from "./docked-pane";
+import { hostDictation } from "./dictation";
 import { ownsKey, surfaceVisible } from "../shared/list-keys";
 import { useReducedMotion } from "./motion";
 import { PRIMARY_FORM } from "./dock";
@@ -170,6 +171,19 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         case "pick": inCard(`[role="radio"][aria-label^="${hit.arg}. "]`)?.click?.(); break;
         case "own": inCard('[role="radio"][aria-label^="Something else"]')?.click?.(); break;
         case "send": { const b = inCard('[aria-label^="Send your"]') ?? inCard('[aria-label^="Send "]'); if (!b) return; b.click?.(); break; }
+        // V: the card's mic (DictationField). No field open yet: Something else opens one first. Focus stays on the
+        // mic, so V again stops it (in the field, V would be a letter).
+        case "dictate": {
+          if (!hostDictation()) return;
+          const mic = () => inCard('[data-dictate] [role="button"]') ?? inCard('[data-dictate][role="button"]');
+          const hit = (m: El | null) => { m?.click?.(); m?.focus?.(); };
+          if (mic()) { hit(mic()); break; }
+          const own = inCard('[role="radio"][aria-label^="Something else"]');
+          if (!own) return;
+          own.click?.();
+          setTimeout(() => hit(mic()), 0);
+          break;
+        }
         case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
         case "later": if (!click('[aria-label="Later (L)"]')) return; break;
@@ -379,7 +393,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     ? <View style={{ gap: 8 }}>
       <RichText plain style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{`${q.id} · ${q.title}`}</RichText>
       <QuestionBody key={q.id} workspace={ws} question={q} theme={theme} compact={compact} inline={false}
-        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} />
+        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} dictate />
     </View>
     : card.kind === "item" && card.item && full
     ? <View style={{ borderRadius: 10, borderWidth: 1, borderColor: withAlpha(c.statusWarning, 0.45), overflow: "hidden" }}>
@@ -584,6 +598,7 @@ export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { 
 
 /** S: the keys, from the one list the handler reads (shared/catch-up.ts). A dialog over the card; S or its X closes it. */
 export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => void }) {
+  const dictation = !!hostDictation();
   const c = theme.colors; const t = text(c, false);
   const row = (k: typeof CATCH_UP_KEYS[number]) => <View key={`${k.action}-${k.key}`} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
     <View style={{ minWidth: 64 }}><Text style={[t.meta, { alignSelf: "flex-start", paddingHorizontal: 6, borderRadius: 4, borderWidth: 1, borderColor: c.border, color: c.foreground, fontVariant: ["tabular-nums"] }]}>{keyLabel(k.key, isMac())}</Text></View>
@@ -597,7 +612,7 @@ export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => voi
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
       <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />
     </View>
-    {section("On a card", CATCH_UP_KEYS.filter(k => !k.when))}
+    {section("On a card", CATCH_UP_KEYS.filter(k => !k.when && (!k.needs || dictation)))}
     {section("In More context", CATCH_UP_KEYS.filter(k => k.when === "more"))}
     {section("In the queue", CATCH_UP_KEYS.filter(k => k.when === "rail"))}
   </View>;

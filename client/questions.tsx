@@ -17,6 +17,7 @@ import { mootNote, sentence } from "../shared/errors";
 import { activity, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
 import { Spinner } from "./motion";
+import { DictationField, useCaret, type FieldPad } from "./dictation";
 import { NoteLink } from "./brief";
 import { PRIMARY_FORM } from "./dock";
 import { mergedColor, tint, withAlpha, type Colors } from "./theme";
@@ -101,7 +102,7 @@ export type SendReady = { send: () => void; busy: boolean };
  * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
  * (`one-answer-flow-for-every-question`), never from the surface.
  */
-export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady }: {
+export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false }: {
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
   /** Inside the Needs you block: its header says the title and when it was asked, its footer what the agent does meanwhile. */
   inline?: boolean;
@@ -112,6 +113,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
    * Send outside the card runs exactly this flow (`one-answer-flow-for-every-question`), never a copy of it.
    */
   onSendReady?: (send: SendReady | null) => void;
+  /** Catch up: a mic beside the field (DictationField), when the host has Paseo's dictation. */
+  dictate?: boolean;
 }) {
   const c = theme.colors; const t = text(c);
   const toast = useToast(); const cache = useQueryClient();
@@ -137,6 +140,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   // The field is shown only once its role is known: Something else (the answer, so Send waits for words) or Add note
   // on a lettered pick. One rule for every surface (shared/questions.ts answerDraft).
   const draft = answerDraft(q, { choice, words, noteOpen });
+  const caret = useCaret();
   const other = draft.own;
   const answer = draft.answer;
   // What Send sends with the answer: Something else's words or a pick's note, from the draft (what-you-typed-is-what-gets-sent).
@@ -238,8 +242,13 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const input = draft.field && <View style={{ gap: 6 }}>
     {free && !dense && <Text style={t.meta}>No options were given. Write the decision for the agent.</Text>}
     {!!draft.heading && <Text style={[t.small, { fontWeight: "600" }]}>{draft.heading}</Text>}
-    <TextInput key={draft.field} accessibilityLabel={draft.label} placeholder={draft.placeholder} placeholderTextColor={c.foregroundMuted}
-      multiline value={words} editable={!run.isPending} onChangeText={setWords} maxLength={2000} autoFocus={!free && (other || noteOpen)} style={[inputStyle(c, compact, draft.field === "answer" && !dense ? 3 : 2)]} />
+    {(() => {
+      const field = (pad: FieldPad) => <TextInput key={draft.field} accessibilityLabel={draft.label} placeholder={draft.placeholder} placeholderTextColor={c.foregroundMuted}
+        multiline value={words} editable={!run.isPending} onChangeText={setWords} onSelectionChange={caret.onSelectionChange} maxLength={2000} autoFocus={!free && (other || noteOpen)} style={[inputStyle(c, compact, draft.field === "answer" && !dense ? 3 : 2), pad]} />;
+      // Dictated words land in this same field's words (what-you-typed-is-what-gets-sent), at the caret, never sent.
+      return dictate ? <DictationField key={draft.field} theme={theme} compact={compact} keyHint field={field} disabled={run.isPending}
+        onText={said => setWords(prev => caret.insert(prev, said, 2000))} /> : field(null);
+    })()}
   </View>;
   // Context comes before the options so the developer reads why before choosing.
   const body = <View style={{ gap: dense ? 10 : 14 }}>
