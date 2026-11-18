@@ -11,13 +11,16 @@ const input = { workspaceId: "w1", agentId: "a1", cardKey: "agent:a1|Q1", card: 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   const directory = await mkdtemp(join(tmpdir(), "context-requests-"));
   let now = Date.parse("2026-11-17T10:00:00.000Z");
-  const store = trackPersistence(directory, new ContextRequests(directory, () => now));
+  const clock = () => now;
+  const store = trackPersistence(directory, new ContextRequests(directory, clock));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return { directory, store, tick: (ms: number) => { now += ms; } };
+  // A reopened store keeps the fixture's clock (a-pinned-clock-reaches-every-instance): on the real one, the pinned
+  // ask is older than CONTEXT_KEEP_MS from 2026-11-18T10:00Z on, and the reopened list() prunes it.
+  return { directory, store, clock, tick: (ms: number) => { now += ms; } };
 }
 
 test("an ask is recorded at once, pushes the feed, and saves behind the reply", async t => {
-  const { directory, store } = await fixture(t);
+  const { directory, store, clock } = await fixture(t);
   let pushes = 0;
   store.onChange = () => { pushes++; };
   const { request, fresh } = await store.ask(input, "developer", "a1");
@@ -28,7 +31,7 @@ test("an ask is recorded at once, pushes the feed, and saves behind the reply", 
   const saved = JSON.parse(await readFile(join(directory, CONTEXT_FILE), "utf8"));
   assert.equal(saved.requests[0].id, request.id);
   // Reopened: the ask survives a worker restart.
-  const again = trackPersistence(directory, new ContextRequests(directory));
+  const again = trackPersistence(directory, new ContextRequests(directory, clock));
   assert.equal((await again.list())[0].id, request.id);
 });
 

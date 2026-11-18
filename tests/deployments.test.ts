@@ -114,7 +114,7 @@ test("public-code-carries-no-host-identifiers: the probe reads only repositories
   f.configure();
   assert.equal((await f.adapter.observe([f.target])).get(f.target.key)?.state, "deployed", "the check comes back with its config");
   assert.ok(f.calls.some(c => c === `fetch run.googleapis.com/apis/serving.knative.dev/v1/namespaces/acme-prod/services?labelSelector=${encodeURIComponent("rollout-group=app")}`), "reads the configured project's services, by its label");
-  assert.equal(new Deployments().configured("acme/acme-poc"), false, "the default: no repository has a deploy check");
+  assert.equal(new Deployments().configured("acme/acme-poc"), false, "the default: no repository has a deploy check"); // real-clock: reads only the default config
 });
 test("all post-deploy dependencies must be freshly deployed; closed, partial, missing and stale do not qualify", () => {
   const d = { state: "deployed" as const, environment: "production", commits: [current], evidence: "Serving image contains the merge", observedAt: new Date(clock).toISOString() };
