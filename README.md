@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/assets/icon.png" width="80" height="80" alt="Follow-up icon">
+
 # Follow-up
 
 [![npm version](https://img.shields.io/npm/v/paseo-follow-up?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-follow-up)
