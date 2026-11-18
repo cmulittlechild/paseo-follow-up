@@ -18,7 +18,7 @@ Catch up walks you through everything that needs you, one card at a time.
 
 - Catch up has a key for every move on desktop: A–H pick, W writes your own, ⌘↵ sends, J/K skip and go back, M asks for context, L later, O opens the chat, R the queue. S shows them all; X leaves.
 - Catch up: once a question has an answer, Send to agent is on the move bar too. More context and Later open right where you are, a sheet above the phone's bar or a popover on desktop, never below the card.
-- Agents can ask another agent, or the Overseer, to explain a card that needs you in plain words, and read what Catch up will show you next. The answer comes back on its own, with no waiting around.
+- Agents can ask the card's workspace main agent to explain it in plain words, and read what Catch up will show you next. The answer comes back on its own, with no waiting around.
 - Catch up walks everything that needs you one card at a time, from Home's "Catch up · N" or ⌘K. Ask for more context and the deck moves on; that workspace comes back as your next card with the answer. Desktop shows the queue beside the card.
 - On a phone, what you type and its Send button stay on screen. While you write an answer or a note, Sign off and the reply box step aside and the page scrolls the field above the keyboard.
 
