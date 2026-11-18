@@ -40,6 +40,55 @@ async function storeWith(p: Probe, paths: Record<string, string> = { "example/ap
   return { store, dir, close: () => rm(dir, { recursive: true, force: true }) };
 }
 
+for (const location of [".config/graphite/user_config", ".config/graphite/auth", ".graphite_user_config"]) {
+  test(`Graphite sign-in: ${location} alone is recognised`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "follow-signin-"));
+    try {
+      await mkdir(join(root, ".config", "graphite"), { recursive: true });
+      await writeFile(join(root, location), JSON.stringify({ authToken: "synthetic" }));
+      assert.equal(await fsProbe({ HOME: root }).signedIn(), true);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
+
+test("Graphite sign-in: no saved token is absent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "follow-signin-"));
+  try { assert.equal(await fsProbe({ HOME: root }).signedIn(), false); }
+  finally { await rm(root, { recursive: true, force: true }); }
+});
+
+for (const [index, invalid] of ["{", "null", "{}", '{"authToken":""}', '{"authToken":42}'].entries()) {
+  test(`Graphite sign-in: invalid config case ${index} is absent and allows fallback`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "follow-signin-"));
+    try {
+      await mkdir(join(root, ".config", "graphite"), { recursive: true });
+      for (const location of [".config/graphite/user_config", ".config/graphite/auth", ".graphite_user_config"]) {
+        await writeFile(join(root, location), invalid);
+      }
+      const probe = fsProbe({ HOME: root });
+      assert.equal(await probe.signedIn(), false);
+      await writeFile(join(root, ".graphite_user_config"), JSON.stringify({ authToken: "synthetic" }));
+      assert.equal(await probe.signedIn(), true);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
+
+test("Graphite sign-in: XDG_CONFIG_HOME replaces the default config directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "follow-signin-"));
+  try {
+    await mkdir(join(root, ".config", "graphite"), { recursive: true });
+    await writeFile(join(root, ".config", "graphite", "user_config"), JSON.stringify({ authToken: "synthetic" }));
+    const probe = fsProbe({ HOME: root, XDG_CONFIG_HOME: join(root, "custom") });
+    assert.equal(await probe.signedIn(), false);
+    await mkdir(join(root, "custom", "graphite"), { recursive: true });
+    for (const location of ["user_config", "auth"]) {
+      await writeFile(join(root, "custom", "graphite", location), JSON.stringify({ authToken: "synthetic" }));
+      assert.equal(await probe.signedIn(), true);
+      await rm(join(root, "custom", "graphite", location));
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("auto: gt missing, sign-in missing or repo not initialised all resolve to GitHub; all present resolves to Graphite", async () => {
   const cases: [Parameters<typeof probe>[0], "graphite" | "github"][] = [
     [{ gt: false, auth: true, init: true }, "github"],
@@ -82,7 +131,7 @@ test("Tom's setup (fakes): gt on PATH, Graphite sign-in, a gt-initialised repo o
     const bin = join(root, "bin"); await mkdir(bin);
     await writeFile(join(bin, "gt"), "#!/bin/sh\nexit 99\n"); await chmod(join(bin, "gt"), 0o755);
     await mkdir(join(root, "config", "graphite"), { recursive: true });
-    await writeFile(join(root, "config", "graphite", "auth"), JSON.stringify({ authToken: "synthetic" }));
+    await writeFile(join(root, "config", "graphite", "user_config"), JSON.stringify({ authToken: "synthetic" }));
     // The main checkout has gt's repo config; Paseo's project may point at a worktree whose .git is a file.
     const repo = join(root, "acme-poc"); await mkdir(join(repo, ".git", "worktrees", "wt"), { recursive: true });
     await writeFile(join(repo, ".git", ".graphite_repo_config"), JSON.stringify({ trunk: "main" }));
@@ -96,6 +145,7 @@ test("Tom's setup (fakes): gt on PATH, Graphite sign-in, a gt-initialised repo o
     const store = testStore(PrWorkflowStore, join(root, "data"), fsProbe(environment));
     store.paths = async () => new Map([["acme/acme-poc", [worktree]], ["tomgrin10/plain", [plain]]]);
     assert.equal(await store.workflow("acme/acme-poc"), "graphite");
+    assert.equal((await store.view(["acme/acme-poc"], true)).gt.signedIn, true);
     assert.equal(await store.workflow("tomgrin10/plain"), "github");
     // Same machine without gt on PATH: everything is GitHub.
     const bare = testStore(PrWorkflowStore, join(root, "data2"), fsProbe({ ...environment, PATH: "/nonexistent" }));

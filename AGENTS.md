@@ -655,6 +655,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    with "Tracking must be active". Guarded by `tests/context-recipient.test.ts`, which builds the tool list for each
    role.
 
+49. **Tool sign-in probes share all known credential locations** (`tool-sign-in-probes-share-known-locations`).
+   Keep each tool's saved-token lookup in one function, checking every known location and falling back past missing,
+   unreadable or invalid files. Graphite detection and API requests both use `graphiteAuthToken` in
+   `server/graphite.ts`: config `graphite/user_config`, config `graphite/auth`, then `~/.graphite_user_config`.
+   Config means `$XDG_CONFIG_HOME` or `~/.config`. Settings, Auto, onboarding and diagnostics consume the shared
+   detection result. Never expose tokens or file contents in logs, errors, diagnostics or test output.
+   Guarded by `tests/pr-workflow.test.ts` and `tests/graphite.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:
