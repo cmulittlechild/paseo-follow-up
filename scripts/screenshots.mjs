@@ -1992,7 +1992,9 @@ async function homeKeysShots({ shoot, out }) {
       await page.getByRole("dialog", { name: "Home keys" }).filter({ visible: true }).first().waitFor();
     });
   }
-  await fs.writeFile(join(out, "home-keys.json"), JSON.stringify(checks, null, 2));
+  // A run filtered to the renders (--shot '^home-keys-sheet') runs no checks: it leaves an earlier home-keys.json alone
+  // rather than overwriting its record with an empty list.
+  if (checks.length) await fs.writeFile(join(out, "home-keys.json"), JSON.stringify(checks, null, 2));
 }
 
 async function shortcutShots({ shoot, seeded, call, out, billing }) {
