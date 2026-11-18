@@ -1,0 +1,2 @@
+- In Catch up on a phone, swiping left now skips the whole workspace (the card underneath says so as you drag); Skip on the bar still skips one card.
+- Skip workspace moved to the top right of the card, beside the workspace's name, on phone and desktop alike.

@@ -253,12 +253,14 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   "Skip permission", "Skip merge", else "Skip card"), and its tooltip and accessible name say it comes back after the
   rest. Skip workspace (`skipWorkspace`) skips every card of the workspace still to act on at once, each counted as one
   skipped card, and moves to the next workspace; they come back on the second pass. It shows only while the workspace
-  has more than one card left (with one it equals Skip): a row above the phone's bar, a button beside Skip on desktop
-  (⇧J). Back right after it returns to the card it was pressed on (`Session.back`).
-- **The phone drag**: the card follows the finger (translateX only), the card the release would show peeks underneath,
-  and a drag held halfway stays there. The direction locks in the first 8 px (`swipeLock`), so a vertical scroll stays
-  a scroll; on release, past 35 % of the width or a fling (`swipeOutcome`), left skips the card (the same Skip as the
-  bar's) and right goes Back, otherwise it springs back. Reduced motion: no follow, just the move. Paseo's plugin UI
+  has more than one card left (with one it equals Skip), as a quiet text button at the top right of the card, on the
+  line with the workspace title it skips, on phone and desktop alike (⇧J on desktop). Back right after it returns to
+  the card it was pressed on (`Session.back`).
+- **The phone drag**: the card follows the finger (translateX only), and the peek underneath says what the release does
+  ("Skip workspace · N cards", or "Skip question" with one card left, or "Back") and names the card it lands on. A drag
+  held halfway stays there. The direction locks in the first 8 px (`swipeLock`), so a vertical scroll stays
+  a scroll; on release, past 35 % of the width or a fling (`swipeOutcome`), left skips the workspace (`applySwipe`, the
+  same `skipWorkspace` as the button and ⇧J; the bar's Skip stays the way to skip one card) and right goes Back, otherwise it springs back. Reduced motion: no follow, just the move. Paseo's plugin UI
   has no gesture primitive, so it is React Native's PanResponder and Animated (native driver off the web).
 - **Keys** (desktop web): every move has one, from the one list `CATCH_UP_KEYS` (`shared/catch-up.ts`) that the
   handler (`catchUpKey`), the hint line and the S sheet read. A–H pick, W writes your own answer, ⌘↵ sends, J/→ skip the card,

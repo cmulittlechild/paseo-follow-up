@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, openInWorkspace, park, prevPos, pruneContext, settle, skipWorkspace, swipeLock, swipeOutcome, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, plainAnswer, agentContextPrompt, contextRequestSchema, deckCards, groupOf, nextPos, openInWorkspace, applySwipe, park, prevPos, pruneContext, settle, skipWorkspace, swipeLock, swipeOutcome, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Session } from "../shared/catch-up";
 import type { NeedItem } from "../shared/attention";
 import type { Workstream } from "../shared/home";
 
@@ -93,16 +93,30 @@ test("a live change keeps the second pass and Back after Skip workspace", () => 
   assert.equal(sync(x, cards("a|1", "a|2", "b|1", "d|1"), none).lapped, true, "sync never drops lapped");
 });
 
+test("a left swipe skips the whole workspace; a right swipe goes Back to the card it was on", () => {
+  let x = startSession(cards("a|1", "b|1", "b|2", "b|3", "c|1"));
+  x = settle(x, "done");
+  const left = swipeOutcome({ dx: -200, vx: 0, width: 390, canBack: true });
+  x = applySwipe(x, left);
+  assert.deepEqual(["b|1", "b|2", "b|3"].map(k => x.outcomes[k]), ["skipped", "skipped", "skipped"], "every open card of the workspace");
+  assert.equal(x.order[x.pos], "c|1", "the next workspace");
+  x = applySwipe(x, swipeOutcome({ dx: 200, vx: 0, width: 390, canBack: true }));
+  assert.equal(x.order[x.pos], "b|1", "Back returns to the card the swipe left");
+  const one = startSession(cards("a|1", "b|1"));
+  assert.deepEqual(applySwipe(one, left).outcomes, settle(one, "skipped").outcomes, "one card left: the same as skipping it");
+  assert.equal(applySwipe(one, "stay"), one, "a spring back changes nothing");
+});
+
 test("the phone drag locks its direction early and commits on distance or a fling", () => {
   assert.equal(swipeLock(3, 2), null, "too soon to tell");
   assert.equal(swipeLock(-12, 4), "x");
   assert.equal(swipeLock(6, 12), "y", "a scroll stays a scroll");
   assert.equal(swipeLock(9, 8), "y", "diagonal is a scroll");
   const w = 390;
-  assert.equal(swipeOutcome({ dx: -195, vx: 0, width: w, canBack: true }), "skip", "held halfway and let go");
+  assert.equal(swipeOutcome({ dx: -195, vx: 0, width: w, canBack: true }), "skip-workspace", "held halfway and let go");
   assert.equal(swipeOutcome({ dx: -60, vx: 0, width: w, canBack: true }), "stay", "springs back");
-  assert.equal(swipeOutcome({ dx: -60, vx: -0.9, width: w, canBack: true }), "skip", "a fling");
-  assert.equal(swipeOutcome({ dx: -200, vx: 0.9, width: w, canBack: true }), "skip", "far enough, whatever the last flick");
+  assert.equal(swipeOutcome({ dx: -60, vx: -0.9, width: w, canBack: true }), "skip-workspace", "a fling");
+  assert.equal(swipeOutcome({ dx: -200, vx: 0.9, width: w, canBack: true }), "skip-workspace", "far enough, whatever the last flick");
   assert.equal(swipeOutcome({ dx: 40, vx: -0.9, width: w, canBack: true }), "stay", "a fling against the drag");
   assert.equal(swipeOutcome({ dx: 200, vx: 0, width: w, canBack: true }), "back");
   assert.equal(swipeOutcome({ dx: 200, vx: 0, width: w, canBack: false }), "stay", "nothing to go back to");
