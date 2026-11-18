@@ -116,6 +116,9 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
       {...(listKeys ? { dataSet: { listKeys: "1" } } as object : {})}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       onSubmitEditing={onSubmit}
+      // A single-line field blurs on submit by default, which dropped focus on the page after a search pick while the
+      // results stayed up, so the second Enter reached nothing (the-selected-workspace-opens-with-enter).
+      blurOnSubmit={false}
       onKeyPress={e => {
         const key = (e.nativeEvent as { key?: string }).key;
         if (key === "ArrowDown" && onArrow) { e.preventDefault?.(); onArrow(1); }
@@ -135,12 +138,13 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
  * Home's search. Its chip names the search-from-anywhere key when one is set (it works here too), else "/"; plain "/"
  * focuses it on Home either way (useSlashToFocus).
  */
-export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem) => void; anywhereKey?: string | null }) {
+/** `onEnter`: the active result, or null when the query is empty (Home then opens its selection). */
+export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem | null) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
   return <QueryField theme={theme} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
-    onSubmit={() => { const item = results?.[active]; if (item) onEnter(item); }} onArrow={move} listKeys={!query.trim()} />;
+    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} />;
 }
 
 /**

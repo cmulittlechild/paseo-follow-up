@@ -88,7 +88,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
@@ -427,7 +427,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
    brief and the Overseer are rows of the walk; never while typing outside the list's own query field; a key pressed
    with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
-   behind another tab or chat. Guarded by
+   behind another tab or chat. Enter and O open (invariant 56). Guarded by
    `tests/list-keys.test.ts`.
 28. **One ranking for every workspace search** (`one-ranking-for-every-workspace-search`). Home's search and the
    sidebar view's filter order matches by one rank (`byRank` over `SearchHit.rank`, `shared/search.ts`): a title match
@@ -735,6 +735,22 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `usePaseoDictation`; otherwise there is no mic, no key and no empty space, and an unavailable host says why in one
    line instead of doing nothing. 2026-11-18, Tom on 2.2.0: "add a microphone icon to the catch up mode to dictate my
    answer". Guarded by `tests/catch-up-dictation.test.ts`.
+
+56. **On Home, the selected workspace opens with Enter** (`the-selected-workspace-opens-with-enter`). However a
+   workspace was selected (a click, the arrow walk, a search pick, a ⌘K pick, coming back to Home), Enter opens its
+   chat, as Open full does; O does the same, as in Catch up. A focused row opens itself; with nothing focused the
+   selection opens (`enterTarget`, `shared/list-keys.ts`). In the search, the first Enter shows the result in the pane
+   and Enter again on the result already showing opens it; with the query cleared, Enter opens the selection
+   (`searchEnter`). Enter on any other control (a button, a chip, a field, a menu, a dialog, the composer) stays that
+   control's. S shows Home's keys from one list (`HOME_KEYS`, `shared/home-keys.ts`), the same letter as Catch up's.
+   Esc keeps its meaning: in the search it clears, then leaves the field; elsewhere it is Paseo's. 2026-11-18, Tom on
+   2.2.0: "I press cmd+/ to go to search, search a workspace, press enter and it open the panel, I want to press enter
+   again to go to the workspace itself"; Enter opened only a focused row, and the search field blurred on submit (a
+   single-line TextInput's default) while its results stayed up, with Home's list keys off during a search, so the
+   second Enter reached nothing. The search keeps its cursor after a pick (`blurOnSubmit={false}`), and Home's keys
+   stay on while results show. Guarded by
+   `tests/home-keys.test.ts` and `scripts/screenshots.mjs --only home-keys` (each way of selecting, then Enter, lands
+   in the chat; writes `home-keys.json`).
 
 ## Bugs
 

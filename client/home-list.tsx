@@ -79,11 +79,11 @@ export type HomeListProps = {
   menu: { build: (s: Workstream) => RowMenuSection[]; pick: (s: Workstream, item: RowMenuItem) => void };
   /**
    * Desktop and web keys (client/list-keys.ts, one-keyboard-walk-for-every-list): ↑/↓ and j/k walk the rows in this
-   * list's order, Home/End jump, Enter opens. "select" moves the selection (Home); "focus" moves only the focus and
+   * list's order, Home/End jump, Enter or O opens, S shows the keys (`onKeys`, Home). "select" moves the selection (Home); "focus" moves only the focus and
    * Enter opens (the sidebar view). `scope`: where the keys count (default: this list); `claimBody`: also with
    * nothing focused.
    */
-  keys?: { mode: "select" | "focus"; onOpen: (key: string) => void; scope?: { current: unknown }; claimBody?: boolean };
+  keys?: { mode: "select" | "focus"; onOpen: (key: string) => void; onKeys?: () => void; scope?: { current: unknown }; claimBody?: boolean };
   /** The selected row's fill. Paseo's sidebar view passes its own selected-item colour (sidebarSelected); Home: surface2. */
   selectedBg?: string;
 };
@@ -164,11 +164,13 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
   // results through the omnibox instead.
   const order = useMemo(() => results ? [] : walkOrder(data), [data, results]);
   useListKeys({
-    enabled: !!keys && !touch && !results, order, mode: keys?.mode ?? "focus",
+    // On while a search shows its results too: the walk has no rows then (walkOrder), but Enter with nothing focused
+    // still opens the selection the search picked.
+    enabled: !!keys && !touch, order, mode: keys?.mode ?? "focus",
     // Home draws the brief as selected while nothing is.
     selectedKey: selectedKey ?? (order[0] === BRIEF_KEY ? BRIEF_KEY : null),
     scope: () => (keys?.scope?.current ?? rootRef.current) as { contains(n: unknown): boolean; checkVisibility?(): boolean } | null,
-    claimBody: keys?.claimBody, onSelect, onOpen: key => keys?.onOpen(key),
+    claimBody: keys?.claimBody, onSelect, onOpen: key => keys?.onOpen(key), onKeys: keys?.onKeys ? () => keys.onKeys?.() : undefined,
     reveal: key => { const index = data.findIndex(e => e.key === key); if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }); },
   });
   // Keep the keyboard-active result in view.
