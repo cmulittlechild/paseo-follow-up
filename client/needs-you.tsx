@@ -116,10 +116,9 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           {openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open agent" accessibilityLabel="Open main agent" onPress={openMain} />}
         </>;
       // The agent said only a person can move it: ask the reviewer again (the PR sheet's reviewers), or hand it back.
-      case "person": return <>
-          {item.review && item.prKey && actions.openPr && <Button theme={theme} compact={compact} icon="UserPlus" title="Ask for re-review" accessibilityLabel={`Ask for a re-review: ${item.title}`} onPress={() => actions.openPr!(item.prKey!, "reviewers")} />}
-          <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title="Send to agent" accessibilityLabel={`Send it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
-        </>;
+      case "person": return item.review && item.prKey && actions.openPr
+        ? <Button theme={theme} compact={compact} icon="UserPlus" title="Ask for re-review" accessibilityLabel={`Ask for a re-review: ${item.title}`} onPress={() => actions.openPr!(item.prKey!, "reviewers")} />
+        : null;
       case "check": return <Button theme={theme} compact={compact} icon="RefreshCw" title="Check state" loading={inspect.isPending} disabled={busy} onPress={() => inspect.mutate(item.actionId)} />;
       case "message": return <>
         <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send it again: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "retry"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "retry" })} />
@@ -142,6 +141,10 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       case "reviewers": return actions.openPr && <Button theme={theme} compact={compact} icon="UserPlus" title="Add reviewers" onPress={() => actions.openPr!(item.prKey, "reviewers")} />;
     }
   };
+  // A second, quieter action after the primary and its PR link, so the link never wraps onto a line of its own.
+  const secondary = (item: NeedItem) => item.kind === "person"
+    ? <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title="Send to agent" accessibilityLabel={`Send it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
+    : null;
   return <PrLinksProvider prs={prLinksByNumber(w.prs)}><View>
     {items.map((item, index) => {
       const g = glyph(item, c);
@@ -154,12 +157,13 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       const notice = merging?.notice ?? null;
       // The action and its link are one group, so the link never wraps under the button (a long "Add reviewers").
       const pair = act && link ? <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 }}>{act}{link}</View> : null;
-      const button = act || link ? <>{act}{link}</> : null;
+      const more = secondary(item);
+      const button = act || link || more ? <>{pair ?? <>{act}{link}</>}{more}</> : null;
       const said = !!untitled?.has(item.key);
       // Phones: the action sits at the row's right edge so rows never grow a second line of controls. A send batch
       // (the primary, with its task list) and Retry's pair keep their buttons full width under the row.
       // A stack's scope line and a blocker need the row's full width, so those rows put their button under the text.
-      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && !(item.kind === "person" && item.review) && !scopeLine && !notice;
+      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && !scopeLine && !notice;
       if (inline) return <CardRow key={item.key} theme={theme} compact first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {/* A row with the quiet link under it is taller: the glyph stays on the title's line. */}

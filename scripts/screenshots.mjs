@@ -143,6 +143,8 @@ function pulls() {
     246: { title: "Export the audit log as CSV", state: "OPEN", author: "dana", checks: [running("test"), ok("lint")] },
     240: { title: "Stream large invoice exports", state: "MERGED", author: "dana", checks: [ok("test"), ok("lint")] },
     232: { title: "Usage alert thresholds", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
+    // needs-you-states' person item: a stale CHANGES_REQUESTED, no open threads, nothing left in the code.
+    262: { title: "Retry failed invoice webhooks", state: "OPEN", author: "dana", changes: ["ravi"], checks: [ok("test"), ok("lint")] },
   };
 }
 /** A fake `gh`: GraphQL PR reads from the fixture file, `[]` for everything else (branch rules, auth). fakeGithub serves it over HTTP. */
@@ -359,6 +361,10 @@ const NEEDS_YOU_STATES = [
       rpc("follow.obligation", { title: "Wire alert thresholds", status: "blocked", evidence: "Waits for #232's review before the thresholds move to config", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Check alert emails in staging", status: "waiting", afterPrs: ["example/app#232"] }),
       msg("Thresholds are in #232. One task needs your call on who gets the alerts.")], flag: false },
+  { key: "ny-person", title: "Webhook retries", minute: 180, prompt: "APP-195: retry failed invoice webhooks with backoff.", flag: false,
+    steps: [rpc("follow.enroll", { goal: "APP-195 Retry failed invoice webhooks" }),
+      rpc("follow.register-pr", { repo: "example/app", number: 262, stack: "Webhook retries" }),
+      msg("Retries with backoff are in #262.")] },
 ];
 
 /** pick-notes only (task 32deeb27): decision cards with no tracked question, one decision and two. */
@@ -488,6 +494,24 @@ async function seed({ call, home }) {
     await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(scripts));
     await call("follow.send", { workspaceId: w.workspaceId, batchId: batch.id });
     await until(`${spec.key} fixing`, async () => (await client.fetchAgent(w.agentId)).agent?.status === "running", { tries: 120, every: 500 });
+  }
+  // needs-you-states' person item (a-human-only-outcome-is-a-human-item): the review repair goes out, and the agent
+  // acknowledges it blocked with humanOnly, as an agent does when only the reviewer can clear a stale review.
+  if (only.includes("needs-you-states")) {
+    const w = workspaces.find(x => x.key === "ny-person");
+    let batch = null;
+    await until("ny-person repair batch", async () => {
+      await call("follow.refresh", {});
+      batch = (await call("follow.list", {})).workspaces.find(x => x.id === w.workspaceId)?.batches.find(b => b.state === "pending");
+      return !!batch;
+    }, { tries: 120, every: 500 });
+    scripts[`agent:${w.agentId}`] = [msg("Nothing to fix: the changes-requested review predates the fix.")];
+    await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(scripts));
+    await call("follow.send", { workspaceId: w.workspaceId, batchId: batch.id });
+    await until("ny-person sent", async () => ["sent", "sending"].includes((await call("follow.list", {})).workspaces.find(x => x.id === w.workspaceId)?.batches.find(b => b.id === batch.id)?.state), { tries: 120, every: 500 });
+    await call("follow.acknowledge", { agentId: w.agentId, batchId: batch.id, outcome: "blocked", humanOnly: true,
+      result: "No change on #262 since the last two messages: 0 unresolved threads. Changes requested is ravi's review from before the fix, which is already in. Needs ravi to re-review or dismiss it; nothing for an agent to fix." });
+    await call("follow.refresh", {});
   }
   // One item the developer added by hand ("Added by you" in the Linked list).
   const billing = workspaces.find(w => w.key === "billing");
@@ -1632,6 +1656,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       { state: "q-no-brief", ...pick("ny-lone"), wait: "Missing keys" },
       { state: "just-answered", ...pick("ny-answered"), wait: null },
       { state: "tasks", ...pick("ny-tasks"), wait: "Wire alert thresholds", homeToo: false },
+      { state: "person", ...pick("ny-person"), wait: "#262 waits on its reviewer" },
     ];
     const TALL = { width: DESKTOP.width, height: 1300 };
     for (const s of states) for (const theme of ["light", "dark"]) {
