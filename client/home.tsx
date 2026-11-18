@@ -137,7 +137,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     try {
       const after = await send({ workspaceId: s.workspaceId, batchId: s.sendNow.batchId });
       const b = after.batches.find(x => x.id === s.sendNow!.batchId);
-      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${s.title}` : b.result || "Queued. It goes out when the agent is free.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
+      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${s.title}` : b.result || "Queued. It goes out when the main agent is free.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
     } catch (e) { toast.error(errorText(e)); } finally { deps.sources.live.refresh(); }
   }, [send, toast, deps.sources.live]);
   // The omnibox's "Ask the Overseer" row: send, then show the conversation it lands in.
@@ -368,6 +368,30 @@ function useTail(handle: ReturnType<typeof useAgentLive>["handle"], key: string,
   return { steps, error, seenAt, asleep, loading, woken: wake > 0, load: () => setWake(n => n + 1) };
 }
 
+/**
+ * Send now under a queued message's line in the detail pane: phones list Sending rows without it (dense rows), so this
+ * is where a phone sends a waiting repair (a-repair-goes-to-a-free-main-agent). The same Send as the row's and the
+ * Tasks strip's: taken while the main agent is busy, it goes the moment the main agent is free.
+ */
+function DetailSendNow({ s, theme, compact, deps }: { s: Workstream; theme: Theme; compact: boolean; deps: HomeDeps }) {
+  const send = useRpc(sendRpc); const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const n = s.sendNow!.count;
+  const press = async () => {
+    if (!s.workspaceId || !s.sendNow) return;
+    setBusy(true);
+    try {
+      const after = await send({ workspaceId: s.workspaceId, batchId: s.sendNow.batchId });
+      const b = after.batches.find(x => x.id === s.sendNow!.batchId);
+      const out = !b || ["sent", "sending", "completed"].includes(b.state);
+      toast.show(out ? `Sent to ${s.title}` : b.result || "Queued. It goes out when the main agent is free.", { variant: out ? "success" : "info" });
+    } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); deps.sources.live.refresh(); }
+  };
+  return <View style={{ flexDirection: "row" }}>
+    <Button theme={theme} compact={compact} kind="secondary" title="Send now" accessibilityLabel={`Send ${n} task${n === 1 ? "" : "s"} to ${s.title} now`} loading={busy} disabled={busy} onPress={() => void press()} />
+  </View>;
+}
+
 function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask, onBack }: {
   s: Workstream; model: HomeModel; theme: Theme; compact: boolean; deps: HomeDeps;
   openFull: (s: Workstream) => void; signOffNext: (s: Workstream) => void; onBack?: () => void;
@@ -556,6 +580,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
         : echoed || (b && compact && b.source === "none" && asks.length) ? null
         : row?.needs && !agent.permissions.length && !b ? <Text style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{s.line || s.word || "Needs you"}</Text>
         : !row?.needs && s.line ? <Text style={t.body}>{s.line}</Text> : null}
+      {!row?.needs && s.sendNow && <DetailSendNow s={s} theme={theme} compact={compact} deps={deps} />}
       {w && <NeedsYouBlock workspace={w} theme={theme} compact={compact} now={Date.now()} style={{ marginHorizontal: 0, marginTop: 0 }}
         brief={inBlock ? b : null} briefCard={inBlock && <BriefCard {...({ embedded: true, bare: true, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} />}
         actions={{ openPr: (key, intent) => setSheet({ key, intent }), openQuestion: setQuestion, openAgent: () => openFull(s) }} />}

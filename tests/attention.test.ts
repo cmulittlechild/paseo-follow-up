@@ -56,7 +56,7 @@ test("needs-you lists one action per decision and respects Auto and send guards"
   assert.deepEqual(needsYou({ ...w, prs: fixed, enable_auto_sends: true }, clock).filter(i => i.kind === "merge").map(i => i.kind === "merge" && i.number), [3], "one Merge per stack: #3's names #2 too");
   assert.deepEqual(heldMerges({ ...w, prs: fixed }, clock), [], "nothing held once #2 can merge");
   const busy = needsYou({ ...w, runtimeBusy: true }, clock).find(i => i.kind === "send");
-  assert.equal(busy?.kind === "send" && busy.blocker, "Sends after the agent's current turn");
+  assert.equal(busy?.kind === "send" && busy.blocker, "Sends when the main agent's turn ends, so it isn't interrupted");
   const held = needsYou({ ...w, hold: "You stopped the main agent. Resume follow-up when ready." }, clock);
   assert.equal(held[0].kind, "hold");
   assert.equal(needsYou({ ...w, archived: true }, clock).length, 0);
@@ -94,7 +94,7 @@ test("headline, live line and pill read the same state", () => {
   assert.match(liveLine(sent, clock).text, /Main agent is working on 1 task/);
   // The line says why repairs wait, never "sends when the agent is idle" while it is idle.
   assert.equal(liveLine({ ...w, enable_auto_sends: true }, clock).text, "1 task queued · going out now");
-  assert.equal(liveLine({ ...w, enable_auto_sends: true, runtimeBusy: true }, clock).text, "1 task queued · sends when its current turn ends, so it isn't interrupted");
+  assert.equal(liveLine({ ...w, enable_auto_sends: true, runtimeBusy: true }, clock).text, "1 task queued · sends when the main agent's turn ends, so it isn't interrupted");
   assert.equal(liveLine({ ...w, enable_auto_sends: true, sendWait: "unloaded" }, clock).text, "1 task queued · the agent is idle; Follow-up doesn't wake it");
 });
 

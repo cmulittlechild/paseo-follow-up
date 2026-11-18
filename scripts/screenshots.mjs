@@ -128,6 +128,7 @@ function pulls() {
     256: { title: "Send a weekly invoice digest", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     151: { repo: "example/web", title: "Saved search filters", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     247: { title: "Checkout button copy", state: "OPEN", author: "dana", conflict: true, threads: 1, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
+    248: { title: "Refund reason codes", state: "OPEN", author: "dana", conflict: true, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     160: { title: "Welcome email template", state: "OPEN", author: "dana", conflict: true, threads: 2, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     170: { title: "Sign webhook payloads", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     181: { repo: "example/web", title: "Dark mode color tokens", state: "MERGED", author: "dana", checks: [ok("test"), ok("lint")] },
@@ -319,13 +320,18 @@ const WORKSPACES = [
 
 /**
  * sending only (Q51): an agent still mid-turn whose PR has a conflict and a thread, so its tasks wait in Sending for
- * the turn to end, with no Send now. Saved views and Invoice PDFs are out with their agents; Onboarding email's tasks
+ * the turn to end; Send now queues them for its end (Q96 = A). Saved views and Invoice PDFs are out with their agents; Onboarding email's tasks
  * wait on the developer (Needs you).
  */
 const SENDING_STATES = [
   { key: "sd-busy", title: "Checkout copy", minute: 146, prompt: "APP-188: tighten the checkout button copy and keep the old string for the A/B test.", flag: false, waitFor: "running",
     steps: [rpc("follow.enroll", { goal: "APP-188 Checkout button copy" }), rpc("follow.register-pr", { repo: "example/app", number: 247, stack: "Checkout copy" }),
       think("Keep the old string behind the experiment flag."), bash("pnpm test checkout", "pass 18"), { hold: true }] },
+  // Q96 = A: the main agent waits on a permission prompt, so its repair says so and offers Send now.
+  { key: "sd-perm", title: "Refund reasons", minute: 148, prompt: "APP-190: add reason codes to refunds and backfill the old ones.", flag: false, waitFor: "permission",
+    steps: [rpc("follow.enroll", { goal: "APP-190 Refund reason codes" }), rpc("follow.register-pr", { repo: "example/app", number: 248, stack: "Refund reasons" }),
+      msg("Opened example/app#248. The backfill needs a one-off script on staging."),
+      { permission: { name: "Bash", title: "Run the refund backfill on staging", input: { command: "pnpm refunds:backfill --env staging" } } }] },
 ];
 
 /**
@@ -2406,7 +2412,7 @@ async function sendingShots({ shoot, seeded, call, home }) {
     await call("follow.refresh", {});
     return (await call("follow.list", {})).workspaces.find(x => x.id === ws("sd-busy").workspaceId)?.batches.some(b => b.state === "pending");
   }, { tries: 120, every: 500 });
-  const busyLine = /sends when its current turn ends/;
+  const busyLine = /sends when the main agent's turn ends/;
   const shown = (wait, phone) => async page => {
     await openHome(page);
     if (phone) { await page.setViewportSize(PHONE); await page.getByRole("button", { name: /^Sending, \d+\. Show only these/ }).first().click(); }
@@ -2428,6 +2434,29 @@ async function sendingShots({ shoot, seeded, call, home }) {
     }), { tries: 40, every: 250 });
     await page.waitForTimeout(300);
   });
+  // Q96 = A: a waiting repair says what it waits for, the same words on Home's detail, the panel and a phone, light and
+  // dark: the main agent's turn, its permission prompt, Auto-send off (Needs you's Send), and a message out (sent).
+  await call("follow.control", { workspaceId: ws("sd-perm").workspaceId, enable_auto_sends: true });
+  await until("Refund reasons queued behind its permission prompt", async () => {
+    await call("follow.refresh", {});
+    return (await call("follow.list", {})).workspaces.find(x => x.id === ws("sd-perm").workspaceId)?.batches.some(b => b.state === "pending");
+  }, { tries: 120, every: 500 });
+  const mainWaits = [
+    ["busy", SENDING_STATES[0], busyLine],
+    // Home and a phone show the permission itself (Needs you) for this row; the panel's Tasks strip says the repair waits on it.
+    ["permission", SENDING_STATES[1], /main agent's permission prompt is answered/, /Run the refund backfill on staging/],
+    ["auto-off", WORKSPACES.find(w => w.key === "email"), /auto-send is off here/],
+    ["sent", WORKSPACES.find(w => w.key === "views"), /is working on \d+ tasks?/],
+  ];
+  const see = async (page, words) => { const el = page.getByText(words).filter({ visible: true }).first(); await el.waitFor({ timeout: 90000 }); await el.scrollIntoViewIfNeeded(); };
+  // Every surface that shows the main agent's wait offers Send now (a-repair-goes-to-a-free-main-agent).
+  const sendNowShown = page => page.getByRole("button", { name: /^Send 2 tasks to Checkout copy now$/ }).filter({ visible: true }).first().waitFor({ timeout: 30000 });
+  const TALL_PANEL = { width: 1440, height: 1100 };
+  for (const theme of ["light", "dark"]) for (const [state, spec, words, onHome = words] of mainWaits) {
+    await shoot(`mw-${state}-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await (await homeRow(page, spec.title)).click(); await see(page, onHome); if (state === "busy") await sendNowShown(page); });
+    await shoot(`mw-${state}-panel-${theme}`, TALL_PANEL, theme, async page => { await page.setViewportSize(TALL_PANEL); await openChat(page, spec.title, spec.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await see(page, words); if (state === "busy") await sendNowShown(page); });
+    await shoot(`mw-${state}-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, spec.title)).click(); await see(page, onHome); if (state === "busy") await sendNowShown(page); });
+  }
   // 2. The machine-wide hold: Paseo's (fake) cgroup at 78% of memory.high pauses auto-sends; one hold line at the top
   //    of Sending, the same words on both widths. Onboarding email is signed off and its Auto turned on: its agent is
   //    idle (the fixture's isn't loaded), so its Send stays in Needs you, said once ("The agent is idle; …").

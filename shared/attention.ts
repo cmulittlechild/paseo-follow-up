@@ -3,7 +3,7 @@ import { deliveryStatus } from "./queue";
 import { sentence } from "./errors";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summary, type Task, type Status } from "./model";
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
-import { IDLE_REASON, NO_PROGRESS_CAP } from "./send-decision";
+import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from "./send-decision";
 import { workingLine } from "./task-status";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { orderedStacks, prLink, settledForDisplay, type PrLink } from "./presentation";
@@ -96,7 +96,11 @@ export const workflowReady = (pr: Pr) => isGithubFlow(pr.snapshot) ? mergeBlocke
 /** Why a pending batch cannot be sent right now, or null when Send is available. Mirrors the server's guards. */
 export function sendBlocker(w: Workspace, batch: Batch): string | null {
   if (w.hold) return "Resume follow-up first";
-  if (w.runtimeBusy) return "Sends after the agent's current turn";
+  // The Done check waits for the whole workspace; a repair only for the main agent's own wait (Q96 = A), said in the
+  // send decision's words.
+  if (completionCheck(batch) && (w.runtimeBusy || w.backgroundBusy)) return capitalize(QUIET_WAIT);
+  const main = mainWait(w);
+  if (main) return capitalize(MAIN_WAIT[main]);
   if (w.runtimeReason) return w.runtimeReason;
   if (w.batches.some(other => other.id !== batch.id && ["sending", "sent", "blocked", "uncertain"].includes(other.state))) return "Another batch is still open";
   return null;
@@ -347,7 +351,8 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   if (w.runtimeReason) return { icon: "waiting", text: w.runtimeReason, since: null };
   // Queued work, in the same words as the agent card and Home (shared/status.ts). Repairs you send by hand live in Needs you.
   if (view?.phase === "queued" && (view.kind === "finish" || w.enable_auto_sends)) return { icon: "waiting", text: view.line, since: view.batch.createdAt };
-  if (w.runtimeBusy) return { icon: "spinner", text: "Main agent is working", since: null };
+  // Say who: the main agent only when it is its own turn (Q96 = A), never for a subagent at work beside an idle main.
+  if (w.runtimeBusy) return { icon: "spinner", text: mainWait(w) === "turn" ? "Main agent is working" : "Agents in this workspace are working", since: null };
   // A working task spins only while its recorded agent is running (invariant `a-task-only-says-working-when-its-agent-is`).
   // Otherwise it says what the task row says: "<agent> idle", "<agent> closed", "Agent unavailable" or "In progress", with no spinner.
   const live = liveWorkingTask(w);

@@ -169,14 +169,16 @@ function StripRow({ strip, w, theme, compact, onPreview, openAgent }: { strip: M
     try {
       const result = await send({ workspaceId: w.id, batchId: strip.batchId });
       const b = result.batches.find(x => x.id === strip.batchId);
-      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${strip.to}` : b.state === "pending" ? "Queued. It goes out when the agent is free." : b.result || "The message couldn't be sent.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
+      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${strip.to}` : b.state === "pending" ? "Queued. It goes out when the main agent is free." : b.result || "The message couldn't be sent.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
     } catch (error) { toast.error(error instanceof Error ? error.message : "The message couldn't be sent."); }
     finally { setBusy(false); void cache.invalidateQueries(); }
   };
-  return <View accessibilityRole="summary" style={{ flexDirection: "row", flexWrap: compact ? "wrap" : "nowrap", alignItems: "center", gap: 8, rowGap: 8, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 12 : 8, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
+  // The why is the point of the row (a-repair-goes-to-a-free-main-agent): it keeps a readable width, and the buttons
+  // wrap under it in a narrow panel instead of squeezing it into a column.
+  return <View accessibilityRole="summary" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, rowGap: 8, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 12 : 8, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
     <Icon name="Send" size={13} color={c.foregroundMuted} />
-    <Text style={[t.meta, { flex: 1, flexBasis: compact ? "80%" : undefined, minWidth: 0 }]}><Text style={{ color: c.foreground, fontWeight: "500" }}>{line.lead}</Text>{line.rest}</Text>
-    <View style={{ flexDirection: "row", gap: 8, marginLeft: compact ? 21 : 0 }}>
+    <Text style={[t.meta, { flexGrow: 1, flexShrink: 1, flexBasis: compact ? "80%" : 240, minWidth: 0 }]}><Text style={{ color: c.foreground, fontWeight: "500" }}>{line.lead}</Text>{line.rest}</Text>
+    <View style={{ flexDirection: "row", gap: 8, marginLeft: "auto" }}>
       {strip.phase === "queued" && <Button theme={theme} compact={compact} title="Preview" accessibilityLabel={`Preview the next message to ${strip.to}`} onPress={onPreview} />}
       {strip.phase === "queued" && strip.sendNow && <Button theme={theme} compact={compact} title="Send now" accessibilityLabel={`Send ${tasks(strip.count)} to ${strip.to} now`} loading={busy} disabled={busy} onPress={() => void sendNow()} />}
       {strip.phase === "sent" && openAgent && <Button theme={theme} compact={compact} title="Open agent" accessibilityLabel={`Open ${strip.to}`} onPress={() => openAgent(strip.recipientId)} />}

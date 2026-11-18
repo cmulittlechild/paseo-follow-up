@@ -58,7 +58,7 @@ test("a tick where the agent just went busy neither sends nor says sending", asy
   f.runtime({ busy: true, reason: null, archived: false });
   await f.engine.tick();
   assert.equal(f.sends.length, 0);
-  assert.match(await f.line(), /sends when its current turn ends/);
+  assert.match(await f.line(), /sends when the main agent's turn ends/);
 });
 
 test("every refresh does what the line said before it", async t => {

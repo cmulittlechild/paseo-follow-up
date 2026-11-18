@@ -13,7 +13,7 @@ import { asksForReviewers, liveLine, needsYou, type NeedItem } from "./attention
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
 import { freshPriorities, type Priority } from "./priorities";
 import { agentCard, automaticHold, batchView, holdSuperseded } from "./status";
-import { conditionId, isCapped, NO_PROGRESS_CAP, personHeld, sendDecision, stuckRepair } from "./send-decision";
+import { conditionId, isCapped, mainWait, NO_PROGRESS_CAP, personHeld, sendDecision, stuckRepair } from "./send-decision";
 import { messageStrip, obligationDelivery, repairRows } from "./task-rows";
 import { followUpObligations } from "./follow-up";
 import { PRESENCE, claimsWorking, taskStatus } from "./task-status";
@@ -32,7 +32,6 @@ import { GONE_REASON } from "./queue";
  */
 export type Invariant = { id: string; why: string; check(w: Workspace, now: number): string | null };
 
-const idle = (w: Workspace) => !w.runtimeBusy && !w.backgroundBusy;
 const inFlight = (w: Workspace) => w.batches.some(b => ["sending", "sent"].includes(b.state));
 const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w, now)?.line ?? "", batchView(w, now)?.line ?? "", ...needsYou(w, now).flatMap(i => [i.title, "blocker" in i ? i.blocker ?? "" : ""])];
 
@@ -170,7 +169,22 @@ export const INVARIANTS: Invariant[] = [
   },
   {
     id: "waiting-on-agent-means-busy", why: "a queued batch may only blame the agent's turn while the agent is in one",
-    check: (w, now) => { const v = batchView(w, now); return v?.phase === "queued" && v.waitingOn === "agent" && idle(w) ? v.line : null; },
+    check: (w, now) => { const v = batchView(w, now); return v?.phase === "queued" && v.waitingOn === "agent" && !mainWait(w) ? v.line : null; },
+  },
+  {
+    id: "a-repair-goes-to-a-free-main-agent",
+    why: "2026-11-18 (Q96 = A): a repair sat pending over two hours with Auto-send on and the main agent idle, because a subagent it started ran one task after another and every non-main agent's work held repairs; the card said nothing true. A repair waits only for the main agent itself (its turn, its own background job with Wait for background jobs on, a permission prompt, Session Guard, compaction), says what it waits for, and offers Send now while it does.",
+    check(w, now) {
+      const v = batchView(w, now);
+      if (v?.phase !== "queued" || v.kind !== "repairs") return null;
+      const d = sendDecision(w, now, { batch: v.batch });
+      if (d.waitingOn === "agent" && !mainWait(w)) return `"${d.reason}" while the main agent is free`;
+      // Send now is taken while the main agent is busy; only something else (an open message, unread PRs) refuses it.
+      if (d.waitingOn === "agent" && !d.canSendNow && sendDecision({ ...w, mainBusy: null, runtimeBusy: false, backgroundBusy: false, runtimeReason: null }, now, { batch: v.batch }).canSendNow)
+        return `waits on the main agent with no Send now: "${d.reason}"`;
+      if (!d.send && !d.reason.trim()) return "waits without saying why";
+      return null;
+    },
   },
   {
     id: "on-it-means-sent", why: "2026-11-10 wks_4b27f268: \"Main agent is on it\" while the agent was idle and nothing had been sent",
