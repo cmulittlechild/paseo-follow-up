@@ -855,3 +855,5 @@ Guarded by `npm run check:notes` and `release:notes` (`scripts/release-notes.mjs
     (invariant `publish-gate-checks-run-on-every-pr`) fails when the publish workflow runs a check PR CI doesn't.
   - Neither has model credentials, so `check-wait` skips there.
   - When you touch Wait, run `npm run test:wait-live` locally.
+
+README screenshot flows select questions by their stable reference, never their extracted title. Keep the dialog and Put in chat capture flows consistent when question wording changes.
