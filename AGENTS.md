@@ -191,6 +191,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      them. `state.json`'s batched write (`Store.flush`) retries and reports the same way. A crash before a write lands loses that save, as for `state.json` and `inbox.json`. 2026-11-13/14 CI:
      `follow.inbox-list` waited 664 ms behind an `inbox.json` write, `follow.save-reviewers` 1458 ms on an fsync.
      Guarded by `tests/rpc-ack.test.ts` (every fsync 2 s slow) and `tests/ack-disk.test.ts`.
+   - **A fast failure is not an acknowledgement** (`ack-timing-observes-slow-give-ups`): RPC timing tests count
+     every slow dependency that gives up before declaring an exemption stale. Black-hole sockets consume incoming
+     bytes without replying, so peer disconnects reach the close counter even after a handshake was sent.
+     Guarded by `tests/hanging-host.test.ts` and `tests/ack-ratchet.test.ts`.
    - **A list answer serializes only what changed** (`a-list-answer-serializes-only-what-changed`): `ListCache`
      (`server/list-cache.ts`) skips a workspace whose frozen object is the one it last serialised, so a state change
      stringifies only the workspaces it touched, never every tracked one. 2026-11-13 (run W, live copy under live
@@ -500,9 +504,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `currentColor`, valid for `findSvgIconProblem`. `assets/icon.svg` (and `assets/icon.png` rendered from it) is the
    same mark on the app tile. Lucide GitPullRequest stays for pull requests only (PR chips, the stacks card, briefs,
    the PR sheet, reviewers). The header button's Needs-you dot sits on the glyph's end dot, clamped inside the icon box
-   (`needDotBox`): Paseo clips a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot
-   drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
-   inside every clipping box, and its amber box as tall as wide within 1 px).
+   (`needDotBox`), bottom right since the 2026-11-18 mark (a cursive l from a start ring to the end dot): Paseo clips
+   a header icon to its 16 px box (`overflow: hidden`), and 2026-11-16 the centred dot drew flat-topped. Guarded by `tests/follow-up-icon.test.ts` and `scripts/screenshots.mjs --only panel` (the dot
+   inside every clipping box, and its amber box as tall as wide within 1 px); `--only icon` renders every brand
+   surface close up, light and dark, into `docs/evidence/follow-up-icon/`.
 36. **A message is saved before it is sent and reaches its agent exactly once**
    (`a-message-is-saved-before-sent-and-arrives-once`). Every message Follow-up sends an agent (Q and brief answers,
    repairs, Done checks, recovery, Overseer forwards, reports handed to an agent) is a `queue.json` item before anything
@@ -654,6 +659,49 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-17, Tom: "I chose to add context through the overseer and it worked badly"; the Overseer's reply was refused
    with "Tracking must be active". Guarded by `tests/context-recipient.test.ts`, which builds the tool list for each
    role.
+
+49. **Tool sign-in probes share all known credential locations** (`tool-sign-in-probes-share-known-locations`).
+   Keep each tool's saved-token lookup in one function, checking every known location and falling back past missing,
+   unreadable or invalid files. Graphite detection and API requests both use `graphiteAuthToken` in
+   `server/graphite.ts`: config `graphite/user_config`, config `graphite/auth`, then `~/.graphite_user_config`.
+   Config means `$XDG_CONFIG_HOME` or `~/.config`. Settings, Auto, onboarding and diagnostics consume the shared
+   detection result. Never expose tokens or file contents in logs, errors, diagnostics or test output.
+   Guarded by `tests/pr-workflow.test.ts` and `tests/graphite.test.ts`.
+
+50. **Every Catch up key works wherever focus is** (`every-catch-up-key-works-wherever-focus-is`). On the Catch up
+   screen (desktop web), every key in `CATCH_UP_KEYS` acts whatever has focus on the screen, or with nothing focused,
+   except inside a text field (where only the documented field keys act), whatever else Follow-up or Paseo has
+   mounted. It has one owner: Catch up's listener is the window's, in the capture phase, so it runs before any
+   document listener (Follow-up's list keys, invariant 27, take j and k there and stop them); it takes a key only when
+   focus is inside its root, or on nothing while its root is on screen (`ownsKey`, `surfaceVisible`), so a Catch up
+   Paseo keeps mounted behind a tab, and focus in Paseo's sidebar or another surface, keep their keys; and it finds
+   every control inside its own root, never the first match in the page. A key it acts on goes no further. It never
+   takes a combo Paseo binds (`PASEO_BOUND`). 2026-11-18, Tom on 2.2.0-beta.4: "The keyboard shortcuts on the catch
+   up page in desktop don't work consistently." In the harness, opening Catch up from ⌘K left the first one mounted
+   behind it, and B and M clicked into that one, so nothing happened on screen. Guarded by `tests/catch-up-key-owner.test.ts` and
+   `scripts/screenshots.mjs --only catch-up --shot '^cu-keys-check'` (after each thing a developer does on the screen,
+   J moves the deck, B picks and M opens More context in the card on screen; writes `catch-up-keys.json`).
+51. **The client renders under the phone's rules** (`client-renders-under-native-rules`). The Paseo phone app is
+   native React Native, which rejects what react-native-web (where every render ran) accepts. Two guards: every
+   `accessibilityRole` the client sets is in React Native's Android `AccessibilityRole` enum, and none is cast past
+   its type (`as never`), because Android's view manager parses it with `AccessibilityRole.fromValue`, which throws on
+   the UI thread for an unknown value, a native crash that takes the whole app down and that no error boundary can
+   catch (roles Android lacks, like dialog, go through the ARIA `role` prop, which it parses leniently); and the phone
+   paths render under a strict native stand-in (`tests/support/native`: no DOM, Platform android, a host view throws
+   on text outside `<Text>` and on a role Android rejects) through react-test-renderer. 2026-11-18, Tom on
+   2.2.0-beta.4 in the phone app: tapping More context in Catch up crashed Paseo; its sheet (`MoveResult`) was
+   `accessibilityRole="dialog"`. Guarded by `tests/native-roles.test.ts` (every client file, the enum read from
+   react-native's source) and `tests/native-render.test.ts` (Catch up's More context and Later sheets, the end screen,
+   every context answer and the keys sheet; add a phone path there when you add one).
+52. **A pinned clock reaches every instance** (`a-pinned-clock-reaches-every-instance`). A test that gives a class a
+   pinned clock (`() => now`) gives that clock to every instance of the class it builds, its fixtures included: a
+   reopened store left on the default `Date.now` compares the test's pinned dates with today, and fails on the day a
+   window (`CONTEXT_KEEP_MS`, a snooze, a staleness bound) runs out, on every run after. A test that wants the real
+   clock names it (`Date.now`, or `// real-clock: <why>` when it checks the defaults). 2026-11-18: the context-requests
+   restart test pinned its ask to 2026-11-17T10:00Z and reopened the store on the real clock; from 10:00Z the next day
+   the reopened `list()` pruned the ask as older than 24 h, and CI failed on every PR. Guarded by
+   `tests/test-clocks.test.ts` (every server class whose constructor defaults `now` to `Date.now`, over every test
+   and the top-level helpers it calls).
 
 ## Bugs
 

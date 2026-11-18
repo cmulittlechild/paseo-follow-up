@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1615,7 +1615,8 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
-  if (only.includes("catch-up")) await catchUpShots({ shoot, call });
+  if (only.includes("catch-up")) await catchUpShots({ shoot, call, out });
+  if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -1947,6 +1948,62 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
   log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
 }
 
+/**
+ * icon (follow-up-has-one-mark): every brand surface that draws FOLLOW_UP_ICON, cropped close so the glyph reads at its
+ * real size: the sidebar row at 1x and 2x, the header button (with the Needs-you dot on the end dot), the panel tab, the
+ * command center row, and the phone's sidebar drawer; light and dark. Committed to `docs/evidence/follow-up-icon/`.
+ */
+async function iconShots({ shoot, billing }) {
+  const around = async (loc, pad) => {
+    const b = await loc.boundingBox();
+    if (!b) throw new Error("icon: the surface isn't on screen");
+    const [l, t, r, d] = Array.isArray(pad) ? pad : [pad, pad, pad, pad];
+    return { x: Math.max(0, b.x - l), y: Math.max(0, b.y - t), width: b.width + l + r, height: b.height + t + d };
+  };
+  const sidebarRow = page => page.getByText("Follow-up", { exact: true }).filter({ visible: true }).first();
+  const openPanel = async page => {
+    await openChat(page, "Billing retries", billing.prompt);
+    const header = page.getByRole("button", { name: "Follow-up", exact: true }).last();
+    await header.waitFor();
+    return header;
+  };
+  for (const theme of ["light", "dark"]) {
+    for (const scale of [1, 2]) await shoot(`icon-sidebar-${theme}-${scale}x`, DESKTOP, theme, async page => {
+      await openHome(page); const row = sidebarRow(page); await row.waitFor();
+      return around(row, [44, 70, 200, 70]);
+    }, { scale });
+    await shoot(`icon-header-${theme}`, DESKTOP, theme, async page => {
+      const header = await openPanel(page); await checkNeedDot(page);
+      return around(header, [24, 12, 24, 12]);
+    }, { scale: 2 });
+    await shoot(`icon-panel-${theme}`, DESKTOP, theme, async page => {
+      const header = await openPanel(page); await header.click();
+      await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor();
+      const tab = page.getByText("Follow-up", { exact: true }).filter({ visible: true }).last();
+      return around(tab, [180, 14, 80, 14]);
+    }, { scale: 2 });
+    await shoot(`icon-cmdk-${theme}`, DESKTOP, theme, async page => {
+      await openPanel(page); await page.keyboard.press("Control+k");
+      await page.keyboard.type("follow-up");
+      const item = page.getByText(/open for this workspace/).filter({ visible: true }).first();
+      await item.waitFor();
+      return around(item, [180, 60, 320, 120]);
+    }, { scale: 2 });
+    await shoot(`icon-phone-${theme}`, PHONE, theme, async page => {
+      await openHome(page); await page.setViewportSize(PHONE);
+      // On a phone Home is full screen: its back arrow (top left) leaves Home for a Paseo page whose menu button (same
+      // spot) opens the sidebar drawer.
+      const home = page.getByText("Morning brief", { exact: true }).filter({ visible: true }).first();
+      await home.waitFor();
+      await page.mouse.click(28, 36);
+      await home.waitFor({ state: "hidden" }); // Paseo's start page or new-workspace page, both with the menu button
+      await page.mouse.click(28, 36);
+      const row = sidebarRow(page); await row.waitFor();
+      return { x: 0, y: Math.max(0, (await row.boundingBox()).y - 160), width: PHONE.width, height: 360 };
+    });
+  }
+}
+
 async function prLinkShots({ shoot, billing }) {
   const rows = [
     // Billing's #143 sits on #142, whose checks fail, so it has no Merge row (one Merge per ready stack): Search filters' #151.
@@ -2016,7 +2073,7 @@ async function mergeClickShots({ shoot, billing }) {
  * (follow.context-ask through the screen), and the answer comes back through follow.context-reply as that agent, so the
  * deck parks the workspace and brings it back as the next card. Phone 390×844 and desktop, light and dark.
  */
-async function catchUpShots({ shoot, call }) {
+async function catchUpShots({ shoot, call, out }) {
   const entry = /^Catch up on \d+ things? that need you/;
   const visible = (page, what) => page.getByText(what).filter({ visible: true }).first();
   const enter = async (page, size, find) => {
@@ -2111,6 +2168,85 @@ async function catchUpShots({ shoot, call }) {
       page.keepFocus = true; if (kb === "kb-up") await page.setViewportSize(KB_UP); await page.waitForTimeout(800);
     });
   }
+  // every-catch-up-key-works-wherever-focus-is (Tom, beta.4: "The keyboard shortcuts on the catch up page in desktop
+  // don't work consistently"): after each thing a developer does on the screen, J must move to the next card. A miss
+  // records where focus was. Writes catch-up-keys.json; any miss fails the run.
+  await shoot("cu-keys-check", DESKTOP, "light", async page => {
+    const checks = [];
+    const at = () => page.getByRole("heading", { name: /^Catch up/ }).filter({ visible: true }).first().textContent();
+    const focus = () => page.evaluate(() => { const a = document.activeElement; if (!a) return "none"; const near = a.closest?.("[data-catch-up-card],[data-catch-up-rail],[data-catch-up-card-moves],[data-move-result]"); return `${a.tagName.toLowerCase()}${a.getAttribute("role") ? `[role=${a.getAttribute("role")}]` : ""}${a.getAttribute("aria-label") ? `[${a.getAttribute("aria-label").slice(0, 40)}]` : ""}${near ? ` in ${[...near.attributes].map(x => x.name).filter(n => n.startsWith("data-")).join(",")}` : ""}${a === document.body ? " (body)" : ""}; mounted cards ${document.querySelectorAll("[data-catch-up-card]").length}, visible ${[...document.querySelectorAll("[data-catch-up-card]")].filter(x => x.checkVisibility()).length}; lists ${document.querySelectorAll("[data-list-keys]").length}`; });
+    const probe = async (after, key = "j") => {
+      const before = await at(); const where = await focus();
+      await page.keyboard.press(key); await page.waitForTimeout(350);
+      const moved = (await at()) !== before;
+      checks.push({ after, key, ok: moved, focus: where });
+      if (!moved) failures.push(`catch-up keys: ${key} did nothing after ${after} (focus: ${where})`);
+      log(`catch-up keys ${moved ? "ok" : "MISSED"}: ${key} after ${after} (focus: ${where})`);
+    };
+    // B and M act through the card's own controls: B picks option B, M opens More context, in the card on screen.
+    const visibleCard = () => page.locator("[data-catch-up-card]").filter({ visible: true }).first();
+    const probeIn = async (after, key, acted) => {
+      const where = await focus();
+      await page.keyboard.press(key); await page.waitForTimeout(400);
+      const ok = await acted();
+      checks.push({ after, key, ok, focus: where });
+      if (!ok) failures.push(`catch-up keys: ${key} did nothing after ${after} (focus: ${where})`);
+      log(`catch-up keys ${ok ? "ok" : "MISSED"}: ${key} after ${after} (focus: ${where})`);
+    };
+    const pickB = after => probeIn(after, "b", async () => (await visibleCard().getByRole("radio", { name: /^B\. / }).first().getAttribute("aria-checked")) === "true");
+    const moreM = async after => { await probeIn(after, "m", () => page.locator("[data-catch-up-more]").filter({ visible: true }).first().isVisible()); await page.keyboard.press("m"); await page.waitForTimeout(300); };
+    await enter(page, DESKTOP);
+    await probe("the page opens");
+    await probe("J", "j"); await probe("K", "k"); await probe("Shift+J", "Shift+J");
+    await enter(page, DESKTOP, "fail with card_declined retry");
+    await page.locator("[data-catch-up-card]").getByRole("radio", { name: /^B\. / }).filter({ visible: true }).first().click(); await page.waitForTimeout(300);
+    await probe("clicking an option");
+    await page.getByRole("heading", { name: /^Catch up/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(200);
+    await probe("clicking the screen header");
+    await page.mouse.click(700, 900); await page.waitForTimeout(200);
+    await probe("clicking empty space under the card");
+    await page.locator("[data-catch-up-rail] [role=button]").filter({ visible: true }).nth(4).click(); await page.waitForTimeout(300);
+    await probe("clicking a rail row");
+    await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(300);
+    await probe("clicking Skip");
+    await page.getByRole("button", { name: /^Back/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(300);
+    await probe("clicking Back");
+    await page.getByRole("button", { name: /^More context$/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(400);
+    await page.getByRole("button", { name: /^More context$/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(300);
+    await probe("More context opened and closed with its button");
+    await page.keyboard.press("l"); await page.waitForTimeout(400); await page.mouse.click(700, 900); await page.waitForTimeout(300);
+    await probe("Later opened and closed with a click outside");
+    await page.keyboard.press("s"); await page.waitForTimeout(300); await page.keyboard.press("s"); await page.waitForTimeout(300);
+    await probe("the keys sheet opened and closed");
+    await page.mouse.move(900, 500); await page.mouse.wheel(0, 400); await page.waitForTimeout(300);
+    await probe("scrolling the card");
+    await page.getByText("Workspaces", { exact: true }).filter({ visible: true }).first().click(); await page.waitForTimeout(300);
+    await probe("clicking Paseo's sidebar, then pressing the key");
+    const other = await page.context().newPage(); await other.bringToFront(); await page.waitForTimeout(200); await other.close(); await page.bringToFront(); await page.waitForTimeout(300);
+    await probe("the window losing and regaining focus");
+    // Leave Catch up for a workspace in Paseo's sidebar, come back to Home and open Catch up again: a surface Paseo kept
+    // mounted must not take the keys (or the clicks) of the one on screen.
+    await page.getByRole("button", { name: /^Leave Catch up/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(400);
+    await enter(page, DESKTOP, "fail with card_declined retry");
+    await pickB("opening Catch up again from Home");
+    await moreM("opening Catch up again from Home");
+    await page.locator("[data-catch-up-rail] [role=button]").filter({ visible: true }).nth(2).click(); await page.waitForTimeout(300);
+    await enter(page, DESKTOP, "fail with card_declined retry");
+    await pickB("walking back to the question card");
+    await page.keyboard.press("Control+k"); await page.waitForTimeout(400);
+    await page.keyboard.type("Catch up on what needs you"); await page.waitForTimeout(500); await page.keyboard.press("Enter"); await page.waitForTimeout(1500);
+    await probe("opening Catch up from the command center");
+    // Paseo keeps the first Catch up mounted behind the new one: walk the one on screen to a question card by key and
+    // act on it there, with both mounted.
+    for (let i = 0; !(await visibleCard().getByRole("radio", { name: /^B\. / }).first().isVisible().catch(() => false)); i++) {
+      if (i > 20) throw new Error("catch-up keys: no question card reached by J");
+      await page.keyboard.press("j"); await page.waitForTimeout(300);
+    }
+    await pickB("the command center's Catch up, with the first one still mounted");
+    await moreM("the command center's Catch up, with the first one still mounted");
+    await fs.writeFile(join(out, "catch-up-keys.json"), JSON.stringify(checks, null, 2));
+    log(`catch-up keys: ${checks.filter(c => c.ok).length}/${checks.length} acted`);
+  });
   // Tom's notes, round 2: two skips named apart, and the phone drag. A card whose workspace has more cards left shows
   // Skip workspace beside the card's Skip ("Skip question"); ⇧J moves past the whole workspace.
   const skipWs = page => page.getByRole("button", { name: /^Skip this workspace's/ }).filter({ visible: true }).first();

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Graphite, mergeScheduling } from "../server/graphite";
+import { Graphite, graphiteAuthToken, mergeScheduling } from "../server/graphite";
 import { pr } from "./fixtures";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -35,24 +35,44 @@ test("missing and duplicate Graphite observations cannot be displayed as off", a
   assert.deepEqual([...result.values()], ["unknown", "unknown"]);
 });
 
-test("saved CLI authentication is used only for the read-only scheduling route", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "follow-graphite-"));
-  const savedConfig = process.env.XDG_CONFIG_HOME; const savedFetch = globalThis.fetch;
+for (const location of ["config/graphite/user_config", "config/graphite/auth", ".graphite_user_config"]) {
+  test(`saved CLI authentication at ${location} is used for the read-only scheduling route`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "follow-graphite-"));
+    const savedConfig = process.env.XDG_CONFIG_HOME; const savedHome = process.env.HOME; const savedFetch = globalThis.fetch;
+    try {
+      await mkdir(join(directory, "config", "graphite"), { recursive: true });
+      await writeFile(join(directory, location), JSON.stringify({ authToken: "synthetic-cli-token" }), { mode: 0o600 });
+      process.env.XDG_CONFIG_HOME = join(directory, "config");
+      process.env.HOME = directory;
+      globalThis.fetch = (async (url, options) => {
+        assert.equal(url, "https://api.graphite.com/v1/graphite/mergeability-status");
+        assert.equal(options?.method, "POST"); assert.equal(options?.redirect, "error");
+        assert.ok(new Headers(options?.headers).get("authorization") === "token synthetic-cli-token", "saved authentication is present");
+        assert.deepEqual(JSON.parse(String(options?.body)), { repoOwner: "example", repoName: "app", prNumbers: [1] });
+        return new Response(JSON.stringify({ mergeabilityStatuses: [{ prNumber: 1, mergeabilityStatus: "QUEUED_TO_MERGE" }] }));
+      }) as typeof fetch;
+      assert.equal((await new Graphite().observe([pr()])).get("example/app#1"), "on");
+    } finally {
+      globalThis.fetch = savedFetch;
+      if (savedConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = savedConfig;
+      if (savedHome === undefined) delete process.env.HOME; else process.env.HOME = savedHome;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test("Graphite authentication prefers modern config, then auth, then legacy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "follow-graphite-"));
   try {
-    await mkdir(join(directory, "graphite"));
-    await writeFile(join(directory, "graphite/auth"), JSON.stringify({ authToken: "synthetic-cli-token" }), { mode: 0o600 });
-    process.env.XDG_CONFIG_HOME = directory;
-    globalThis.fetch = (async (url, options) => {
-      assert.equal(url, "https://api.graphite.com/v1/graphite/mergeability-status");
-      assert.equal(options?.method, "POST"); assert.equal(options?.redirect, "error");
-      assert.equal(new Headers(options?.headers).get("authorization"), "token synthetic-cli-token");
-      assert.deepEqual(JSON.parse(String(options?.body)), { repoOwner: "example", repoName: "app", prNumbers: [1] });
-      return new Response(JSON.stringify({ mergeabilityStatuses: [{ prNumber: 1, mergeabilityStatus: "QUEUED_TO_MERGE" }] }));
-    }) as typeof fetch;
-    assert.equal((await new Graphite().observe([pr()])).get("example/app#1"), "on");
-  } finally {
-    globalThis.fetch = savedFetch;
-    if (savedConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = savedConfig;
-    await rm(directory, { recursive: true, force: true });
-  }
+    await mkdir(join(root, ".config", "graphite"), { recursive: true });
+    const locations = [".config/graphite/user_config", ".config/graphite/auth", ".graphite_user_config"];
+    for (const [index, location] of locations.entries()) {
+      await writeFile(join(root, location), JSON.stringify({ authToken: `synthetic-${index}` }));
+    }
+    for (const [index, location] of locations.entries()) {
+      assert.ok(await graphiteAuthToken({ HOME: root }) === `synthetic-${index}`, "uses the first valid location");
+      await rm(join(root, location));
+    }
+    assert.equal(await graphiteAuthToken({ HOME: root }), null);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

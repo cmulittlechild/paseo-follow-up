@@ -32,6 +32,7 @@ import { mergedColor, withAlpha, tint } from "./theme";
 import { RichText } from "./rich-text";
 import { DisplaySplit, PermissionBlock, useAgentLive } from "./home";
 import { DockedPane } from "./docked-pane";
+import { ownsKey, surfaceVisible } from "../shared/list-keys";
 import { useReducedMotion } from "./motion";
 import { PRIMARY_FORM } from "./dock";
 
@@ -129,23 +130,35 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
 
   // Desktop keys (CATCH_UP_KEYS, catchUpKey in shared/catch-up.ts): every move has one. The card's controls are found
   // by the names they already carry (option letters, Later (L), Open chat (O)), so a key does exactly what a click does.
+  // every-catch-up-key-works-wherever-focus-is: one owner for these keys whatever else is mounted. The listener is the
+  // window's, in the capture phase, so it runs before any document listener (Follow-up's list keys take j and k there
+  // and stop them); it takes a key only when focus is inside this screen, or on nothing while this screen is the one on
+  // view (a Catch up Paseo keeps mounted behind a tab never does), and it finds every control inside its own root.
   const [keysOpen, setKeysOpen] = useState(false);
+  const rootRef = useRef<View>(null);
   useEffect(() => {
     if (Platform.OS !== "web" || compact) return;
-    type Ev = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean; target: unknown; preventDefault(): void };
+    type Ev = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean; target: unknown; preventDefault(): void; stopPropagation(): void };
     type El = { tagName?: string; isContentEditable?: boolean; click?(): void; focus?(): void; closest?(q: string): El | null };
-    type Doc = { querySelector(q: string): El | null; querySelectorAll(q: string): ArrayLike<El>; activeElement?: El | null; addEventListener(t: string, f: (e: Ev) => void): void; removeEventListener(t: string, f: (e: Ev) => void): void };
-    const doc = (globalThis as { document?: Doc }).document; if (!doc) return;
+    type Root = El & { querySelector(q: string): El | null; querySelectorAll(q: string): ArrayLike<El>; contains(n: unknown): boolean; checkVisibility?(): boolean; getClientRects?(): { length: number } };
+    type Doc = { body?: unknown; visibilityState?: string };
+    type Win = { addEventListener(t: string, f: (e: Ev) => void, capture?: boolean): void; removeEventListener(t: string, f: (e: Ev) => void, capture?: boolean): void };
+    const doc = (globalThis as { document?: Doc }).document; const win = globalThis as unknown as Win;
+    if (!doc || typeof win.addEventListener !== "function") return;
     const mac = isMac();
-    const inCard = (q: string) => doc.querySelector(`[data-catch-up-card] ${q}`);
-    const railItems = () => Array.from(doc.querySelectorAll("[data-catch-up-rail] [role=\"button\"]"));
+    const root = () => rootRef.current as unknown as Root | null;
+    const inCard = (q: string) => root()?.querySelector(`[data-catch-up-card] ${q}`) ?? null;
+    const railItems = () => Array.from(root()?.querySelectorAll("[data-catch-up-rail] [role=\"button\"]") ?? []);
     const onKey = (e: Ev) => {
       const el = e.target as El | null;
+      const r = root();
+      const onBody = !el || el === doc.body;
+      if (!r || !ownsKey({ inside: !!el && r.contains(el), onBody, claimBody: true, visible: onBody && surfaceVisible(r, doc) })) return;
       const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || !!el.isContentEditable);
       const hit = catchUpKey({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, composing: e.isComposing, mac },
         { typing, inMore: !!el?.closest?.("[data-catch-up-more]"), moreOpen: more, inRail: !!el?.closest?.("[data-catch-up-rail]") });
       if (!hit || finished && !["back", "keys", "leave", "rail"].includes(hit.action)) return;
-      const click = (q: string) => { const b = doc.querySelector(q); b?.click?.(); return !!b; };
+      const click = (q: string) => { const b = r.querySelector(q); b?.click?.(); return !!b; };
       switch (hit.action) {
         case "skip": skip(); break;
         case "skip-workspace": if (wsLeft < 2) return; skipWs(); break;
@@ -156,16 +169,16 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         case "pick": inCard(`[role="radio"][aria-label^="${hit.arg}. "]`)?.click?.(); break;
         case "own": inCard('[role="radio"][aria-label^="Something else"]')?.click?.(); break;
         case "send": { const b = inCard('[aria-label^="Send your"]') ?? inCard('[aria-label^="Send "]'); if (!b) return; b.click?.(); break; }
-        case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else doc.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
+        case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
         case "later": if (!click('[aria-label="Later (L)"]')) return; break;
         case "chat": if (!click('[aria-label="Open chat (O)"]')) return; break;
-        case "chip": doc.querySelectorAll("[data-catch-up-more] [role=\"radio\"]")[Number(hit.arg) - 1]?.click?.(); break;
+        case "chip": r.querySelectorAll("[data-catch-up-more] [role=\"radio\"]")[Number(hit.arg) - 1]?.click?.(); break;
         case "ask": if (!click('[data-catch-up-more] [data-ask-agent] [role="button"]')) return; break;
         case "rail": {
           const items = railItems();
           if (el?.closest?.("[data-catch-up-rail]")) { (el as { blur?(): void }).blur?.(); break; }
-          (doc.querySelector("[data-catch-up-rail] [data-catch-up-here]") ?? items[0])?.focus?.();
+          (r.querySelector("[data-catch-up-rail] [data-catch-up-here]") ?? items[0])?.focus?.();
           break;
         }
         case "rail-up": case "rail-down": {
@@ -176,9 +189,11 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         default: return;
       }
       e.preventDefault();
+      // Acted: nothing else handles it (a list's j/k under a document listener).
+      e.stopPropagation();
     };
-    doc.addEventListener("keydown", onKey);
-    return () => doc.removeEventListener("keydown", onKey);
+    win.addEventListener("keydown", onKey, true);
+    return () => win.removeEventListener("keydown", onKey, true);
   });
   // Phones: the card follows the finger (Paseo's sidebar drag): left skips this card, right goes Back, the card about to
   // show peeks underneath, and a drag held halfway stays there. The direction locks in the first SWIPE_LOCK_PX, so a
@@ -297,7 +312,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     <Animated.View {...({ dataSet: { catchUpDrag: "1" } } as object)} style={{ flex: 1, backgroundColor: c.surface0, transform: [{ translateX: drag }],
       ...(dragDir ? { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } } : {}) }}>{body}</Animated.View>
   </View>;
-  return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
+  return <View ref={rootRef} {...({ dataSet: { catchUpRoot: "1" } } as object)} style={{ flex: 1, backgroundColor: c.surface0 }}>
     {progress}
     <View style={{ flex: 1, borderTopWidth: 1, borderTopColor: c.border }}>
       {/* Desktop: the queue rail beside the card, resizable (side-panes-are-resizable); its width is the Display field catch_up_rail_fraction. */}
@@ -441,7 +456,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
  * Where a move's result opens (MOVE_OPENS, a-move-bar-action-opens-in-view): a sheet in the phone's dock or a popover
  * on its desktop button. Focus moves into it (its first choice), and on the web it scrolls into view the least distance.
  */
-function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
+export function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
   const c = theme.colors;
   const ref = useRef<View>(null);
   useEffect(() => {
@@ -454,7 +469,7 @@ function MoveResult({ place, theme, label, width, children }: { place: "sheet" |
     }, 0);
     return () => clearTimeout(t);
   }, []);
-  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} accessibilityRole={"dialog" as never} accessibilityLabel={label}
+  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} role="dialog" accessibilityLabel={label}
     style={[{ padding: place === "sheet" ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 },
       place === "sheet"
         ? { marginHorizontal: 12, marginTop: 12 }
@@ -464,7 +479,7 @@ function MoveResult({ place, theme, label, width, children }: { place: "sheet" |
 }
 
 /** What came back for this card: the answer, "answered in its chat", a failure, or (seen going Back) that it's still asking. */
-function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
+export function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const who = request.target === "overseer" ? "Overseer" : agent === "the agent" ? "The agent" : agent;
   const asking = request.state === "asking";
@@ -506,7 +521,7 @@ function BriefAsk({ s, theme, compact, deps }: { s: DeckCard["s"]; theme: Theme;
  * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
  * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
  */
-function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
+export function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
   const c = theme.colors; const t = text(c, compact);
   const [words, setWords] = useState<string>(CONTEXT_ASKS[0].text);
   const [picked, setPicked] = useState<string>(CONTEXT_ASKS[0].id);
@@ -544,7 +559,7 @@ function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: 
   </View>;
 }
 
-function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {
+export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {
   const c = theme.colors; const t = text(c, compact);
   // "All caught up" only when it is true: a skipped or waiting card means the developer is not, so the end says so.
   const caughtUp = !stats.skipped && !stats.waiting;
@@ -576,7 +591,7 @@ export function KeysSheet({ theme, onClose }: { theme: Theme; onClose: () => voi
   const section = (title: string, keys: readonly typeof CATCH_UP_KEYS[number][]) => <View style={{ gap: 6 }}>
     <Text style={[t.small, { fontWeight: "600" }]}>{title}</Text>{keys.map(row)}
   </View>;
-  return <View accessibilityRole={"dialog" as never} accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
+  return <View role="dialog" accessibilityLabel="Catch up keys" style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 300, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
       <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />

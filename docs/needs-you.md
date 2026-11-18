@@ -267,7 +267,9 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   ⇧J skip the workspace, K/← back, M opens More context (1–4 pick an ask, ⌘↵ asks the agent), N adds a note, L Later,
   O Open chat, R goes to the queue (↑/↓ move, Enter opens, R again returns), S shows the keys, X leaves. None is a combo
   Paseo binds (`PASEO_BOUND`): Paseo keeps ? (its shortcuts) and Esc (interrupt agent), so the sheet is S and leaving
-  is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). Buttons name their key in their
+  is X. Home's own keys are off while Catch up shows (`tests/catch-up-keys.test.ts`). The keys have one owner
+  (`every-catch-up-key-works-wherever-focus-is`): a window capture-phase listener that acts when focus is inside the
+  screen or on nothing while it is on screen, finds its controls inside its own root, and stops a key it acts on. Buttons name their key in their
   tooltip.
 - **The move bar** (invariant `a-move-bar-action-opens-in-view`, `MOVE_OPENS`): every move opens its result in view.
   More context and Later open as a sheet above the phone's bar and as a popover on their desktop button, with focus

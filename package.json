@@ -1,7 +1,7 @@
 {
   "name": "paseo-follow-up",
   "private": false,
-  "version": "2.2.0-beta.4",
+  "version": "2.2.0-beta.5",
   "description": "A Paseo plugin that follows every workspace until the work is done: one Home for what needs you, questions you answer anywhere, and repairs that send themselves.",
   "type": "module",
   "files": [
@@ -53,6 +53,7 @@
     "@types/react": "~19.2.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
+    "react-test-renderer": "19.1.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
