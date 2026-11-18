@@ -728,7 +728,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    re-sent and not holding the queue. 2026-11-18, Tom on 2.2.0: Needs you showed "The tasks didn't finish" with Open
    main agent for a review the agent said only the reviewer could clear, still there two hours after the PR merged.
    Guarded by `tests/blocked-batch-resolves.test.ts` and `INVARIANTS`.
-55. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
+56. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
    soon as the main agent is free, whatever its subagents or the workspace's other agents are doing. Only the main
    agent's own work holds it: its turn, its own background job while Wait for background jobs is on, a permission
    prompt or question, a Session Guard pause, a compaction. One read decides both scopes (`observe`,
