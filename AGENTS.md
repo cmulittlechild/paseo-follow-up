@@ -663,6 +663,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    detection result. Never expose tokens or file contents in logs, errors, diagnostics or test output.
    Guarded by `tests/pr-workflow.test.ts` and `tests/graphite.test.ts`.
 
+51. **The client renders under the phone's rules** (`client-renders-under-native-rules`). The Paseo phone app is
+   native React Native, which rejects what react-native-web (where every render ran) accepts. Two guards: every
+   `accessibilityRole` the client sets is in React Native's Android `AccessibilityRole` enum, and none is cast past
+   its type (`as never`), because Android's view manager parses it with `AccessibilityRole.fromValue`, which throws on
+   the UI thread for an unknown value, a native crash that takes the whole app down and that no error boundary can
+   catch (roles Android lacks, like dialog, go through the ARIA `role` prop, which it parses leniently); and the phone
+   paths render under a strict native stand-in (`tests/support/native`: no DOM, Platform android, a host view throws
+   on text outside `<Text>` and on a role Android rejects) through react-test-renderer. 2026-11-18, Tom on
+   2.2.0-beta.4 in the phone app: tapping More context in Catch up crashed Paseo; its sheet (`MoveResult`) was
+   `accessibilityRole="dialog"`. Guarded by `tests/native-roles.test.ts` (every client file, the enum read from
+   react-native's source) and `tests/native-render.test.ts` (Catch up's More context and Later sheets, the end screen,
+   every context answer and the keys sheet; add a phone path there when you add one).
+
 ## Bugs
 
 Every bug is fixed for its whole class:
