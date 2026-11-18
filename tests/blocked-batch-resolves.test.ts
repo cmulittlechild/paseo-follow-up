@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { Engine, type Runtime, type Gateway } from "../server/engine";
 import { Store } from "../server/store";
 import type { Snapshot, Workspace } from "../shared/model";
-import { needsYou } from "../shared/attention";
+import { headline, needsYou } from "../shared/attention";
 import { batchView } from "../shared/status";
 import { violations } from "../shared/status-invariants";
 import { repairRows } from "../shared/task-rows";
@@ -130,6 +130,7 @@ test("a human-only outcome is a PR item for the developer, not an agent failure"
   assert.deepEqual(w.heldTasks?.map(h => [h.task.key, h.held]), [["review:example/app#1", "person"]]);
   assert.equal(repairRows(w).open[0]?.text, "Needs you · waits on a person, not the agent");
   assert.equal(batchView(w, f.now()), null, "no agent card, no stuck batch");
+  assert.ok(!headline(w, f.now()).some(p => /to fix/.test(p.text)), "the header doesn't call it the agent's to fix");
   assert.deepEqual(violations(w, f.now()), []);
   f.advance(600_000); await f.engine.tick();
   assert.equal(f.sends.length, 1, "the agent isn't sent the same review again");

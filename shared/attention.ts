@@ -312,7 +312,9 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
   else parts.push({ text: `${bar.merged} of ${plural(bar.total, "PR")} merged` });
   const need = needsYou(w, now).length;
   if (need) parts.push({ text: `${need} need${need === 1 ? "s" : ""} you`, tone: "warning" });
-  const repair = w.prs.filter(needsRepair).length;
+  // A PR whose only open condition waits on a person (a-human-only-outcome-is-a-human-item) isn't the agent's to fix.
+  const personOnly = (p: Pr) => !p.snapshot?.conflict && !p.snapshot?.failedChecks?.length && !!w.heldTasks?.some(h => h.held === "person" && h.task.target === p.key);
+  const repair = w.prs.filter(p => needsRepair(p) && !personOnly(p)).length;
   if (repair) parts.push({ text: `${repair} to fix`, tone: "danger" });
   return parts;
 }
