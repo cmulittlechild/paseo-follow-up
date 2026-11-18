@@ -125,7 +125,7 @@ const queued = (patch: Partial<Workspace>) => workspace({ enable_auto_sends: tru
 const WAITS: [string, Partial<Workspace>, RegExp, "send-now" | "needs-you" | "resume"][] = [
   ["the main agent's turn", { runtimeBusy: true, mainBusy: "turn" }, /sends when the main agent's turn ends/, "send-now"],
   ["the main agent's background job", { backgroundBusy: true, mainBusy: "jobs" }, /main agent's background job ends.*Wait for background jobs/, "send-now"],
-  ["a permission", { runtimeReason: "Main agent is waiting for a permission or answer", mainBusy: "permission" }, /main agent's permission prompt or question is answered/, "send-now"],
+  ["a permission", { runtimeReason: "Main agent is waiting for a permission or answer", mainBusy: "permission" }, /main agent's permission prompt is answered/, "send-now"],
   ["Session Guard", { runtimeReason: "Waiting for Session Guard to resume this workspace", mainBusy: "guard" }, /Session Guard resumes the main agent/, "send-now"],
   ["compacting", { runtimeBusy: true, mainBusy: "compacting", runtimeReason: "Smart Session is compacting the main agent" }, /compacting the main agent/, "send-now"],
   ["Auto-send off", { enable_auto_sends: false }, /auto-send is off/i, "needs-you"],

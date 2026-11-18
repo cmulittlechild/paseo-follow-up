@@ -46,7 +46,7 @@ export const SETTLE_REASON = "waits a minute so new changes join the same messag
 export const MAIN_WAIT = {
   turn: "sends when the main agent's turn ends, so it isn't interrupted",
   jobs: "sends when the main agent's background job ends (Wait for background jobs is on)",
-  permission: "sends once the main agent's permission prompt or question is answered",
+  permission: "sends once the main agent's permission prompt is answered",
   guard: "sends when Session Guard resumes the main agent",
   compacting: "sends when Smart Session finishes compacting the main agent",
 } as const;

@@ -50,7 +50,7 @@ test("a busy agent: the answer steers in alone, the repair waits until the agent
   assert.match(f.delivered[0].text, /^Follow-up answer Q1 \(/);
   assert.equal(envelopeParts(f.delivered[0].text).length, 1);
   assert.equal((await f.get()).batches[0].state, "pending");
-  assert.match((await f.get()).batches[0].refusal?.reason ?? "", /turn to end/, "the batch line says why it waits");
+  assert.match((await f.get()).batches[0].refusal?.reason ?? "", /the main agent's turn ends/, "the batch line says why it waits");
   f.set({ busy: false });
   await f.engine.tick(); await f.engine.idle();
   assert.equal(f.delivered.length, 2, "the repair went once the tick saw the agent idle");
@@ -122,5 +122,5 @@ test("a Send held by Session Guard goes on the tick that sees the agent free, ne
 
 test("holds the tick can't see clear on their own: a tick never retries them", () => {
   for (const r of ["Paseo unreachable", "waits for the last message to finish", "waits until GitHub answers, so the message isn't based on stale PRs"]) assert.equal(heldAgentSide(r), false, r);
-  for (const r of ["waits for the agent's turn to end, so it isn't interrupted", "Session Guard paused this agent", "waiting for the agent's permission prompt"]) assert.equal(heldAgentSide(r), true, r);
+  for (const r of ["sends when the main agent's turn ends, so it isn't interrupted", "Session Guard paused this agent", "waiting for the agent's permission prompt"]) assert.equal(heldAgentSide(r), true, r);
 });

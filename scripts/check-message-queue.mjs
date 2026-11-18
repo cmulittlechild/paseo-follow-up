@@ -618,7 +618,7 @@ const cases = {
     r.whileBusy = { batchState: waiting?.state, reason: waiting?.refusal?.reason ?? null, agentStatus: (await client.fetchAgent(w.agentId))?.agent?.status, prompts: (await allPrompts(w.agentId)).map(t => t.split("\n")[0]) };
     check("busy: the answer went alone (no repair in it)", (await allPrompts(w.agentId)).filter(t => t.includes(answerPrefix(qid))).every(t => !t.includes(batchPrefix(batchId))), r.whileBusy);
     check("busy: the repair waits while the turn runs", (await receipts(w.agentId, batchPrefix(batchId))).length === 0 && (await allPrompts(w.agentId)).every(t => !t.includes(batchPrefix(batchId))), r.whileBusy);
-    check("busy: the batch line shows the wait reason", /turn to end/.test(r.whileBusy.reason ?? ""), { reason: r.whileBusy.reason });
+    check("busy: the batch line shows the wait reason", /the main agent's turn ends/.test(r.whileBusy.reason ?? ""), { reason: r.whileBusy.reason });
     await turn.release();
     const ended = Date.now();
     const repairItem = async () => { const q = await readQueue(); const i = [...q.items, ...q.recent].find(i => i.kind === "repair" && i.ref.batchId === batchId); return i && { state: i.state, attempts: i.attempts, nextAt: i.nextAt, reason: i.reason }; };
