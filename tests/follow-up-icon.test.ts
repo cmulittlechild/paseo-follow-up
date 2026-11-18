@@ -19,6 +19,26 @@ test("the Follow-up glyph is valid inline SVG for the host, takes the host colou
   assert.doesNotMatch(svg, /#[0-9a-f]{3,6}\b/i, "no fixed colour: the glyph follows the theme");
 });
 
+test("the end dot the Needs-you dot covers is the glyph's filled circle", () => {
+  const dot = FOLLOW_UP_ICON.svg.match(/<circle cx="([\d.]+)" cy="([\d.]+)" r="[\d.]+" fill="currentColor"/);
+  assert.ok(dot, "one filled end dot");
+  assert.deepEqual(FOLLOW_UP_DOT, { x: Number(dot[1]) / 24, y: Number(dot[2]) / 24 });
+});
+
+test("one source for the glyph: no other file draws its path", async () => {
+  const path = FOLLOW_UP_ICON.svg.match(/<path d="([^"]+)"/)![1];
+  const { readdir } = await import("node:fs/promises");
+  const hits: string[] = [];
+  for (const dir of ["client", "shared", "server", "."]) {
+    for (const name of await readdir(dir)) {
+      if (!/\.(tsx?|mjs)$/.test(name)) continue;
+      const file = dir === "." ? name : `${dir}/${name}`;
+      if (file !== "client/follow-up-icon.ts" && (await readFile(file, "utf8")).includes(path.slice(0, 40))) hits.push(file);
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
 test("the app tile is the same mark", async () => {
   const tile = await readFile("assets/icon.svg", "utf8");
   const path = FOLLOW_UP_ICON.svg.match(/<path d="([^"]+)"/)?.[1];
@@ -51,8 +71,11 @@ test("the header's Needs-you dot stays whole inside the icon box, on the end dot
   for (const size of [14, 16, 20, 24]) {
     const { left, top } = needDotBox(size);
     assert.ok(left >= 0 && top >= 0 && left + NEED_DOT <= size && top + NEED_DOT <= size, `inside at ${size}`);
-    const dx = left + NEED_DOT / 2 - size * FOLLOW_UP_DOT.x, dy = top + NEED_DOT / 2 - size * FOLLOW_UP_DOT.y;
-    assert.ok(Math.hypot(dx, dy) < 1, `within 1 px of the end dot at ${size}`);
+    // As near as fits: the centre is the end dot's, pulled in only as far as the box edge makes it.
+    const near = (v: number) => Math.min(Math.max(v, NEED_DOT / 2), size - NEED_DOT / 2);
+    assert.ok(Math.abs(left + NEED_DOT / 2 - near(size * FOLLOW_UP_DOT.x)) < 1e-9, `x at ${size}`);
+    assert.ok(Math.abs(top + NEED_DOT / 2 - near(size * FOLLOW_UP_DOT.y)) < 1e-9, `y at ${size}`);
+    if (size === 16) assert.ok(Math.hypot(left + NEED_DOT / 2 - 16 * FOLLOW_UP_DOT.x, top + NEED_DOT / 2 - 16 * FOLLOW_UP_DOT.y) < 1, "on the end dot at Paseo's 16 px");
   }
   const live = readFileSync("client/live.tsx", "utf8");
   assert.match(live, /\.\.\.needDotBox\(props\.size\)/, "the header icon places its dot with needDotBox");

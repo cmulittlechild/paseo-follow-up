@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up"];
+const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1616,6 +1616,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
   if (only.includes("catch-up")) await catchUpShots({ shoot, call, out });
+  if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -1945,6 +1946,62 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
   }
   await fs.writeFile(join(out, "shortcut.json"), JSON.stringify(checks, null, 2));
   log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
+
+/**
+ * icon (follow-up-has-one-mark): every brand surface that draws FOLLOW_UP_ICON, cropped close so the glyph reads at its
+ * real size: the sidebar row at 1x and 2x, the header button (with the Needs-you dot on the end dot), the panel tab, the
+ * command center row, and the phone's sidebar drawer; light and dark. Committed to `docs/evidence/follow-up-icon/`.
+ */
+async function iconShots({ shoot, billing }) {
+  const around = async (loc, pad) => {
+    const b = await loc.boundingBox();
+    if (!b) throw new Error("icon: the surface isn't on screen");
+    const [l, t, r, d] = Array.isArray(pad) ? pad : [pad, pad, pad, pad];
+    return { x: Math.max(0, b.x - l), y: Math.max(0, b.y - t), width: b.width + l + r, height: b.height + t + d };
+  };
+  const sidebarRow = page => page.getByText("Follow-up", { exact: true }).filter({ visible: true }).first();
+  const openPanel = async page => {
+    await openChat(page, "Billing retries", billing.prompt);
+    const header = page.getByRole("button", { name: "Follow-up", exact: true }).last();
+    await header.waitFor();
+    return header;
+  };
+  for (const theme of ["light", "dark"]) {
+    for (const scale of [1, 2]) await shoot(`icon-sidebar-${theme}-${scale}x`, DESKTOP, theme, async page => {
+      await openHome(page); const row = sidebarRow(page); await row.waitFor();
+      return around(row, [44, 70, 200, 70]);
+    }, { scale });
+    await shoot(`icon-header-${theme}`, DESKTOP, theme, async page => {
+      const header = await openPanel(page); await checkNeedDot(page);
+      return around(header, [24, 12, 24, 12]);
+    }, { scale: 2 });
+    await shoot(`icon-panel-${theme}`, DESKTOP, theme, async page => {
+      const header = await openPanel(page); await header.click();
+      await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor();
+      const tab = page.getByText("Follow-up", { exact: true }).filter({ visible: true }).last();
+      return around(tab, [180, 14, 80, 14]);
+    }, { scale: 2 });
+    await shoot(`icon-cmdk-${theme}`, DESKTOP, theme, async page => {
+      await openPanel(page); await page.keyboard.press("Control+k");
+      await page.keyboard.type("follow-up");
+      const item = page.getByText(/open for this workspace/).filter({ visible: true }).first();
+      await item.waitFor();
+      return around(item, [180, 60, 320, 120]);
+    }, { scale: 2 });
+    await shoot(`icon-phone-${theme}`, PHONE, theme, async page => {
+      await openHome(page); await page.setViewportSize(PHONE);
+      // On a phone Home is full screen: its back arrow (top left) leaves Home for a Paseo page whose menu button (same
+      // spot) opens the sidebar drawer.
+      const home = page.getByText("Morning brief", { exact: true }).filter({ visible: true }).first();
+      await home.waitFor();
+      await page.mouse.click(28, 36);
+      await home.waitFor({ state: "hidden" }); // Paseo's start page or new-workspace page, both with the menu button
+      await page.mouse.click(28, 36);
+      const row = sidebarRow(page); await row.waitFor();
+      return { x: 0, y: Math.max(0, (await row.boundingBox()).y - 160), width: PHONE.width, height: 360 };
+    });
+  }
 }
 
 async function prLinkShots({ shoot, billing }) {
