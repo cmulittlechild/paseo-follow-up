@@ -1,1 +1,0 @@
-- Agents can ask another agent, or the Overseer, to explain a card that needs you in plain words, and read what Catch up will show you next. The answer comes back on its own, with no waiting around.

@@ -1,1 +1,0 @@
-- Catch up has a key for every move on desktop: A–H pick, W writes your own, ⌘↵ sends, J/K skip and go back, M asks for context, L later, O opens the chat, R the queue. S shows them all; X leaves.
