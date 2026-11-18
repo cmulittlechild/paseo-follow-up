@@ -205,7 +205,7 @@ export function statsOf(s: Session): SessionStats {
  * anywhere presets. Paseo takes Shift+? (its shortcuts dialog) and Escape (interrupt agent) when focus is outside a
  * field, which is exactly when these fire, so the sheet is S and leaving is X.
  */
-export type CatchUpAction = "pick" | "own" | "send" | "skip" | "skip-workspace" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave";
+export type CatchUpAction = "pick" | "own" | "send" | "skip" | "skip-workspace" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave" | "dictate";
 /**
  * a-move-bar-action-opens-in-view: where each move-bar action opens what it opens, so its result is where the eye
  * already is and never appended below the fold. `sheet`: drawn in the phone's dock, above the bar, kept above the
@@ -225,7 +225,8 @@ export const MOVE_OPENS: Readonly<Record<"more" | "later" | "note" | "chat" | "r
 /** A key as this platform spells it: ⌘ on a Mac, Ctrl elsewhere (as the Send button's own hint reads). */
 export const keyLabel = (key: string, mac: boolean) => mac ? key : key.replace("⌘", "Ctrl ");
 
-export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchUpAction; combos: readonly string[]; when?: "more" | "rail" }[] = [
+export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchUpAction; combos: readonly string[]; when?: "more" | "rail";
+  /** Listed only on a host that has it: V is Paseo's dictation, on a Paseo with usePaseoDictation. */ needs?: "dictation" }[] = [
   { key: "A–H", what: "Pick an option", action: "pick", combos: ["A", "B", "C", "D", "E", "F", "G", "H"] },
   { key: "W", what: "Write your own answer", action: "own", combos: ["W"] },
   { key: "⌘↵", what: "Send", action: "send", combos: ["Cmd+Enter", "Ctrl+Enter"] },
@@ -236,6 +237,7 @@ export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchU
   { key: "1–4", what: "Pick a More context ask", action: "chip", combos: ["Digit"], when: "more" },
   { key: "⌘↵", what: "Ask the agent", action: "ask", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
   { key: "N", what: "Add a note", action: "note", combos: ["N"] },
+  { key: "V", what: "Dictate your answer, and stop", action: "dictate", combos: ["V"], needs: "dictation" },
   { key: "L", what: "Later", action: "later", combos: ["L"] },
   { key: "O", what: "Open chat", action: "chat", combos: ["O"] },
   { key: "R", what: "Go to the queue, and back", action: "rail", combos: ["R"] },
@@ -267,7 +269,7 @@ export function catchUpKey(e: KeyPress, at: { typing: boolean; inMore: boolean; 
   if (e.shift || e.key.length !== 1) return null;
   const k = e.key.toLowerCase();
   if (/^[a-h]$/.test(k)) return { action: "pick", arg: k.toUpperCase() };
-  const byLetter: Record<string, CatchUpAction> = { w: "own", j: "skip", k: "back", m: "more", n: "note", l: "later", o: "chat", r: "rail", s: "keys", x: "leave" };
+  const byLetter: Record<string, CatchUpAction> = { w: "own", j: "skip", k: "back", m: "more", n: "note", l: "later", o: "chat", r: "rail", s: "keys", x: "leave", v: "dictate" };
   return byLetter[k] ? { action: byLetter[k] } : null;
 }
 

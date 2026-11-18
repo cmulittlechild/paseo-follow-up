@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon"];
+const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -422,7 +422,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("dock-in-view") || only.includes("catch-up") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -613,12 +613,13 @@ async function noRealHost(page) {
 const failures = [];
 function makeShooter({ browser, port, out, scheme: forced, optimiser, results, crashed }) {
   /** Opens the web app in a fresh context, runs `drive`, and returns the PNG (optionally clipped to what drive returns). */
-  async function capture(name, viewport, theme, drive, { seen = null, scale = null } = {}) {
+  async function capture(name, viewport, theme, drive, { seen = null, scale = null, init = null } = {}) {
     const colorScheme = forced ?? theme;
     // Always open at desktop width: on a phone Paseo's sidebar is a drawer, so phone frames open Home first, then narrow.
     const context = await browser.newContext({ viewport: DESKTOP, colorScheme, deviceScaleFactor: scale ?? (viewport.width < 768 ? 2 : desktopScale), reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US" });
     try {
       await context.addInitScript(INIT, { seen });
+      if (init) await context.addInitScript(init);
       const page = await context.newPage();
       // SHOTS_CONSOLE=1 prints the page's errors, to tell a real bug from a flaky frame.
       if (process.env.SHOTS_CONSOLE) { page.on("console", m => { if (m.type() === "error") log(`${name} console:`, m.text().slice(0, 600)); }); page.on("pageerror", e => log(`${name} pageerror:`, e.message.slice(0, 600))); }
@@ -1641,6 +1642,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
   if (only.includes("catch-up")) await catchUpShots({ shoot, call, out });
+  if (only.includes("dictation")) await dictationShots({ shoot });
   if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
@@ -2091,6 +2093,87 @@ async function mergeClickShots({ shoot, billing }) {
   await shoot("mc-done-panel-light", TALL, "light", click(receipts, "light", panel, "panel"));
   const digest = { title: MERGE_CLICK_STATES[2].title, prompt: MERGE_CLICK_STATES[2].prompt, button: "Merge pull request #256", merged: /Merged #256/, gone: true };
   await shoot("mc-done-home-phone-dark", PHONE, "dark", click(digest, "dark", phone, "home-phone"));
+}
+
+/**
+ * The harness's stand-in for Paseo's usePaseoDictation (a proposed plugin API; the harness's Paseo has none): wraps the
+ * page's eval so Follow-up's client bundle gets `@getpaseo/plugin/client` plus a fake hook driven by
+ * `window.__dictation` ({ status, unavailable, error, volume }; `emit(text)` delivers a transcript). Harness only:
+ * nothing in the plugin reads a global, and without this the shots show what a Paseo without the hook shows.
+ */
+const FAKE_DICTATION = () => {
+  const host = window.__dictation = { status: "idle", unavailable: null, error: null, volume: 0.6, texts: new Set(), bumps: new Set(), emit(text) { for (const f of host.texts) f(text); host.status = "idle"; host.bump(); }, bump() { for (const f of host.bumps) f(); } };
+  const realEval = globalThis.eval;
+  globalThis.eval = function (src) {
+    const out = realEval(src);
+    if (typeof out !== "function" || typeof src !== "string" || !src.includes("usePaseoDictation")) return out;
+    return require => out(name => {
+      const mod = require(name);
+      if (name !== "@getpaseo/plugin/client") return mod;
+      const React = require("react");
+      const usePaseoDictation = ({ onText }) => {
+        const [, set] = React.useState(0);
+        React.useEffect(() => { const b = () => set(x => x + 1); host.bumps.add(b); host.texts.add(onText); return () => { host.bumps.delete(b); host.texts.delete(onText); }; }, [onText]);
+        return { unavailable: host.unavailable, status: host.status, volume: host.volume, error: host.error,
+          start: async () => { host.status = "listening"; host.bump(); }, stop: async () => { host.status = "transcribing"; host.bump(); }, cancel: async () => { host.status = "idle"; host.bump(); } };
+      };
+      return { ...mod, usePaseoDictation };
+    });
+  };
+};
+
+/**
+ * dictation (docs/needs-you.md#catch-up, invariant dictated-text-lands-in-the-field): Catch up's mic on a Paseo with
+ * dictation (FAKE_DICTATION): idle, listening, transcribing, the words landed in the field, and unavailable saying why;
+ * phone and desktop, light and dark. Plus the keys sheet with V, and the same card on a Paseo without the hook.
+ */
+async function dictationShots({ shoot }) {
+  const card = "fail with card_declined retry";
+  const enter = async (page, size) => {
+    await openHome(page); if (size === PHONE) await page.setViewportSize(PHONE);
+    await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+    await page.getByRole("heading", { name: /^Catch up/ }).filter({ visible: true }).first().waitFor();
+    for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText(card).filter({ visible: true }).first().isVisible()); i++) {
+      if (i > 30) throw new Error(`dictation: no card shows ${card}`);
+      await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.locator("[data-catch-up-card]").getByRole("radio", { name: /^Something else/ }).filter({ visible: true }).first().click();
+    await page.waitForTimeout(500);
+  };
+  const mic = page => page.locator("[data-catch-up-card] [data-dictate]").filter({ visible: true }).first();
+  const field = page => page.getByLabel(/^Your answer.*required$/).filter({ visible: true }).first();
+  const set = (page, state) => page.evaluate(s => { Object.assign(window.__dictation, s); window.__dictation.bump(); }, state);
+  const states = {
+    idle: async page => { await mic(page).waitFor(); },
+    listening: async page => { await mic(page).getByRole("button").first().click(); await page.getByText(/^Listening ·/).filter({ visible: true }).first().waitFor(); },
+    transcribing: async page => { await mic(page).getByRole("button").first().click(); await mic(page).getByRole("button").first().click(); await page.getByText("Writing it down…").filter({ visible: true }).first().waitFor(); },
+    landed: async page => {
+      await field(page).fill("Retry soft declines once after a day.");
+      await field(page).evaluate(el => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
+      await mic(page).getByRole("button").first().click(); await mic(page).getByRole("button").first().click();
+      await page.evaluate(() => window.__dictation.emit("Hard declines go straight to dunning, and email the customer."));
+      await page.waitForTimeout(400);
+    },
+    unavailable: async page => { await set(page, { unavailable: { reason: "not_ready", message: null } }); await mic(page).getByRole("button").first().click(); await page.getByText(/^Can't dictate/).filter({ visible: true }).first().waitFor(); },
+    failed: async page => { await set(page, { error: "Microphone permission was denied." }); await page.getByText(/^Couldn't dictate/).filter({ visible: true }).first().waitFor(); },
+  };
+  for (const [key, drive] of Object.entries(states)) for (const [size, tag] of [[PHONE, "phone"], [DESKTOP, "desktop"]]) for (const theme of ["light", "dark"]) {
+    await shoot(`cu-dict-${key}-${tag}-${theme}`, size, theme, async page => { await enter(page, size); await drive(page); }, { init: FAKE_DICTATION });
+  }
+  for (const theme of ["light", "dark"]) {
+    await shoot(`cu-dict-keys-sheet-desktop-${theme}`, DESKTOP, theme, async page => { await enter(page, DESKTOP); await page.evaluate(() => document.activeElement?.blur?.()); await page.keyboard.press("s"); await page.getByRole("dialog", { name: "Catch up keys" }).waitFor(); }, { init: FAKE_DICTATION });
+  }
+  // V from the card with no field open: Something else opens and listening starts, focus on the mic (V again stops).
+  await shoot("cu-dict-key-v-desktop-dark", DESKTOP, "dark", async page => {
+    await enter(page, DESKTOP);
+    await page.evaluate(() => document.activeElement?.blur?.());
+    await page.keyboard.press("v");
+    await page.getByText(/^Listening ·/).filter({ visible: true }).first().waitFor();
+    page.keepFocus = true;
+  }, { init: FAKE_DICTATION });
+  // A Paseo without usePaseoDictation: the same card, no mic, no line, no space.
+  for (const [size, tag] of [[PHONE, "phone"], [DESKTOP, "desktop"]]) await shoot(`cu-dict-nohook-${tag}-light`, size, "light", page => enter(page, size));
 }
 
 /**

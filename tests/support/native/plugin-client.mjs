@@ -8,3 +8,9 @@ export const rpc = { reply: (_name, _input) => ({ question: { answer: { delivery
 export const useRpc = contract => async input => { rpcCalls.push({ name: contract?.name, input }); return rpc.reply(contract?.name, input); };
 export const useSettings = () => ({ data: undefined });
 export const useTabState = (_k, init) => [init, () => {}];
+/**
+ * Paseo's dictation hook: absent by default, as on a Paseo without it (0.16). `dictationHost.set(hook)` adds a fake,
+ * `set(undefined)` removes it again; the live binding is what `import * as client` reads.
+ */
+export let usePaseoDictation = undefined;
+export const dictationHost = { set(hook) { usePaseoDictation = hook; } };
