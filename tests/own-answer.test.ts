@@ -24,7 +24,7 @@ test("words typed with nothing picked are the developer's own answer, and Send s
   assert.equal(d.answer, OTHER, "Send sends Something else, no second click");
   assert.equal(d.own, true, "Something else reads as picked");
   assert.equal(d.field, "answer");
-  assert.equal(d.note, undefined, "the words are the answer, never a note");
+  assert.equal(d.words, "Retry nightly instead", "the words are the answer Send sends, never dropped (what-you-typed-is-what-gets-sent)");
 });
 
 test("nothing picked: no field whose meaning is unknown, and nothing to send", () => {
@@ -45,6 +45,7 @@ test("Something else opens the field as the answer: labelled so before typing, a
   assert.equal(empty.heading, "Your answer", "a visible label that stays once typing starts");
   const typed = answerDraft(q, { choice: OTHER, words: "Retry nightly", noteOpen: false });
   assert.equal(typed.answer, OTHER);
+  assert.equal(typed.words, "Retry nightly", "Send sends the typed words with Something else");
   assert.equal(typed.hint, null);
 });
 
@@ -61,13 +62,13 @@ test("a lettered pick sends at once; Add note opens a field labelled as a note, 
   assert.equal(noting.heading, "Note, sent with A · The English text", "names the option, which may have scrolled away");
   assert.equal(noting.canRemoveNote, true);
   const noted = answerDraft(q, { choice: "A", words: "but keep the old flag", noteOpen: true });
-  assert.deepEqual([noted.answer, noted.note], ["A", "but keep the old flag"]);
+  assert.deepEqual([noted.answer, noted.words], ["A", "but keep the old flag"]);
 });
 
 test("words written as Something else stay, as a note, when the developer picks a letter after all", () => {
   const d = answerDraft(q, { choice: "B", words: "Retry nightly", noteOpen: false });
   assert.equal(d.field, "note", "shown and labelled a note, so nothing typed is hidden or silently re-purposed");
-  assert.deepEqual([d.answer, d.note], ["B", "Retry nightly"]);
+  assert.deepEqual([d.answer, d.words], ["B", "Retry nightly"]);
 });
 
 test("a question with no options: the field is the answer", () => {

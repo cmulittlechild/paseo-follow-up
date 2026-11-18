@@ -703,6 +703,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tests/test-clocks.test.ts` (every server class whose constructor defaults `now` to `Date.now`, over every test
    and the top-level helpers it calls).
 
+53. **What you typed is what gets sent** (`what-you-typed-is-what-gets-sent`). An answer leaves a question card with
+   exactly the words in its field, on every surface that draws `QuestionBody` (Home, the panel, the pill, phones, Catch
+   up) and on every way out: Send, ⌘↵, Retry after a failed send, Copy and Put in chat. One field says what those words
+   are, `AnswerDraft.words` (`answerDraft`, `shared/questions.ts`): Something else's answer or a lettered pick's note,
+   never a role-specific field a sender can miss. A failed send keeps that same payload, so Retry sends it again, and
+   picking Something else never sends by itself. 2026-11-18, Tom on 2.2.0-beta.5: Something else with a typed sentence
+   failed with "Something else needs your answer in words." and Retry failed the same way, so the question couldn't
+   be answered from any card; 2.2.0-beta.1's one-step own answer had given Something else's words no draft field, and
+   `QuestionBody` sent only the note (2.1.0 sent the field's words for any pick). Guarded by
+   `tests/own-answer-sent.test.ts` (the real `QuestionBody` under the native stand-in, reading what reached the RPC)
+   and `tests/own-answer.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:
