@@ -667,6 +667,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    detection result. Never expose tokens or file contents in logs, errors, diagnostics or test output.
    Guarded by `tests/pr-workflow.test.ts` and `tests/graphite.test.ts`.
 
+50. **Every Catch up key works wherever focus is** (`every-catch-up-key-works-wherever-focus-is`). On the Catch up
+   screen (desktop web), every key in `CATCH_UP_KEYS` acts whatever has focus on the screen, or with nothing focused,
+   except inside a text field (where only the documented field keys act), whatever else Follow-up or Paseo has
+   mounted. It has one owner: Catch up's listener is the window's, in the capture phase, so it runs before any
+   document listener (Follow-up's list keys, invariant 27, take j and k there and stop them); it takes a key only when
+   focus is inside its root, or on nothing while its root is on screen (`ownsKey`, `surfaceVisible`), so a Catch up
+   Paseo keeps mounted behind a tab, and focus in Paseo's sidebar or another surface, keep their keys; and it finds
+   every control inside its own root, never the first match in the page. A key it acts on goes no further. It never
+   takes a combo Paseo binds (`PASEO_BOUND`). 2026-11-18, Tom on 2.2.0-beta.4: "The keyboard shortcuts on the catch
+   up page in desktop don't work consistently." In the harness, opening Catch up from ⌘K left the first one mounted
+   behind it, and B and M clicked into that one, so nothing happened on screen. Guarded by `tests/catch-up-key-owner.test.ts` and
+   `scripts/screenshots.mjs --only catch-up --shot '^cu-keys-check'` (after each thing a developer does on the screen,
+   J moves the deck, B picks and M opens More context in the card on screen; writes `catch-up-keys.json`).
 51. **The client renders under the phone's rules** (`client-renders-under-native-rules`). The Paseo phone app is
    native React Native, which rejects what react-native-web (where every render ran) accepts. Two guards: every
    `accessibilityRole` the client sets is in React Native's Android `AccessibilityRole` enum, and none is cast past
