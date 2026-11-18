@@ -15,7 +15,7 @@ import { age, snoozeUntil } from "../shared/inbox";
 import { laterChoices } from "../shared/row-menu";
 import { errorText } from "../shared/errors";
 import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN } from "../shared/display";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, nextPos, openInWorkspace, park, prevPos, skipWorkspace, swipeLock, swipeOutcome, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, openInWorkspace, park, prevPos, applySwipe, skipWorkspace, swipeLock, swipeOutcome, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
 import type { Workspace } from "../shared/model";
 import type { ListWorkspace } from "../shared/list";
 import { bottomInset, Button, focusSoon, IconButton, SubmitScope, text, type Theme } from "./kit";
@@ -186,7 +186,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   // no follow, just the move on release. Transforms only (translateX), on the native driver where there is one.
   const reduced = useReducedMotion();
   const drag = useRef(new Animated.Value(0)).current;
-  const [dragDir, setDragDir] = useState<"skip" | "back" | null>(null);
+  const [dragDir, setDragDir] = useState<"skip-workspace" | "back" | null>(null);
   const width = useRef(390);
   const lock = useRef<"x" | "y" | null>(null);
   // The finger's own offset from where it went down: react-native-web's accumulated gestureState.dx runs ahead of a
@@ -208,17 +208,18 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
     onPanResponderTerminationRequest: () => false,
     onPanResponderMove: e => {
       const { dx } = offset(e);
-      setDragDir(dx < 0 ? "skip" : canBack ? "back" : null);
+      setDragDir(dx < 0 ? "skip-workspace" : canBack ? "back" : null);
       // Nothing behind the first card: the drag resists instead of revealing an empty space.
       if (!reduced) drag.setValue(dx > 0 && !canBack ? dx * 0.25 : dx);
     },
     onPanResponderRelease: (e, g) => {
       lock.current = null;
       const out = swipeOutcome({ dx: offset(e).dx, vx: g.vx, width: width.current, canBack });
-      const act = () => { drag.setValue(0); setDragDir(null); if (out === "skip") skip(); else if (out === "back") back(); };
+      // Left skips the whole workspace (Skip workspace, ⇧J); right is Back. The same applySwipe the tests run.
+      const act = () => { drag.setValue(0); setDragDir(null); setMore(false); setSession(s => applySwipe(s, out)); };
       if (out === "stay") { setDragDir(null); if (!reduced) Animated.spring(drag, { toValue: 0, bounciness: 0, speed: 20, useNativeDriver: Platform.OS !== "web" }).start(); else drag.setValue(0); return; }
       if (reduced) { act(); return; }
-      Animated.timing(drag, { toValue: (out === "skip" ? -1 : 1) * width.current, duration: 160, useNativeDriver: Platform.OS !== "web" }).start(act);
+      Animated.timing(drag, { toValue: (out === "skip-workspace" ? -1 : 1) * width.current, duration: 160, useNativeDriver: Platform.OS !== "web" }).start(act);
     },
     onPanResponderTerminate: () => { lock.current = null; setDragDir(null); drag.setValue(0); },
   }), [compact, key, finished, canBack, reduced]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -278,14 +279,17 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   </ScrollView>;
 
   // Under the dragged card: the one the release would show, so the drag says where it goes.
-  const peekKey = dragDir === "skip" ? session.order[nextPos(session, session.pos)] : dragDir === "back" ? session.order[prevPos(session)] : undefined;
+  // The peek says exactly what the release does: where Skip workspace lands (skipWorkspace itself), or Back's card.
+  const ahead = dragDir === "skip-workspace" ? skipWorkspace(session) : null;
+  const peekKey = ahead ? ahead.order[ahead.pos] : dragDir === "back" ? session.order[prevPos(session)] : undefined;
+  const peekWhat = dragDir === "back" ? "Back" : wsLeft > 1 ? `Skip workspace · ${wsLeft} cards` : `Skip ${card ? skipNoun(card) : "card"}`;
   const peekCard = cardOf(peekKey);
   const peek = compact && dragDir && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
-    style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.surface1, justifyContent: "center", alignItems: dragDir === "skip" ? "flex-end" : "flex-start", paddingHorizontal: 20 }}>
-    <View style={{ maxWidth: "42%", gap: 4, alignItems: dragDir === "skip" ? "flex-end" : "flex-start" }}>
-      <Icon name={dragDir === "skip" ? "ArrowRight" : "ChevronLeft"} size={18} color={c.foregroundMuted} />
-      <Text style={[t.small, { fontWeight: "600" }]}>{dragDir === "skip" ? `Skip ${card ? skipNoun(card) : "card"}` : "Back"}</Text>
-      <Text numberOfLines={2} style={[t.meta, { textAlign: dragDir === "skip" ? "right" : "left" }]}>{peekCard ? `${peekCard.s.title} · ${cardLabel(peekCard, peekCard.s.workspaceId ? live.get(peekCard.s.workspaceId) : undefined)}` : MODE.endOfDeck}</Text>
+    style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.surface1, justifyContent: "center", alignItems: dragDir === "skip-workspace" ? "flex-end" : "flex-start", paddingHorizontal: 20 }}>
+    <View style={{ maxWidth: "42%", gap: 4, alignItems: dragDir === "skip-workspace" ? "flex-end" : "flex-start" }}>
+      <Icon name={dragDir === "back" ? "ChevronLeft" : wsLeft > 1 ? "ChevronsRight" : "ArrowRight"} size={18} color={c.foregroundMuted} />
+      <Text style={[t.small, { fontWeight: "600" }]}>{peekWhat}</Text>
+      <Text numberOfLines={2} style={[t.meta, { textAlign: dragDir === "skip-workspace" ? "right" : "left" }]}>{peekCard ? `${peekCard.s.title} · ${cardLabel(peekCard, peekCard.s.workspaceId ? live.get(peekCard.s.workspaceId) : undefined)}` : MODE.endOfDeck}</Text>
     </View>
   </View>;
   const main = <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }} onLayout={e => { width.current = e.nativeEvent.layout.width; }} {...pan.panHandlers}>
@@ -335,7 +339,16 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
         {sameWorkspace.length > 1 ? ` · ${nth + 1} of ${sameWorkspace.length} here` : ""}
       </Text>
     </View>
-    <Text accessibilityRole="header" numberOfLines={2} style={compact ? t.title : [t.title, { fontSize: 17, lineHeight: 23 }]}>{s.title}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{` › ${s.agent}`}</Text> : null}</Text>
+    {/* Skip workspace sits on the line of the workspace it skips, top right, the same place on phone and desktop (Tom,
+        beta.4: "maybe put the skip workspace button at the top right?"). Only while more than one card is left; the meta
+        line's "1 of 2 here" gives the count, and its accessible name says it. Negative margins keep its 44 px target
+        from pushing the title line apart. */}
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <Text accessibilityRole="header" numberOfLines={2} style={[compact ? t.title : [t.title, { fontSize: 17, lineHeight: 23 }], { flex: 1 }]}>{s.title}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{` › ${s.agent}`}</Text> : null}</Text>
+      {onSkipWorkspace && <View style={{ marginVertical: compact ? -10 : -6, marginRight: compact ? -14 : -11 }}>
+        <Tip label={`${skipWorkspaceHint(wsLeft)} (⇧J)`}><Button theme={theme} compact={compact} kind="ghost" icon="ChevronsRight" title="Skip workspace" accessibilityLabel={skipWorkspaceHint(wsLeft)} accessibilityHint={compact ? undefined : "Shift+J"} onPress={onSkipWorkspace} /></Tip>
+      </View>}
+    </View>
     {ws && <SummaryLine key={ws.id} workspace={ws} theme={theme} compact={compact} />}
     {full && <ReferencesLine workspace={full} theme={theme} compact={compact} />}
   </View>;
@@ -399,7 +412,6 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     {compact ? ready ? <IconButton theme={theme} compact icon="ArrowRight" label={skipCardHint(noun)} onPress={onSkip} />
         : <View style={{ flex: 1 }}><Button theme={theme} compact grow icon="ArrowRight" title={`Skip ${noun}`} accessibilityLabel={skipCardHint(noun)} onPress={onSkip} /></View>
       : <>
-        {onSkipWorkspace && <Tip label={`${skipWorkspaceHint(wsLeft)} (⇧J)`}><Button theme={theme} kind="ghost" icon="ChevronsRight" title="Skip workspace" accessibilityLabel={skipWorkspaceHint(wsLeft)} accessibilityHint="Shift+J" onPress={onSkipWorkspace} /></Tip>}
         <Tip label={`${skipCardHint(noun)} (J or →)`}><Button theme={theme} icon="ArrowRight" title={`Skip ${noun}`} accessibilityLabel={skipCardHint(noun)} accessibilityHint="J" onPress={onSkip} /></Tip>
       </>}
     {send}
@@ -413,9 +425,6 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}
     dock={({ yields, typingInContent }) => compact && (sheet && !typingInContent || !yields) && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
       {sheet && !typingInContent && <MoveResult place="sheet" theme={theme} label={moreBlock ? "More context" : "Later"}>{sheet}</MoveResult>}
-      {!yields && !sheet && onSkipWorkspace && <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 12, paddingTop: 6 }}>
-        <Button theme={theme} compact kind="ghost" icon="ChevronsRight" title={`Skip workspace · ${wsLeft} cards`} accessibilityLabel={skipWorkspaceHint(wsLeft)} onPress={onSkipWorkspace} />
-      </View>}
       {!yields && moves}
     </View>}>
     {goneBanner}

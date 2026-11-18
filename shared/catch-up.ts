@@ -124,16 +124,23 @@ export function swipeLock(dx: number, dy: number): "x" | "y" | null {
 }
 /**
  * A released drag: past `SWIPE_COMMIT` of the card's width, or flung faster than `SWIPE_FLING` px/ms the same way, left
- * skips the card and right goes Back (when there is a card to go back to); anything else springs back.
+ * skips the workspace and right goes Back (when there is a card to go back to); anything else springs back. Left is the
+ * workspace, not the card (Tom, 2.2.0-beta.4: "it makes more sense for the drag left to skip the whole workspace"); the
+ * bar's Skip stays the way to skip one card. With one card left in the workspace the two are the same.
  */
 export const SWIPE_COMMIT = 0.35;
 export const SWIPE_FLING = 0.5;
-export function swipeOutcome(g: { dx: number; vx: number; width: number; canBack: boolean }): "skip" | "back" | "stay" {
+export type SwipeOutcome = "skip-workspace" | "back" | "stay";
+export function swipeOutcome(g: { dx: number; vx: number; width: number; canBack: boolean }): SwipeOutcome {
   const far = Math.abs(g.dx) > SWIPE_COMMIT * g.width;
   const fling = Math.abs(g.vx) > SWIPE_FLING && Math.sign(g.vx) === Math.sign(g.dx);
   if (!far && !fling) return "stay";
-  if (g.dx < 0) return "skip";
+  if (g.dx < 0) return "skip-workspace";
   return g.canBack && g.dx > 0 ? "back" : "stay";
+}
+/** What a released drag does to the session: the screen and the tests run this one function. */
+export function applySwipe(s: Session, out: SwipeOutcome): Session {
+  return out === "skip-workspace" ? skipWorkspace(s) : out === "back" ? { ...s, pos: prevPos(s) } : s;
 }
 
 /** Records what happened to the card on screen and moves on. */
