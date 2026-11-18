@@ -52,8 +52,9 @@ test("the strip carries when and why, and its reason is the send decision's", ()
   }
   const settling = message("pending", { batches: [batch("pending", REPAIRS, { createdAt: at(5_000) })] });
   assert.equal(messageStrip(settling, clock)!.reason, SETTLE_REASON, "the settle says why not now");
-  assert.equal(messageStrip(message("pending", { runtimeBusy: true }), clock)!.sendNow, false, "no Send now the server would refuse");
-  assert.equal(messageStrip(message("pending", { runtimeBusy: true }), clock)!.reason, "sends when its current turn ends, so it isn't interrupted");
+  assert.equal(messageStrip(message("pending", { runtimeBusy: true }), clock)!.sendNow, true, "the main agent's turn takes Send now: it goes at the turn's end (Q96 = A)");
+  assert.equal(messageStrip(message("pending", { runtimeBusy: true, batches: [batch("pending", REPAIRS), batch("blocked", REPAIRS, { id: "b-open" })] }), clock)!.sendNow, false, "no Send now the server would refuse (another message open)");
+  assert.equal(messageStrip(message("pending", { runtimeBusy: true }), clock)!.reason, "sends when the main agent's turn ends, so it isn't interrupted");
   const sent = messageStrip(message("sent"), clock)!;
   assert.equal(sent.phase, "sent"); assert.equal(sent.reason, "waiting for it to report back");
 });

@@ -715,6 +715,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tests/own-answer-sent.test.ts` (the real `QuestionBody` under the native stand-in, reading what reached the RPC)
    and `tests/own-answer.test.ts`.
 
+54. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
+   soon as the main agent is free, whatever its subagents or the workspace's other agents are doing. Only the main
+   agent's own work holds it: its turn, its own background job while Wait for background jobs is on, a permission
+   prompt or question, a Session Guard pause, a compaction. One read decides both scopes (`observe`,
+   `server/daemon.ts`): `mainBusy` for repairs, `runtimeBusy`/`backgroundBusy` (the whole workspace) for Done, its
+   check, and everything that means "all work finished" (docs/workspaces.md, status model). A waiting repair always
+   says what it waits for, in `MAIN_WAIT`'s words (`shared/send-decision.ts`) on every surface and in `queue_list`,
+   and can be sent now (Send now, `send_repairs` or `queue_action`): it waits in the queue and goes on the tick that
+   sees the main agent free. 2026-11-18: a repair sat pending over two hours with Auto-send on and the main agent
+   idle, because a subagent the main agent started ran one task after another and any non-main agent at work held
+   repairs; the card said nothing true. Guarded by `tests/send-to-idle-main.test.ts`, `tests/daemon-load.test.ts`
+   (a queued repair lists no subagents) and `INVARIANTS`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:

@@ -35,11 +35,11 @@ test("queued: in Sending with when and why, the clock glyph, and Send now where 
   assert.deepEqual(violations(w, clock), []);
 });
 
-test("agent busy: in Sending after its turn, with no Send now the server would refuse", () => {
+test("main agent busy: in Sending after its turn, and Send now queues it for the turn's end (Q96 = A)", () => {
   const s = row(home([ws("busy", { runtimeBusy: true })]), "busy");
   assert.equal(s.group, "sending");
-  assert.equal(s.line, "2 tasks queued · sends when its current turn ends, so it isn't interrupted");
-  assert.equal(s.sendNow, null);
+  assert.equal(s.line, "2 tasks queued · sends when the main agent's turn ends, so it isn't interrupted");
+  assert.deepEqual(s.sendNow, { batchId: "b-pending", count: 2 });
 });
 
 test("in flight: the send glyph, what it waits for, and no Send now", () => {

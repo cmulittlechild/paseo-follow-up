@@ -9,6 +9,7 @@ import { readSharedJson } from "./shared-file";
 import { createRequire } from "node:module";
 import type { Workspace, Batch } from "../shared/model";
 import type { Gateway, Runtime } from "./engine";
+import { MAIN_WAIT, QUIET_WAIT, repairWait } from "../shared/send-decision";
 import type { State } from "../shared/model";
 import { defaultTracking, followsEvery, optedOut, projectSetting, type Project } from "../shared/settings";
 import { recoveryHandoff } from "./recovery-handoff";
@@ -480,6 +481,9 @@ export class PaseoGateway implements Gateway {
    */
   /** A new engine tick: sends re-list agents at most once in it (a-send-lists-agents-at-most-once-per-tick). */
   tickStarted(): void { this.directory.tickStarted(); }
+  /** Settings → Agents → Wait for background jobs (index.server.ts sets it). Unset or unreadable: on (Unknown is not off). */
+  waitForJobs?: () => Promise<boolean>;
+  private async waitsForJobs(): Promise<boolean> { try { return (await this.waitForJobs?.()) ?? true; } catch { return true; } }
   async observe(w: Workspace, fresh = false): Promise<Runtime> {
     const [rows, compacting, pauses] = await Promise.all([this.directory.read(fresh ? { fresh: "agents" } : {}), this.compacting(w.mainAgentId), this.guard.read()]);
     const { agents, workspaces } = rows;
@@ -500,29 +504,36 @@ export class PaseoGateway implements Gateway {
     const guarded = this.guard.waiting(pauses, { agentIds: [w.mainAgentId, ...scoped.map(agent => agent.id)], workspaceId: w.id, excludedAgentIds: [...recoveryIds].filter((id): id is string => !!id) });
     const guardedInterruptionId = this.guard.ownsInterruption(pauses, w.mainAgentId, w.interruption)?.id;
     const context = { guardedInterruptionId, mainTurnId: turnIdOf(a.activeTurn), mainTitle: a.title?.trim() || null };
-    if (guarded || !pauses && workspace.labels?.some(label => /^(Paused|Paused by Session Guard)$/i.test(label))) return { taskAgents, ...context, guarded: true, busy: false, reason: "Waiting for Session Guard to resume this workspace", archived: false };
-    if (compacting) return { taskAgents, busy: true, reason: "Smart Session is compacting the main agent", archived: false };
+    if (guarded || !pauses && workspace.labels?.some(label => /^(Paused|Paused by Session Guard)$/i.test(label))) return { taskAgents, ...context, guarded: true, busy: false, mainBusy: "guard", reason: "Waiting for Session Guard to resume this workspace", archived: false };
+    if (compacting) return { taskAgents, busy: true, mainBusy: "compacting", reason: "Smart Session is compacting the main agent", archived: false };
     const mainLoaded = isLoaded(a), mainRecent = recentlyUsed(a, this.windowMs, this.now());
     if (conversationGone(a.lastError)) return { taskAgents, busy: false, reason: a.lastError ?? "Conversation not found", archived: false, gone: a.lastError ?? "Conversation not found", mainLoaded, mainRecent };
-    if (a.pendingPermissions.length || a.status === "error") return { taskAgents, busy: false, reason: a.status === "error" ? "Main agent needs recovery" : "Main agent is waiting for a permission or answer", archived: false };
-    let busy = false; let backgroundBusy = false;
+    if (a.pendingPermissions.length || a.status === "error") return { taskAgents, busy: false, ...(a.status === "error" ? {} : { mainBusy: "permission" as const }), reason: a.status === "error" ? "Main agent needs recovery" : "Main agent is waiting for a permission or answer", archived: false };
+    // One busy computation, two scopes (Q96 = A, a-repair-goes-to-a-free-main-agent). `busy` and `backgroundBusy` are the
+    // whole workspace: Done, a sent message's turn, "all work finished". `mainBusy` is the main agent's own work, and only
+    // it holds a repair: its turn, and its own background job while Wait for background jobs is on. Another agent in the
+    // workspace (a subagent the main agent started) and provider subagents never hold a repair. 2026-11-18: a repair sat
+    // pending over two hours while the main agent was idle and a subagent it started ran one task after another.
+    let busy = false; let backgroundBusy = false; let mainBusy: "turn" | "jobs" | null = null;
     const members = here.filter(agent => !recoveryIds.has(agent.id) && !isRecovery(agent.labels));
     for (const agent of members) {
-      if (["running", "initializing"].includes(agent.status)) { busy = true; if (agent.id !== w.mainAgentId) backgroundBusy = true; }
-      // 0.16: work an agent started and ended its turn on (a shell, a task) is still work: no repairs, no Done yet.
-      else if (backgroundCount(agent) > 0) backgroundBusy = true;
+      const main = agent.id === w.mainAgentId;
+      if (["running", "initializing"].includes(agent.status)) { busy = true; if (main) mainBusy = "turn"; else backgroundBusy = true; }
+      // 0.16: work an agent started and ended its turn on (a shell, a task) is still work: no Done yet, and the main
+      // agent's own job holds its repairs while Wait for background jobs is on.
+      else if (backgroundCount(agent) > 0) { backgroundBusy = true; if (main && await this.waitsForJobs()) mainBusy = "jobs"; }
     }
-    // Subagents only decide an auto-send or a sent message's turn. A queued message only the developer sends (Auto off,
-    // a hold, the Done check) is re-checked when they press Send, so it never makes every tick list subagents (2026-11-12).
-    const autoPending = (b: Workspace["batches"][number]) => b.state === "pending" && w.enable_auto_sends && !w.hold && !b.tasks.some(t => t.kind === "completion");
-    const subagentsMatter = fresh || !!w.completion || w.batches.some(b => !b.tasks.every(t => t.kind === "inventory") && (b.state === "sent" || autoPending(b)));
+    // Subagents only decide the whole workspace's quiet: Done, a sent message's turn, and the Done check's send (a fresh
+    // read). Repairs never wait for them (Q96 = A), so a queued repair, or its send, never lists subagents (2026-11-12).
+    const doneCheckGoing = (b: Workspace["batches"][number]) => fresh && ["pending", "sending"].includes(b.state) && b.tasks.some(t => t.kind === "completion");
+    const subagentsMatter = !!w.completion || w.batches.some(b => !b.tasks.every(t => t.kind === "inventory") && (b.state === "sent" || doneCheckGoing(b)));
     const idleLoaded = members.filter(agent => isLoaded(agent) && !["running", "initializing"].includes(agent.status));
     if (subagentsMatter && !backgroundBusy && idleLoaded.length) await this.connect(async client => {
       for (const listed of idleLoaded) {
         if (await subagentsRunning(client, listed, "Subagent observation unavailable", this.directory)) { busy = true; backgroundBusy = true; break; }
       }
     });
-    return { taskAgents, ...context, busy, reason: null, archived: false, backgroundBusy, mainLoaded, mainRecent };
+    return { taskAgents, ...context, busy, reason: null, archived: false, backgroundBusy, mainBusy, mainLoaded, mainRecent };
   }
   async recoveryRuntime(w: Workspace, batch: Batch): Promise<{ busy: boolean; reason: string | null }> {
     return this.connect(async client => {
@@ -551,7 +562,10 @@ export class PaseoGateway implements Gateway {
       // The dispatch observed fresh this tick; this re-check reads the same tick's list (a-send-lists-agents-at-most-once-per-tick).
       try { runtime = await this.observe(w, true); }
       catch { throw new DeliveryDeferred("Agent or Session Guard state is unavailable; follow-up will wait and retry."); }
-      if (runtime.busy || runtime.backgroundBusy || runtime.reason || runtime.archived) throw new DeliveryDeferred(runtime.reason ?? "The workspace resumed active work; follow-up will wait until it is idle.");
+      // A repair waits only for the main agent itself (Q96 = A); the Done check for the whole workspace to be quiet.
+      const main = repairWait(runtime);
+      const holds = batch.tasks.some(t => t.kind === "completion") ? (runtime.busy || runtime.backgroundBusy ? QUIET_WAIT : null) : main && MAIN_WAIT[main];
+      if (holds || runtime.reason || runtime.archived) throw new DeliveryDeferred(holds || runtime.reason || "The workspace was archived.");
     }
     await this.connect(async client => {
       const recipient = batch.recipientAgentId ?? w.mainAgentId;

@@ -132,6 +132,15 @@ export const workspaceSchema = z.object({
   sendWait: z.enum(["unloaded", "setup"]).nullable().optional(),
   updatedAt: z.string(), managedDoneLabel: z.boolean(),
   runtimeReason: z.string().nullable(), runtimeBusy: z.boolean(), backgroundBusy: z.boolean().default(false),
+  /**
+   * What the main agent itself is doing that holds a repair (Q96 = A, invariant a-repair-goes-to-a-free-main-agent): its
+   * own turn, its own background job while Wait for background jobs is on, a permission prompt or question, a Session
+   * Guard pause or a compaction. Set with runtimeBusy, by the same read
+   * (server/daemon.ts observe). runtimeBusy and backgroundBusy stay the whole workspace (Done, "all work finished");
+   * other agents and subagents never land here. Absent (a record no refresh has read yet): unknown, so the send
+   * decision treats the workspace's busy as the main agent's (Unknown is not off).
+   */
+  mainBusy: z.enum(["turn", "jobs", "permission", "guard", "compacting"]).nullable().optional(),
   /** Live state of the agents this workspace's working tasks name, refreshed with runtimeBusy from Paseo's agent list
    * (metadata only). Every surface that says a task's agent is working reads this, never the stored status alone. */
   taskAgents: z.record(z.string(), z.object({ title: z.string().nullable(), state: z.enum(["working", "idle", "closed", "archived"]) })).optional(),
@@ -266,7 +275,7 @@ export function summary(w: ListWorkspace, now = Date.now()): { status: Status; l
   const batch = w.batches.find(b => !recoveryBatch(b) && ["pending", "sending", "sent"].includes(b.state) && !(b.state === "pending" && completionCheck(b)));
   if (batch) return { status: batch.state === "pending" ? "active" : "handling", label: batch.state === "pending" ? w.enable_auto_sends ? "Auto queued" : "Ready to send" : "Agent handling", reason: `${batch.tasks.length} follow-up task${batch.tasks.length === 1 ? "" : "s"} ${batch.state === "pending" ? "queued" : batch.recipientAgentId && batch.recipientAgentId !== w.mainAgentId ? "sent to the recovery agent" : "sent to the main agent"}` };
   const live = liveWorkingTask(w);
-  if (w.runtimeBusy || live) return { status: "handling", label: "Agent handling", reason: live?.title ?? "The main agent is working" };
+  if (w.runtimeBusy || live) return { status: "handling", label: "Agent handling", reason: live?.title ?? (w.mainBusy === null ? "Agents in this workspace are working" : "The main agent is working") };
   if (w.prs.some(pr => !statusKnown(pr))) return { status: "waiting", label: "Waiting", reason: "PR status unavailable; refresh will retry" };
   const pending = obligations.find(o => !["done", "waived"].includes(o.status));
   if (pending) return { status: pending.status === "waiting" ? "waiting" : "active", label: pending.status === "waiting" ? "Waiting" : "Active", reason: pending.title };

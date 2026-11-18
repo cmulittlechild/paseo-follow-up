@@ -19,12 +19,18 @@ import { PASEO_UNREACHABLE, deliveryOf, type NewQueueItem, type QueueItem, type 
 import { recordSnapshot } from "./deployment-anchor";
 import { pruneUnsent } from "./batch-archive";
 import { holdSuperseded, liftHold } from "../shared/status";
-import { conditionId, isCapped, readSince, sendDecision, settleUnacknowledged, UNACKNOWLEDGED_MS } from "../shared/send-decision";
+import { conditionId, isCapped, MAIN_WAIT, QUIET_WAIT, readSince, repairWait, sendDecision, settleUnacknowledged, UNACKNOWLEDGED_MS, type MainWait } from "../shared/send-decision";
 import { isRepair } from "../shared/task-rows";
-export { settleUnacknowledged, UNACKNOWLEDGED_MS, NO_PROGRESS_CAP } from "../shared/send-decision";
+export { settleUnacknowledged, UNACKNOWLEDGED_MS, NO_PROGRESS_CAP, repairWait, QUIET_WAIT } from "../shared/send-decision";
 
 export interface Runtime {
   busy: boolean; reason: string | null; archived: boolean; backgroundBusy?: boolean;
+  /**
+   * What the main agent itself is doing that holds a repair (Workspace.mainBusy, Q96 = A). `busy` and `backgroundBusy`
+   * are the whole workspace (Done, "all work finished"); only this decides a repair. Undefined: unknown, so a repair
+   * treats the workspace's busy as the main agent's (repairWait).
+   */
+  mainBusy?: MainWait | null;
   /** Live state of the agents working tasks name (Workspace.taskAgents). Undefined: unknown, so every line naming an agent says "Agent unavailable". */
   taskAgents?: Workspace["taskAgents"];
   guarded?: boolean; guardedInterruptionId?: string;
@@ -256,6 +262,7 @@ export class Engine {
       if (!untouched) await this.store.mutateWorkspace(original.id, w => {
         w.runtimeBusy = runtime.busy; w.runtimeReason = runtime.reason; w.taskAgents = runtime.taskAgents;
         w.backgroundBusy = runtime.backgroundBusy ?? false;
+        w.mainBusy = repairWait(runtime);
         if (runtime.mainTitle !== undefined && (w.mainAgentTitle ?? null) !== runtime.mainTitle) w.mainAgentTitle = runtime.mainTitle;
         if (runtime.gone && w.goneAgent?.agentId !== w.mainAgentId) w.goneAgent = { agentId: w.mainAgentId, at: new Date(this.now()).toISOString(), reason: runtime.gone };
         if (w.goneAgent?.agentId === w.mainAgentId) w.runtimeReason = GONE_REASON;
@@ -340,8 +347,8 @@ export class Engine {
       const heldItem = held && this.queue?.get(repairItemId(current.id, held.id));
       // An Auto send keeps its own pace (a refusal retries once per settle window: the-send-line-matches-the-send-decision);
       // only the developer's Send, or any repair waiting out a turn, goes on this tick.
-      const due = heldItem?.state === "queued" && !!heldItem.reason && (heldItem.reason.startsWith("waits for the agent's turn") || !heldItem.ref.automatic && heldAgentSide(heldItem.reason));
-      if (due && !runtime.busy && !runtime.backgroundBusy && !runtime.reason) await this.queue!.retry(heldItem!.id).catch(() => undefined);
+      const due = heldItem?.state === "queued" && !!heldItem.reason && (MAIN_WAITS.has(heldItem.reason) || !heldItem.ref.automatic && heldAgentSide(heldItem.reason));
+      if (due && !repairWait(runtime) && !runtime.reason) await this.queue!.retry(heldItem!.id).catch(() => undefined);
       current = findWorkspace(await this.store.snapshot(), original.id);
       const done = !current.archived && !!current.completion && completionBlockers(current, this.now()).length === 0;
       if (done || current.managedDoneLabel) {
@@ -524,7 +531,10 @@ export class Engine {
     try { runtime = await this.gateway.observe(w, true); }
     catch { return { defer: "Paseo unreachable" }; }
     if (runtime.archived) return { cancel: "The workspace was archived." };
-    if (runtime.busy || runtime.backgroundBusy) return { defer: "waits for the agent's turn to end, so it isn't interrupted" };
+    // A repair waits only for the main agent itself (Q96 = A); the Done check waits for the whole workspace to be quiet.
+    if (completionCheck(b) && (runtime.busy || runtime.backgroundBusy)) return { defer: QUIET_WAIT };
+    const holds = repairWait(runtime);
+    if (holds) return { defer: MAIN_WAIT[holds] };
     if (runtime.reason) return { defer: runtime.reason };
     // The runtime read awaited Paseo: what the developer changed meanwhile (Auto off, a hold) still wins.
     const fresh = (await this.store.snapshot()).workspaces.find(x => x.id === w.id);
@@ -591,7 +601,7 @@ export class Engine {
     if (!b || this.queue?.get(repairItemId(w.id, b.id))) return [];
     if (!sendDecision({ ...w, sendWait: null }, this.now(), { settleMs: 0, batch: b }).send || this.autoSendsHeld()) return [];
     const runtime = await this.gateway.observe(w, true).catch(() => null);
-    if (!runtime || runtime.busy || runtime.backgroundBusy || runtime.reason || runtime.archived) return [];
+    if (!runtime || repairWait(runtime) || runtime.reason || runtime.archived) return [];
     return [this.repairItem(w, b, true)];
   }
   /**
@@ -811,5 +821,7 @@ export function agentWorkspace(state: State, agentId: string, access: "read" | "
 export const answerItemId = (workspaceId: string, q: Pick<Question, "id" | "answer">) => `answer:${workspaceId}:${q.id}:${q.answer?.delivery.messageId ?? ""}`;
 /** A batch's queue item: one per batch (a Retry makes a new batch, so a new item). */
 /** A repair's hold that only the agent's runtime can clear, so a tick that sees the agent free retries it. */
+/** The main agent's own waits: a repair held by one goes on the tick that sees the main agent free. */
+const MAIN_WAITS = new Set<string>(Object.values(MAIN_WAIT));
 export const heldAgentSide = (reason: string) => reason !== PASEO_UNREACHABLE && !reason.startsWith("waits for the last message") && !reason.startsWith("waits until GitHub answers");
 export const repairItemId = (workspaceId: string, batchId: string) => `repair:${workspaceId}:${batchId}`;

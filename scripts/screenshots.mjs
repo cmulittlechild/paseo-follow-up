@@ -2297,7 +2297,7 @@ async function sendingShots({ shoot, seeded, call, home }) {
     await call("follow.refresh", {});
     return (await call("follow.list", {})).workspaces.find(x => x.id === ws("sd-busy").workspaceId)?.batches.some(b => b.state === "pending");
   }, { tries: 120, every: 500 });
-  const busyLine = /sends when its current turn ends/;
+  const busyLine = /sends when the main agent's turn ends/;
   const shown = (wait, phone) => async page => {
     await openHome(page);
     if (phone) { await page.setViewportSize(PHONE); await page.getByRole("button", { name: /^Sending, \d+\. Show only these/ }).first().click(); }
