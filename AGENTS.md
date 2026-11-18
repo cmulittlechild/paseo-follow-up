@@ -427,7 +427,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
    brief and the Overseer are rows of the walk; never while typing outside the list's own query field; a key pressed
    with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
-   behind another tab or chat. Enter and O open (invariant 56). Guarded by
+   behind another tab or chat. Enter and O open (invariant 57). Guarded by
    `tests/list-keys.test.ts`.
 28. **One ranking for every workspace search** (`one-ranking-for-every-workspace-search`). Home's search and the
    sidebar view's filter order matches by one rank (`byRank` over `SearchHit.rank`, `shared/search.ts`): a title match
@@ -736,7 +736,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    line instead of doing nothing. 2026-11-18, Tom on 2.2.0: "add a microphone icon to the catch up mode to dictate my
    answer". Guarded by `tests/catch-up-dictation.test.ts`.
 
-56. **On Home, the selected workspace opens with Enter** (`the-selected-workspace-opens-with-enter`). However a
+56. **A repair goes to a free main agent** (`a-repair-goes-to-a-free-main-agent`). A repair goes to the main agent as
+   soon as the main agent is free, whatever its subagents or the workspace's other agents are doing. Only the main
+   agent's own work holds it: its turn, its own background job while Wait for background jobs is on, a permission
+   prompt or question, a Session Guard pause, a compaction. One read decides both scopes (`observe`,
+   `server/daemon.ts`): `mainBusy` for repairs, `runtimeBusy`/`backgroundBusy` (the whole workspace) for Done, its
+   check, and everything that means "all work finished" (docs/workspaces.md, status model). A waiting repair always
+   says what it waits for, in `MAIN_WAIT`'s words (`shared/send-decision.ts`) on every surface and in `queue_list`,
+   and can be sent now (Send now, `send_repairs` or `queue_action`): it waits in the queue and goes on the tick that
+   sees the main agent free. 2026-11-18: a repair sat pending over two hours with Auto-send on and the main agent
+   idle, because a subagent the main agent started ran one task after another and any non-main agent at work held
+   repairs; the card said nothing true. Guarded by `tests/send-to-idle-main.test.ts`, `tests/daemon-load.test.ts`
+   (a queued repair lists no subagents) and `INVARIANTS`.
+
+57. **On Home, the selected workspace opens with Enter** (`the-selected-workspace-opens-with-enter`). However a
    workspace was selected (a click, the arrow walk, a search pick, a ⌘K pick, coming back to Home), Enter opens its
    chat, as Open full does; O does the same, as in Catch up. A focused row opens itself; with nothing focused the
    selection opens (`enterTarget`, `shared/list-keys.ts`). In the search, the first Enter shows the result in the pane

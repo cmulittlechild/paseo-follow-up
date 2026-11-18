@@ -1,4 +1,4 @@
-// the-selected-workspace-opens-with-enter (AGENTS.md invariant 56). Tom, 2.2.0: "I press cmd+/ to go to search,
+// the-selected-workspace-opens-with-enter (AGENTS.md invariant 57). Tom, 2.2.0: "I press cmd+/ to go to search,
 // search a workspace, press enter and it open the panel, I want to press enter again to go to the workspace itself".
 // Root cause: Home's Enter opened only a focused row (client/list-keys.ts, `if (!focused) return`). A search pick
 // blurred the field (a single-line TextInput blurs on submit) while the query and its results stayed up, and Home's

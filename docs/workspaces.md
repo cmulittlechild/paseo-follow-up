@@ -83,10 +83,16 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
 4. Auto-sends a pending batch exactly when `sendDecision(w, now)` (`shared/send-decision.ts`) says `send`. It is
    the one rule: every surface's batch line shows its `reason` (status invariant
    `the-send-line-matches-the-send-decision`), and it reads only what the refresh persisted before deciding
-   (`runtimeBusy`, `backgroundBusy`, `runtimeReason`, `sendWait`, PR reads, the batch's last refusal). It sends when:
+   (`mainBusy`, `runtimeReason`, `sendWait`, PR reads, the batch's last refusal). It sends when:
    - Auto-send is on, nothing is held, and the agent isn't dormant or gone.
    - The batch has no completion check.
-   - The main agent is loaded and recently used (else `sendWait` is `unloaded`), not busy, and has no background work.
+   - The main agent is loaded and recently used (else `sendWait` is `unloaded`) and free: `mainBusy` (`server/daemon.ts`
+     `observe`, the same read that sets `runtimeBusy`) is its own turn (`turn`), its own background job while Wait for
+     background jobs is on (`jobs`), a permission prompt or question (`permission`), a Session Guard pause (`guard`) or
+     a compaction (`compacting`), each said in `MAIN_WAIT`'s words. Another agent in the workspace, a subagent the main
+     agent started, or the main agent's provider subagents never hold a repair (Q96 = A, invariant
+     `a-repair-goes-to-a-free-main-agent`). While the main agent is busy, Send now is offered and taken: the repair
+     waits in the queue and goes on the tick that sees the main agent free.
    - Setup isn't holding auto-sends (`sendWait` is `setup`).
    - No other batch is open (`sending`, `sent`, `blocked`, `uncertain`).
    - Every PR reads cleanly when the batch has PR tasks (`needsPrObservations`): "waits for a clean read of #2 (…)".
@@ -183,10 +189,18 @@ back (`heldTasks`), or a settled message (Done). The batch is the internal deliv
 
 ## Status model
 
-Background work is work (Paseo 0.16): the main agent's `backgroundWork.count > 0` sets `backgroundBusy`
-(`server/daemon.ts` `observe`), so no repair is sent into it ("sends after the agent's background work"), and Done
-waits ("Wait for background agents and jobs to finish"; a declaration is kept and accepted when it clears). Make main
-agent waits too (`checkMainClaim`).
+Background work is work (Paseo 0.16): any member's `backgroundWork.count > 0` sets `backgroundBusy`
+(`server/daemon.ts` `observe`), so Done waits ("Wait for background agents and jobs to finish"; a declaration is kept
+and accepted when it clears). Make main agent waits too (`checkMainClaim`). A repair waits only for the main agent's
+own job, and only while Wait for background jobs is on (`mainBusy` `jobs`: "sends when the main agent's background job
+ends").
+
+Two scopes, one read (Q96 = A, 2026-11-18). `runtimeBusy` and `backgroundBusy` are the whole workspace: every
+non-recovery member's turn and background work, and, only when Done, a sent message's turn or a Done check going out
+needs it, the provider subagents of idle loaded members. They decide Done and its check (`QUIET_WAIT`), the status
+lines ("Agent handling", Home's running group), a sent message's acknowledgment clock and how hot a workspace's PR
+reads are, because each of those means "all work finished". `mainBusy` is the main agent's own work and decides only
+repairs: the auto-send, the developer's Send, the queue's resolve and re-check, and an answer's ride-along.
 
 `shared/status.ts` is the one place a user-facing status is computed. `batchView(w, now)` picks the batch that
 describes Follow-up's work right now: its phase (`queued`, `sent`, `stuck`), who it waits on (the agent's

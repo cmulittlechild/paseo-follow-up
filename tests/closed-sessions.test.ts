@@ -57,7 +57,9 @@ test("a new user message or a recovered read resets the backoff", async t => {
 });
 
 test("closed and unloaded agents are not asked for provider subagents, which would resume them", async t => {
-  const f = await fixture(t); const w = workspace();
+  // A Done check going out is what asks for subagents (the whole workspace must be quiet); a repair never does (Q96 = A).
+  const doneCheck = batchSchema.parse({ id: "done-check", tasks: [{ key: "completion", kind: "completion", target: "workspace", title: "Check the work is finished", fingerprint: "f" }], state: "pending", createdAt: new Date(clock).toISOString(), sentAt: null, settledAt: null, messageId: "done-message", attempts: 0, result: "", recipientAgentId: null });
+  const f = await fixture(t); const w = workspace({ batches: [doneCheck] });
   f.main.status = "closed"; assert.equal((await f.gateway.observe(w, true)).busy, false);
   // A stored (unloaded) snapshot reports its last status, usually idle, and has no activeTurn.
   f.main.status = "idle"; delete f.main.activeTurn; assert.equal((await f.gateway.observe(w, true)).busy, false);

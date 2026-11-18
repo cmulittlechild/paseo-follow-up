@@ -196,6 +196,8 @@ export default function contribute(server: PluginServerContext) {
   // Settings → Agents: which agent each special role uses, in agents.json (defaults when absent).
   const agentSettings = new AgentSettingsStore(directory);
   gateway.recoveryRole = () => agentSettings.role("recovery");
+  // The main agent's own background job holds its repairs only while Wait for background jobs is on (Q96 = A).
+  gateway.waitForJobs = () => agentSettings.waitEnabled();
   const graphite = new Graphite();
   const github = new Github(undefined, graphite, new Deployments(undefined, undefined, undefined, undefined, repo => prWorkflow.current().repos[repoKey(repo)]?.deploy));
   github.workflow = repo => prWorkflow.workflow(repo);

@@ -65,7 +65,9 @@ test("discovery never reads the timeline of an unloaded agent, even in an active
   const state: State = { version: 1, workspaces: [workspace({ id: "w-pr", mainAgentId: "pr-unloaded", prs: [pr()] })] };
   for (let poll = 0; poll < 3; poll++) await gateway.discover(state);
   assert.deepEqual(d.reads, ["live"], "only the loaded agent was read, once");
-  for (const w of ["w-recent", "w-pr", "w-dormant", "w-live"]) await gateway.observe(workspace({ id: w, mainAgentId: agents.find(a => a.workspaceId === w)!.id }), true);
+  // Done asks for subagents (the whole workspace must be quiet); a repair's send never does (Q96 = A).
+  const completion = { summary: "Shipped", declaredAt: new Date(clock).toISOString() };
+  for (const w of ["w-recent", "w-pr", "w-dormant", "w-live"]) await gateway.observe(workspace({ id: w, mainAgentId: agents.find(a => a.workspaceId === w)!.id, completion }), true);
   assert.deepEqual(d.subagents, ["live"], "provider subagents are asked only of loaded agents");
 });
 

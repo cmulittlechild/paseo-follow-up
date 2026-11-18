@@ -40,6 +40,38 @@ const iso = (ms: number) => new Date(ms).toISOString();
 export const SETTLE_REASON = "waits a minute so new changes join the same message";
 
 /**
+ * Why a repair waits on the main agent itself, said the same on every surface and in the queue (Q96 = A). Only the
+ * main agent's own work holds a repair: never another agent in the workspace, never a subagent.
+ */
+export const MAIN_WAIT = {
+  turn: "sends when the main agent's turn ends, so it isn't interrupted",
+  jobs: "sends when the main agent's background job ends (Wait for background jobs is on)",
+  permission: "sends once the main agent's permission prompt is answered",
+  guard: "sends when Session Guard resumes the main agent",
+  compacting: "sends when Smart Session finishes compacting the main agent",
+} as const;
+export type MainWait = keyof typeof MAIN_WAIT;
+/** Auto-send is off for the workspace: the repair waits for the developer's Send. */
+export const AUTO_OFF_REASON = "Auto-send is off here, so it waits for your Send";
+/**
+ * The main agent's own wait. A record no refresh has read yet (`mainBusy` absent) counts the workspace's busy as the
+ * main agent's: unknown is not off.
+ */
+export const mainWait = (w: Pick<Workspace, "mainBusy" | "runtimeBusy" | "backgroundBusy">): MainWait | null =>
+  repairWait({ busy: w.runtimeBusy, backgroundBusy: w.backgroundBusy, mainBusy: w.mainBusy });
+
+/**
+ * What holds a repair: the main agent's own wait (Runtime.mainBusy, Q96 = A). A gateway that doesn't say (undefined)
+ * counts the workspace's busy as the main agent's: unknown is not off.
+ */
+export function repairWait(runtime: { busy: boolean; backgroundBusy?: boolean; mainBusy?: MainWait | null }): MainWait | null {
+  if (runtime.mainBusy !== undefined) return runtime.mainBusy;
+  return runtime.busy ? "turn" : runtime.backgroundBusy ? "jobs" : null;
+}
+/** The Done check reads whether all work is finished, so it alone still waits for every agent in the workspace. */
+export const QUIET_WAIT = "waits until every agent in the workspace is done, so the check sees finished work";
+
+/**
  * The one auto-send rule (status invariant the-send-line-matches-the-send-decision). The worker's refresh sends the
  * queued batch when, and only when, `send` is true; the batch line on every surface (shared/status.ts) and the Tasks
  * strip (shared/task-rows.ts) show `reason`. It reads only what the refresh persisted (runtime state, sendWait, PR
@@ -52,19 +84,21 @@ export function sendDecision(w: Workspace, now: number, o: { settleMs?: number; 
   // What the developer's own Send (Engine.sendPending/dispatch) refuses, checked in the same order.
   const prUnread = b && needsPrObservations(w, b) ? w.prs.find(p => p.error || !p.snapshot?.complete) : undefined;
   const openBatch = !!b && w.batches.some(x => x.id !== b.id && !recoveryBatch(x) && OPEN_BATCH_STATES.includes(x.state));
+  // The developer's Send is taken while the main agent is busy: it goes the moment the main agent is free (Q96).
   const canSendNow = !!b && b.state === "pending" && !recoveryBatch(b) && !w.archived && w.enable_tracking && !w.hold && !w.goneAgent &&
-    !w.runtimeBusy && !w.backgroundBusy && !w.runtimeReason && !openBatch && !prUnread;
+    (!w.runtimeReason || !!mainWait(w)) && !openBatch && !prUnread;
   const wait = (waitingOn: SendDecision["waitingOn"], reason: string, eta: string | null = null): SendDecision => ({ send: false, waitingOn, reason, eta, canSendNow });
   if (!b || b.state !== "pending" || recoveryBatch(b)) return wait(null, "nothing queued");
   if (w.archived) return wait("you", "the workspace is archived");
   if (!w.enable_tracking) return wait("you", "Follow-up isn't following this workspace");
   // The Done check never goes out on its own (it would wake an idle agent for bookkeeping).
   if (b.tasks.some(t => t.kind === "completion")) return wait("you", "ready to send");
-  if (!w.enable_auto_sends) return wait("you", "ready to send");
+  if (!w.enable_auto_sends) return wait("you", AUTO_OFF_REASON);
   if (w.hold) return wait("you", "paused until you resume");
   if (w.goneAgent) return wait("you", "the main agent's conversation is gone");
-  if (w.runtimeBusy) return wait("agent", "sends when its current turn ends, so it isn't interrupted");
-  if (w.backgroundBusy) return wait("agent", "sends when its background work ends, so it isn't interrupted");
+  // Only the main agent's own work holds a repair (Q96 = A): a subagent or another agent at work never does.
+  const main = mainWait(w);
+  if (main) return wait("agent", MAIN_WAIT[main]);
   if (w.runtimeReason) return wait("follow-up", w.runtimeReason);
   if (openBatch) return wait("follow-up", "waits for the last message to finish");
   if (w.dormant) return wait("you", "waits until the workspace is active again");
