@@ -1,1 +1,0 @@
-- Follow-up has a new icon.

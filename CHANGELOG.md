@@ -11,6 +11,7 @@ Catch up walks you through everything that needs you, one card at a time.
 - **Write your own answer in one step:** pick Something else, type, and send. Use Add note to explain a picked option.
 - **See what's new after stable updates.** Turn off Show What's new after updates in Settings → General if you prefer. Home also announces every available stable version when Updates is set to Tell me.
 - **Steadier answers:** your field and Send stay above the phone keyboard, and unconfirmed messages keep checking and retrying, including answers an older version gave up on. Plus many smaller fixes.
+- Follow-up has a new icon.
 
 <details><summary>Full changelog since 2.1.0</summary>
 
@@ -37,11 +38,13 @@ Catch up walks you through everything that needs you, one card at a time.
 
 ### Setup, Settings and updates
 
+- Follow-up has a new icon.
 - What's new now opens after any update that brings new release notes, not only a major one. Betas still install quietly.
 - Don't want it? Turn off Show What's new after updates in Settings → General. Release notes stay one tap away.
 
 ### Fixes
 
+- Follow-up now sees a Graphite sign-in made with newer gt versions.
 - Home now says when any new stable version is out, including minor and patch releases, if Updates is set to Tell me. Betas stay in Settings → General.
 - Writing your own answer to a question is one step everywhere. Pick Something else, type, and send. The box no longer sits there as a note before you pick anything, in the panel, on Home or on a phone.
 - An answer Follow-up couldn't confirm no longer ends as Failed and waits for you. It keeps checking the agent's chat and sends it again once the chat shows it never arrived.

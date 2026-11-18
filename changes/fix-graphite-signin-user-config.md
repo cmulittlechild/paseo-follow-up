@@ -1,1 +1,0 @@
-- Follow-up now sees a Graphite sign-in made with newer gt versions.
