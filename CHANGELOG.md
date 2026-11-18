@@ -6,7 +6,7 @@ What changed in each version of Follow-up, newest first. Follow-up shows "What's
 
 Catch up walks you through everything that needs you, one card at a time.
 
-- **Start Catch up from Home or ⌘K.** Swipe between cards on a phone, or use the keyboard and queue on desktop. Send from the move bar, skip one card or a whole workspace, or leave it for later.
+- **Start Catch up from Home or ⌘K.** On a phone, swipe left to skip a workspace or right to go back; Skip on the bar skips one card. On desktop, use the keyboard and queue beside the card.
 - **Ask for More context** right on a card. Your workspace's agent explains it, and the card comes back with the answer. More context and Later open beside the card, above the bar on a phone.
 - **Write your own answer in one step:** pick Something else, type, and send. Use Add note to explain a picked option.
 - **See what's new after stable updates.** Turn off Show What's new after updates in Settings → General if you prefer. Home also announces every available stable version when Updates is set to Tell me.
@@ -24,9 +24,10 @@ Catch up walks you through everything that needs you, one card at a time.
 
 ### Questions and answers
 
-- On a phone the card follows your finger: drag left to skip it, right to go back, or let go early and it springs back.
+- On a phone the card follows your finger: drag left to skip the whole workspace (shown underneath), right to go back, or let go early and it springs back. Skip on the bar still skips one card.
 - A note on a picked option opens with Add note and says which option it goes with.
 - Answers that an older version gave up on go back to checking after the update.
+- Skip workspace moved to the top right of the card, beside the workspace's name, on phone and desktop alike.
 
 ### Repairs and PRs
 
