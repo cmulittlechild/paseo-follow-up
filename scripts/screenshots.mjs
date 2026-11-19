@@ -2762,7 +2762,8 @@ async function moreContextShots({ shoot, call }) {
  * dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the small x on every Needs-you item. In the panel:
  * an agent's Action brief at rest (no x) and hovered (the x beside its age), the question card's x (no Dismiss link in
  * its quiet row), and a merge row's x; after Dismiss, the toast with Undo; Catch up's card with its x always shown; Home's
- * detail pane on a phone, x always there. Light and dark. Every dismissal is undone through follow.dismiss before the
+ * detail pane on a phone, x always there. Armed (the first click: the red Dismiss pill in place) on a merge row, a brief,
+ * Catch up's card (⇧D) and a phone; after the second click, the toast with Undo. Light and dark. Every dismissal is undone through follow.dismiss before the
  * next shot, and the run fails if any dismissal queued a message.
  */
 async function dismissShots({ shoot, call }) {
@@ -2795,8 +2796,15 @@ async function dismissShots({ shoot, call }) {
       await page.mouse.move(box.x - 150, box.y + box.height / 2); page.keepPointer = true; await page.waitForTimeout(400); });
     await shoot(`dx-question-${theme}`, TALL, theme, async page => { await panel(page, lone, "Missing keys"); await visible(page.getByText(/When a key is missing in both/)).hover(); await (await x(page, Q_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
     await shoot(`dx-merge-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await (await x(page, MERGE_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x into the red pill, the second
+    // dismisses. The run fails if one click dismissed anything.
+    const arm = async (page, name) => { await (await x(page, name)).click(); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepPointer = true; page.keepFocus = true; await page.waitForTimeout(300); };
+    await shoot(`dx-merge-armed-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await arm(page, MERGE_X); });
+    await shoot(`dx-brief-armed-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover(); await arm(page, BRIEF_X); });
     await shoot(`dx-undo-${theme}`, TALL, theme, async page => {
       await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover();
+      await arm(page, BRIEF_X);
+      if (await page.getByText(/^Dismissed the agent's ask\./).count()) throw new Error("dismiss: one click dismissed");
       await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
     });
     await restore();
@@ -2809,6 +2817,20 @@ async function dismissShots({ shoot, call }) {
       }
       await away(page);
     });
+    await shoot(`dx-catch-up-armed-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page);
+      await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("#255 is approved").filter({ visible: true }).first().isVisible()); i++) {
+        if (i > 40) throw new Error("dismiss: no Catch up card for #255");
+        await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
+      }
+      // ⇧D presses the card's x: once arms it.
+      await page.keyboard.press("Shift+D"); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepFocus = true; await page.waitForTimeout(300);
+    });
+    await shoot(`dx-phone-armed-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X); });
+    await shoot(`dx-phone-undo-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X);
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
+    await restore();
     await shoot(`dx-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await page.waitForTimeout(500); });
     await restore();
   }

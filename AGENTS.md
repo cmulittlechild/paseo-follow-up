@@ -779,7 +779,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 59. **Dismissing anything in Needs you sends the agent nothing** (`dismissing-anything-in-needs-you-sends-the-agent-nothing`,
    which widens `dismissing-a-question-sends-the-agent-nothing`). Every Needs-you item, on every surface (the panel, Home's
    detail pane, the pill, the question dialog, Catch up, phones), has one Dismiss: a small muted x top right beside its
-   age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo. An
+   age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo.
+   Dismissing takes two clicks in place (`dismiss-takes-two-clicks-in-place`): the first click, tap or key arms the x
+   into a small red "Dismiss" pill on the same spot (it grows leftward over its neighbours; the card never reflows) and
+   the second dismisses; a click elsewhere, Esc, focus leaving, the pointer leaving the card (600 ms grace) or 4 s
+   untouched disarms it, and only one x is armed app-wide. No pop-up. An
    agent dismisses for the developer with `dismiss_item` (planned, audited; never its own brief, question or
    workspace; `dismiss_question` is the question alias). It leaves Needs you and every count at once, and nothing is
    queued or sent, so no agent spends a turn on it; nothing Follow-up holds is dropped (a queued batch stays queued, a
@@ -790,7 +794,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `dismissedQuestions`, `dismissedItems`, `dismissedAsk`). Per kind: [docs/needs-you.md](docs/needs-you.md#dismiss).
    2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
    that again", then "Maybe the dismiss button should be on all "Needs you" actions? ... I want it to be really not
-   intrusive". Guarded by `tests/dismiss-question.test.ts` and `tests/dismiss-everywhere.test.ts`.
+   intrusive". Then, on 2.3.0-beta.2: "This is a destructive action, so maybe we should have a confirmation pop-up?" and
+   Q113=B, "Two clicks, in place ... No pop-up, no accidental dismiss. Undo stays." Guarded by
+   `tests/dismiss-question.test.ts`, `tests/dismiss-everywhere.test.ts` and `tests/dismiss-two-click.test.ts`.
 
 60. **Follow-up's GitHub reads scale with what changed, not with how many PRs it tracks**
    (`github-reads-scale-with-change`). A due PR read in full before is probed first (one query per account for all due
