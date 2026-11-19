@@ -10,6 +10,7 @@ import { MODE } from "./shared/catch-up";
 import { FollowPanel } from "./client/panel";
 import { createPaseoWorkspaces } from "./client/home-data";
 import { createHomeExtras } from "./client/home-view";
+import { setContextSource } from "./client/more-context";
 import { contributeChat } from "./client/chat";
 import { contributeCreated } from "./client/created";
 import { hasFeeds } from "./client/feeds";
@@ -78,6 +79,8 @@ export default function contribute(host: PluginClientContext) {
   };
   const paseoWorkspaces = createPaseoWorkspaces(client, { onAdd: register, onRemove: id => { headers.get(id)?.remove(); headers.delete(id); } });
   const extras = createHomeExtras(client);
+  // One store of More context asks for every question surface (client/more-context.tsx).
+  setContextSource(extras);
   const searchKey = createSearchKey();
   const sources = { inbox, live: store, paseo: paseoWorkspaces, extras };
   const offActivity = extras.onActivity(() => { inbox.nudge(); store.nudge(); });
@@ -164,6 +167,7 @@ export default function contribute(host: PluginClientContext) {
     for (const r of removers) void r();
     for (const button of headers.values()) button.remove();
     await paseoWorkspaces.stop();
+    setContextSource(null);
     await extras.stop();
   };
 }

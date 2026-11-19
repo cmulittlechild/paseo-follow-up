@@ -15,7 +15,7 @@ import type { PluginServerContext, PluginHandlerContext, PluginHookContext, Plug
 import type { PluginRpcContract, PluginSubscriptionContract } from "@getpaseo/plugin";
 import { ValueFeed, WorkspacesFeed } from "./server/feeds";
 import { ContextRequests, contextRecipient } from "./server/context-requests";
-import { agentContextPrompt, deckCards } from "./shared/catch-up";
+import { agentContextPrompt, contextFor, deckCards } from "./shared/catch-up";
 import { buildHome } from "./shared/home";
 import { needsYou } from "./shared/attention";
 import type { SortMode } from "./shared/sort";
@@ -979,7 +979,7 @@ export default function contribute(server: PluginServerContext) {
     const model = buildHome({ rows: list.rows, tracked, paseo: paseoList, now: Date.now(), sort: (settings as { home_sort?: SortMode }).home_sort, priorities });
     const cards = deckCards({ model, rows: list.rows, items: id => { const w = byId.get(id); return w ? needsYou(w) : []; } });
     return { cards: cards.map(c => {
-      const r = [...context].reverse().find(x => x.cardKey === c.key);
+      const r = contextFor(context, { workspaceId: c.s.workspaceId, cardKey: c.key });
       return { key: c.key, kind: c.kind, workspaceId: c.s.workspaceId, agentId: c.s.agentId, title: c.s.title, line: c.s.line, questionId: c.questionId ?? null,
         item: c.item && "title" in c.item ? String((c.item as { title?: unknown }).title ?? "") || null : null, context: r ? { id: r.id, state: r.state, target: r.target } : null };
     }) };

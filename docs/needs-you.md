@@ -307,6 +307,23 @@ Catch up deals Needs you one card at a time: act, next, act, next. Design and To
   `failed`), never by waking anyone. The prompt carries who asked (`by`): the developer, or the agent that called
   `ask_context`.
 
+## More context
+
+More context is the same on every surface that answers a question (invariant `more-context-is-the-same-on-every-surface`):
+Catch up's card, and everywhere `QuestionBody` draws an open question outside Catch up (the panel's Needs you card,
+Home's detail pane, the question dialog, the pill, phones). Outside Catch up it is a quiet "More context" link under the
+question's own context, never a new button or key; it opens Catch up's panel (`MorePanel`: "I don't get it" first, then
+your own words) in Catch up's sheet (`MoveResult`), all from `client/more-context.tsx`. The ask is the same request
+(`follow.context-ask`, what `ask_context` calls), to the same agent (`contextRecipient`). While it is pending the
+question says so ("Asked the agent · the answer shows here when it comes"); the answer, "answered in its chat" or a
+failure sits on the question (`ContextAnswer`), with "Ask more" to ask again.
+
+One question is one card wherever it is asked from. Catch up keys its cards by workstream (`agent:<id>|Q3`), the other
+surfaces by workspace (`questionCardKey`: `ws:<id>|Q3`), and every reader matches through `sameCard` / `contextFor`
+(`shared/catch-up.ts`): the worker's one-open-ask-per-card rule, `catch_up_deck`'s `context`, Catch up's card and every
+question card. So an ask made from the panel shows in Catch up and on Home, and the other way round. The client reads
+the asks from one store, Home's extras (`setContextSource`), which `follow.home-feed` keeps current, so nothing polls.
+
 ## Answers waiting to be sent
 
 `an-answer-leaves-needs-you-only-when-delivered`. Copy and Put in chat move the developer's own words without

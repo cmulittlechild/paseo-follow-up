@@ -387,5 +387,30 @@ export function plainAnswer(text: string): string {
   return text.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_m, a, b) => a ?? b).replace(/^\s{0,3}(#{1,6}|>)\s+/gm, "").trim();
 }
 
+/**
+ * more-context-is-the-same-on-every-surface: a question is one card wherever it is answered. Catch up keys its card
+ * by workstream (`agent:<id>|Q3` or `ws:<id>|Q3`); the panel, Home's detail pane, the pill and phones ask with
+ * `questionCardKey`. Every reader and the worker's one-open-ask rule match through `sameCard`, so an ask made on one
+ * surface shows (and dedupes) on all of them.
+ */
+export const questionCardKey = (workspaceId: string, questionId: string) => `ws:${workspaceId}|${questionId}`;
+/** The question a card key is about ("Q3"), or null for any other card (a permission, a merge, a brief). */
+export function questionOfCard(cardKey: string): string | null {
+  const i = cardKey.indexOf("|");
+  const subject = i < 0 ? "" : cardKey.slice(i + 1);
+  return /^Q\d+$/.test(subject) ? subject : null;
+}
+/** One card, whichever surface named it: the same key, or the same question of the same workspace. */
+export function sameCard(a: { workspaceId: string | null; cardKey: string }, b: { workspaceId: string | null; cardKey: string }): boolean {
+  if (a.cardKey === b.cardKey) return true;
+  const q = questionOfCard(a.cardKey);
+  return !!q && !!a.workspaceId && a.workspaceId === b.workspaceId && q === questionOfCard(b.cardKey);
+}
+/** The newest ask about a card, from any surface. */
+export function contextFor(requests: readonly ContextRequest[], card: { workspaceId: string | null; cardKey: string }): ContextRequest | null {
+  for (let i = requests.length - 1; i >= 0; i--) if (sameCard(requests[i], card)) return requests[i];
+  return null;
+}
+
 /** The ask as the card's header quotes it: its first sentence ("I don't get it."), not the whole prompt. */
 export const askHeadline = (ask: string): string => (ask.match(/^.+?[.?!](?=\s|$)/)?.[0] ?? ask).slice(0, 120);

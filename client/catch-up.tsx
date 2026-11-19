@@ -13,9 +13,8 @@ import { needsYou } from "../shared/attention";
 import { liveBrief } from "../shared/brief";
 import { age, snoozeUntil } from "../shared/inbox";
 import { laterChoices } from "../shared/row-menu";
-import { errorText } from "../shared/errors";
 import { CATCH_UP_RAIL_DEFAULT, CATCH_UP_RAIL_MAX, CATCH_UP_RAIL_MIN } from "../shared/display";
-import { CATCH_UP_KEYS, CONTEXT_ASKS, MODE, askHeadline, catchUpKey, keyLabel, deckCards, groupOf, openInWorkspace, park, prevPos, applySwipe, skipWorkspace, swipeLock, swipeOutcome, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
+import { CATCH_UP_KEYS, MODE, catchUpKey, contextFor, keyLabel, deckCards, groupOf, openInWorkspace, park, prevPos, applySwipe, skipWorkspace, swipeLock, swipeOutcome, settle as settleCard, startSession, statsOf, sync, type ContextRequest, type DeckCard, type Outcome, type Session } from "../shared/catch-up";
 import type { Workspace } from "../shared/model";
 import type { ListWorkspace } from "../shared/list";
 import { bottomInset, Button, focusSoon, IconButton, SubmitScope, text, type Theme } from "./kit";
@@ -36,6 +35,9 @@ import { hostDictation } from "./dictation";
 import { ownsKey, surfaceVisible } from "../shared/list-keys";
 import { useReducedMotion } from "./motion";
 import { PRIMARY_FORM } from "./dock";
+import { MorePanel, MoveResult, ContextAnswer } from "./more-context";
+
+export { MorePanel, MoveResult, ContextAnswer };
 
 /** react-native-web's data attribute, so the option-letter keys find this card's radios. */
 const CARD_MARK = { dataSet: { catchUpCard: "1" } } as object;
@@ -80,8 +82,8 @@ export function skipNoun(card: Pick<DeckCard, "kind" | "item">): string {
 /** The card Skip's tooltip and accessible name: what it does and that the card comes back. */
 export const skipCardHint = (noun: string) => `Skip this ${noun}. It comes back after the rest`;
 export const skipWorkspaceHint = (n: number) => `Skip this workspace's ${n} cards. They come back after the rest`;
-/** The newest ask about this card, if any. */
-const askFor = (context: readonly ContextRequest[], key: string) => [...context].reverse().find(r => r.cardKey === key) ?? null;
+/** The newest ask about this card, if any, from whichever surface asked it (sameCard). */
+const askFor = (context: readonly ContextRequest[], card: DeckCard) => contextFor(context, { workspaceId: card.s.workspaceId, cardKey: card.key });
 
 export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: Theme; compact: boolean; deps: CatchUpDeps; navigation: Nav; onExit: () => void }) {
   const c = theme.colors; const t = text(c, compact);
@@ -283,7 +285,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const body = finished || !card ? <Finished theme={theme} compact={compact} stats={stats} empty={!total} onHome={onExit}
       onSkipped={() => setSession(s => ({ ...s, pos: s.order.findIndex(k => s.outcomes[k] === "skipped"), lapped: true }))} />
     : <CardView key={card.key} card={card} w={w} theme={theme} compact={compact} deps={deps} navigation={navigation} gone={gone} more={more} setMore={setMore}
-      request={askFor(context, card.key)} waiting={!!session.parked[card.s.key]} onAsk={ask}
+      request={askFor(context, card)} waiting={!!session.parked[card.s.key]} onAsk={ask}
       sameWorkspace={session.order.filter(k => cardOf(k)?.s.key === card.s.key)}
       onDone={() => settle("done")} onSkip={skip} onSkipWorkspace={wsLeft > 1 ? skipWs : undefined} wsLeft={wsLeft} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} />;
 
@@ -393,7 +395,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     ? <View style={{ gap: 8 }}>
       <RichText plain style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{`${q.id} · ${q.title}`}</RichText>
       <QuestionBody key={q.id} workspace={ws} question={q} theme={theme} compact={compact} inline={false}
-        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} dictate />
+        openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} dictate moreContext={false} />
     </View>
     : card.kind === "item" && card.item && full
     ? <View style={{ borderRadius: 10, borderWidth: 1, borderColor: withAlpha(c.statusWarning, 0.45), overflow: "hidden" }}>
@@ -467,54 +469,6 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   </DockedPane>;
 }
 
-/**
- * Where a move's result opens (MOVE_OPENS, a-move-bar-action-opens-in-view): a sheet in the phone's dock or a popover
- * on its desktop button. Focus moves into it (its first choice), and on the web it scrolls into view the least distance.
- */
-export function MoveResult({ place, theme, label, width, children }: { place: "sheet" | "popover"; theme: Theme; label: string; width?: number; children: ReactNode }) {
-  const c = theme.colors;
-  const ref = useRef<View>(null);
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const t = setTimeout(() => {
-      const node = ref.current as unknown as { querySelector?(q: string): { focus?(o?: object): void } | null; scrollIntoView?(o: object): void } | null;
-      node?.scrollIntoView?.({ block: "nearest" });
-      // The first choice: More context's suggestions ("I don't get it" leads), else Later's first time.
-      (node?.querySelector?.('[role="radio"]') ?? node?.querySelector?.('[role="menu"] [role="button"]'))?.focus?.({ preventScroll: true });
-    }, 0);
-    return () => clearTimeout(t);
-  }, []);
-  return <View ref={ref} {...({ dataSet: { moveResult: place } } as object)} role="dialog" accessibilityLabel={label}
-    style={[{ padding: place === "sheet" ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 },
-      place === "sheet"
-        ? { marginHorizontal: 12, marginTop: 12 }
-        : { position: "absolute", zIndex: 20, left: 0, bottom: "100%", marginBottom: 8, width, shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } }]}>
-    {children}
-  </View>;
-}
-
-/** What came back for this card: the answer, "answered in its chat", a failure, or (seen going Back) that it's still asking. */
-export function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void }) {
-  const c = theme.colors; const t = text(c, compact);
-  const who = request.target === "overseer" ? "Overseer" : agent === "the agent" ? "The agent" : agent;
-  const asking = request.state === "asking";
-  return <View accessibilityLiveRegion="polite" style={{ gap: 8, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: asking ? c.border : withAlpha(c.statusSuccess, 0.4), backgroundColor: c.surface1 }}>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Icon name={asking ? "Hourglass" : request.state === "failed" ? "CircleAlert" : "Sparkles"} size={14} color={request.state === "failed" ? c.statusDanger : c.foregroundMuted} />
-      <RichText plain style={[t.small, { flex: 1 }]}>{asking ? `Asked ${who === "Overseer" ? "the Overseer" : who}${waiting ? " · this comes back as the next card when it answers. You can still act on it now" : ""}` : `${who} · you asked: ${askHeadline(request.ask)}`}</RichText>
-    </View>
-    {request.state === "answered" && request.answer && <RichText selectable style={t.body}>{request.answer}</RichText>}
-    {request.state === "chat" && <View style={{ gap: 8 }}>
-      <Text style={t.body}>{who === "Overseer" ? "The Overseer answered in its own chat, not here: it can't reply on a card." : `${who} answered in its chat.`}</Text>
-      {/* A 2.2.0-beta.3 ask of the Overseer: its answer is in the Overseer's chat (an-ask-goes-only-to-an-agent-that-can-answer-it). */}
-      <View style={{ flexDirection: "row" }}>{who === "Overseer"
-        ? <Button theme={theme} compact={compact} icon="MessageSquare" title="Open Overseer" disabled={!request.askedOf || !openAgent} onPress={() => request.askedOf && openAgent?.(request.askedOf)} />
-        : <Button theme={theme} compact={compact} icon="MessageSquare" title="Open chat" onPress={openChat} />}</View>
-    </View>}
-    {request.state === "failed" && <Text style={t.body}>{request.error ?? "The ask didn't go through. Try again, or open the chat."}</Text>}
-  </View>;
-}
-
 function PermissionCard({ s, theme, compact, onDone }: { s: DeckCard["s"]; theme: Theme; compact: boolean; onDone: () => void }) {
   const agent = useAgentLive(s.agentId);
   const t = text(theme.colors, compact);
@@ -529,49 +483,6 @@ function BriefAsk({ s, theme, compact, deps }: { s: DeckCard["s"]; theme: Theme;
   const b = liveBrief(brief.data?.brief);
   if (!b) return <Text style={text(theme.colors, compact).ask}>{s.line}</Text>;
   return <BriefCard {...({ embedded: true, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} />;
-}
-
-/**
- * More context: "I don't get it" first (most asks just need explaining), then the developer's own words, to one place:
- * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
- * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
- */
-export function MorePanel({ theme, compact, onClose, onAsk }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void> }) {
-  const c = theme.colors; const t = text(c, compact);
-  const [words, setWords] = useState<string>(CONTEXT_ASKS[0].text);
-  const [picked, setPicked] = useState<string>(CONTEXT_ASKS[0].id);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const send = () => {
-    if (!words.trim() || busy) return;
-    setBusy(true); setError(null);
-    // The words stay unless the ask is recorded.
-    onAsk(words.trim()).catch(e => setError(errorText(e))).finally(() => setBusy(false));
-  };
-  return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10 }}>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Icon name="Sparkles" size={14} color={c.foreground} />
-      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>More context</Text>
-      <IconButton theme={theme} compact={compact} icon="X" label="Close more context" onPress={onClose} />
-    </View>
-    <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-      {CONTEXT_ASKS.map((x, i) => <Pressable key={x.id} accessibilityLabel={compact ? x.label : `${x.label} (${i + 1})`} accessibilityRole="radio" accessibilityState={{ checked: picked === x.id }} onPress={() => { setPicked(x.id); setWords(x.text); }}
-        style={{ minHeight: compact ? 36 : 28, justifyContent: "center", paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: picked === x.id ? c.foreground : c.border, backgroundColor: picked === x.id ? c.surface2 : "transparent" }}>
-        <Text style={[t.meta, { color: picked === x.id ? c.foreground : c.foregroundMuted }]}>{x.label}</Text>
-      </Pressable>)}
-    </View>
-    <View {...PRIMARY_FORM} style={{ gap: 10 }}>
-    <TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
-      onChangeText={v => { setWords(v); setPicked(CONTEXT_ASKS.find(x => x.text === v)?.id ?? ""); }}
-      style={{ minHeight: compact ? 84 : 56, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
-    {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
-    <View {...({ dataSet: { askAgent: "1" } } as object)} style={{ flexDirection: "row" }}>
-      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title="Ask the agent" loading={busy} disabled={!words.trim() || busy}
-        accessibilityHint={compact ? "Asks this workspace's main agent, which may wake it" : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
-    </View>
-    </View>
-    <Text style={t.small}>This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.</Text>
-  </View>;
 }
 
 export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {

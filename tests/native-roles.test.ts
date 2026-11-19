@@ -47,6 +47,7 @@ test("no accessibilityRole is cast past its type, the only check that keeps it t
 
 test("Catch up's More context and Later sheets (MoveResult) and the keys sheet are dialogs by the ARIA role", async () => {
   const s = await readFile(join(root, "client/catch-up.tsx"), "utf8");
-  assert.match(s, /function MoveResult[\s\S]*?role="dialog" accessibilityLabel=\{label\}/);
+  const shared = await readFile(join(root, "client/more-context.tsx"), "utf8");
+  assert.match(shared, /function MoveResult[\s\S]*?role="dialog" accessibilityLabel=\{label\}/);
   assert.match(s, /function KeysSheet[\s\S]*?<View role="dialog" accessibilityLabel=\{label\}/);
 });

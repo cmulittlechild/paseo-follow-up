@@ -34,7 +34,9 @@ test("the card draws More context and Later only through MoveResult: the dock's 
   assert.match(screen, /popover\(moreBlock, "More context"/, "desktop: More context's popover on its button");
   assert.match(screen, /popover\(laterBlock, "Later"/, "desktop: Later's popover on its button");
   assert.match(screen, /sheet && !typingInContent/, "the sheet stays while its own ask box has focus, so it stays above the keyboard");
-  const result = screen.slice(screen.indexOf("function MoveResult"));
+  // MoveResult is the shared More context component's (client/more-context.tsx), used by every question surface.
+  const shared = await readFile(join(ROOT, "client/more-context.tsx"), "utf8");
+  const result = shared.slice(shared.indexOf("function MoveResult"));
   assert.match(result, /scrollIntoView\?\.\(\{ block: "nearest" \}\)/, "it scrolls into view the least distance");
   assert.match(result, /\[role="radio"\]/, "focus goes to its first choice: I don't get it");
 });

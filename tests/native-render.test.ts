@@ -13,6 +13,7 @@ register("./support/native/hooks.mjs", import.meta.url);
 // Untyped on purpose: react-test-renderer ships no types, and the stand-in is plain JavaScript.
 const { create, act } = await import("react-test-renderer" as string) as { create: (el: unknown) => { root: { findAll(f: (n: { type: unknown; props: Record<string, unknown> }) => boolean): { props: Record<string, unknown> }[] } }; act: (f: () => Promise<void>) => Promise<void> };
 const { MoveResult, MorePanel, ContextAnswer, Finished, KeysSheet } = await import("../client/catch-up");
+const { QuestionMoreContext, setContextSource } = await import("../client/more-context");
 const { ANDROID_ROLES } = await import("./support/native/react-native.mjs" as string) as { ANDROID_ROLES: Set<string> };
 
 const colors = new Proxy({}, { get: () => "#888888" });
@@ -60,4 +61,16 @@ test("the rest of Catch up that a phone shows renders under the phone's rules: t
     const { error } = await render(el as never);
     assert.equal(error, null, `${name} crashed on a phone: ${(error as Error)?.message}`);
   }
+});
+
+test("More context on a question outside Catch up (the panel, Home, the pill on a phone) renders under the phone's rules", async () => {
+  const ask = (state: string) => ({ id: "r1", workspaceId: "w1", agentId: "a1", cardKey: "ws:w1|Q1", card: "Q1 · Retry declined cards?", ask: "I don't get it.", target: "agent", state, askedOf: "a1", askedAt: "2026-01-01T10:00:00Z", answer: state === "answered" ? "Retry once." : null, error: state === "failed" ? "The agent is gone." : null });
+  for (const requests of [[], ...["asking", "answered", "chat", "failed"].map(s => [ask(s)])]) {
+    await act(async () => { setContextSource({ context: () => requests as never, subscribe: () => () => {}, askContext: async () => ({ request: ask("asking") as never }) }); });
+    const { r, error } = await render(createElement(QuestionMoreContext, { workspace: { id: "w1", mainAgentId: "a1" }, question: { id: "Q1", title: "Retry declined cards?", askedBy: "a1" }, theme, compact: true, openAgent: () => {} }));
+    assert.equal(error, null, `crashed on a phone (${requests[0]?.state ?? "idle"}): ${(error as Error)?.message}`);
+    const link = r!.root.findAll(n => n.props.accessibilityLabel === "More context on Q1" && typeof n.props.onPress === "function")[0];
+    if (link) { let opened: unknown = null; try { await act(async () => { (link.props.onPress as () => void)(); }); } catch (e) { opened = e; } assert.equal(opened, null, "its sheet opens on a phone"); }
+  }
+  await act(async () => { setContextSource(null); });
 });
