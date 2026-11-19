@@ -24,8 +24,8 @@
 - **Catch up's queue rail width** is the Display field `catch_up_rail_fraction`: the rail's share of the Catch up
   screen on a desktop, 0.16 to 0.5, absent until first dragged (read as 0.28). It saves the same way as Home's right
   pane; `set_display` sets it with `{ values: { catch_up_rail_fraction: 0.3 } }`.
-- **Search from anywhere** is the Display field `search_shortcut`: `mod-slash` (⌘/ on a Mac, Ctrl+/ elsewhere; the
-  default when absent), `mod-shift-k`, `mod-shift-h` or `none`. Settings → Inbox & display → Keyboard picks it (web
+- **Search from anywhere** is the Display field `search_shortcut`: `mod-shift-k` (⌘⇧K on a Mac, Ctrl+Shift+K elsewhere; the
+  default when absent or saved as the retired `mod-slash`), `mod-shift-h` or `none`. Settings → Inbox & display → Keyboard picks it (web
   and desktop only); `set_display` sets it with `{ values: { search_shortcut: "none" } }`. No choice is a key Paseo
   binds (`PASEO_BOUND`, `shared/search-key.ts`; invariant `every-shortcut-is-configurable-and-never-paseo-s`).
 - **Display fields** are read and written by agents through `display_settings` and `set_display`

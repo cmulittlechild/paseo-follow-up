@@ -157,7 +157,9 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
       : !!value && <Pressable accessibilityRole="button" accessibilityLabel={`Clear ${placeholder.toLowerCase()}`} hitSlop={dense ? 14 : 8} onPress={() => { onChange(""); inputRef.current?.focus(); }}>
       <Icon name="X" size={dense ? 16 : 13} color={c.foregroundMuted} />
     </Pressable>}
-    {slashHint && !value && !focused && !dense && Platform.OS === "web" && <Text accessibilityElementsHidden importantForAccessibility="no" {...(slashTitle ? { title: slashTitle } as object : null)} style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: c.border, fontVariant: ["tabular-nums"] }}>{slashHint}</Text>}
+    {slashHint && !value && !focused && !dense && Platform.OS === "web" && <Text accessibilityElementsHidden importantForAccessibility="no"
+      // React Native Web drops title props on Text; keep the existing chip's DOM title current directly.
+      ref={node => { (node as unknown as { setAttribute?: (key: string, value: string) => void } | null)?.setAttribute?.("title", slashTitle ?? ""); }} style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: c.border, fontVariant: ["tabular-nums"] }}>{slashHint}</Text>}
   </View>;
 }
 

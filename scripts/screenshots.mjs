@@ -1951,9 +1951,9 @@ async function splitShots({ shoot, seeded, call, out }) {
 
 /**
  * shortcut (every-shortcut-is-configurable-and-never-paseo-s): the search-from-anywhere key, end to end. Headless
- * Chromium on Linux is "not a Mac", so the default is Ctrl+/. From an agent chat with the cursor in the composer it
+ * Chromium on Linux is "not a Mac", so the default is Ctrl+Shift+K. From an agent chat with the cursor in the composer it
  * opens Home with the cursor in Home's search; on Home it only moves the cursor; with Paseo's sidebar collapsed (its own
- * Ctrl+B) it still works; None does nothing; Ctrl+Shift+K works once chosen and Ctrl+/ then does nothing, also after a
+ * Ctrl+B) it still works; None does nothing; Ctrl+Shift+K works by default and Ctrl+/ does nothing, also after a
  * reload. Renders: Settings → Inbox & display's Keyboard row, Home's search chip and the ⌘K row, light and dark.
  * Writes shortcut.json; any failed check fails the run.
  */
@@ -1981,7 +1981,7 @@ async function homeKeysShots({ shoot, out }) {
   };
   const leftForChat = async (page, before) => settle(page, async () => !onHome(page) || page.url() !== before);
   await shoot("home-keys-check", DESKTOP, "dark", async page => {
-    // Tom's path: / (or ⌘/), type, Enter shows it, Enter again opens it.
+    // The search path: / (or ⌘⇧K), type, Enter shows it, Enter again opens it.
     check("search: the first Enter shows the result in the pane", await searchPick(page));
     const at = page.url();
     const where = () => page.evaluate(() => { const a = document.activeElement; return a === document.body ? "body" : `${a?.tagName}:${a?.getAttribute("aria-label") ?? a?.id ?? ""}`; });
@@ -2058,30 +2058,33 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
     await composer.click(); await composer.fill("draft");
     return composer;
   };
-  await setKey("mod-slash");
+  await setKey("mod-shift-k");
   await shoot("shortcut-check", DESKTOP, "dark", async page => {
     await page.goto(ORIGIN); await page.getByText("Follow-up", { exact: true }).first().waitFor();
     await inComposer(page);
-    await page.keyboard.press("Control+/");
-    check("Ctrl+/ from the composer opens Home with the cursor in its search", await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
+    const chatBefore = page.url();
+    await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+    check("Ctrl+/ does not open Home with the default key", page.url() === chatBefore && !await searchFocused(page));
+    await page.keyboard.press("Control+Shift+K");
+    check("Ctrl+Shift+K from the composer opens Home with the cursor in its search", await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
     // Already on Home, with the cursor elsewhere: only the cursor moves.
     await page.getByText("Morning brief", { exact: true }).first().click(); await page.waitForTimeout(300);
     const before = page.url();
-    await page.keyboard.press("Control+/");
+    await page.keyboard.press("Control+Shift+K");
     check("on Home it only moves the cursor", await settle(page, () => searchFocused(page)) && page.url() === before, { before, after: page.url() });
     // Paseo's sidebar collapsed (its own Ctrl+B): the key needs no sidebar row.
     await inComposer(page);
     await page.keyboard.press("Control+b"); await page.waitForTimeout(400);
     const sidebarRow = await page.getByText("Follow-up", { exact: true }).filter({ visible: true }).count();
     await page.locator("textarea").filter({ visible: true }).last().click();
-    await page.keyboard.press("Control+/");
+    await page.keyboard.press("Control+Shift+K");
     check("works with Paseo's sidebar collapsed", await settle(page, async () => onHome(page) && await searchFocused(page)), { sidebarRowsVisible: sidebarRow });
     await page.keyboard.press("Control+b"); await page.waitForTimeout(300);
     // None: nothing happens, and the composer keeps its draft.
     await setKey("none"); await page.reload();
     await inComposer(page);
     const chat = page.url();
-    await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+    await page.keyboard.press("Control+Shift+K"); await page.waitForTimeout(800);
     check("None does nothing", page.url() === chat && !await searchFocused(page), { url: page.url() });
     // Ctrl+Shift+K: works, and Ctrl+/ no longer does; both after a reload too.
     await setKey("mod-shift-k"); await page.reload();
@@ -2094,22 +2097,31 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
       await page.keyboard.press("Control+Shift+K");
       check(`Ctrl+Shift+K opens Home's search (${pass})`, await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
     }
-    await setKey("mod-slash");
+    await setKey("mod-shift-k");
   });
   // Renders: the settings row, Home's search chip, the ⌘K row; light and dark.
-  for (const theme of ["light", "dark"]) {
-    await shoot(`shortcut-settings-${theme}`, DESKTOP, theme, async page => {
+  for (const mac of [false, true]) for (const theme of ["light", "dark"]) {
+    const suffix = `${mac ? "mac-" : ""}${theme}`;
+    const label = mac ? "⌘⇧K" : "Ctrl+Shift+K";
+    const options = mac ? { init: () => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }) } : {};
+    await shoot(`shortcut-settings-${suffix}`, DESKTOP, theme, async page => {
       await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
       await page.getByRole("tab", { name: /^Inbox & display/ }).filter({ visible: true }).first().click();
       const row = page.getByText("Search from anywhere", { exact: true }).filter({ visible: true }).first();
       await row.waitFor(); await row.evaluate(el => el.scrollIntoView({ block: "center" }));
       return { x: 400, y: 0, width: DESKTOP.width - 400, height: DESKTOP.height };
-    });
-    await shoot(`shortcut-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("textbox", { name: SEARCH }).first().waitFor(); return { x: 320, y: 0, width: 840, height: 220 }; });
-    await shoot(`shortcut-cmdk-${theme}`, DESKTOP, theme, async page => {
-      await openHome(page); await page.keyboard.press("Control+k");
-      await page.keyboard.type("Follow-up: Search"); await page.getByText(/Follow-up: Search \(Ctrl\+\/\)/).first().waitFor();
-    });
+    }, options);
+    await shoot(`shortcut-home-${suffix}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("textbox", { name: SEARCH }).first().waitFor();
+      const chip = page.getByText(label, { exact: true }).filter({ visible: true }).first();
+      await chip.waitFor();
+      const title = `${label} from anywhere · / on Home`;
+      check(`${suffix}: Home hover title names both keys`, await page.getByTitle(title, { exact: true }).count() > 0);
+      await page.getByTitle(title, { exact: true }).first().hover(); page.keepPointer = true;
+      return { x: 320, y: 0, width: 840, height: 220 }; }, options);
+    await shoot(`shortcut-cmdk-${suffix}`, DESKTOP, theme, async page => {
+      await openHome(page); await page.keyboard.press(mac ? "Meta+k" : "Control+k");
+      await page.keyboard.type("Follow-up: Search"); await page.getByText(`Follow-up: Search (${label})`, { exact: true }).first().waitFor();
+    }, options);
   }
   await fs.writeFile(join(out, "shortcut.json"), JSON.stringify(checks, null, 2));
   log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
