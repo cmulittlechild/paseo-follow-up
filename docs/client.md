@@ -300,3 +300,4 @@ Paseo shortcut compatibility: `shared/paseo-keys.ts` extracts bundle combos and 
 checks every search preset and modified Catch up/Home key, and lists collisions and additions to `PASEO_BOUND`.
 Run it when Paseo ships, then review and refresh the snapshot union in `shared/search-key.ts`. A missing or
 unreadable bundle fails the check rather than claiming compatibility. There is no schedule or CI network check.
+Home’s search chip sets its hover title on its DOM node because React Native Web drops the Text title prop.
