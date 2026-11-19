@@ -41,6 +41,8 @@ test("physical keys reconstruct Hebrew and Russian; paste, selection, compositio
     c.key({ key: "Backspace", code: "Backspace" }, value, value.length, value.length);
     value = value.slice(0, -1); assert.equal(c.change(value), "smar");
     assert.equal(c.change("pasted text"), null);
+    c.key({ key: "ד", code: "KeyS" }, "pasted text", 11, 11);
+    assert.equal(c.change("pasted textד"), null, "typing after paste cannot resurrect stale keys");
     c.change("");
     c.key({ key: "ד", code: "KeyS" }, "", 0, 0); assert.equal(c.change("ד"), "s");
     c.key({ key: "צ", code: "KeyM" }, "ד", 0, 1); assert.equal(c.change("צ"), null);

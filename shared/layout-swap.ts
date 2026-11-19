@@ -18,7 +18,7 @@ export function layoutQueries(query: string, physical?: string | null): string[]
     variants.push(swapLayout(query, "hebrew"));
     variants.push([...query].map(c => c.toLowerCase() === "q" ? "'" : c.toLowerCase() === "w" ? "-" : swapLayout(c, "hebrew")).join(""));
   }
-  const en = "qwertyuiop[]asdfghjkl;'zxcvbnm,./", ru = "йцукенгшщзхъфывапролджэячсмитьбю.";
+  const en = "`qwertyuiop[]asdfghjkl;'zxcvbnm,./", ru = "ёйцукенгшщзхъфывапролджэячсмитьбю.";
   const russian = /[а-яё]/i.test(query);
   if (russian || /[a-z]/i.test(query)) variants.push([...query].map(c => {
     const from = russian ? ru : en, to = russian ? en : ru;

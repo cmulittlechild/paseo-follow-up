@@ -432,8 +432,8 @@ async function seed({ call, home }) {
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
-      { key: "smart", project: "app", title: "Smart Session", minute: 0, prompt: "Keep the session working", steps: [rpc("follow.enroll", { goal: "Keep the session working" }), msg("Waiting for review.")] },
-      { key: "invoice", project: "app", title: "Invoice exports", minute: 1, prompt: "Export invoices", steps: [rpc("follow.enroll", { goal: "Export invoices" }), msg("Waiting for review.")] });
+      { key: "smart", flag: false, project: "app", title: "Smart Session", minute: 0, prompt: "Keep the session working", steps: [rpc("follow.enroll", { goal: "Keep the session working" }), msg("Waiting for review.")] },
+      { key: "invoice", flag: false, project: "app", title: "Invoice exports", minute: 1, prompt: "Export invoices", steps: [rpc("follow.enroll", { goal: "Export invoices" }), msg("Waiting for review.")] });
   }
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
