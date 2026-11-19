@@ -3,7 +3,8 @@ import { Platform, TextInput, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { homeCounts, type HomeGroupId, type HomeModel } from "../shared/home";
-import { filterHome, homeSearchDocs, indexDocs, defaultActive, omniboxResults, overseerProvider, workspaceProvider, type OmniboxItem, type OmniboxProvider } from "../shared/search";
+import { layoutHint, filterHome, homeSearchDocs, indexDocs, defaultActive, omniboxResults, overseerProvider, workspaceProvider, type OmniboxItem, type OmniboxProvider } from "../shared/search";
+import { LayoutCapture, type LayoutKey } from "../shared/layout-swap";
 import { DEFAULT_SORT, SORT_HINT, SORT_LABEL, SORT_MODES, type SortMode } from "../shared/sort";
 import { PRIORITY_SOURCE_LABEL } from "../shared/priorities";
 import { rankFooter } from "../shared/ranker";
@@ -27,6 +28,8 @@ import { useLinkedIndex } from "./linked";
 export type Omnibox = {
   query: string;
   setQuery(q: string): void;
+  setPhysical?: (q: string | null) => void;
+  layoutHint?: string | null;
   /** null while the query is empty: the list shows its groups. */
   results: OmniboxItem[] | null;
   active: number;
@@ -42,6 +45,7 @@ export type Omnibox = {
  */
 export function useOmnibox(model: HomeModel, sources: HomeSources, extraProviders: readonly OmniboxProvider[] = []): Omnibox {
   const [query, setQueryState] = useState("");
+  const [physical, setPhysical] = useState<string | null>(null);
   // null: the default row. -1: none, so Enter does nothing.
   const [active, setActive] = useState<number | null>(null);
   const inputRef = useRef<TextInput | null>(null);
@@ -57,7 +61,7 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const index = useMemo(() => searching ? indexDocs(homeSearchDocs({ model, paseo: sources.paseo.all(), tracked: sources.live.all(), archived: sources.live.archived(), agents: sources.extras.agents(), linked })) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [searching, model, live, paseo, extras, linked]);
-  const providers = useMemo(() => index ? [workspaceProvider(index), ...extraProviders, overseerProvider(askOn)] : [], [index, extraProviders, askOn]);
+  const providers = useMemo(() => index ? [workspaceProvider(index, Date.now(), physical), ...extraProviders, overseerProvider(askOn)] : [], [index, extraProviders, askOn, physical]);
   const results = useMemo(() => searching ? omniboxResults(providers, query) : null, [providers, query, searching]);
   const setQuery = useCallback((q: string) => { setQueryState(q); setActive(null); }, []);
   const fallback = defaultActive(results);
@@ -67,7 +71,8 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   // A request made before this field mounted (the search key opening Home) is taken on mount.
   const token = useSyncExternalStore(sources.extras.subscribe, sources.extras.focusToken, sources.extras.focusToken);
   useEffect(() => { if (sources.extras.takeFocus()) inputRef.current?.focus(); }, [token, sources.extras]);
-  return { query, setQuery, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn };
+  const hint = layoutHint((results ?? []).flatMap(r => r.hit ? [r.hit] : []));
+  return { query, setQuery, setPhysical, layoutHint: hint, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn };
 }
 
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: unknown; preventDefault(): void };
@@ -92,9 +97,10 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape }: {
+export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape, onLayoutQuery }: {
   /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
   listKeys?: boolean;
+  onLayoutQuery?: (q: string | null) => void;
   /** "2 of 12" at the field's end (a panel section's search), in place of the field's own ✕: the section has its own. */
   count?: string;
   autoFocus?: boolean;
@@ -108,10 +114,31 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
 }) {
   const c = theme.colors;
   const [focused, setFocused] = useState(false);
+  const capture = useRef(new LayoutCapture());
+  const layoutCallback = useRef(onLayoutQuery); layoutCallback.current = onLayoutQuery;
+  useEffect(() => {
+    if (Platform.OS !== "web" || !onLayoutQuery) return;
+    type Input = { value: string; selectionStart: number | null; selectionEnd: number | null };
+    type InputEvent = LayoutKey & { target: unknown };
+    type Listen = (name: string, listener: (e: InputEvent) => void, capture: boolean) => void;
+    const doc = (globalThis as unknown as { document?: { addEventListener: Listen; removeEventListener: Listen } }).document;
+    if (!doc) return;
+    const belongs = (e: InputEvent) => e.target === inputRef.current;
+    const key = (e: InputEvent) => {
+      if (!belongs(e)) return;
+      const input = e.target as Input;
+      capture.current.key(e, input.value, input.selectionStart, input.selectionEnd);
+    };
+    const reset = (e: InputEvent) => { if (belongs(e)) { capture.current.reset(); layoutCallback.current?.(null); } };
+    doc.addEventListener("keydown", key, true);
+    const resets = ["paste", "cut", "drop", "compositionstart", "compositionend", "select"];
+    for (const event of resets) doc.addEventListener(event, reset, true);
+    return () => { doc.removeEventListener("keydown", key, true); for (const event of resets) doc.removeEventListener(event, reset, true); };
+  }, [inputRef, !!onLayoutQuery]);
   return <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: dense ? 8 : 6, height: dense ? 44 : 32, paddingHorizontal: dense ? 12 : 8, borderRadius: dense ? 12 : 6,
     borderWidth: 1, borderColor: focused ? withAlpha(c.foreground, 0.35) : c.border, backgroundColor: c.surface1 }}>
     <Icon name={icon as never} size={dense ? 16 : 13} color={c.foregroundMuted} />
-    <TextInput ref={inputRef} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
+    <TextInput ref={inputRef} value={value} onChangeText={q => { onLayoutQuery?.(capture.current.change(q)); onChange(q); }} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
       accessibilityLabel={placeholder} autoFocus={autoFocus} autoCorrect={false} autoCapitalize="none" spellCheck={false} returnKeyType="go"
       {...(listKeys ? { dataSet: { listKeys: "1" } } as object : {})}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
@@ -142,17 +169,18 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
 export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem | null) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
-  return <QueryField theme={theme} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+  return <View style={{ flex: 1, minWidth: 0, gap: 4 }}><View style={{ flexDirection: "row" }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
-    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} />;
+    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></View><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={dense} /></View>;
 }
 
 /**
  * The sidebar view's filter (2.1): narrows the list in place with Home search's matcher (shared/search.ts
  * `filterHome`), keeping groups and the chosen order. Archived workspaces stay out; Home's search finds those.
  */
-export type ListFilter = { query: string; setQuery: (q: string) => void; model: HomeModel; hits: ReturnType<typeof filterHome>["hits"]; inputRef: { current: TextInput | null } };
+export type ListFilter = { setPhysical?: (q: string | null) => void; layoutHint?: string | null; query: string; setQuery: (q: string) => void; model: HomeModel; hits: ReturnType<typeof filterHome>["hits"]; inputRef: { current: TextInput | null } };
 export function useListFilter(model: HomeModel, sources: HomeSources): ListFilter {
+  const [physical, setPhysical] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const inputRef = useRef<TextInput | null>(null);
   const live = useSyncExternalStore(sources.live.subscribe, sources.live.version, sources.live.version);
@@ -164,12 +192,17 @@ export function useListFilter(model: HomeModel, sources: HomeSources): ListFilte
   const index = useMemo(() => searching ? indexDocs(homeSearchDocs({ model, paseo: sources.paseo.all(), tracked: sources.live.all(), agents: sources.extras.agents(), linked })) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [searching, model, live, paseo, extras, linked]);
-  const filtered = useMemo(() => index ? filterHome(model, index, query) : { model, hits: null }, [index, model, query]);
-  return { query, setQuery, model: filtered.model, hits: filtered.hits, inputRef };
+  const filtered = useMemo(() => index ? filterHome(model, index, query, Date.now(), physical) : { model, hits: null }, [index, model, query, physical]);
+  return { query, setQuery, setPhysical, layoutHint: layoutHint([...(filtered.hits?.values() ?? [])]), model: filtered.model, hits: filtered.hits, inputRef };
 }
 /** "Filter workspaces": a filter icon and no key binding, so it never reads as Paseo's own Search (the Command Center, ⌘K). */
 export function FilterField({ theme, filter, dense }: { theme: Theme; filter: ListFilter; dense: boolean }) {
-  return <QueryField theme={theme} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys />;
+  return <View style={{ flex: 1, minWidth: 0, gap: 4 }}><View style={{ flexDirection: "row" }}><QueryField theme={theme} onLayoutQuery={filter.setPhysical} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys /></View><LayoutNotice theme={theme} query={filter.layoutHint} dense={dense} /></View>;
+}
+
+/** Kept outside the textbox: never changes the query or adds a decision to the search flow. */
+function LayoutNotice({ theme, query, dense }: { theme: Theme; query?: string | null; dense: boolean }) {
+  return query ? <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: dense ? 13 : 12 }}>Showing results for {query}</Text> : null;
 }
 
 // ---------- sort ----------

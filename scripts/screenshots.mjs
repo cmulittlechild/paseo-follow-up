@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss"];
+const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -429,6 +429,11 @@ async function seed({ call, home }) {
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
   const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : [])];
+  if (only.includes("layout-search")) {
+    specs.push(
+      { key: "smart", project: "app", title: "Smart Session", minute: 0, prompt: "Keep the session working", steps: [rpc("follow.enroll", { goal: "Keep the session working" }), msg("Waiting for review.")] },
+      { key: "invoice", project: "app", title: "Invoice exports", minute: 1, prompt: "Export invoices", steps: [rpc("follow.enroll", { goal: "Export invoices" }), msg("Waiting for review.")] });
+  }
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1039,6 +1044,45 @@ async function putInChatShots({ shoot, seeded, call, billing }) {
 }
 
 async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
+  if (only.includes("layout-search")) {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      await shoot(`layout-search-${device}-${theme}`, viewport, theme, async page => {
+        await openHome(page);
+        const field = page.getByRole("textbox", { name: "Search workspaces, branches, PRs", exact: true }).first();
+        await field.fill("דצשרא דקדדןםמ");
+        await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+        if (await field.inputValue() !== "דצשרא דקדדןםמ") throw new Error("search rewrote the query");
+        await page.getByText("Smart Session", { exact: true }).first().waitFor();
+        
+      });
+    }
+    await shoot("layout-search-physical-desktop-dark", DESKTOP, "dark", async page => {
+      await openHome(page);
+      const field = page.getByRole("textbox", { name: "Search workspaces, branches, PRs", exact: true }).first();
+      await field.fill(""); await field.focus();
+      const latin = "smart session", greek = "σμαρτ σεσσιον";
+      for (const [i, key] of [...greek].entries()) {
+        const code = latin[i] === " " ? "Space" : `Key${latin[i].toUpperCase()}`;
+        await field.evaluate((el, e) => el.dispatchEvent(new KeyboardEvent("keydown", { ...e, bubbles: true })), { key, code });
+        await page.keyboard.insertText(key);
+      }
+      await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+      await page.keyboard.press("Backspace");
+      await page.getByText("Showing results for smart sessio", { exact: true }).waitFor();
+      await field.evaluate(el => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+      await page.getByText("Showing results for smart sessio", { exact: true }).waitFor({ state: "hidden" });
+      await field.evaluate(el => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+      // Restore a trustworthy fresh sequence for the evidence image.
+      await field.fill(""); await field.focus();
+      for (const [i, key] of [...greek].entries()) {
+        const code = latin[i] === " " ? "Space" : `Key${latin[i].toUpperCase()}`;
+        await field.evaluate((el, e) => el.dispatchEvent(new KeyboardEvent("keydown", { ...e, bubbles: true })), { key, code });
+        await page.keyboard.insertText(key);
+      }
+      await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+    });
+    return;
+  }
   if (only.includes("feeds")) return checkFeeds({ seeded, call, cli, home });
   if (argv.includes("--whats-new-review")) return whatsNewReview({ shoot, seeded, plugin, home, cli, call });
   const billing = WORKSPACES.find(w => w.key === "billing");

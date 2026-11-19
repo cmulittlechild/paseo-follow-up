@@ -1,3 +1,4 @@
+import { layoutQueries } from "./layout-swap";
 import type { HomeGroupId, HomeModel, PaseoWorkspaceLite } from "./home";
 import type { ArchivedListWorkspace, ListWorkspace as Workspace } from "./list";
 import { linkedSearchText, type LinkedSearchItem } from "./linked-display";
@@ -98,6 +99,8 @@ export type SearchHit = {
    * 1 a typo, 0 inside a word (the weakest token decides). Optional only for rows built outside `search`.
    */
   rank?: Rank;
+  /** Query reconstructed from another keyboard layout; absent on direct hits. */
+  layoutQuery?: string;
 };
 export type Rank = { tier: 0 | 1 | 2; strength: 0 | 1 | 2 };
 const strengthOf = (m: number): 0 | 1 | 2 => m >= 0.85 ? 2 : m >= 0.45 ? 1 : 0;
@@ -106,9 +109,9 @@ const LAST: Rank = { tier: 2, strength: 0 };
  * The one ranking for every search over workspaces (one-ranking-for-every-workspace-search): a lower tier first, then
  * a stronger title match. Equal ranks are a tie each caller breaks its own way (score, or the list's order).
  */
-export function byRank(a: Pick<SearchHit, "rank"> | undefined, b: Pick<SearchHit, "rank"> | undefined): number {
+export function byRank(a: Pick<SearchHit, "rank" | "layoutQuery"> | undefined, b: Pick<SearchHit, "rank" | "layoutQuery"> | undefined): number {
   const x = a?.rank ?? LAST, y = b?.rank ?? LAST;
-  return x.tier - y.tier || y.strength - x.strength;
+  return Number(!!a?.layoutQuery) - Number(!!b?.layoutQuery) || x.tier - y.tier || y.strength - x.strength;
 }
 
 const DAY = 86_400_000;
@@ -116,7 +119,36 @@ const DAY = 86_400_000;
  * Every workstream matching all the query's tokens, best first. Archived ones come last, after every live one.
  * An empty query returns nothing: Home shows its groups instead.
  */
-export function search(index: SearchIndex, query: string, now = Date.now(), limit = 60): SearchHit[] {
+export function search(index: SearchIndex, query: string, now = Date.now(), limit = 60, physical?: string | null): SearchHit[] {
+  if (!queryTokens(query).length) return [];
+  const direct = searchTyped(index, query, now, Infinity);
+  const seen = new Set(direct.map(h => h.key));
+  const converted: SearchHit[] = [];
+  for (const variant of layoutQueries(query, physical)) for (const hit of searchTyped(index, variant, now, Infinity)) {
+    if (seen.has(hit.key)) continue;
+    seen.add(hit.key); converted.push({ ...hit, layoutQuery: variant });
+  }
+  // Direct matches retain their existing live/archived ranking. Converted matches follow them.
+  return [...direct, ...converted.sort((a, b) => Number(a.group === "archived") - Number(b.group === "archived") || byScore(a, b))].slice(0, limit);
+}
+
+/** Quiet explanation only when a converted query finds more rows than the typed query. */
+export function layoutHint(hits: readonly SearchHit[]): string | null {
+  const direct = hits.filter(h => !h.layoutQuery).length;
+  const counts = new Map<string, number>();
+  for (const h of hits) if (h.layoutQuery) counts.set(h.layoutQuery, (counts.get(h.layoutQuery) ?? 0) + 1);
+  const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] > direct ? best[0] : null;
+}
+
+/** Reuse the workspace matcher for agent-tool filters too. */
+export function searchRows<T>(rows: readonly T[], fields: (row: T) => SearchDoc["fields"], query: string, now = Date.now()): T[] {
+  if (!query.trim()) return [...rows];
+  const index = indexDocs(rows.map((r, i) => ({ key: String(i), title: "", group: "quiet", at: null, fields: fields(r) })));
+  return search(index, query, now, Infinity).map(h => rows[Number(h.key)]);
+}
+
+function searchTyped(index: SearchIndex, query: string, now: number, limit: number): SearchHit[] {
   const qs = queryTokens(query);
   if (!qs.length) return [];
   const phrase = qs.join(" ");
@@ -236,8 +268,8 @@ export function overseerProvider(enabled: boolean): OmniboxProvider {
 export function defaultActive(results: readonly OmniboxItem[] | null): number {
   return results?.length === 1 && results[0].ask !== undefined && !/\s/.test(results[0].ask) ? -1 : 0;
 }
-export function workspaceProvider(index: SearchIndex, now = Date.now()): OmniboxProvider {
-  return { id: "workspaces", results: query => search(index, query, now).map(hit => ({ provider: "workspaces", key: hit.key, hit })) };
+export function workspaceProvider(index: SearchIndex, now = Date.now(), physical?: string | null): OmniboxProvider {
+  return { id: "workspaces", results: query => search(index, query, now, 60, physical).map(hit => ({ provider: "workspaces", key: hit.key, hit })) };
 }
 
 // ---------- documents from Home's sources ----------
@@ -357,9 +389,9 @@ export function rowHit(hit: SearchHit, row: { title: string; agent?: string | nu
  * keeps the chosen sort. Only matching rows stay, groups left empty drop out, and archived workspaces aren't listed
  * (Home's search finds those). An empty query returns the model unchanged.
  */
-export function filterHome(model: HomeModel, index: SearchIndex, query: string, now = Date.now()): { model: HomeModel; hits: Map<string, SearchHit> | null } {
+export function filterHome(model: HomeModel, index: SearchIndex, query: string, now = Date.now(), physical?: string | null): { model: HomeModel; hits: Map<string, SearchHit> | null } {
   if (!queryTokens(query).length) return { model, hits: null };
-  const hits = new Map(search(index, query, now, Infinity).filter(h => h.group !== "archived").map(h => [h.key, h]));
+  const hits = new Map(search(index, query, now, Infinity, physical).filter(h => h.group !== "archived").map(h => [h.key, h]));
   // Array sort is stable: an equal rank keeps the list's own order.
   const groups = model.groups.map(g => ({ ...g, items: g.items.filter(s => hits.has(s.key)).sort((a, b) => byRank(hits.get(a.key), hits.get(b.key))) }))
     .filter(g => g.items.length);

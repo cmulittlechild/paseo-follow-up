@@ -1,3 +1,4 @@
+import { searchRows } from "../shared/search";
 import { sendingOf } from "../shared/sending";
 import { agentActor, type Actor } from "../shared/actor";
 import { conditionId, noProgressSends } from "../shared/send-decision";
@@ -363,7 +364,10 @@ export class AgentActions {
 
   private async listPrs(args: { workspace?: string; needs_reviewers?: boolean; ready_to_merge?: boolean; include_closed?: boolean }) {
     const state = await this.d.store.snapshot();
-    const workspaces = this.tracked(state).filter(w => !args.workspace || w.id === args.workspace || w.title === args.workspace);
+    const tracked = this.tracked(state);
+    // Stable ids remain exact identities. Text queries share Home's layout-aware matcher.
+    const exact = tracked.find(w => w.id === args.workspace);
+    const workspaces = exact ? [exact] : searchRows(tracked, w => [{ field: "name", text: w.title }], args.workspace ?? "");
     if (args.workspace && !workspaces.length) throw new Error(`No tracked workspace matches ${args.workspace}.`);
     const prs = workspaces.flatMap(w => w.prs.map(p => prRow(w, p)))
       .filter(r => args.include_closed || !["MERGED", "CLOSED"].includes(r.state))

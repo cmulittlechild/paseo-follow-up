@@ -1,0 +1,1 @@
+Search finds the workspace even when you typed on the wrong keyboard layout. Desktop search can use physical keys across layouts; Hebrew and Russian also work when pasted or typed on a phone. Your search stays as you typed it, with a quiet explanation when another layout finds more results.

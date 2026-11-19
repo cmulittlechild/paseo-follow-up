@@ -1,3 +1,4 @@
+import { searchRows } from "./search";
 import { sendingOf, type Sending } from "./sending";
 import { parseAnswersMessage } from "./questions";
 import { envelopeParts } from "./queue";
@@ -171,7 +172,12 @@ export const WORKSTREAMS_PAGE = 40;
 export function pageRows(rows: WorkstreamRow[], opts: { page?: number; size?: number; group?: HomeGroupId; query?: string } = {}) {
   const size = Math.min(Math.max(opts.size ?? WORKSTREAMS_PAGE, 1), 100);
   const q = opts.query?.trim().toLowerCase();
-  const filtered = orderRows(rows).filter(r => (!opts.group || r.group === opts.group) && (!q || [r.title, r.branch, r.project, r.ask, r.activity, ...r.keys, ...r.prs.map(p => `#${p.number}`)].some(x => x?.toLowerCase().includes(q))));
+  const grouped = orderRows(rows).filter(r => !opts.group || r.group === opts.group);
+  const filtered = searchRows(grouped, r => [
+    { field: "name", text: r.title }, { field: "branch", text: r.branch ?? "" },
+    { field: "project", text: r.project ?? "" }, { field: "ask", text: [r.ask, r.activity].filter(Boolean).join(" ") },
+    { field: "linked", text: r.keys.join(" ") }, { field: "pr", text: r.prs.map(p => `#${p.number}`).join(" ") },
+  ], q ?? "");
   const pages = Math.max(1, Math.ceil(filtered.length / size));
   const page = Math.min(Math.max(opts.page ?? 1, 1), pages);
   // Resting workspaces come last and compact: no per-workspace detail, and their agents are likely unloaded.
