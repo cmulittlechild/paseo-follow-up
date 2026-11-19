@@ -430,6 +430,7 @@ async function seed({ call, home }) {
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
   const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : [])];
   if (only.includes("layout-search")) {
+    specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
       { key: "smart", project: "app", title: "Smart Session", minute: 0, prompt: "Keep the session working", steps: [rpc("follow.enroll", { goal: "Keep the session working" }), msg("Waiting for review.")] },
       { key: "invoice", project: "app", title: "Invoice exports", minute: 1, prompt: "Export invoices", steps: [rpc("follow.enroll", { goal: "Export invoices" }), msg("Waiting for review.")] });
@@ -1050,7 +1051,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await openHome(page);
         const field = page.getByRole("textbox", { name: "Search workspaces, branches, PRs", exact: true }).first();
         await field.fill("דצשרא דקדדןםמ");
-        await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+        await page.getByText(/Showing results for.*smart session/).waitFor();
         if (await field.inputValue() !== "דצשרא דקדדןםמ") throw new Error("search rewrote the query");
         await page.getByText("Smart Session", { exact: true }).first().waitFor();
         
@@ -1066,11 +1067,11 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await field.evaluate((el, e) => el.dispatchEvent(new KeyboardEvent("keydown", { ...e, bubbles: true })), { key, code });
         await page.keyboard.insertText(key);
       }
-      await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+      await page.getByText(/Showing results for.*smart session/).waitFor();
       await page.keyboard.press("Backspace");
-      await page.getByText("Showing results for smart sessio", { exact: true }).waitFor();
+      await page.getByText(/Showing results for.*smart sessio[”\u2069]/).waitFor();
       await field.evaluate(el => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
-      await page.getByText("Showing results for smart sessio", { exact: true }).waitFor({ state: "hidden" });
+      await page.getByText(/Showing results for.*smart sessio[”\u2069]/).waitFor({ state: "hidden" });
       await field.evaluate(el => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
       // Restore a trustworthy fresh sequence for the evidence image.
       await field.fill(""); await field.focus();
@@ -1079,7 +1080,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await field.evaluate((el, e) => el.dispatchEvent(new KeyboardEvent("keydown", { ...e, bubbles: true })), { key, code });
         await page.keyboard.insertText(key);
       }
-      await page.getByText("Showing results for smart session", { exact: true }).waitFor();
+      await page.getByText(/Showing results for.*smart session/).waitFor();
     });
     return;
   }

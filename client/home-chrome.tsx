@@ -14,7 +14,7 @@ import type { HomeSources } from "./home-data";
 import { useMinute } from "./home-data";
 import { Spinner } from "./motion";
 import { withAlpha, type Colors } from "./theme";
-import type { Theme } from "./kit";
+import { text, type Theme } from "./kit";
 import { MenuItemContent, menuGlyph, menuItemRow } from "./menu-item";
 import { useLinkedIndex } from "./linked";
 
@@ -171,9 +171,9 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
 export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem | null) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
-  return <View style={{ flex: 1, minWidth: 0, gap: 4 }}><View style={{ flexDirection: "row" }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+  return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
-    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></View><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={dense} /></View>;
+    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} />;
 }
 
 /**
@@ -199,12 +199,12 @@ export function useListFilter(model: HomeModel, sources: HomeSources): ListFilte
 }
 /** "Filter workspaces": a filter icon and no key binding, so it never reads as Paseo's own Search (the Command Center, ⌘K). */
 export function FilterField({ theme, filter, dense }: { theme: Theme; filter: ListFilter; dense: boolean }) {
-  return <View style={{ flex: 1, minWidth: 0, gap: 4 }}><View style={{ flexDirection: "row" }}><QueryField theme={theme} onLayoutQuery={filter.setPhysical} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys /></View><LayoutNotice theme={theme} query={filter.layoutHint} dense={dense} /></View>;
+  return <QueryField theme={theme} onLayoutQuery={filter.setPhysical} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys />;
 }
 
 /** Kept outside the textbox: never changes the query or adds a decision to the search flow. */
-function LayoutNotice({ theme, query, dense }: { theme: Theme; query?: string | null; dense: boolean }) {
-  return query ? <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: dense ? 13 : 12 }}>Showing results for {query}</Text> : null;
+export function LayoutNotice({ theme, query, dense }: { theme: Theme; query?: string | null; dense: boolean }) {
+  return <Text accessibilityLiveRegion="polite" numberOfLines={2} style={{ ...text(theme.colors, dense).meta, ...(query ? { paddingTop: 4 } : { height: 0 }) }}>{query ? `Showing results for “\u2068${query}\u2069”` : ""}</Text>;
 }
 
 // ---------- sort ----------
