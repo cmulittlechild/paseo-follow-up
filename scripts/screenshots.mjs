@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context"];
+const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -428,7 +428,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1684,6 +1684,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
   if (only.includes("more-context")) await moreContextShots({ shoot, call });
+  if (only.includes("dismiss")) await dismissShots({ shoot, call });
   if (only.includes("dock-in-view")) await dockInViewShots({ shoot });
   if (only.includes("pick-notes")) {
     // Decision cards with a note (a-pick-note-reaches-the-agent): one decision and two; the note link closed, then
@@ -2713,6 +2714,48 @@ async function moreContextShots({ shoot, call }) {
   await each("pending", async page => settle(page, visible(page.getByText(/the answer shows here when it comes/))));
   await call("follow.context-reply", { agentId: asked.askedOf, requestId: asked.id, text: "Both languages are missing the key only for strings added this sprint. **The English text** keeps the page readable for customers; **the key itself** makes the gap obvious to translators but shows raw ids like checkout.total to users. Most teams show English in production and the key in staging." });
   await each("replied", async page => settle(page, visible(page.getByText(/Most teams show English in production/))));
+}
+
+/**
+ * dismiss (dismissing-a-question-sends-the-agent-nothing): the quiet Dismiss after More context on the panel's card and
+ * on a phone; after Dismiss, the toast with Undo; the dismissed card in the question dialog ("Dismissed by you"); and
+ * Catch up's card with Dismiss (⇧D). Light and dark. Each dismissal is undone through follow.dismiss-question before
+ * the next shot, and the run fails if any dismissal queued a message.
+ */
+async function dismissShots({ shoot, call }) {
+  const TALL = { width: DESKTOP.width, height: 1000 };
+  const lone = pick("ny-lone");
+  const visible = l => l.filter({ visible: true }).first();
+  const wsId = async () => (await call("follow.list", {})).workspaces.find(w => w.questions?.some(q => q.title === "Missing keys"))?.id;
+  const reopen = async () => { const id = await wsId(); const q = (await call("follow.list", {})).workspaces.find(w => w.id === id).questions.find(q => q.id === "Q1"); if (q.closed) await call("follow.dismiss-question", { workspaceId: id, questionId: "Q1", undo: true }); };
+  const queued = async () => (await call("follow.queue-list", { workspaceId: await wsId() })).items.length;
+  const before = await queued();
+  const panel = async page => { await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText("Missing keys")).waitFor(); };
+  const phone = async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, lone.title)).click(); await visible(page.getByText("Missing keys")).waitFor(); };
+  const dismissLink = page => visible(page.getByRole("button", { name: /^Dismiss Q1/ }));
+  const settle = async (page, l) => { await l.scrollIntoViewIfNeeded(); await page.waitForTimeout(500); };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`dq-row-panel-${theme}`, TALL, theme, async page => { await panel(page); await settle(page, await dismissLink(page)); });
+    await shoot(`dq-row-phone-${theme}`, PHONE, theme, async page => { await phone(page); await settle(page, await dismissLink(page)); });
+    await shoot(`dq-undo-panel-${theme}`, TALL, theme, async page => { await panel(page); await (await dismissLink(page)).click(); await visible(page.getByText(/^Dismissed Q1\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
+    await shoot(`dq-dismissed-dialog-${theme}`, DESKTOP, theme, async page => {
+      await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await visible(page.getByRole("tab", { name: /^Questions/ })).click();
+      await visible(page.getByRole("button", { name: /^Q1, Missing keys/ })).click();
+      await visible(page.getByText(/^Dismissed by you/)).waitFor(); await page.waitForTimeout(300);
+    });
+    await reopen();
+    await shoot(`dq-catch-up-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page);
+      await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("When a key is missing").filter({ visible: true }).first().isVisible()); i++) {
+        if (i > 30) throw new Error("dismiss: no Catch up card for Missing keys");
+        await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
+      }
+      await settle(page, await dismissLink(page));
+    });
+  }
+  if (await queued() !== before) throw new Error("dismiss: a dismissal queued a message for the agent");
 }
 
 /**

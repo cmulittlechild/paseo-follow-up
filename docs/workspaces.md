@@ -296,6 +296,25 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   - Two versions are never open at once. The invariant is `no-duplicate-open-question`
     (`duplicateOpenQuestions`). Tests: `tests/question-dedupe.test.ts`.
 
+### Dismissing a question
+
+A question that no longer matters can be dismissed instead of answered (invariant
+`dismissing-a-question-sends-the-agent-nothing`): a quiet Dismiss link on every open question card, after More context
+(the panel's Needs you, Home's detail pane, the question dialog, the pill, phones and Catch up, where ⇧D does it), and
+the `dismiss_question` agent tool for another agent's question. `follow.dismiss-question` closes it as dismissed
+(`closed.dismissed`, `closed.by` "developer" or "agent:<id>"; `dismissQuestion` in `server/questions.ts`) and queues and
+sends nothing, so the agent spends no turn and no tokens on it. It leaves Needs you and every count at once; the toast's
+Undo (`undo: true`) reopens it exactly as it was. The card reads "Dismissed by you" (`closedLine`), never an agent's
+"Withdrawn"; a brief whose questions were all dismissed closes as "You dismissed this question".
+
+The agent learns only when it looks: `workspace_status` lists `dismissedQuestions`; pointing at one with `needs_you`
+questions=["Qn"] is refused with why; restating it as a needs_you decision leaves it off the card (the call's `note`
+says so); and asking it again with `ask_question` returns the dismissed question with outcome `dismissed` and no new
+card, so an agent can't bring it back by asking again. `supersedes="Qn"` is the way to ask again on purpose when
+something really changed. A blocked task's question that is dismissed isn't asked again for the same block; the task
+stays blocked, since a task's state is the agent's (it can update or waive it), and a new block asks anew. An agent
+can't dismiss a question it asked or owns: that is `withdraw_question`.
+
 ## Spec link
 
 `server/spec.ts` and `shared/spec.ts`. Precedence: the developer's link (`follow.workspace-spec`), then the main

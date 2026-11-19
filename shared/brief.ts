@@ -311,6 +311,7 @@ export const RESOLVED = {
   replaced: "Replaced by a newer card",
   movedOn: "No longer needed · the agent moved on",
   withdrawn: "The agent withdrew this question",
+  dismissed: "You dismissed this question",
   factEnded: "No longer needed · the PR moved on",
 } as const;
 const OWN_OUTCOMES: readonly string[] = Object.values(RESOLVED);
@@ -378,7 +379,7 @@ export type BriefEvent =
   /** A PR's new state: lands only on the open brief whose facts are about that PR. */
   | { type: "facts"; prKey: string; facts: BriefFact[] }
   /** Every question the brief points at is settled, by any path (briefQuestionsEvent): an answer, or null if withdrawn. */
-  | { type: "questions"; answers: Record<string, { choice: string; words: string | null } | null> }
+  | { type: "questions"; answers: Record<string, { choice: string; words: string | null } | null>; /** Every unanswered one was dismissed by the developer. */ dismissed?: boolean }
   /** The PR facts a Follow-up card reported no longer hold (shared/inbox.ts FACT_REASONS): its card of these kinds closes. */
   | { type: "fact_ended"; kinds: BriefKind[] };
 
@@ -461,7 +462,7 @@ export function briefStep(prev: Brief | null, event: BriefEvent, now: string): {
       if (prev?.state !== "open" || !prev.questionIds.length || !prev.questionIds.every(id => id in event.answers)) return keep;
       const decisions = prev.decisions.map(d => { const a = event.answers[d.id]; return a && !d.chosen ? { ...d, chosen: a.choice, words: a.words?.trim() || null } : d; });
       const answered = prev.questionIds.some(id => event.answers[id]);
-      const b = answered ? { ...collapse(prev, "answered", answeredOutcome(decisions)), decisions } : collapse(prev, "superseded", RESOLVED.withdrawn);
+      const b = answered ? { ...collapse(prev, "answered", answeredOutcome(decisions)), decisions } : collapse(prev, "superseded", event.dismissed ? RESOLVED.dismissed : RESOLVED.withdrawn);
       return { brief: b, appends: [b] };
     }
     case "fact_ended":
@@ -585,14 +586,15 @@ export function shownBrief(row: Brief, live: { brief: Brief | null } | undefined
 export function briefQuestionsEvent(b: Brief, questions: readonly Question[]): Extract<BriefEvent, { type: "questions" }> | null {
   if (b.state !== "open" || !b.questionIds.length) return null;
   const answers: Record<string, { choice: string; words: string | null } | null> = {};
+  let dismissed = true;
   for (const id of b.questionIds) {
     const q = questions.find(q => q.id === id);
     if (!q) return null;
     if (q.answer) answers[id] = { choice: q.answer.choice, words: q.answer.words ?? null };
-    else if (q.closed) answers[id] = null;
+    else if (q.closed) { answers[id] = null; dismissed &&= !!q.closed.dismissed; }
     else return null;
   }
-  return { type: "questions", answers };
+  return { type: "questions", answers, ...(dismissed && Object.values(answers).some(a => a === null) ? { dismissed: true } : {}) };
 }
 
 /** The developer's option click, in the existing answer format so Follow-up's answer card renders it. */
