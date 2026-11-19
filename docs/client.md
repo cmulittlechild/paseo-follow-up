@@ -286,6 +286,10 @@ group no longer counts it, the same as the Done card (a transform can only repla
   agent's card and task line cost no daemon request.
 - **Feature detection:** without `addTimelineTransformer` / `addTimelineRenderer` nothing is registered; a call whose
   result has no `agentId` / `workspaceId` keeps Paseo's plain row. Tests: `tests/created-card.test.ts`.
+- **Reading the result:** through `toolResult` (`shared/tool-result.ts`), like every tool result Follow-up reads.
+  Paseo never hands the bare JSON: Claude's result is `{ output: <parsed JSON> }`, Codex's is the MCP envelope whose
+  text has Paseo's `<key>_count=` summary in front of the JSON (the object is in `structuredContent`). Tests run every
+  reader over the real shapes in `tests/fixtures/paseo-tool-results.ts` (`tests/tool-result.test.ts`).
 
 ## Shared copy
 

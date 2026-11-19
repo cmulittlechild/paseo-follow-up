@@ -90,7 +90,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
 | UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
-| Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts` | [client](docs/client.md) |
+| Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
 | Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `server/report-send.ts`, `shared/report-send.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
 | Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/publish-npm.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
@@ -807,7 +807,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    calls failed first. Guarded by `tests/github-change-first.test.ts`, `tests/github-poll-cost.test.ts` (the tiers)
    and `tests/activate-reads-its-workspace.test.ts` ([docs/prs.md](docs/prs.md)).
 
-61. **A settings link lands on its category** (`settings-link-lands-on-its-category`). Paseo 0.16 draws a plugin's
+61. **A created card parses every result shape Paseo sends** (`created-card-parses-every-result-shape`,
+   `every-tool-result-reads-through-one-normalizer`). Every reader of a tool call's result (the created card, the Done
+   card and question rows, artifact receipts and their titles) reads it through `toolResult` (`shared/tool-result.ts`),
+   never `detail.output` directly. Paseo hands Claude's result as `{ output: <parsed JSON>, files? }` and Codex's as the
+   raw MCP result, whose text has Paseo's `<key>_count=` summary in front of the JSON and whose object is in
+   `structuredContent`; a plain string comes from other paths. Tests use fixtures captured from a live daemon
+   (`tests/fixtures/paseo-tool-results.ts`), never an idealised shape. 2026-11-19, Tom: "When creating an agent, it shows
+   a creating-an-agent timeline item, but when the agent is created, it disappears." The card's parser expected a bare
+   JSON string, so every completed create fell back to Paseo's plain row inside the "N tool calls" group; on Claude
+   the same misread hid the Done card and question ids, and artifact publish receipts named nothing. Guarded by
+   `tests/tool-result.test.ts` (every reader over every shape, and a sweep for direct `detail.output` reads).
+
+62. **A settings link lands on its category** (`settings-link-lands-on-its-category`). Paseo 0.16 draws a plugin's
    settings screens as tabs on its plugin page, so there each settings category (General, Following, Reviewers,
    Agents, Inbox & display, in that order) is its own screen and Follow-up draws no tabs of its own; 0.15 lists every
    screen as a ••• menu row, so it keeps one screen with Follow-up's tabs (`client/settings-screens.ts`, detected from
@@ -944,3 +956,8 @@ Guarded by `npm run check:notes` and `release:notes` (`scripts/release-notes.mjs
   - When you touch Wait, run `npm run test:wait-live` locally.
 
 README screenshot flows select questions by their stable reference, never their extracted title. Keep the dialog and Put in chat capture flows consistent when question wording changes.
+
+Search finds what you meant on either keyboard layout. Every workspace text filter (Home, sidebar and agent tools)
+uses shared/search.ts: direct hits rank before converted hits within the live/archived groups, archived rows stay
+last under their heading, and the typed query is never rewritten. Physical-key
+reconstruction is trusted only for verified append/backspace edits; paste, selection edits and IME discard it.

@@ -1,6 +1,7 @@
 import { onBehalfOf } from "./actor";
 import { BRIDGE_TOOL, BRIDGE_SHELL_CALL, splitBatchText, isRecoveryText } from "./legacy";
 import { z } from "zod";
+import { toolResult } from "./tool-result";
 
 /** Follow-up's own messages and tool calls, recognised in agent chats so they render as compact rows. */
 export const FOLLOW_TOOLS = ["workspace_status", "sync_workspace", "enroll_workspace", "register_pr", "exclude_stack", "update_obligation", "acknowledge_batch", "declare_done", "ask_question", "record_answer", "withdraw_question", "set_spec"] as const;
@@ -51,18 +52,7 @@ export type ToolRow = z.infer<typeof toolRowSchema>;
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-/** Text from Claude's { output } / { content: [{ text }] } shapes or Codex's MCP result. */
-export function readText(value: unknown): string | undefined {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    const parts = value.map(part => typeof part === "string" ? part : record(part) && typeof part.text === "string" ? part.text : undefined);
-    return parts.every(p => p !== undefined) ? parts.join("\n") : undefined;
-  }
-  if (!record(value)) return undefined;
-  const key = ["output", "content", "text", "message", "result"].find(name => name in value);
-  return key ? readText(value[key]) : undefined;
-}
+/** The JSON object in a result's text (toolResult's text: Claude's { output }, MCP content, or a plain string). */
 function json(text: string | undefined): Record<string, unknown> | null {
   if (!text) return null;
   const parse = (body: string) => { try { const value = JSON.parse(body); return record(value) ? value : null; } catch { return null; } };
@@ -184,14 +174,14 @@ export function followTimelineItem(item: TimelineToolCall, ledger: MomentLedger)
   let output: string | undefined;
   if (tool) {
     if (record(detail) && record(detail.input)) input = detail.input;
-    output = record(detail) && "output" in detail ? readText(detail.output) : undefined;
+    output = record(detail) && "output" in detail ? toolResult(detail.output).text : undefined;
   } else if (record(detail) && detail.type === "shell" && typeof detail.command === "string") {
     const call = followShellCall(detail.command);
     if (!call) return undefined;
-    tool = call.tool; input = call.input; output = typeof detail.output === "string" ? detail.output : undefined;
+    tool = call.tool; input = call.input; output = toolResult(detail.output).text || undefined;
   } else return undefined;
   if (TOOL_PRESENTATION[tool] !== "moment" || item.status !== "completed") return undefined;
-  if (record(detail) && record(detail.output) && detail.output.isError === true) return undefined;
+  if (record(detail) && toolResult(detail.output).isError) return undefined;
   const row = toolRow(tool, "completed", input, output);
   if (tool !== "declare_done") return row;
   if (!row.done) return undefined;

@@ -187,3 +187,14 @@ test("the bridge offers action tools to Paseo-launched root agents only, honestl
   assert.deepEqual(JSON.parse((await readFile(calls, "utf8")).trim()), { method: "follow.agent-act", input: { tool: "list_prs", args: { needs_reviewers: true }, agentId: "orchestrator" } });
   for (const env of [{}, { FOLLOW_UP_ROOT: "1", FOLLOW_UP_RECOVERY: "1" }] as Record<string, string>[]) assert.deepEqual((await ask(env))[1].result.tools, [], "no tools for a subagent, an outside session or recovery");
 });
+
+test("list_prs workspace filter finds either keyboard layout and keeps exact ids", async t => {
+  const f = await fixture(t);
+  await f.store.mutate(s => { s.workspaces[0].title = "Smart Session"; });
+  const result = await f.agent.run("orchestrator", "list_prs", { workspace: "דצשרא דקדדןםמ" }) as any;
+  assert.equal(result.workspaces[0].title, "Smart Session");
+  const id = result.workspaces[0].id;
+  assert.equal((await f.agent.run("orchestrator", "list_prs", { workspace: id }) as any).workspaces[0].id, id);
+  await f.store.mutate(s => { s.workspaces[0].title = "שלום"; });
+  assert.equal((await f.agent.run("orchestrator", "list_prs", { workspace: "akuo" }) as any).workspaces[0].title, "שלום");
+});
