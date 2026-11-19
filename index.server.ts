@@ -10,6 +10,7 @@ import { isRecovery, withRuntimePrelude, invokeSelf, PLUGIN_ID } from "./shared/
 import { displayPreferences } from "./shared/display";
 import { DEFAULT_QUESTION_MODE, QUESTION_DEDUPE_MIGRATION, awaitingSend, collapseDuplicateQuestions, questionPreferences, signedOffAnswers, type QuestionMode } from "./shared/questions";
 import { answerRecipients, askQuestion, needsYouQuestions, recordAnswer, syncTaskQuestions, withdrawQuestion } from "./server/questions";
+import { dismissItem, dismissedNeeds, undoDismissItem } from "./server/dismiss";
 import { agentSetSpec, developerSetSpec } from "./server/spec";
 import type { PluginServerContext, PluginHandlerContext, PluginHookContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import type { PluginRpcContract, PluginSubscriptionContract } from "@getpaseo/plugin";
@@ -21,7 +22,7 @@ import { needsYou } from "./shared/attention";
 import type { SortMode } from "./shared/sort";
 import type { ZodType, output as zOutput } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
-import { isTimeZone } from "./shared/inbox";
+import { DISMISSED_ASK_NOTE, isTimeZone, sameAsk } from "./shared/inbox";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -643,7 +644,7 @@ export default function contribute(server: PluginServerContext) {
     await agentHooks.confirm(w.id, agentId, summary);
     return { workspaceId: w.id, synced: true as const };
   });
-  handle(rpc.agentStatusRpc, async ({ agentId }, { paseo }) => { await requireReady(); const workspaceId = await callerWorkspaceId(agentId, paseo); const w = agentWorkspace(await store.snapshot(), agentId, "read", workspaceId, "pr"); return { ...w, prWorkflow: prWorkflow.agentWorkflow(workspaceRepo(w), touchedRepos(w)), nextMessageInfo: nextMessageInfo(w, Date.now()), sending: sendingOf(w, Date.now(), { held: !governor.allowsBackground() }) }; });
+  handle(rpc.agentStatusRpc, async ({ agentId }, { paseo }) => { await requireReady(); const workspaceId = await callerWorkspaceId(agentId, paseo); const w = agentWorkspace(await store.snapshot(), agentId, "read", workspaceId, "pr"); return { ...w, dismissed: dismissedNeeds(w, Date.now()), dismissedAsk: await inbox.dismissedAsk(agentId), prWorkflow: prWorkflow.agentWorkflow(workspaceRepo(w), touchedRepos(w)), nextMessageInfo: nextMessageInfo(w, Date.now()), sending: sendingOf(w, Date.now(), { held: !governor.allowsBackground() }) }; });
   handle(rpc.activateRpc, async ({ workspaceId }) => { await requireReady(); return engine.activate(workspaceId); });
   handle(rpc.sendRpc, async ({ workspaceId, batchId }) => { await requireReady(); return engine.sendPending(workspaceId, batchId); });
   handle(rpc.recoverRpc, async ({ workspaceId }) => { await requireReady(); return engine.startRecovery(workspaceId); });
@@ -806,6 +807,17 @@ export default function contribute(server: PluginServerContext) {
     });
   });
   handle(rpc.dismissQuestionRpc, async ({ workspaceId, questionId, undo }, context) => { await requireReady(); return engine.dismiss(workspaceId, questionId, !!undo, actorOf(context)); });
+  // dismissing-anything-in-needs-you-sends-the-agent-nothing: one path for every kind; only records change.
+  handle(rpc.dismissRpc, async ({ workspaceId, key, agentId, undo }, context) => {
+    await requireReady();
+    const actor = actorOf(context);
+    if (agentId) return inbox.dismiss(agentId, !!undo, actor);
+    return store.mutateWorkspace(workspaceId!, w => {
+      const r = undo ? undoDismissItem(w, key!, actor) : dismissItem(w, key!, actor, Date.now());
+      w.updatedAt = new Date().toISOString();
+      return r;
+    });
+  });
   handle(rpc.answerQuestionRpc, async ({ workspaceId, questionId, choice, words, action }, context) => { await requireReady(); return engine.answer(workspaceId, questionId, choice, words, action, actorOf(context)); });
   handle(rpc.declareDoneRpc, async ({ agentId, summary }, { paseo }) => { await requireReady(); return engine.declareDone(agentId, summary, await callerWorkspaceId(agentId, paseo, false)); });
   handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly }, { paseo }) => {
@@ -1426,13 +1438,19 @@ export default function contribute(server: PluginServerContext) {
       call = { ...rest, ...(linked.decisions.length ? { decisions: linked.decisions } : {}) };
       if (!linked.decisions.length) delete call.decisions;
     } else if (call.questions?.length) throw new Error("questions point at a tracked workspace's open questions, and this workspace isn't tracked.");
+    // dismissing-anything-in-needs-you-sends-the-agent-nothing: an ask the developer dismissed, stated again with nothing
+    // new to decide, isn't flagged again: the turn ends quiet, and the call says why.
+    const gone = await inbox.dismissedAsk(agentId);
+    const restated = !!gone && !questionIds.length && !call.decisions?.length && sameAsk(gone.ask, call.ask);
+    if (restated) call = { ...call, kind: "done" };
     const record: NeedsYouRecord = { at: Date.now(), turnId: turn?.turnId ?? null, call, questionIds, createdIds };
     await mkdir(join(directory, "hook-state"), { recursive: true, mode: 0o700 });
     const temporary = `${needsYouPath(agentId)}.${randomUUID()}`;
     await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
     await rename(temporary, needsYouPath(agentId));
     return { ok: true as const, briefId: `brief:${turn?.turnId ?? record.at}`,
-      ...(dismissed.length ? { note: `The developer dismissed ${dismissed.join(", ")}: ${dismissed.length === 1 ? "it no longer matters, so it was" : "they no longer matter, so they were"} left off the card. Don't raise ${dismissed.length === 1 ? "it" : "them"} again.` } : {}) };
+      ...(restated ? { note: DISMISSED_ASK_NOTE }
+        : dismissed.length ? { note: `The developer dismissed ${dismissed.join(", ")}: ${dismissed.length === 1 ? "it no longer matters, so it was" : "they no longer matter, so they were"} left off the card. Don't raise ${dismissed.length === 1 ? "it" : "them"} again.` } : {}) };
   });
   // Replies once the answer is recorded; the send runs after (Inbox.briefAction), so a dormant agent's slow resume never
   // times the card out.

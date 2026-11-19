@@ -7,7 +7,7 @@ import { Pressable, Text, copyable } from "./text";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal, ScrollView, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { answerQuestionRpc, dismissQuestionRpc } from "../shared/contracts";
+import { answerQuestionRpc } from "../shared/contracts";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
@@ -26,7 +26,7 @@ import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
 import { prLinksByNumber } from "../shared/presentation";
 import { notice, openQuestion, runAction } from "./toasts";
-import { hasToastHost, pushToast } from "./toast-store";
+import { DismissX, useDismiss } from "./dismiss";
 import { putInChatOrCopy } from "../shared/put-in-chat";
 import { useChatComposer } from "./put-in-chat";
 import { Marked, NoMatchRow, useSectionSearch } from "./section-search";
@@ -34,8 +34,6 @@ import { activityFields, questionFields, questionStatus } from "../shared/sectio
 import type { Activity } from "../shared/activity";
 import { clearPendingAnswer, failPendingAnswer, pendingKey, setPendingAnswer, usePendingAnswer, usePendingAnswers, type PendingAnswer } from "./pending-answers";
 
-/** As long as sign-off's Undo (6 s): the toast holds while the pointer or focus is on it. */
-const DISMISS_UNDO_MS = 6_000;
 const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !agentId || agentId === w.mainAgentId ? "the main agent" : "a root session";
 
 /**
@@ -106,10 +104,16 @@ export type SendReady = { send: () => void; busy: boolean };
  * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
  * (`one-answer-flow-for-every-question`), never from the surface.
  */
-export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false, moreContext = true }: {
+export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false, moreContext = true, dismissAt = inline ? "host" : "top" }: {
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
   /** Inside the Needs you block: its header says the title and when it was asked, its footer what the agent does meanwhile. */
   inline?: boolean;
+  /**
+   * Where the card's small x sits (dismissing-anything-in-needs-you-sends-the-agent-nothing): "top", the body's top
+   * right; "host", in the header of whatever draws this body (the Needs you block, the pill, Catch up), next to its age;
+   * "foot", at the end of the "Asked … by" line, for the dialog, whose header's top right is its own close.
+   */
+  dismissAt?: "top" | "host" | "foot";
   /** The dialog's close: Send and Copy close it at once and report the outcome as a toast. */
   onClose?: () => void;
   /**
@@ -213,24 +217,11 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     onClose?.(); onAnswered?.();
   };
   /**
-   * Dismiss (dismissing-a-question-sends-the-agent-nothing): the question no longer matters. It closes and leaves Needs
-   * you; nothing goes to the agent. Undo in the toast reopens it. The card moves on as after an answer.
+   * Dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the question no longer matters. It closes and
+   * leaves Needs you; nothing goes to the agent. Undo in the toast reopens it. The card moves on as after an answer.
    */
-  const dismissRpc = useRpc(dismissQuestionRpc);
-  const undoDismiss = () => void runAction({ label: `Undo dismiss ${q.id}`, toast, run: () => dismissRpc({ workspaceId: w.id, questionId: q.id, undo: true }),
-    success: () => `${q.id} is open again`, onSuccess: refresh, failure: `Couldn't reopen ${q.id}` }, `dismiss:${w.id}:${q.id}`);
-  const dismiss = () => {
-    onClose?.(); onAnswered?.();
-    void runAction({ label: `Dismiss ${q.id}`, toast, run: () => dismissRpc({ workspaceId: w.id, questionId: q.id }), onSuccess: refresh, failure: `Couldn't dismiss ${q.id}`,
-      reconcile: e => { refresh(); notice(mootNote(e), toast); },
-      success: () => {
-        const message = `Dismissed ${q.id}. The agent wasn't messaged.`;
-        if (!hasToastHost()) return message;
-        pushToast("success", message, [{ label: "Undo", onPress: undoDismiss }], { durationMs: DISMISS_UNDO_MS, keep: true });
-        return null;
-      } }, `dismiss:${w.id}:${q.id}`);
-  };
-  const dismissLink = <NoteLink icon="X" label="Dismiss" a11y={`Dismiss ${q.id}: it no longer matters, and the agent isn't messaged`} disabled={run.isPending} c={c} compact={compact} onPress={dismiss} />;
+  const dismissAny = useDismiss();
+  const dismissX = open && dismissAt !== "host" ? <QuestionDismissX workspaceId={w.id} questionId={q.id} theme={theme} compact={compact} disabled={run.isPending} onDismissed={() => { onClose?.(); onAnswered?.(); }} dismiss={dismissAny} /> : null;
   // The footer's Send calls the latest quick through a ref, so it never sends a stale choice or words.
   const quickRef = useRef(quick); quickRef.current = quick;
   const sendable = open && !!answer;
@@ -282,7 +273,10 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const body = <View style={{ gap: dense ? 10 : 14 }}>
     <View style={{ gap: 6 }}>
       {/* Inline: the block's header carries the title, so the question reads as body text under it. */}
-      <RichText selectable style={inline ? text(c, compact).body : [t.body, { fontSize: dense ? 13 : 15, lineHeight: dense ? 19 : 22 }]}>{q.question}</RichText>
+      {(() => {
+        const question = <RichText selectable style={[inline ? text(c, compact).body : [t.body, { fontSize: dense ? 13 : 15, lineHeight: dense ? 19 : 22 }], { flex: 1, minWidth: 0 }]}>{q.question}</RichText>;
+        return dismissX && dismissAt === "top" ? <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>{question}<View style={{ marginTop: -2, marginRight: -5 }}>{dismissX}</View></View> : question;
+      })()}
       {/* Phones: who asked and when is meta under the question, not a footnote after the buttons. */}
       {compact && !dense && !inline && <Text style={t.small}>Asked {ago(q.askedAt, now)} by {who(w, q.askedBy)}{q.taskId && !q.options.length ? " (blocked task)" : ""}</Text>}
       {open && !inline && <View style={{ flexDirection: "row", gap: 6 }}>
@@ -296,10 +290,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     </View>}
     {context}
     {/* Read before choosing: More context sits under the question's own context, its answer with it. */}
-    {/* The question's quiet row: More context first, then Dismiss (Catch up's move bar has its own More context). */}
-    {open && (moreContext
-      ? <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent}>{dismissLink}</QuestionMoreContext>
-      : <View style={{ flexDirection: "row" }}>{dismissLink}</View>)}
+    {/* The question's quiet row: More context (Catch up's move bar has its own). Dismiss is the card's x, top right. */}
+    {open && moreContext && <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} />}
     {!!q.options.length && <View accessibilityRole="radiogroup" accessibilityLabel={`Options for ${q.id}`} style={{ gap: 6 }}>
       {q.options.map(o => <OptionCard key={o.letter} theme={theme} compact={compact} dense={dense} letter={o.letter} label={o.label} consequence={o.consequence} recommended={q.recommend === o.letter}
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}
@@ -380,8 +372,16 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {open && input}
       {actions}
     </View>
-    {!dense && !compact && !inline && <Text style={t.small}>Asked {ago(q.askedAt, now)} by {who(w, q.askedBy)}{q.taskId && !q.options.length ? " (blocked task)" : ""}</Text>}
+    {!dense && !compact && !inline && <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <Text style={[t.small, { flex: 1 }]}>Asked {ago(q.askedAt, now)} by {who(w, q.askedBy)}{q.taskId && !q.options.length ? " (blocked task)" : ""}</Text>
+      {dismissAt === "foot" && dismissX}
+    </View>}
   </SubmitScope>;
+}
+
+/** A question's x: closes it as dismissed (follow.dismiss with "question:Qn"), sends the agent nothing, Undo in the toast. */
+export function QuestionDismissX({ workspaceId, questionId, theme, compact, disabled, onDismissed, dismiss }: { workspaceId: string; questionId: string; theme: Theme; compact: boolean; disabled?: boolean; onDismissed?: () => void; dismiss: ReturnType<typeof useDismiss> }) {
+  return <DismissX theme={theme} compact={compact} label={`Dismiss ${questionId}`} disabled={disabled} onPress={() => dismiss({ workspaceId, key: `question:${questionId}` }, { onDismissed })} />;
 }
 
 function hostOf(url: string): string {
@@ -395,7 +395,7 @@ export function QuestionSheet({ workspace: w, questionId, theme, compact, onClos
   const color = !q ? c.foregroundMuted : q.answer ? c.statusSuccess : q.closed ? c.foregroundMuted : c.statusWarning;
   return <Modal title={q ? `${q.id} · ${q.title}` : "Question"} icon={<Icon name={q?.answer ? "MessageCircleReply" : "MessageCircleQuestion"} size={18} color={color} />} open={!!q} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
-      {q && <QuestionBody key={q.id} workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} onClose={onClose} />}
+      {q && <QuestionBody key={q.id} workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} onClose={onClose} dismissAt={compact ? "top" : "foot"} />}
     </Modal.Content>
   </Modal>;
 }
@@ -407,6 +407,7 @@ export function QuestionStepper({ workspace: w, theme, compact, openAgent, onAns
   // An answer on its way (sent, no reply yet) steps the pill on at once; one that failed comes back as Not sent.
   const open = w.questions.filter(q => isOpen(q) && !(pending[pendingKey(w.id, q.id)] && !pending[pendingKey(w.id, q.id)].error)).sort((a, b) => Number(questionState(b) === "stopped") - Number(questionState(a) === "stopped"));
   const [index, setIndex] = useState(0);
+  const dismiss = useDismiss();
   if (!open.length) return null;
   const at = Math.min(index, open.length - 1);
   const q = open[at];
@@ -423,8 +424,9 @@ export function QuestionStepper({ workspace: w, theme, compact, openAgent, onAns
         <Text accessibilityLabel={`Question ${at + 1} of ${open.length}`} style={[t.small, { marginLeft: 4 }]}>{at + 1} of {open.length}</Text>
         {arrow("ChevronLeft", "Previous question", -1)}{arrow("ChevronRight", "Next question", 1)}
       </>}
+      <QuestionDismissX workspaceId={w.id} questionId={q.id} theme={theme} compact={compact} onDismissed={onAnswered} dismiss={dismiss} />
     </View>
-    <QuestionBody key={q.id} workspace={w} question={q} theme={theme} compact={compact} dense bodyMaxHeight={bodyMaxHeight} openAgent={openAgent} onAnswered={onAnswered} onDetails={onDetails ? () => onDetails(q.id) : undefined} />
+    <QuestionBody key={q.id} workspace={w} question={q} theme={theme} compact={compact} dense bodyMaxHeight={bodyMaxHeight} openAgent={openAgent} onAnswered={onAnswered} onDetails={onDetails ? () => onDetails(q.id) : undefined} dismissAt="host" />
   </View>;
 }
 

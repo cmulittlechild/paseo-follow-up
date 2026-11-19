@@ -77,7 +77,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
-| Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
+| Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
@@ -776,15 +776,21 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Home and dedupes there, and the other way round; the client reads one store, kept current by the home feed. 2026-11-18,
    Tom: "I want the option to add context to questions outside of catch up too". Guarded by
    `tests/more-context-everywhere.test.ts`.
-59. **Dismissing a question sends the agent nothing** (`dismissing-a-question-sends-the-agent-nothing`). A question that
-   no longer matters is dismissed from its card (a quiet Dismiss after More context, on every surface that answers it;
-   ⇧D in Catch up) or by another agent with `dismiss_question` for the developer. It closes as dismissed and leaves
-   Needs you and every count at once, with Undo; nothing is queued or sent, so the agent spends no turn on it. It
-   learns when it looks (`workspace_status`'s `dismissedQuestions`), and asking or pointing at it again returns it as
-   dismissed instead of a new card (`findDismissedMatch`, `dismissedInstruction`), so there is no re-ask loop;
-   `supersedes` asks again on purpose. An agent never dismisses its own question (that is `withdraw_question`).
+59. **Dismissing anything in Needs you sends the agent nothing** (`dismissing-anything-in-needs-you-sends-the-agent-nothing`,
+   which widens `dismissing-a-question-sends-the-agent-nothing`). Every Needs-you item, on every surface (the panel, Home's
+   detail pane, the pill, the question dialog, Catch up, phones), has one Dismiss: a small muted x top right beside its
+   age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo. An
+   agent dismisses for the developer with `dismiss_item` (planned, audited; never its own brief, question or
+   workspace; `dismiss_question` is the question alias). It leaves Needs you and every count at once, and nothing is
+   queued or sent, so no agent spends a turn on it; nothing Follow-up holds is dropped (a queued batch stays queued, a
+   paused workspace stays paused). A workspace item is pinned to what it is about (`dismissPrint`): a new head, a new
+   failure, a new batch brings it back. A question closes as dismissed (re-asking returns it as dismissed:
+   `findDismissedMatch`); an agent's brief is signed off as dismissed and a `needs_you` restating the same ask
+   (`sameAsk`) ends the turn quiet with a note. The agent learns only when it looks (`workspace_status`:
+   `dismissedQuestions`, `dismissedItems`, `dismissedAsk`). Per kind: [docs/needs-you.md](docs/needs-you.md#dismiss).
    2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
-   that again". Guarded by `tests/dismiss-question.test.ts`.
+   that again", then "Maybe the dismiss button should be on all "Needs you" actions? ... I want it to be really not
+   intrusive". Guarded by `tests/dismiss-question.test.ts` and `tests/dismiss-everywhere.test.ts`.
 
 ## Bugs
 

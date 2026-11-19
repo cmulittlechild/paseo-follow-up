@@ -18,6 +18,7 @@ import { createLiveStore, headerIcon, sidebarItem } from "./client/live";
 import { FOLLOW_UP_ICON } from "./client/follow-up-icon";
 import { contributeFollowUpPill } from "./client/pill";
 import { FollowLarge, LARGE_SCREEN } from "./client/large";
+import { bindDismissInbox } from "./client/dismiss";
 import { createInboxStore } from "./client/inbox-store";
 import { contributeInboxCommands } from "./client/inbox";
 import type { BriefDeps } from "./client/brief";
@@ -69,6 +70,8 @@ export default function contribute(host: PluginClientContext) {
   const Settings = (props: PluginSurfaceProps) => <><FollowSettings {...props} openSetup={openSetup} openReport={() => openReportSheet()} />{reportHost(props)}</>;
   const store = createLiveStore(client);
   const inbox = createInboxStore(host);
+  // A brief's x (client/dismiss.tsx) updates the inbox rows at once, like Sign off.
+  bindDismissInbox(inbox);
   const HeaderIcon = headerIcon(store);
   const headers = new Map<string, PluginButtonRegistration>();
   let stopped = false;

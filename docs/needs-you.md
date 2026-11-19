@@ -406,6 +406,39 @@ card beside a question list.
 Tests: `tests/inbox.test.ts`, `tests/brief.test.ts`, `tests/decision-card.test.ts`, `tests/home.test.ts`,
 `tests/home-beta2.test.ts`, `tests/attention.test.ts`.
 
+## Dismiss
+
+Every Needs-you item has one Dismiss: a small muted x in its card's top-right corner, beside its age
+(`client/dismiss.tsx`, invariant `dismissing-anything-in-needs-you-sends-the-agent-nothing`). It means "this no longer
+needs me": the item leaves Needs you and every count at once, and no agent is sent anything (no message, no turn, no
+tokens). The toast says "Dismissed <what>. The agent wasn't messaged." with Undo for 6 s. On a phone the x is always
+there, muted, with a 40 px hit area (a real box: react-native-web ignores hitSlop); on desktop it shows while the pointer is over the card or focus is
+inside it (`RevealScope`), and always on the selected card (Catch up's card, Home's detail pane: `DismissReveal`).
+Catch up's ⇧D presses the card's x, whatever the card is. One request, `follow.dismiss` (`{ workspaceId, key }` for an
+item, `{ agentId }` for an agent's brief, `undo: true` for Undo); agents use `dismiss_item` (planned, audited, never
+their own brief, question or workspace; `dismiss_question` stays as the question-only alias).
+
+A dismissed item is pinned to what it is about (`dismissPrint`, `shared/attention.ts`): it stays hidden while that
+holds and comes back by itself when it changes, so a real new problem is never hidden. The record is
+`Workspace.dismissed` (key, print, title, when, by whom); a question closes as dismissed instead
+(`server/questions.ts`), and an agent's brief is signed off as dismissed (`Inbox.dismiss`). Dismiss never drops work
+Follow-up holds:
+
+| Kind | What Dismiss does | What brings it back | What the agent sees |
+| --- | --- | --- | --- |
+| Agent's turn-end brief (decision, action, review, error) | Signs the row off as dismissed: the card reads "Dismissed", the ask is remembered (`dismissedAsk`) | Undo; a new, different ask; the developer's next message to the agent clears the memory | Nothing is sent. `workspace_status` shows `dismissedAsk`; a `needs_you` restating it (`sameAsk`) ends the turn quiet and its `note` says it was dismissed |
+| `question` | Closes it as dismissed (invariant 59's rule) | Undo; `supersedes="Qn"` asks again on purpose | `dismissedQuestions`; re-asking returns it as dismissed, pointing at it is refused with why |
+| `merge` (approved, ready) | Hides the Merge ask; the PR sheet still offers Merge | A new head commit on the PR | `dismissedItems` |
+| `reviewers` | Hides the ask and withdraws the agent row's "Add reviewers" flag (`reviewersAskStands`) | A new head commit | `dismissedItems` |
+| `send` (repairs waiting on you, the Done check) | Hides the ask; the batch stays queued on its Tasks rows and still goes with Send now or Auto | A new batch, or a task added or changed in it | `dismissedItems`; the batch is untouched |
+| `retry` (a blocked or unconfirmed batch) | Hides the ask; the batch keeps its state | The batch's state, attempts or result changing (a new failure) | `dismissedItems` |
+| `capped`, `person` (a held task) | Hides the ask; the task stays held, out of the queue | The task's fingerprint (what GitHub shows) or its reason changing | `dismissedItems` |
+| `decision` (a blocked task not yet a question) | Hides the ask; the task stays blocked (its state is the agent's) | A new revision or ask on the task | `dismissedItems` |
+| `hold` (Follow-up is paused) | Hides the ask; Follow-up stays paused and the panel still says so | A different pause reason | `dismissedItems` |
+| `check` (a PR action Follow-up couldn't confirm) | Hides the ask; the action record stays | Its result changing | `dismissedItems` |
+| `answer` (failed, or copied or in chat and not sent) | Hides the ask; the answer and its delivery stay as they are | Its delivery state changing (sent, failed again) | `dismissedItems` |
+| `message` (an undelivered forward or report) | Hides the ask; the queue item keeps retrying, Retry and Cancel stay in the queue | Its state changing (queued to failed) | `dismissedItems` |
+
 ## Opening the PR a row names
 
 `a-row-that-names-a-pr-opens-it-in-one-click`: a row about one PR opens that PR in one click, without the PR sheet.

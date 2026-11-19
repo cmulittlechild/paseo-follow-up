@@ -42,6 +42,11 @@ export const entrySchema = z.object({
   undo: z.object({ kind: z.enum(["sign_off", "snooze"]).default("sign_off"), seq: z.number().int(), prev: needsSchema.nullable(), prevSnooze: snoozeSchema.nullable().default(null), set: snoozeSchema.nullable().default(null), expires: isoSchema }).nullable().default(null),
   /** D2: "Sign off · mute this turn". The next turn end is absorbed once. */
   muteTurn: z.boolean().default(false),
+  /**
+   * The ask the developer dismissed (dismissing-anything-in-needs-you-sends-the-agent-nothing): a needs_you that states it
+   * again isn't flagged again (sameAsk), and the call says why. Cleared by the developer's own message or Undo.
+   */
+  dismissedAsk: z.object({ ask: z.string(), kind: z.string(), at: isoSchema }).nullable().optional(),
   /** Per-agent "Don't flag finishes": permission prompts and errors still flag, plain turn ends don't. */
   enable_finish_flags: z.boolean().default(true),
   /** Archived: hidden, kept for 7 days so an unarchive restores it. */
@@ -134,7 +139,8 @@ export type InboxEvent =
   | { type: "pr_closed"; dedupeKey: string; detail: string; prKey: string; merged?: boolean; quiet?: boolean; title?: string }
   /** The outside facts (FACT_REASONS) that still hold for this agent's PRs: a flag whose fact ended is withdrawn. */
   | { type: "facts_live"; live: Reason[] }
-  | { type: "sign_off"; seq?: number; muteTurn?: boolean }
+  /** `dismissed`: the developer's Dismiss, a sign-off that also remembers the brief's ask so it isn't flagged again. */
+  | { type: "sign_off"; seq?: number; muteTurn?: boolean; dismissed?: boolean }
   | { type: "undo" }
   | { type: "snooze"; until: string }
   /** Bring back now: ends a Later early. */
@@ -321,7 +327,7 @@ export function reduce(prev: Entry, event: InboxEvent, now: string): Entry {
     case "message":
       // #11 clears everything. #12 automation changes nothing, except that its turn supersedes the last turn's
       // failure or pause (RUN_STATE_REASONS): the agent is running again.
-      if (event.from === "tom") { e.needs = null; e.snooze = null; e.muteTurn = false; e.lastTomMessageAt = now; }
+      if (event.from === "tom") { e.needs = null; e.snooze = null; e.muteTurn = false; e.dismissedAsk = null; e.lastTomMessageAt = now; }
       else { e.needs = withoutRunState(e.needs); if (!e.needs) e.snooze = null; }
       break;
     case "permission": flag("permission", event.detail, `permission:${event.requestId}`); break; // #4
@@ -361,6 +367,7 @@ export function reduce(prev: Entry, event: InboxEvent, now: string): Entry {
       if (e.needs || e.snooze) e.undo = { kind: "sign_off", seq: e.seq + 1, prev: e.needs, prevSnooze: e.snooze, set: null, expires: new Date(Date.parse(now) + UNDO_MS).toISOString() };
       e.needs = null; e.snooze = null; e.signedOffAt = now;
       if (event.muteTurn) e.muteTurn = true;
+      if (event.dismissed && e.brief?.ask) e.dismissedAsk = { ask: e.brief.ask, kind: e.brief.kind, at: now };
       break;
     }
     case "undo": { // #14
@@ -377,7 +384,7 @@ export function reduce(prev: Entry, event: InboxEvent, now: string): Entry {
         const keys = new Set(e.needs.reasons.map(r => r.dedupeKey));
         e.needs = { reasons: [...u.prev.reasons.filter(r => !keys.has(r.dedupeKey)), ...e.needs.reasons], since: u.prev.since < e.needs.since ? u.prev.since : e.needs.since };
       }
-      e.undo = null; e.signedOffAt = null; e.muteTurn = false;
+      e.undo = null; e.signedOffAt = null; e.muteTurn = false; e.dismissedAsk = null;
       break;
     }
     case "snooze": // #15, and #15b: Later is undoable like a sign-off.
@@ -605,3 +612,14 @@ export function prEndEvent(pr: { key: string; repo: string; number: number; agen
   const merged = s.state === "MERGED";
   return { type: "pr_closed", dedupeKey: `${pr.key}:${s.state}`, detail: `#${pr.number} ${merged ? "merged" : "closed"}`, prKey: pr.key, merged, ...(s.title ? { title: s.title } : {}), ...(merged && agentMerges(pr) ? { quiet: true } : {}) };
 }
+
+/**
+ * Whether a needs_you ask restates one the developer dismissed (dismissing-anything-in-needs-you-sends-the-agent-nothing):
+ * the same words once case, punctuation and spacing are set aside. A different ask is news and flags as usual.
+ */
+export function sameAsk(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}#]+/gu, " ").trim();
+  return !!norm(a) && norm(a) === norm(b);
+}
+/** What needs_you tells an agent whose restated ask the developer had dismissed. */
+export const DISMISSED_ASK_NOTE = "The developer dismissed this ask: it no longer needs them, so it wasn't flagged again and nothing was sent. Don't raise it again; if something really changed, say what changed in a new ask.";
