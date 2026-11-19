@@ -67,7 +67,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -177,7 +177,8 @@ for (const m of query.matchAll(/(p\\d+):pullRequest\\(number:(\\d+)\\)/g)) {
     reviewThreads: { pageInfo: { hasNextPage: false }, nodes: Array.from({ length: p.threads ?? 0 }, (_, i) => ({ id: "thread-" + n + "-" + i, isResolved: false, comments: { nodes: [{ updatedAt: "2026-03-04T08:30:00Z" }] } })) },
     commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: p.checks ?? [] } } } }] } };
 }
-console.log(JSON.stringify({ data: { repository } }));
+// --github-wait-review: the fixture's _rate is GitHub's rateLimit answer (a budget under Follow-up's reserve).
+console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}), repository } }));
 }
 `;
 }
@@ -1217,6 +1218,35 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await tasksDunning(page);
       if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("secsearch-phone scrolls sideways");
     });
+  }
+  // GitHub budget low (--github-wait-review): the account's GraphQL budget under Follow-up's 20 % reserve, so its PR
+  // reads wait for the reset and the panel's Pull requests card says until when (Workspace.githubWait). Billing retries'
+  // panel, desktop light and dark, and the larger view at 390 light and dark.
+  if (argv.includes("--github-wait-review")) {
+    const fixture = join(home, "gh-fixture.json");
+    const clock = JSON.parse(await fs.readFile(clockFile, "utf8"));
+    const resetAt = new Date(Math.max(clock.fake + (Date.now() - clock.real) * clock.rate, BASE + VIEW) + 25 * 60_000).toISOString();
+    const d = JSON.parse(await fs.readFile(fixture, "utf8"));
+    await fs.writeFile(fixture, JSON.stringify({ ...d, _rate: { cost: 1, remaining: 640, limit: 5000, resetAt } }));
+    const panel = async page => {
+      await openChat(page, billing.title, billing.prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await page.getByText(/^GitHub budget low · next check /).last().waitFor({ timeout: 90000 });
+    };
+    for (const scheme of ["light", "dark"]) await shoot(`github-wait-${scheme}`, DESKTOP, scheme, async page => {
+      await panel(page);
+      await page.getByText(/^GitHub budget low/).last().evaluate(el => el.scrollIntoView({ block: "center" }));
+    });
+    for (const scheme of ["light", "dark"]) await shoot(`github-wait-phone-${scheme}`, PHONE, scheme, async page => {
+      await panel(page);
+      await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+      await page.setViewportSize(PHONE);
+      const line = page.getByText(/^GitHub budget low/).last();
+      await line.waitFor({ timeout: 60000 });
+      await line.evaluate(el => el.scrollIntoView({ block: "center" }));
+      if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("github-wait-phone scrolls sideways");
+    });
+    await fs.writeFile(fixture, JSON.stringify(d));
   }
   // The filter's ranking (--rank-review, Paseo 0.16): two workspaces renamed so "staging" is in their titles, while it
   // stays in other rows' second lines (Search filters' permission, SSO login's next step). Inside each group the title

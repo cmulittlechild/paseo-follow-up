@@ -785,6 +785,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
    that again". Guarded by `tests/dismiss-question.test.ts`.
 
+60. **Follow-up's GitHub reads scale with what changed, not with how many PRs it tracks**
+   (`github-reads-scale-with-change`). A due PR read in full before is probed first (one query per account for all due
+   PRs: scalars, unresolved thread ids, check counts by state; ~1 point per 33 PRs), and read in full only when the
+   probe moved something the full read decides on (`probeVerdict`, `shared/poll.ts`), or `SAFETY_READ_MS` after its
+   last full read. Merged and closed PRs with a known status aren't read again (only Refresh reads them). Under 20 % of
+   the account's limit (the reserve) background reads stop until GitHub's reset and the workspace says until when
+   (`githubWait`, "GitHub budget low · next check <time>"; `workspace_status` too); Refresh and agent tools still read
+   their own workspace above 100 points. Following a workspace reads only its own PRs fresh. 2026-11-19, Tom: "Github
+   rate limit is a big problem in follow-up recently, I have LOTS of PRs"; 100 open PRs cost 4300-6400 points an hour
+   plus ~2000 per pushed 60-PR stack, the shared 5000-point budget ran out in five hours that day, and agents' `gh`
+   calls failed first. Guarded by `tests/github-change-first.test.ts`, `tests/github-poll-cost.test.ts` (the tiers)
+   and `tests/activate-reads-its-workspace.test.ts` ([docs/prs.md](docs/prs.md)).
+
 ## Bugs
 
 Every bug is fixed for its whole class:

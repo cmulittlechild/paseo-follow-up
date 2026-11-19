@@ -171,6 +171,11 @@ export const workspaceSchema = z.object({
    * clears an entry once its item is sent or cancelled; Needs you shows each with Retry and Cancel.
    */
   undelivered: z.array(z.object({ id: z.string().max(400), agentId: idSchema, agentTitle: z.string().nullable(), state: z.enum(["queued", "failed"]), reason: z.string().nullable(), since: z.string() })).max(20).optional(),
+  /**
+   * Follow-up is holding back its GitHub reads for this workspace's PRs until `until` (GitHub's reset): the account's
+   * GraphQL budget is under the reserve Follow-up leaves for agents (shared/poll.ts). Null or absent: reads run.
+   */
+  githubWait: z.object({ until: z.string() }).nullable().optional(),
   /** The main agent's title from Paseo, for "Next message to <title>". Absent: "the main agent". */
   mainAgentTitle: z.string().nullable().optional(),
   /** Open tasks kept out of the next message (reconcile): capped (sent NO_PROGRESS_CAP times unchanged), manual (Auto off for that task) or person (the agent said only a person can move it: Batch.humanOnly). */

@@ -5,7 +5,7 @@ import type { PrWorkflow } from "../shared/pr-workflow";
 import type { Pr, Snapshot } from "../shared/model";
 import type { Deployments } from "./deployments";
 import { notSetUpEvidence } from "../shared/task-trigger";
-import { budgetTier, cadence, dueForRead, type Budget } from "../shared/poll";
+import { budgetTier, cadence, dueForRead, probeVerdict, SAFETY_READ_MS, type Budget, type Fingerprint } from "../shared/poll";
 import { cliApi, githubApi, type GithubApi } from "./github-api";
 import { splitReviewers, TEAM_SLUG, USER_LOGIN } from "../shared/reviewers";
 const exec = promisify(execFile);
@@ -68,21 +68,58 @@ export function parsePr(pr: Node, trunk: string, observedAt: string, required: s
   };
 }
 
+/** Check counts by state: the whole connection's, whatever page of nodes comes back. */
+const COUNTS = "checkRunCountsByState{state count} statusContextCountsByState{state count}";
+/**
+ * A probe's fields (shared/poll.ts, change-first reads): everything the full read decides on that GitHub can report
+ * without per-check or per-comment nodes. ~3 requests per PR, so ~1 point per 33 PRs; the full read is ~107 per PR.
+ */
+const PROBE = `updatedAt state headRefOid baseRefName isDraft mergeable mergeStateStatus reviewDecision isInMergeQueue autoMergeRequest{enabledAt}
+reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved}}
+commits(last:1){nodes{commit{statusCheckRollup{contexts(first:1){${COUNTS}}}}}}`;
+/** PRs per probe query (one account, any number of its repositories): ~300 requests, about 3 points. */
+const PROBE_CHUNK = 100;
+const RUNNING_STATES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", "EXPECTED"]);
+const FAILED_STATES = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"]);
+/**
+ * The fingerprint of a PR as a probe or a full read returned it, or null when it can't be compared (threads past one
+ * page, no updatedAt or no check counts: an older GitHub), which leaves that PR on full reads.
+ */
+export function fingerprint(pr: Node): Fingerprint | null {
+  const threads = pr.reviewThreads;
+  if (typeof pr.updatedAt !== "string" || !threads || !Array.isArray(threads.nodes) || threads.pageInfo?.hasNextPage !== false) return null;
+  const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts;
+  if (contexts && (!Array.isArray(contexts.checkRunCountsByState) || !Array.isArray(contexts.statusContextCountsByState))) return null;
+  const counts: [string, number][] = [
+    ...(contexts?.checkRunCountsByState ?? []).map((c: Node): [string, number] => [`run:${c.state}`, Number(c.count) || 0]),
+    ...(contexts?.statusContextCountsByState ?? []).map((c: Node): [string, number] => [`status:${c.state}`, Number(c.count) || 0]),
+  ].filter(([, n]) => n > 0).sort(([a], [b]) => a.localeCompare(b));
+  const sum = (states: Set<string>) => counts.reduce((total, [key, n]) => total + (states.has(key.slice(key.indexOf(":") + 1)) ? n : 0), 0);
+  const unresolved = threads.nodes.filter((t: Node) => !t.isResolved).map((t: Node) => String(t.id)).sort();
+  return {
+    core: JSON.stringify([pr.updatedAt, pr.state, pr.headRefOid, pr.baseRefName, !!pr.isDraft, pr.mergeable ?? null, pr.mergeStateStatus ?? null, pr.reviewDecision ?? null, pr.isInMergeQueue ?? null, !!pr.autoMergeRequest, unresolved]),
+    checks: JSON.stringify(counts), running: sum(RUNNING_STATES), failed: sum(FAILED_STATES),
+  };
+}
+
 /** Ruleset rules for a ref (GraphQL `Ref.rules`), the same set REST `rules/branches/<branch>` returns. */
 const RULES = "rules(first:100){pageInfo{hasNextPage} nodes{type repositoryRuleset{enforcement} parameters{...on RequiredStatusChecksParameters{requiredStatusChecks{context}}}}}";
-const fields = `number title url state headRefOid headRefName baseRefName isDraft mergeable mergeStateStatus reviewDecision mergedAt mergeCommit{oid} isInMergeQueue autoMergeRequest{enabledAt}
+const fields = `number title url state updatedAt headRefOid headRefName baseRefName isDraft mergeable mergeStateStatus reviewDecision mergedAt mergeCommit{oid} isInMergeQueue autoMergeRequest{enabledAt}
 author{login}
 reviewRequests(first:100){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ...on User{login} ...on Team{slug}}}}
 latestReviews(first:100){pageInfo{hasNextPage} nodes{state author{__typename login}}}
 baseRef{branchProtectionRule{requiredStatusCheckContexts} ${RULES} associatedPullRequests(first:100,states:[OPEN]){nodes{number headRefName state headRepository{nameWithOwner}}}}
 reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved comments(last:1){nodes{updatedAt}}}}
-commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{
+commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){${COUNTS} pageInfo{hasNextPage} nodes{
 ...on CheckRun{name status conclusion} ...on StatusContext{context state}
 }}}}}}`;
 
-/** A GitHub write that failed outright (refused) or whose outcome is unknown (timed out, no reply). */
-/** Merged with a complete snapshot: final. Never read again except on its workspace's Refresh, and never in error. */
-const finalMerged = (p: Pr): boolean => p.snapshot?.state === "MERGED" && !!p.snapshot.complete;
+/**
+ * Merged or closed with a complete snapshot: final. Never read again except on its workspace's Refresh, and never in
+ * error. Closed joined merged on 2026-11-19: closed PRs were re-read every minute forever. A reopened PR shows on
+ * the workspace's Refresh, or when its agent registers it again.
+ */
+const finalMerged = (p: Pr): boolean => (p.snapshot?.state === "MERGED" || p.snapshot?.state === "CLOSED") && !!p.snapshot.complete;
 
 export class GithubWriteError extends Error { constructor(message: string, readonly uncertain: boolean) { super(message); } }
 type Method = "squash" | "merge" | "rebase";
@@ -194,17 +231,39 @@ export class Github {
     const last = this.last.get(p.key);
     return cadence(last?.snapshot, p.error || last?.error, this.changedAt.get(p.key) ?? null, this.now()) !== "idle";
   }
-  /** Requests GitHub reads made, for tests and the poll-cost harness. */
-  readonly stats = { graphql: 0, rest: 0, skipped: 0, points: 0 };
+  /** Requests GitHub reads made, for tests and the poll-cost harness. `probes`: probe queries; `unchanged`: PRs a probe settled. */
+  readonly stats = { graphql: 0, rest: 0, skipped: 0, points: 0, probes: 0, unchanged: 0 };
+  /** Each PR's fingerprint from its last full read, and when that read was (change-first reads, shared/poll.ts). */
+  private fingerprints = new Map<string, Fingerprint>();
+  private fullAt = new Map<string, number>();
+  private noteBudget(owner: string, rate: Node | undefined): void {
+    if (!rate || typeof rate.remaining !== "number") return;
+    this.budgets.set(owner, { remaining: rate.remaining, resetAt: Date.parse(rate.resetAt) || this.now() + 3_600_000, ...(typeof rate.limit === "number" ? { limit: rate.limit } : {}) });
+    this.stats.points += Number(rate.cost) || 0;
+  }
+  private outOfBudget(owner: string, error: unknown): void {
+    this.budgets.set(owner, { remaining: 0, resetAt: (error as { resetAt?: number }).resetAt ?? this.now() + 10 * 60_000 });
+  }
+  /** A due PR that a probe may settle: read in full before, nothing wrong with that read, not asked for fresh. */
+  private probeable(p: Pr, o: { background?: boolean; fresh?: Set<string> }): boolean {
+    const last = this.last.get(p.key);
+    return !!o.background && !o.fresh?.has(p.key) && !!last?.snapshot?.complete && !last.error && !p.error && this.fingerprints.has(p.key) && this.now() - (this.fullAt.get(p.key) ?? 0) < SAFETY_READ_MS;
+  }
   /**
    * Reads every PR fresh, unless `background` (the engine's timer tick) allows backoff. Then only `fresh` keys,
    * `hot` keys (busy workspaces) and hot PRs force their repository to be read this tick.
+   *
+   * Change-first (invariant `github-reads-scale-with-change`): a due PR read in full before is probed first, one query
+   * per account for every such PR, and read in full only when the probe saw a change that matters (`probeVerdict`).
+   * A fresh request (Refresh, opening the panel) and a foreground read (agent tools, actions) read in full.
    */
   async observe(prs: Pr[], o: { background?: boolean; fresh?: Set<string>; hot?: Set<string> } = {}): Promise<Map<string, Observation>> {
     const result = new Map<string, Observation>();
     const repositories = [...new Set(prs.map(p => p.repo))];
     const modes = new Map<string, PrWorkflow>();
     for (const repo of repositories) modes.set(repo, this.workflow ? await this.workflow(repo).catch((): PrWorkflow => "github") : "graphite");
+    const full = new Map<string, Pr[]>();
+    const probes = new Map<string, Pr[]>();
     for (const repo of repositories) {
       const targets = [...new Map(prs.filter(p => p.repo === repo).map(p => [p.key, p])).values()];
       const owner = repo.split("/")[0];
@@ -212,29 +271,66 @@ export class Github {
       const pinned = (p: Pr) => o.hot?.has(p.key) || o.fresh?.has(p.key);
       const repoUrgent = targets.some(p => pinned(p) || this.hot(p));
       // Per-PR backoff (shared/poll.ts): only due PRs go into this tick's queries; the rest reuse their last
-      // observation. A read costs ~1 GraphQL point per PR, so reading fewer PRs is what saves the budget.
+      // observation.
       const due = targets.filter(p => {
-        // Merged is final: a merged PR whose status is known isn't read again, not even on a cold start. Only the
+        // Merged or closed is final: one whose status is known isn't read again, not even on a cold start. Only the
         // developer's Refresh of its workspace (fresh) reads it.
         // A stored error doesn't undo that (2.0.1-beta.0 left some behind): the skip below reports no error, clearing it.
         if (finalMerged(p) && !o.fresh?.has(p.key)) return false;
         if (tier === "critical") return false;
+        // Under the reserve, background reads stop; the developer's Refresh and foreground reads (agent tools) still go.
+        if (tier === "reserve" && o.background && !o.fresh?.has(p.key)) return false;
         if (!o.background || !this.last.has(p.key) || o.fresh?.has(p.key) || o.hot?.has(p.key)) return true;
         const last = this.last.get(p.key)!;
         return dueForRead({ snapshot: last.snapshot, error: p.error || last.error, changedAt: this.changedAt.get(p.key) ?? null, readAt: this.readAt.get(p.key) ?? 0, now: this.now(), tier, repoUrgent, since: this.changedAt.get(p.key) ?? this.seenAt.get(p.key) ?? null });
       });
       const dueKeys = new Set(due.map(p => p.key));
       for (const p of targets) if (!dueKeys.has(p.key)) { this.stats.skipped++; result.set(p.key, finalMerged(p) ? { snapshot: { ...p.snapshot! }, error: null } : this.standIn(p, owner)); }
-      if (!due.length) continue;
+      for (const p of due) { const into = this.probeable(p, o) ? probes : full; into.set(into === probes ? owner : repo, [...(into.get(into === probes ? owner : repo) ?? []), p]); }
+    }
+    // Probes: one query per account (owner) for up to PROBE_CHUNK PRs across its repositories.
+    for (const [owner, group] of probes) {
+      for (let offset = 0; offset < group.length; offset += PROBE_CHUNK) {
+        const chunk = group.slice(offset, offset + PROBE_CHUNK);
+        const byRepo = [...new Set(chunk.map(p => p.repo))];
+        const query = `query{rateLimit{cost remaining resetAt limit} ${byRepo.map((repo, r) => {
+          const [o, n] = repo.split("/");
+          return `r${r}:repository(owner:${JSON.stringify(o)},name:${JSON.stringify(n)}){${chunk.filter(p => p.repo === repo).map(p => `p${p.number}:pullRequest(number:${p.number}){${PROBE}}`).join(" ")}}`;
+        }).join(" ")}}`;
+        const reread = (p: Pr) => full.set(p.repo, [...(full.get(p.repo) ?? []), p]);
+        try {
+          this.stats.graphql++; this.stats.probes++;
+          const payload = await this.api.graphql(byRepo[0], query, {});
+          if (((payload.errors ?? []) as Node[]).some(e => e.type === "RATE_LIMITED" || e.type === "RATE_LIMIT")) throw Object.assign(new Error("rate limited"), { rateLimited: true });
+          this.noteBudget(owner, payload.data?.rateLimit);
+          for (const p of chunk) {
+            const data = payload.data?.[`r${byRepo.indexOf(p.repo)}`]?.[`p${p.number}`];
+            const seen = data ? fingerprint(data) : null;
+            const before = this.fingerprints.get(p.key)!;
+            if (!seen || probeVerdict(before, seen, this.now() - (this.fullAt.get(p.key) ?? 0)) === "read") { reread(p); continue; }
+            // Nothing the full read decides on moved: the last observation is current as of now.
+            this.stats.unchanged++; this.readAt.set(p.key, this.now());
+            result.set(p.key, { snapshot: { ...this.last.get(p.key)!.snapshot!, observedAt: new Date(this.now()).toISOString() }, error: null });
+          }
+        } catch (error) {
+          if (rateLimited(error)) { this.outOfBudget(owner, error); for (const p of chunk) result.set(p.key, this.standIn(p, owner)); continue; }
+          // Any other probe failure: the full read decides (and reports) for these PRs.
+          for (const p of chunk) reread(p);
+        }
+      }
+    }
+    for (const [repo, due] of full) {
+      const owner = repo.split("/")[0];
       for (let offset = 0; offset < due.length; offset += CHUNK) {
         const group = due.slice(offset, offset + CHUNK);
-        const [owner, name] = repo.split("/");
-        const query = `query($owner:String!,$name:String!){rateLimit{cost remaining resetAt} repository(owner:$owner,name:$name){defaultBranchRef{name branchProtectionRule{requiredStatusCheckContexts} ${RULES}} squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed autoMergeAllowed viewerDefaultMergeMethod mergeQueue{id} ${group.map((p, i) => `p${i}:pullRequest(number:${p.number}){${fields}}`).join(" ")}}}`;
+        // A probe (or an earlier chunk) that hit the limit stops the rest of this tick's reads on that account.
+        if (budgetTier(this.budgets.get(owner), this.now()) === "critical") { for (const p of group) result.set(p.key, this.standIn(p, owner)); continue; }
+        const [, name] = repo.split("/");
+        const query = `query($owner:String!,$name:String!){rateLimit{cost remaining resetAt limit} repository(owner:$owner,name:$name){defaultBranchRef{name branchProtectionRule{requiredStatusCheckContexts} ${RULES}} squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed autoMergeAllowed viewerDefaultMergeMethod mergeQueue{id} ${group.map((p, i) => `p${i}:pullRequest(number:${p.number}){${fields}}`).join(" ")}}}`;
         try {
           this.stats.graphql++;
           const payload = await this.api.graphql(repo, query, { owner, name });
-          const rate = payload.data?.rateLimit;
-          if (rate && typeof rate.remaining === "number") { this.budgets.set(owner, { remaining: rate.remaining, resetAt: Date.parse(rate.resetAt) || this.now() + 3_600_000 }); this.stats.points += Number(rate.cost) || 0; }
+          this.noteBudget(owner, payload.data?.rateLimit);
           for (const p of group) this.readAt.set(p.key, this.now());
           // A partial response fails only the PRs its errors point at. An error outside any PR fails the group.
           const broken = new Set<string>(); const rulesBroken = new Set<string>();
@@ -270,6 +366,9 @@ export class Github {
             const trunkChecks = open && stacked(data) ? [...(repository.defaultBranchRef.branchProtectionRule?.requiredStatusCheckContexts ?? []), ...await rulesFor(trunk, trunkRules)] : [];
             const required = [...new Set([...(data.baseRef?.branchProtectionRule?.requiredStatusCheckContexts ?? []), ...base, ...trunkChecks])];
             const snapshot = parsePr(data, trunk, new Date(this.now()).toISOString(), required);
+            const print = fingerprint(data);
+            if (print) this.fingerprints.set(p.key, print); else this.fingerprints.delete(p.key);
+            this.fullAt.set(p.key, this.now());
             if (modes.get(repo) === "github") {
               // GitHub mode: merge-when-ready is GitHub's auto-merge, and the repository's merge settings travel with the PR.
               snapshot.prWorkflow = "github"; snapshot.repoMerge = repoMerge(repository);
@@ -281,7 +380,7 @@ export class Github {
         } catch (error) {
           // Out of GraphQL budget: don't fail. Keep the last observations and wait for the reset.
           if (rateLimited(error)) {
-            this.budgets.set(owner, { remaining: 0, resetAt: (error as { resetAt?: number }).resetAt ?? this.now() + 10 * 60_000 });
+            this.outOfBudget(owner, error);
             for (const p of group) result.set(p.key, this.standIn(p, owner));
             continue;
           }
@@ -331,6 +430,15 @@ export class Github {
   }
   /** Each owner's GraphQL budget from the last query's rateLimit (owners on one account report the same). */
   budget(owner: string): Budget | undefined { return this.budgets.get(owner); }
+  /**
+   * While Follow-up holds back reads on this repository's account for the budget (the reserve or less), when they
+   * resume (GitHub's reset); null when reads run. Feeds the workspace's "GitHub budget low" line (Workspace.githubWait).
+   */
+  waitUntil(repo: string): number | null {
+    const budget = this.budgets.get(repo.split("/")[0]);
+    const tier = budgetTier(budget, this.now());
+    return tier === "reserve" || tier === "critical" ? budget!.resetAt : null;
+  }
   /** Keeps each PR's last observation for backoff, and when its content last changed (observedAt aside). */
   private remember(key: string, value: Observation): void {
     const { observedAt: _, deployment: __, ...content } = value.snapshot ?? ({} as Partial<Snapshot>);

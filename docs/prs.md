@@ -69,11 +69,29 @@ spawns after a start or a deploy; `tests/worker-reads-github-in-process.test.ts`
 `gh api user` on demand: it checks gh itself. `FOLLOW_UP_DEPLOY_REGISTRY` points the deploy probe's registry reads
 at a fake (`scripts/poll-cost.mjs --deploy-merged`).
 
-**Backoff** (`shared/poll.ts`). A read costs about one GraphQL point per PR (15 PRs = 16 points), from the
-developer's 5000-point hourly budget that every agent shares, so only PRs that are due go into a tick's queries.
+**Change-first reads** (`server/github.ts`, `shared/poll.ts`; invariant `github-reads-scale-with-change`). A full
+read costs about one GraphQL point per PR (15 PRs = 16 points), from the developer's 5000-point hourly budget that
+every agent, gt and other plugins share. So a due PR that was read in full before is first *probed*: one query per
+account for all its due PRs, across repositories, asking only scalars (`updatedAt`, head, state, base, draft,
+mergeability, review decision, merge queue, auto-merge), unresolved thread ids and check counts by state
+(`checkRunCountsByState`, `statusContextCountsByState`). That is about three requests per PR, so 100 PRs cost 3
+points (measured with `rateLimit(dryRun:true)`). The full read runs only for PRs whose probe moved something it
+decides on (`probeVerdict`): anything outside checks, a change in failures, checks starting or all finishing. Running
+checks whose counts moved otherwise wait `RUNNING_FULL_MS` (5 min; a required check passing moves
+`mergeStateStatus`, which reads at once). A probe that finds nothing new refreshes the observation's `observedAt`, so
+the completion gate's freshness holds. Every open PR still gets a full read `SAFETY_READ_MS` (30 min) after its last,
+for what a probe can't see (a reviewer request, branch protection, a stack parent). The developer's Refresh, opening a
+panel and foreground reads (agent tools, PR actions, Done) always read in full, and a PR whose threads run past one
+page, or a host without these fields, stays on full reads. A probe that fails falls back to full reads; one that hits
+the limit stops that account's reads for the tick. 2026-11-19 live: 100 open PRs cost 4300-6400 points an hour re-read
+in full, plus ~2000 per pushed 60-PR stack, and the budget ran out in five hours that day; the same mix in the
+harness now costs ~370-550 an hour, and a pushed 60-PR stack ~320 (3400 before; `tests/github-change-first.test.ts`).
+Following a workspace reads its own PRs fresh and the rest with the usual backoff (before, every tracked PR fresh).
+
+**Backoff** (`shared/poll.ts`). Only PRs that are due go into a tick's probes and reads.
 The engine ticks every 15 s. On a timer tick a PR is due when it's moving (every 30 s when only checks are running), its workspace is busy, the developer
-refreshed or opened its workspace, or its interval passed: 60 s for settled open or closed PRs, 30 minutes for merged
-ones (merged is final; deploy state is probed separately every tick). Otherwise its last observation stands in.
+refreshed or opened its workspace, or its interval passed: 60 s for settled open PRs (merged and closed are final, below;
+deploy state is probed separately every tick). Otherwise its last observation stands in.
 Moving means: not read yet, an error, an incomplete read, a check actually running (finishing checks don't bump a
 PR's `updatedAt`; a required check that never reported isn't running), a merge queue, merge when ready on, unknown
 mergeability, or a content change in the last 5 minutes. The developer's Refresh reads fresh. A turn end, an action or an agent tool nudges only its own workspace
@@ -85,8 +103,13 @@ freshness; the `poll-backoff-never-hides-a-moving-pr` invariant holds both. Open
 are read every 2 minutes instead of 30 s (invariant `long-running-checks-read-every-2-min`; 2026-11-12, 25 stacked
 PRs with checks running for hours cost ~3000 GraphQL points an hour).
 
-**Budget.** Each query asks for `rateLimit { cost remaining resetAt }`. Under 500 points left, settled PRs wait 5
-minutes and only in repositories with something moving, and merged PRs aren't read (see below). Under 100, or when GitHub
+**Budget.** Each query asks for `rateLimit { cost remaining resetAt limit }`. Under 40 % of the limit (2000 of 5000),
+settled PRs wait 5 minutes and only in repositories with something moving. Under 20 % (the reserve, 1000), Follow-up's
+background reads stop until the reset, so agents, gt and other plugins keep the rest (2026-11-19 live: Follow-up read
+the account down to 100 left and agents' `gh` calls failed first); the developer's Refresh and foreground reads (agent
+tools) still read their own workspace. The workspace then carries `githubWait` (`{ until }`, from `Github.waitUntil`,
+set by the engine's pass), its Pull requests card says "GitHub budget low · next check <time>" with why its statuses
+may be behind (`githubWaitLine`, `shared/presentation.ts`), and `workspace_status` returns it as `githubWait`. Under 100, or when GitHub
 answers with a rate limit (GraphQL's `RATE_LIMIT` or `RATE_LIMITED` error, or a 403/429 with `retry-after` or no
 remaining budget), nothing is read until the reset (10 minutes when GitHub doesn't say) and the last observations
 stand in instead of errors.
@@ -97,7 +120,7 @@ stand in instead of errors.
   observation, else the stored snapshot (after a restart nothing is in memory). Only a PR never read says why it has
   none (invariant `a-github-limit-never-blanks-a-known-pr`, `tests/github-rate-limit.test.ts`). 2026-11-12: the
   account's GraphQL budget ran out, GitHub answered `RATE_LIMIT`, and every PR on it showed Unknown.
-- **Merged is final.** A merged PR with a known status isn't read again, not even on a cold start; only the
+- **Merged (and closed) is final.** A merged or closed PR with a known status isn't read again, not even on a cold start (closed joined merged on 2026-11-19: closed PRs were re-read every minute forever); only the
   developer's Refresh of its workspace reads it. A stored error doesn't change that: the skip reports no error, and
   parsing the state (load included) drops an error from a merged PR with a complete snapshot (`prSchema`), so an
   install heals without a Refresh. The developer's Refresh of a dormant workspace reads that workspace's PRs (only its PRs:

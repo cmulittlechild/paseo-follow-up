@@ -62,3 +62,16 @@ export function orderedStacks<P extends Pr>(prs: P[]): { name: string; prs: P[] 
   const priority = (rows: Pr[]) => rows.every(settledForDisplay) ? 2 : rows.some(p => prPresentation(p).tone === "warning" || !statusKnown(p) || p.snapshot.state === "CLOSED" && !settled(p)) ? 0 : 1;
   return [...groups].map(([name, prs]) => ({ name, prs })).sort((a, b) => priority(a.prs) - priority(b.prs));
 }
+
+/**
+ * The Pull requests card's line while Follow-up holds back its GitHub reads for the budget (Workspace.githubWait):
+ * what is happening, when checks resume (local time), and why the statuses below may be behind. Null when reads run.
+ */
+export function githubWaitLine(w: { githubWait?: { until: string } | null }, now: number): { title: string; detail: string; label: string } | null {
+  const until = Date.parse(w.githubWait?.until ?? "");
+  if (!Number.isFinite(until) || until <= now) return null;
+  const at = new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const title = `GitHub budget low · next check ${at}`;
+  const detail = "Follow-up paused its PR checks to leave GitHub's hourly limit to your agents. Statuses here are from the last check.";
+  return { title, detail, label: `${title}. ${detail}` };
+}

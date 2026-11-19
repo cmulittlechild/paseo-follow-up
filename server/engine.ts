@@ -130,7 +130,7 @@ export class Engine {
   statusCheck: (w: Workspace, now: number, inputs?: string) => Promise<void> = async () => {};
   /** Background refreshes skipped while paused, for tests and the resource check. */
   skipped = 0;
-  constructor(readonly store: Store, private github: Pick<Github, "observe">, private gateway: Gateway, private now = Date.now, private settleMs = 60_000, private nudgeMs = NUDGE_MS) {}
+  constructor(readonly store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "waitUntil">>, private gateway: Gateway, private now = Date.now, private settleMs = 60_000, private nudgeMs = NUDGE_MS) {}
   async recover(): Promise<void> {
     await this.store.mutate(state => {
       for (const w of state.workspaces) {
@@ -181,6 +181,17 @@ export class Engine {
     // One tick saves and derives once (a-tick-copies-the-state-at-most-once, Store.batch).
     this.running = this.store.batch(() => this.run(o)).catch(() => { this.error = "Follow-up refresh failed. Saved work is intact; refresh will retry."; }).finally(() => { this.running = null; });
     return this.running;
+  }
+  /**
+   * When Follow-up's GitHub reads resume for this workspace's open PRs, while the account's budget is under the reserve
+   * (`Github.waitUntil`): the earliest reset among their repositories, or null when reads run. Merged and closed PRs
+   * aren't read anyway, so a workspace with only those says nothing.
+   */
+  private githubWait(w: Workspace): string | null {
+    if (!this.github.waitUntil) return null;
+    const until = [...new Set(w.prs.filter(p => p.snapshot?.state !== "MERGED" && p.snapshot?.state !== "CLOSED").map(p => p.repo))]
+      .map(repo => this.github.waitUntil!(repo)).filter((t): t is number => t !== null && t > this.now());
+    return until.length ? new Date(Math.min(...until)).toISOString() : null;
   }
   /** Reads one workspace's PRs fresh and records what came back, nothing else (a Refresh of a dormant workspace). */
   private async refreshPrs(w: Workspace): Promise<void> {
@@ -257,15 +268,17 @@ export class Engine {
       // left, same runtime, no PR read or error it hasn't recorded, and a full pass under OBSERVE_FULL_MS ago (time-based
       // rules, like the 120 s acknowledgement, run on that pass). The checks cost a ~200-byte JSON and a shallow compare per PR.
       const runtimeKey = JSON.stringify(runtime);
+      const githubWait = this.githubWait(original);
       const last = this.observedPass.get(original.id);
       // A scheduled task due since the last pass makes it a full pass, so a trigger fires at its time, not up to a minute late.
-      const untouched = !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && this.now() < last.dueAt && o.workspaceId !== original.id &&
+      const untouched = (original.githubWait?.until ?? null) === githubWait && !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && this.now() < last.dueAt && o.workspaceId !== original.id &&
         original.prs.every(p => { const seen = observations.get(p.key); return !seen || seen.error === p.error && sameSnapshot(seen.snapshot, p.snapshot, !isHot(original) && !awaitsRead(original)); });
       if (!untouched) this.observationWrites++;
       if (!untouched) await this.store.mutateWorkspace(original.id, w => {
         w.runtimeBusy = runtime.busy; w.runtimeReason = runtime.reason; w.taskAgents = runtime.taskAgents;
         w.backgroundBusy = runtime.backgroundBusy ?? false;
         w.mainBusy = repairWait(runtime);
+        if ((w.githubWait?.until ?? null) !== githubWait) w.githubWait = githubWait ? { until: githubWait } : null;
         if (runtime.mainTitle !== undefined && (w.mainAgentTitle ?? null) !== runtime.mainTitle) w.mainAgentTitle = runtime.mainTitle;
         if (runtime.gone && w.goneAgent?.agentId !== w.mainAgentId) w.goneAgent = { agentId: w.mainAgentId, at: new Date(this.now()).toISOString(), reason: runtime.gone };
         if (w.goneAgent?.agentId === w.mainAgentId) w.runtimeReason = GONE_REASON;
@@ -396,7 +409,9 @@ export class Engine {
       if (state.workspaceOptOuts?.includes(workspaceId)) state.workspaceOptOuts = state.workspaceOptOuts.filter(id => id !== workspaceId);
     });
     const activated = findWorkspace(await this.store.snapshot(), workspaceId);
-    void this.tick();
+    // Its PRs fresh, everything else with the usual backoff: before 2026-11-19 this was a full fresh read of every
+    // tracked PR (~100 GraphQL points per follow at 100 open PRs).
+    void this.tick({ background: true, workspaceId });
     return activated;
   }
   /** Records the developer's answer, then queues it unless they chose to copy it or put it in chat. */

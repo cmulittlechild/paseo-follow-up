@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import type { Pr, Workspace } from "../shared/model";
-import { compactPrStatus, orderedStacks, settledForDisplay } from "../shared/presentation";
+import { compactPrStatus, githubWaitLine, orderedStacks, settledForDisplay } from "../shared/presentation";
 import { mergeQueued, prTone, stackOrder } from "../shared/attention";
 import { reviewersMissing } from "../shared/pr-workflow";
 import { isGithubFlow } from "../shared/pr-actions";
@@ -123,6 +123,7 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
   const showRepo = new Set(w.prs.map(p => p.repo)).size > 1;
   const openCount = w.prs.filter(p => p.snapshot?.state === "OPEN").length;
   const inFlight = w.prActions.filter(a => a.state === "sending");
+  const wait = githubWaitLine(w, Date.now());
   const settledOpen = open("settled");
   const settledPrs = settled.reduce((n, s) => n + s.prs.length, 0);
   // Every PR in the order the card draws them, settled stacks included: the search's "n of N" and its filter.
@@ -135,6 +136,13 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
       <View style={{ paddingTop: 3 }}><Spinner color={c.accent} size={12} /></View>
       <RichText style={[t.meta, { flex: 1, color: c.foreground }]}>{a.result || (isGithubFlow(w.prs.find(p => p.key === a.prs[0])?.snapshot) ? "Sending to GitHub…" : "Submitting to Graphite…")}</RichText>
     </View>)}
+    {!hits && wait && <View accessible accessibilityLabel={wait.label} style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border }}>
+      <View style={{ paddingTop: 2 }}><Icon name="Clock" size={13} color={c.foregroundMuted} /></View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{wait.title}</Text>
+        <Text style={t.meta}>{wait.detail}</Text>
+      </View>
+    </View>}
     {!hits && <HeldMerges workspace={w} theme={theme} compact={compact} framed />}
     {!hits && !w.prs.length && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border, gap: 4 }}>
       <Text style={t.body}>No PRs yet</Text>
