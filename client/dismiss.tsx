@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { AccessibilityInfo, Platform, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { AccessibilityInfo, Animated, Easing, Platform, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { dismissRpc } from "../shared/contracts";
 import { Pressable, Text } from "./text";
-import { focusRing, type Theme } from "./kit";
-import { solidFor, withAlpha } from "./theme";
+import { focusRing, keyboardFocus, type Theme } from "./kit";
+import { useReducedMotion } from "./motion";
+import { isLight, readable, solidFor, tint, withAlpha } from "./theme";
 import { liveBriefKey, overviewKey, workspaceKey } from "./keys";
 import { hasToastHost, pushToast, runAction } from "./toast-store";
 import type { InboxStore } from "./inbox-store";
@@ -23,7 +24,7 @@ import type { InboxStore } from "./inbox-store";
  * unmounted, so the card doesn't move when it appears and the keyboard and screen readers always reach it.
  *
  * Two clicks, in place (dismiss-takes-two-clicks-in-place): the first click (tap, Enter, Space, ⇧D in Catch up) arms the
- * x: it turns into a small solid red "Dismiss" pill on the same spot, growing leftward over what sits beside it, so the
+ * x: it turns into a small red-tinted "Dismiss" pill on the same spot (solid red under the pointer), growing leftward over what sits beside it, so the
  * card never reflows. The second click on it dismisses. It disarms quietly on a click or tap anywhere else, Esc, focus
  * leaving it, the pointer leaving its card (after a short grace), or DISMISS_ARM_MS untouched. Only one x is armed at a
  * time, on every surface. No pop-up; Undo stays.
@@ -108,7 +109,7 @@ export function RevealScope({ children, style, ...rest }: { children: ReactNode;
 /**
  * The small x. `label` names what it dismisses ("Dismiss Q3", "Dismiss #12 is approved"); the hint follows it. Quiet by
  * design: the muted foreground at 14 px (16 on phones), no fill until hovered, never the size or colour of an action.
- * Armed (the first click), it is a solid red "Dismiss" pill in the same place; the second click calls `onPress`.
+ * Armed (the first click), it is a red "Dismiss" pill in the same place; the second click calls `onPress`.
  */
 export function DismissX({ theme, compact, label, onPress, disabled = false }: { theme: Theme; compact: boolean; label: string; onPress: () => void; disabled?: boolean }) {
   const c = theme.colors;
@@ -117,6 +118,11 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   const pointerIn = useContext(PointerIn);
   const [focused, setFocused] = useState(false);
   const [over, setOver] = useState(false);
+  // Keyboard focus (focus-visible) holds the timeout too: someone who armed it with Enter and is hearing "Press again
+  // to dismiss" shouldn't lose it to a timer. A mouse click also focuses; that doesn't count.
+  const [keyed, setKeyed] = useState(false);
+  const reduced = useReducedMotion();
+  const fade = useRef(new Animated.Value(1)).current;
   const me = useRef({}).current;
   const armed = useSyncExternalStore(watchArmed, () => armedX === me, () => false);
   const disarm = () => { if (armedX === me) setArmed(null); };
@@ -128,7 +134,15 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   useEffect(() => () => disarm(), []);
   useEffect(() => { if (disabled) disarm(); }, [disabled, armed]);
   // The quiet timeout, paused while the pointer rests on the pill (someone about to click it).
-  useEffect(() => { if (!armed || over) return; const t = setTimeout(disarm, DISMISS_ARM_MS); return () => clearTimeout(t); }, [armed, over]);
+  useEffect(() => { if (!armed || over || keyed) return; const t = setTimeout(disarm, DISMISS_ARM_MS); return () => clearTimeout(t); }, [armed, over, keyed]);
+  // The pill fades in (140 ms, ease-out, opacity only) from the x; reduced motion swaps at once. Disarming is instant,
+  // and the second press never waits on it.
+  useEffect(() => {
+    if (!armed) return;
+    if (reduced) { fade.setValue(1); return; }
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== "web" }).start();
+  }, [armed, reduced]);
   // The pointer leaving the card (it was in, now it isn't) disarms after a grace; coming back keeps it armed.
   const wasIn = useRef(pointerIn);
   useEffect(() => {
@@ -161,20 +175,33 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   const box = touch ? 40 : 22;
   // Armed: wider by the pill, and the extra width is taken back with a negative left margin, so it lays out exactly as
   // the x did: nothing beside it moves, the pill draws over it (solid, so what's under it doesn't show through).
-  // Desktop's pill keeps the x glyph's 3 px inset on the right, so a card whose x sits on its edge (Catch up) doesn't clip it.
-  const wide = touch ? 84 : 69;
+  // Desktop's pill keeps a 3 px inset on the right. Phones: a 24 px pill in the same 40 px box, so the target stays and
+  // the weight doesn't outgrow the card's own age and chips.
+  const wide = touch ? 80 : 69;
   const pull = touch ? -6 : 0;
   return <Pressable ref={tip} accessibilityRole="button" accessibilityLabel={armed ? `${label}. ${DISMISS_CONFIRM}` : `${label}: ${DISMISS_HINT}`} disabled={disabled} onPress={press}
-    hitSlop={4} onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); disarm(); }} onHoverIn={() => setOver(true)} onHoverOut={() => setOver(false)}
+    hitSlop={4} onFocus={() => { setFocused(true); setKeyed(Platform.OS === "web" && keyboardFocus()); }} onBlur={() => { setFocused(false); setKeyed(false); disarm(); }} onHoverIn={() => setOver(true)} onHoverOut={() => setOver(false)}
     style={(state: { hovered?: boolean; pressed: boolean; focused?: boolean }) => armed
       ? { ...focusRing(state.focused, c), width: wide, height: box, margin: pull, marginLeft: pull - (wide - box), borderRadius: box / 2, alignItems: "stretch", justifyContent: "center", zIndex: 1 }
       : { ...focusRing(state.focused, c), width: box, height: box, margin: pull, borderRadius: box / 2, alignItems: "center", justifyContent: "center",
         opacity: shown ? (disabled ? 0.4 : 1) : 0, backgroundColor: state.pressed ? c.surface2 : state.hovered ? withAlpha(c.foreground, 0.06) : "transparent" }}>
-    {state => armed
-      ? <View style={{ height: touch ? 28 : 22, marginLeft: touch ? 6 : 0, marginRight: touch ? 6 : 3, borderRadius: touch ? 14 : 11, alignItems: "center", justifyContent: "center",
-          backgroundColor: solidFor(c.statusDanger, state.pressed ? 0.82 : (state as { hovered?: boolean }).hovered ? 0.9 : 1) }}>
-          <Text numberOfLines={1} style={{ color: "#ffffff", fontSize: touch ? 13 : 12, lineHeight: touch ? 16 : 14, fontWeight: "600" }}>Dismiss</Text>
+    {state => {
+      const hot = state.pressed || !!(state as { hovered?: boolean }).hovered;
+      // Web screen readers: react-native-web's announceForAccessibility is a no-op, so a polite live region (always
+      // mounted, empty until armed) says it. Native announces through AccessibilityInfo above.
+      const live = Platform.OS === "web" ? <Text accessibilityLiveRegion="polite" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 }}>{armed ? DISMISS_CONFIRM : ""}</Text> : null;
+      if (!armed) return <>{live}<Icon name="X" size={touch ? 16 : 14} color={hot ? c.foreground : c.foregroundMuted} /></>;
+      // Armed at rest: a danger tint with danger ink and a hairline, over the page ground so what it covers doesn't show
+      // through. It goes solid (white on deepened danger) only under the pointer or finger, the moment it acts. Red,
+      // quietly: Dismiss is undoable, and a solid red pill at rest read as a new blocker on an amber card.
+      const ink = isLight(c) ? solidFor(c.statusDanger) : readable(c.statusDanger, c);
+      return <>{live}<Animated.View style={{ opacity: fade, height: touch ? 24 : 22, marginLeft: touch ? 6 : 0, marginRight: touch ? 6 : 3, borderRadius: touch ? 12 : 11, overflow: "hidden", backgroundColor: c.surface0 }}>
+        <View style={{ flex: 1, borderRadius: touch ? 12 : 11, borderWidth: 1, alignItems: "center", justifyContent: "center",
+          borderColor: hot ? "transparent" : withAlpha(c.statusDanger, 0.35),
+          backgroundColor: hot ? solidFor(c.statusDanger, state.pressed ? 0.82 : 1) : tint(c.statusDanger, c) }}>
+          <Text numberOfLines={1} style={{ color: hot ? "#ffffff" : ink, fontSize: 12, lineHeight: 14, fontWeight: "600" }}>Dismiss</Text>
         </View>
-      : <Icon name="X" size={touch ? 16 : 14} color={(state as { hovered?: boolean }).hovered ? c.foreground : c.foregroundMuted} />}
+      </Animated.View></>;
+    }}
   </Pressable>;
 }

@@ -415,10 +415,11 @@ tokens). The toast says "Dismissed <what>. The agent wasn't messaged." with Undo
 there, muted, with a 40 px hit area (a real box: react-native-web ignores hitSlop); on desktop it shows while the pointer is over the card or focus is
 inside it (`RevealScope`), and always on the selected card (Catch up's card, Home's detail pane: `DismissReveal`).
 It takes two clicks in place (`dismiss-takes-two-clicks-in-place`): the first click, tap, Enter or Space arms the x
-into a small solid red "Dismiss" pill on the same spot, and screen readers hear "Press again to dismiss"; the second
-dismisses. The pill grows leftward over what sits beside it and takes back its extra width with a negative margin, so
+into a small red "Dismiss" pill on the same spot (a danger tint at rest, solid red under the pointer; a 140 ms fade,
+none under reduced motion), and screen readers hear "Press again to dismiss" (a polite live region on web, where
+react-native-web's `announceForAccessibility` does nothing); the second dismisses. The pill grows leftward over what sits beside it and takes back its extra width with a negative margin, so
 the card never reflows. A click or tap anywhere else, Esc (taken, so it doesn't also interrupt the agent), focus
-leaving the x, the pointer leaving its card for 600 ms, or 4 s untouched (paused while the pointer is on the pill)
+leaving the x, the pointer leaving its card for 600 ms, or 4 s untouched (paused while the pointer is on the pill or keyboard focus is on it)
 disarms it quietly. Only one x is armed at a time, app-wide. Catch up's ⇧D presses the card's x, whatever the card is,
 so ⇧D twice dismisses. The agent tool `dismiss_item` is unchanged: a planned tool, so its own dry run and confirm are the
 second step. One request, `follow.dismiss` (`{ workspaceId, key }` for an
