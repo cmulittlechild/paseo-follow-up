@@ -548,3 +548,10 @@ test("a-derived-view-is-built-when-read: the hook takes a build that landed firs
   clock = NOW;
   assert.deepEqual((await freshDigest(async () => ({ hash: "x" }), seen, opts)).waited, 0);
 });
+
+test("workstreams query uses Home's layout matcher for titles, branches and PR numbers", () => {
+  const r = { ...hundred[0], title: "Smart Session", branch: "feat/invoice-exports" };
+  assert.equal(pageRows([r], { query: "דצשרא דקדדןםמ" }).total, 1);
+  assert.equal(pageRows([{ ...r, title: "שלום" }], { query: "akuo" }).total, 1);
+  assert.equal(pageRows([r], { query: "invoice exports" }).total, 1);
+});
