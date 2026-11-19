@@ -272,6 +272,8 @@ function currentWork(w) {
     recentAnswers: (w.questions ?? []).filter(q => q.answer).slice(-5).map(q => ({ id: q.id, title: q.title, choice: q.answer.choice, words: q.answer.words, delivery: q.answer.delivery.state })),
     batches: w.batches.filter(b => !["completed", "cancelled"].includes(b.state)).map(b => ({ id: b.id, state: b.state, tasks: b.tasks, result: b.result, recipientAgentId: b.recipientAgentId, contextPath: b.contextPath })),
     nextMessage: w.nextMessageInfo ?? null, sending: w.sending ?? null, heldTasks: w.heldTasks ?? [],
+    // GitHub budget low: Follow-up's PR reads wait until this time (null: they run); PR statuses are from the last read.
+    githubWait: w.githubWait ?? null,
     excludedStacks: w.excludedStacks.map(s => ({ name: s.name, reason: s.reason, prs: s.prs.map(p => p.key) })), ...(w.prWorkflow ? { prWorkflow: w.prWorkflow } : {}), detail: "summary" };
 }
 function compact(tool, input, result) {

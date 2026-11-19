@@ -286,8 +286,8 @@ test("GraphQL budget: low stretches settled reads and pauses merged and quiet re
   await github.observe(prs, { background: true });
   assert.equal(github.budget("org0")!.remaining, 5000 - 3);
   assert.equal(github.stats.points, 9);
-  // Low: only the repository with something moving is read; its settled PRs every 5 minutes, merged never.
-  budget.remaining = 400;
+  // Low (under 40% of the limit): only the repository with something moving is read; its settled PRs every 5 minutes, merged never.
+  budget.remaining = 1500;
   now += POLL_IDLE_MS; await github.observe(prs, { background: true }); // learns the low budget
   const read = new Map<string, number>(); const api = f.api.graphql;
   f.api.graphql = async (repo, query, vars) => { for (const [, n] of query.matchAll(/pullRequest\(number:(\d+)\)/g)) read.set(`${repo}#${n}`, (read.get(`${repo}#${n}`) ?? 0) + 1); return api(repo, query, vars); };
@@ -296,10 +296,19 @@ test("GraphQL budget: low stretches settled reads and pauses merged and quiet re
   assert.equal(read.get(prs[6].key), 1, "a settled PR in the same repository: every 5 minutes");
   assert.equal(read.get(prs[3].key), undefined, "a merged PR waits for the reset");
   assert.equal(read.get(prs[1].key), undefined, "a quiet repository waits for the reset");
-  // Critical, then the API refusing: nothing is read, nothing fails, the last observations stand in.
-  budget.remaining = 50; for (let i = 0; i < 2; i++) { now += TICK_MS; await github.observe(prs, { background: true }); } // a 30 s read learns it
+  // Reserve (under 20%): Follow-up's background reads stop, the running PR's too, leaving the rest to agents. The
+  // developer's Refresh (fresh) and a foreground read (an agent tool) still read their own PRs.
+  budget.remaining = 800; now += TICK_MS; await github.observe(prs.slice(0, 3)); // a foreground read in each repository learns it
+  read.clear();
+  for (let i = 0; i < 8; i++) { now += TICK_MS; await github.observe(prs, { background: true, hot: new Set([prs[1].key]) }); }
+  assert.equal(read.size, 0, "no background read under the reserve, not even a busy workspace's");
+  assert.ok(github.waitUntil(prs[0].repo)! > now, "the workspace says when reads resume");
+  await github.observe(prs, { background: true, fresh: new Set([prs[1].key]) });
+  assert.equal(read.get(prs[1].key), 1, "the developer's Refresh still reads");
+  // Critical, then the API refusing: nothing is read, not even fresh, nothing fails, the last observations stand in.
+  budget.remaining = 50; await github.observe([prs[0]]); // a foreground read learns it
   const before = f.calls.graphql; now += TICK_MS;
-  const held = await github.observe(prs, { background: true });
+  const held = await github.observe(prs, { background: true, fresh: new Set([prs[0].key]) });
   assert.equal(f.calls.graphql, before); assert.ok([...held.values()].every(o => o.error === null && o.snapshot));
   // The reset passes; the API is out of budget anyway (another agent used it): no errors, wait 10 more minutes.
   now = clock + 3_600_000 + 1; budget.limited = true;
