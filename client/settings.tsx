@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useViewSync, useViewVersion } from "./view-store";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -229,13 +229,17 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
 /** Settings → General → Help → Report a bug. */
 export const REPORT_HINT = "Or an idea or feedback. An agent writes it up and shows you the issue before filing it.";
 
-export function FollowSettings({ theme, layout, openSetup, openReport }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void }) {
+export function FollowSettings({ theme, layout, openSetup, openReport, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void;
+  /** Paseo 0.16: this screen is one category, and Paseo's own tabs switch between them (client/settings-screens.ts). */
+  category?: SettingsCategory }) {
   const compact = layout.compact;
   const c = theme.colors; const t = text(c, compact);
   // The category comes from device storage on every render, so the first paint is the localStorage cache and the
   // device document takes over when it loads, never the default in between.
   useViewSync(); useViewVersion();
-  const category = readCategory();
+  const category = only ?? readCategory();
+  // A category screen remembers itself, so "Follow-up: settings" and the gear reopen the tab last shown on this device.
+  useEffect(() => { if (only && readCategory() !== only) writeCategory(only); }, [only]);
   // The phone reopens in the last category, like desktop; before any pick it starts on the list. Until the developer
   // drills in or out, that follows storage too (the phone's document loads after the first paint).
   const [chosen, setDrilled] = useState<boolean | null>(null);
@@ -256,6 +260,15 @@ export function FollowSettings({ theme, layout, openSetup, openReport }: PluginS
     : <DisplaySections theme={theme} />;
   // Phones: the shared gutter and the bottom inset (the gesture bar), like every other Follow-up surface.
   const page = { padding: compact ? space(true).gutter : 24, gap: 18, maxWidth: 720, width: "100%" as const, alignSelf: "center" as const, paddingBottom: 40 };
+  const line = summaries[category];
+  // General's status card and the Agents card header say it already; their lines are for the phone list.
+  const lead = line && category !== "general" && category !== "agents" ? <Text style={[t.meta, !only && !compact ? { marginTop: -6 } : null]}>{line}</Text> : null;
+  // One category under Paseo's own tabs: no tabs, list or back row of Follow-up's own, and no column or gutter of its
+  // own either. Paseo's plugin page scrolls and sets the width, so the category lines up with its tabs.
+  if (only) return <View style={{ gap: 18, paddingTop: 12, paddingBottom: 8 }}>
+    {lead}
+    {content}
+  </View>;
   // The host's header sits right above: no extra top space on a phone.
   if (compact) return <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ ...page, paddingTop: 4, ...bottomInset(true, 28) }}>
     {drilled ? <>
@@ -263,11 +276,9 @@ export function FollowSettings({ theme, layout, openSetup, openReport }: PluginS
       {content}
     </> : <CategoryList summaries={summaries} theme={theme} onOpen={id => { pick(id); setDrilled(true); }} />}
   </ScrollView>;
-  const line = summaries[category];
   return <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} stickyHeaderIndices={[0]} contentContainerStyle={{ ...page, paddingTop: 0 }}>
     <View style={{ paddingTop: 24, backgroundColor: c.surface0 }}><CategoryTabs value={category} onChange={pick} theme={theme} /></View>
-    {/* General's status card and the Agents card header say it already; their lines are for the phone list. */}
-    {line && category !== "general" && category !== "agents" ? <Text style={[t.meta, { marginTop: -6 }]}>{line}</Text> : null}
+    {lead}
     {content}
   </ScrollView>;
 }
