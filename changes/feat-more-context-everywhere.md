@@ -1,0 +1,1 @@
+- Ask for more context on a question from the panel, Home, the question dialog, the chat pill or your phone, not only in Catch up. The answer shows on the question wherever you look at it.

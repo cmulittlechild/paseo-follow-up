@@ -19,6 +19,7 @@ import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorTex
 import { Spinner } from "./motion";
 import { DictationField, useCaret, type FieldPad } from "./dictation";
 import { NoteLink } from "./brief";
+import { QuestionMoreContext } from "./more-context";
 import { PRIMARY_FORM } from "./dock";
 import { mergedColor, tint, withAlpha, type Colors } from "./theme";
 import { overviewKey, workspaceKey } from "./keys";
@@ -102,7 +103,7 @@ export type SendReady = { send: () => void; busy: boolean };
  * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
  * (`one-answer-flow-for-every-question`), never from the surface.
  */
-export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false }: {
+export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false, moreContext = true }: {
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
   /** Inside the Needs you block: its header says the title and when it was asked, its footer what the agent does meanwhile. */
   inline?: boolean;
@@ -115,6 +116,11 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   onSendReady?: (send: SendReady | null) => void;
   /** Catch up: a mic beside the field (DictationField), when the host has Paseo's dictation. */
   dictate?: boolean;
+  /**
+   * More context on the question (more-context-is-the-same-on-every-surface). Catch up passes false: its move bar has
+   * the same More context, and its card shows the answer.
+   */
+  moreContext?: boolean;
 }) {
   const c = theme.colors; const t = text(c);
   const toast = useToast(); const cache = useQueryClient();
@@ -267,6 +273,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       <Text style={[t.meta, { flex: 1 }]}>Withdrawn {ago(q.closed.at, now)}: {q.closed.reason}</Text>
     </View>}
     {context}
+    {/* Read before choosing: More context sits under the question's own context, its answer with it. */}
+    {open && moreContext && <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} />}
     {!!q.options.length && <View accessibilityRole="radiogroup" accessibilityLabel={`Options for ${q.id}`} style={{ gap: 6 }}>
       {q.options.map(o => <OptionCard key={o.letter} theme={theme} compact={compact} dense={dense} letter={o.letter} label={o.label} consequence={o.consequence} recommended={q.recommend === o.letter}
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}

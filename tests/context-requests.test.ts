@@ -82,9 +82,10 @@ test("a prompt steered into a turn already running counts: no turn start needed,
 test("after a restart an open ask is re-derived: delivered to an idle agent settles as chat, a failed send fails, a busy one waits", async t => {
   const { directory, store } = await fixture(t);
   const a = (await store.ask(input, "developer", "a1")).request;
-  const b = (await store.ask({ ...input, cardKey: "agent:a2|Q1", agentId: "a2" }, "developer", "a2")).request;
-  const c = (await store.ask({ ...input, cardKey: "agent:a3|Q1", agentId: "a3" }, "developer", "a3")).request;
-  const d = (await store.ask({ ...input, cardKey: "agent:a4|Q1", agentId: "a4" }, "developer", "a4")).request;
+  // Four cards: one workspace's question is one card wherever it's asked from (sameCard), so these are other questions.
+  const b = (await store.ask({ ...input, cardKey: "agent:a2|Q2", agentId: "a2" }, "developer", "a2")).request;
+  const c = (await store.ask({ ...input, cardKey: "agent:a3|Q3", agentId: "a3" }, "developer", "a3")).request;
+  const d = (await store.ask({ ...input, cardKey: "agent:a4|Q4", agentId: "a4" }, "developer", "a4")).request;
   await store.flush();
   // A new worker: nothing in memory but the file.
   const again = trackPersistence(directory, new ContextRequests(directory, () => Date.parse("2026-11-17T10:05:00.000Z")));

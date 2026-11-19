@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WriteBehind } from "./write-behind";
-import { CONTEXT_ANSWER_MAX, contextFileSchema, plainAnswer, pruneContext, type ContextFile, type ContextRequest, type ContextTarget } from "../shared/catch-up";
+import { CONTEXT_ANSWER_MAX, contextFileSchema, plainAnswer, pruneContext, sameCard, type ContextFile, type ContextRequest, type ContextTarget } from "../shared/catch-up";
 
 export const CONTEXT_FILE = "context.json";
 
@@ -63,10 +63,13 @@ export class ContextRequests {
     return filter.workspaceId ? live.filter(r => r.workspaceId === filter.workspaceId) : live;
   }
 
-  /** Records an ask. One open ask per card: asking again while it's open returns that one (`fresh: false`). */
+  /**
+   * Records an ask. One open ask per card, from whichever surface (`sameCard`: Catch up's key or the question's own):
+   * asking again while it's open returns that one (`fresh: false`).
+   */
   async ask(input: AskInput, by: string, askedOf: string | null): Promise<{ request: ContextRequest; fresh: boolean }> {
     const { requests } = await this.load();
-    const open = requests.find(r => r.cardKey === input.cardKey && r.state === "asking");
+    const open = requests.find(r => r.state === "asking" && sameCard(r, input));
     if (open) return { request: open, fresh: false };
     const request: ContextRequest = {
       id: `ctx-${randomUUID()}`, ...input, askedOf, state: "asking", answer: null, error: null,
