@@ -805,6 +805,7 @@ export default function contribute(server: PluginServerContext) {
       return w;
     });
   });
+  handle(rpc.dismissQuestionRpc, async ({ workspaceId, questionId, undo }, context) => { await requireReady(); return engine.dismiss(workspaceId, questionId, !!undo, actorOf(context)); });
   handle(rpc.answerQuestionRpc, async ({ workspaceId, questionId, choice, words, action }, context) => { await requireReady(); return engine.answer(workspaceId, questionId, choice, words, action, actorOf(context)); });
   handle(rpc.declareDoneRpc, async ({ agentId, summary }, { paseo }) => { await requireReady(); return engine.declareDone(agentId, summary, await callerWorkspaceId(agentId, paseo, false)); });
   handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly }, { paseo }) => {
@@ -1408,7 +1409,7 @@ export default function contribute(server: PluginServerContext) {
     const turn = inbox.currentTurn(agentId);
     const previous = await readFile(needsYouPath(agentId), "utf8").then(t => JSON.parse(t) as NeedsYouRecord).catch(() => null);
     const sameTurn = !!previous && (turn?.turnId ? previous.turnId === turn.turnId : !!turn && previous.at >= turn.at);
-    let questionIds: string[] = []; let createdIds: string[] = [];
+    let questionIds: string[] = []; let createdIds: string[] = []; let dismissed: string[] = [];
     if (tracked) {
       const mode = await questionMode();
       const linked = await store.mutate(state => {
@@ -1417,7 +1418,7 @@ export default function contribute(server: PluginServerContext) {
         if (result.questionIds.length || sameTurn) changed(w);
         return { ...result, ask: foldedAsk(call.ask, result.questionIds, w.questions) };
       });
-      questionIds = linked.questionIds; createdIds = linked.createdIds;
+      questionIds = linked.questionIds; createdIds = linked.createdIds; dismissed = linked.dismissed;
       // one-ask-one-title: a brief that folds into its question is named by the question everywhere.
       call = { ...call, ask: linked.ask };
       // The brief maps decisions to questions by position, so the record keeps them aligned (a linked question shows as itself).
@@ -1430,7 +1431,8 @@ export default function contribute(server: PluginServerContext) {
     const temporary = `${needsYouPath(agentId)}.${randomUUID()}`;
     await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
     await rename(temporary, needsYouPath(agentId));
-    return { ok: true as const, briefId: `brief:${turn?.turnId ?? record.at}` };
+    return { ok: true as const, briefId: `brief:${turn?.turnId ?? record.at}`,
+      ...(dismissed.length ? { note: `The developer dismissed ${dismissed.join(", ")}: ${dismissed.length === 1 ? "it no longer matters, so it was" : "they no longer matter, so they were"} left off the card. Don't raise ${dismissed.length === 1 ? "it" : "them"} again.` } : {}) };
   });
   // Replies once the answer is recorded; the send runs after (Inbox.briefAction), so a dormant agent's slow resume never
   // times the card out.

@@ -156,7 +156,7 @@ export const TOOL_PRESENTATION: Record<string, "routine" | "moment"> = {
   set_pr_workflow: "routine", reviewer_settings: "routine", reviewer_suggestions: "routine", save_reviewers: "routine", set_agent_setting: "routine",
   set_wait_for_jobs: "routine", onboarding_status: "routine", onboarding_checks: "routine", set_onboarding: "routine", rank_status: "routine",
   rerank_priorities: "routine", overseer_status: "routine", overseer_start: "routine", overseer_restart: "routine", overseer_ask: "routine", catch_up_deck: "routine", context_requests: "routine", ask_context: "routine", context_reply: "routine",
-  inbox_brief: "routine", brief_action: "routine", queue_list: "routine", queue_action: "routine", inbox_act: "routine", answer_question: "routine", run_recovery: "routine",
+  inbox_brief: "routine", brief_action: "routine", queue_list: "routine", queue_action: "routine", inbox_act: "routine", answer_question: "routine", dismiss_question: "routine", run_recovery: "routine",
   set_workspace_spec: "routine", link_item: "routine", unlink_item: "routine", link_items: "routine", set_linked_items: "routine", set_task_trigger: "routine", pr_controls: "routine", browser_status: "routine", trust_bypass_status: "routine",
   release_notes: "routine", updates_status: "routine", check_updates: "routine", set_updates: "routine", install_update: "routine", retry_move: "routine", report_issue: "routine", report_send: "routine", make_main_agent: "routine", wait_prepare_job: "routine", wait_for_job: "routine", wait_get_job: "routine",
   // The developer's moments: the workspace is done, or the agent asked them something. needs_you runs every turn, so a

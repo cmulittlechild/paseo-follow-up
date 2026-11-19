@@ -775,6 +775,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Home and dedupes there, and the other way round; the client reads one store, kept current by the home feed. 2026-11-18,
    Tom: "I want the option to add context to questions outside of catch up too". Guarded by
    `tests/more-context-everywhere.test.ts`.
+59. **Dismissing a question sends the agent nothing** (`dismissing-a-question-sends-the-agent-nothing`). A question that
+   no longer matters is dismissed from its card (a quiet Dismiss after More context, on every surface that answers it;
+   ⇧D in Catch up) or by another agent with `dismiss_question` for the developer. It closes as dismissed and leaves
+   Needs you and every count at once, with Undo; nothing is queued or sent, so the agent spends no turn on it. It
+   learns when it looks (`workspace_status`'s `dismissedQuestions`), and asking or pointing at it again returns it as
+   dismissed instead of a new card (`findDismissedMatch`, `dismissedInstruction`), so there is no re-ask loop;
+   `supersedes` asks again on purpose. An agent never dismisses its own question (that is `withdraw_question`).
+   2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
+   that again". Guarded by `tests/dismiss-question.test.ts`.
 
 ## Bugs
 

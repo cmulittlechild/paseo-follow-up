@@ -1,0 +1,1 @@
+- Dismiss a question that no longer matters. The agent isn't messaged, and Undo brings it back. In Catch up, Shift+D does it.

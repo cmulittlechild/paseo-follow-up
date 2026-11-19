@@ -7,7 +7,7 @@ import { completionBlockers, completionCheck, completionGate, revokesDone, type 
 import { Store } from "./store";
 import { Github } from "./github";
 import { batchPrompt, messageText, tasksFor, isRecovery, needsPrObservations, type TaskWording } from "./tasks";
-import { answerRecipients, developerAnswer, syncTaskQuestions, type AnswerAction } from "./questions";
+import { answerRecipients, developerAnswer, dismissQuestion, undoDismiss, syncTaskQuestions, type AnswerAction } from "./questions";
 import { answerMessage, isOpen as isOpenQuestion, type Question } from "../shared/questions";
 import { reconcileSubmittedStacks } from "./submissions";
 import { applyDiscovery, interruptionHold, startsWithAutoSend, type DiscoveredWorkspace } from "./discovery";
@@ -415,6 +415,18 @@ export class Engine {
       if (action === "resend" && queued && !["sent", "cancelled"].includes(queued.state)) await this.queue.retry(id);
       else this.queue.enqueue(this.answerItem(workspaceId, recorded, action === "resend"));
     }
+    const workspace = findWorkspace(await this.store.snapshot(), workspaceId);
+    return { workspace, question: workspace.questions.find(q => q.id === questionId)! };
+  }
+  /**
+   * The developer dismisses a question (or an agent for them), or undoes that. Only the record changes: nothing is
+   * queued or sent, so the agent spends no turn on it (dismissing-a-question-sends-the-agent-nothing).
+   */
+  async dismiss(workspaceId: string, questionId: string, undo: boolean, actor: Actor = DEVELOPER): Promise<{ workspace: Workspace; question: Question }> {
+    await this.store.mutateWorkspace(workspaceId, w => {
+      if (undo) undoDismiss(w, questionId); else dismissQuestion(w, questionId, actor, this.now());
+      w.updatedAt = new Date(this.now()).toISOString();
+    });
     const workspace = findWorkspace(await this.store.snapshot(), workspaceId);
     return { workspace, question: workspace.questions.find(q => q.id === questionId)! };
   }

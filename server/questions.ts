@@ -1,8 +1,8 @@
-import { DEVELOPER, type Actor } from "../shared/actor";
+import { DEVELOPER, actorBy, type Actor } from "../shared/actor";
 import { randomUUID } from "node:crypto";
 import { blockedOnDeveloper, type Workspace } from "../shared/model";
 import { followUpObligations } from "../shared/follow-up";
-import { OTHER, OTHER_LABEL, QUESTION_MODE_RULES, choiceError, findOpenMatch, isOpen, isOther, nextQuestionId, validChoice, type Question, type QuestionMode } from "../shared/questions";
+import { DISMISS_REASON, OTHER, OTHER_LABEL, QUESTION_MODE_RULES, choiceError, findDismissedMatch, findOpenMatch, isDismissed, isOpen, isOther, nextQuestionId, validChoice, type Question, type QuestionMode } from "../shared/questions";
 
 /** "other" and its label both mean Something else, so an agent recording "Something else" lands on the same answer. */
 const normalChoice = (choice: string) => [OTHER, OTHER_LABEL.toLowerCase()].includes(choice.trim().toLowerCase()) ? OTHER : choice.trim();
@@ -24,8 +24,9 @@ function resolvePr(w: Workspace, ref: string): string {
 export type AskOutcome = {
   question: Question; instruction: string;
   /** asked: a new question. duplicate: the same question was already open, so it wasn't asked again. superseded: a
-   * changed version of an open question; the old one closed as "Superseded by Qn". */
-  outcome: "asked" | "duplicate" | "superseded";
+   * changed version of an open question; the old one closed as "Superseded by Qn". dismissed: the developer dismissed
+   * this question, so it wasn't asked again. */
+  outcome: "asked" | "duplicate" | "superseded" | "dismissed";
   /** The question that was already open (duplicate) or that this one replaced (superseded). */
   of: string | null;
 };
@@ -54,8 +55,12 @@ export function askQuestion(w: Workspace, agentId: string, input: AskInput, mode
   if (opts.supersedes) {
     replace = w.questions.find(q => q.id === opts.supersedes) ?? null;
     if (!replace) throw new Error(`No question ${opts.supersedes} in this workspace.`);
-    if (!isOpen(replace)) throw new Error(`${replace.id} is already ${replace.answer ? "answered" : "closed"}; ask without supersedes.`);
+    // A dismissed question may be asked again on purpose, when something really changed: it stays dismissed.
+    if (!isOpen(replace) && !isDismissed(replace)) throw new Error(`${replace.id} is already ${replace.answer ? "answered" : "closed"}; ask without supersedes.`);
   } else {
+    // dismissing-a-question-sends-the-agent-nothing: what the developer dismissed doesn't come back as a new card.
+    const dismissed = findDismissedMatch(w.questions, shape, agentId);
+    if (dismissed && !findOpenMatch(w.questions, shape, agentId)) return { question: dismissed, outcome: "dismissed", of: dismissed.id, instruction: dismissedInstruction(dismissed) };
     const match = findOpenMatch(w.questions, shape, agentId);
     if (match?.verdict === "same") {
       const open = match.question;
@@ -72,7 +77,7 @@ export function askQuestion(w: Workspace, agentId: string, input: AskInput, mode
     askedBy: agentId, askedAt: new Date(now).toISOString(), mode, answer: null, closed: null, via: opts.via ?? "ask",
   };
   w.questions.push(question);
-  if (replace) replace.closed = { at: question.askedAt, reason: `Superseded by ${question.id}.`, by: agentId };
+  if (replace && isOpen(replace)) replace.closed = { at: question.askedAt, reason: `Superseded by ${question.id}.`, by: agentId };
   const rule = QUESTION_MODE_RULES[mode].rule({ recommend, big: question.big });
   const instruction = [
     `Asked ${question.id}${replace ? ` (it replaces ${replace.id}, now closed as superseded)` : ""}. Question mode: ${QUESTION_MODE_RULES[mode].label}. ${rule}`,
@@ -106,6 +111,35 @@ export function withdrawQuestion(w: Workspace, agentId: string, id: string, reas
   return q;
 }
 
+/** What an agent hears when it asks, or points at, a question the developer dismissed. */
+export const dismissedInstruction = (q: Pick<Question, "id" | "title">) =>
+  `The developer dismissed ${q.id} (${q.title}): it no longer matters, so it isn't asked again and nothing was sent to you. Carry on without it and don't raise it again, at a turn's end either. If something really changed, ask again with supersedes="${q.id}".`;
+
+/**
+ * The developer dismisses a question that no longer matters (dismissing-a-question-sends-the-agent-nothing). It closes
+ * as dismissed and leaves Needs you; nothing is queued or sent, so the agent spends no turn and no tokens on it. It
+ * learns only when it looks: workspace_status, or asking or pointing at it again. An agent may dismiss another agent's
+ * question for the developer (dismiss_question), never one it asked or owns: that is withdraw_question.
+ */
+export function dismissQuestion(w: Workspace, id: string, actor: Actor, now: number): Question {
+  const q = w.questions.find(q => q.id === id);
+  if (!q) throw new Error(`No question ${id} in this workspace.`);
+  if (!isOpen(q)) throw new Error(`${id} is already ${q.answer ? "answered" : isDismissed(q) ? "dismissed" : "closed"}.`);
+  if (actor.kind === "agent" && (actor.agentId === q.askedBy || actor.agentId === w.mainAgentId))
+    throw new Error(`${id} is your own question: use withdraw_question with a reason. dismiss_question dismisses another agent's question for the developer.`);
+  q.closed = { at: new Date(now).toISOString(), reason: DISMISS_REASON, by: actorBy(actor), dismissed: true };
+  return q;
+}
+
+/** Undo: a dismissed question opens again as it was. Only a dismissal can be undone this way. */
+export function undoDismiss(w: Workspace, id: string): Question {
+  const q = w.questions.find(q => q.id === id);
+  if (!q) throw new Error(`No question ${id} in this workspace.`);
+  if (!isDismissed(q)) throw new Error(`${id} isn't dismissed, so there is nothing to undo.`);
+  q.closed = null;
+  return q;
+}
+
 /** Delivery states a Resend (Retry, Try now) applies to. */
 export const RESENDABLE: readonly string[] = ["queued", "retrying", "failed", "unconfirmed"];
 /** How the developer's answer leaves the card: sent by Follow-up, copied, or put in the agent's chat (Paseo 0.16), or sent again. */
@@ -115,6 +149,7 @@ export type AnswerAction = "send" | "copy" | "chat" | "resend";
 export function developerAnswer(w: Workspace, id: string, choice: string, words: string | undefined, action: AnswerAction, now: number, actor: Actor = DEVELOPER): Question {
   const q = w.questions.find(q => q.id === id);
   if (!q) throw new Error(`No question ${id} in this workspace.`);
+  if (isDismissed(q)) throw new Error(`${id} was dismissed, so nothing was sent.`);
   if (q.closed) throw new Error(`${id} was withdrawn: ${q.closed.reason}`);
   const at = new Date(now).toISOString();
   if (action === "resend") {
@@ -179,11 +214,12 @@ export function decisionOf(q: Question): NeedsYouDecision {
  * questions. A second call in the same turn replaces only the questions the first call created, never one it linked.
  */
 export function needsYouQuestions(w: Workspace, agentId: string, call: { decisions?: NeedsYouDecision[]; questions?: string[] }, mode: QuestionMode, now: number,
-  previous: { createdIds?: string[]; questionIds?: string[] } | null): { questionIds: string[]; createdIds: string[]; decisions: NeedsYouDecision[] } {
-  const questionIds: string[] = [], createdIds: string[] = [], decisions: NeedsYouDecision[] = [];
+  previous: { createdIds?: string[]; questionIds?: string[] } | null): { questionIds: string[]; createdIds: string[]; decisions: NeedsYouDecision[]; dismissed: string[] } {
+  const questionIds: string[] = [], createdIds: string[] = [], decisions: NeedsYouDecision[] = [], dismissed: string[] = [];
   for (const id of call.questions ?? []) {
     const q = w.questions.find(q => q.id === id);
     if (!q) throw new Error(`No question ${id} in this workspace.`);
+    if (isDismissed(q)) throw new Error(dismissedInstruction(q));
     if (!isOpen(q)) throw new Error(`${id} is already ${q.answer ? "answered" : "closed"}, so it isn't open any more. Leave it out.`);
     if (questionIds.includes(id)) continue;
     questionIds.push(id); decisions.push(decisionOf(q));
@@ -191,6 +227,8 @@ export function needsYouQuestions(w: Workspace, agentId: string, call: { decisio
   for (const d of call.decisions ?? []) {
     const options = (d.options ?? []).map((o, i) => ({ letter: String.fromCharCode(65 + i), label: o.label, ...(o.consequence ? { consequence: o.consequence } : {}) }));
     const r = askQuestion(w, agentId, { title: d.question.slice(0, 120), question: d.question, options, ...(d.options?.length ? { recommend: String.fromCharCode(65 + d.recommend!) } : {}) }, mode, now, { via: "needs_you" });
+    // A decision the developer dismissed doesn't come back on the card.
+    if (r.outcome === "dismissed") { dismissed.push(r.question.id); continue; }
     if (questionIds.includes(r.question.id)) continue;
     questionIds.push(r.question.id);
     decisions.push(r.outcome === "duplicate" ? decisionOf(r.question) : d);
@@ -202,5 +240,5 @@ export function needsYouQuestions(w: Workspace, agentId: string, call: { decisio
     const q = w.questions.find(q => q.id === id);
     if (q && isOpen(q) && !questionIds.includes(id) && q.via !== "ask") q.closed = { at: new Date(now).toISOString(), reason: "Replaced by a newer needs_you call.", by: agentId };
   }
-  return { questionIds, createdIds, decisions };
+  return { questionIds, createdIds, decisions, dismissed };
 }

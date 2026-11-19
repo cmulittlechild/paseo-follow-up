@@ -2,7 +2,7 @@ import type { Obligation, Pr } from "./model";
 import type { Activity } from "./activity";
 import type { RepairRow } from "./task-rows";
 import { shortTitle } from "./task-rows";
-import { answerLabel, answerStatus, type Question } from "./questions";
+import { answerLabel, answerStatus, closedLine, type Question } from "./questions";
 import type { ItemField } from "./search";
 
 /**
@@ -48,7 +48,7 @@ export function activityFields(r: Pick<Activity, "text" | "detail">): ItemField[
 /** The Questions tab's line 2: the answer, where it is on its way, or why it was withdrawn. */
 export function questionStatus(q: Question): string {
   const s = answerStatus(q);
-  return q.answer ? `${s && !s.delivered ? `${s.label} · ` : ""}${answerLabel(q, q.answer.choice, q.answer.words)}` : q.closed ? `Withdrawn: ${q.closed.reason}` : "Waiting for you";
+  return q.answer ? `${s && !s.delivered ? `${s.label} · ` : ""}${answerLabel(q, q.answer.choice, q.answer.words)}` : q.closed ? closedLine(q) : "Waiting for you";
 }
 /** A question: "Q2 · title" and its status line, both on the row. */
 export function questionFields(q: Question): ItemField[] {

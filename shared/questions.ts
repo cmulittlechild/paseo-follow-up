@@ -91,7 +91,11 @@ export const questionSchema = z.object({
   askedAt: z.string(),
   mode: z.enum(QUESTION_MODES),
   answer: answerSchema.nullable().default(null),
-  closed: z.object({ at: z.string(), reason: z.string(), by: z.string().nullable() }).nullable().default(null),
+  /**
+   * Closed without an answer: withdrawn by its agent, superseded, a task that moved on, or `dismissed` by the developer
+   * (or an agent for them, `by` "agent:<id>"): it no longer matters, and the agent was sent nothing.
+   */
+  closed: z.object({ at: z.string(), reason: z.string(), by: z.string().nullable(), dismissed: z.boolean().optional() }).nullable().default(null),
   /** Which path created it (1.4.0-beta.25): ask_question, a needs_you decision, or a blocked task. Older records: null. */
   via: z.enum(["ask", "needs_you", "task"]).nullable().optional(),
 });
@@ -100,6 +104,15 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 export type Answer = z.infer<typeof answerSchema>;
 
 export const isOpen = (q: Pick<Question, "answer" | "closed">) => !q.answer && !q.closed;
+/** The developer dismissed it (dismissing-a-question-sends-the-agent-nothing): closed, no answer, nothing sent. */
+export const isDismissed = (q: Pick<Question, "answer" | "closed">) => !q.answer && !!q.closed?.dismissed;
+export const DISMISS_REASON = "Dismissed by the developer: it no longer matters.";
+/** A closed question's line on every surface: "Dismissed by you" (or "for you by an agent"), else why it was withdrawn. */
+export function closedLine(q: Pick<Question, "answer" | "closed">): string {
+  if (!q.closed) return "";
+  if (isDismissed(q)) return q.closed.by?.startsWith("agent:") ? "Dismissed for you by an agent" : "Dismissed by you";
+  return `Withdrawn: ${q.closed.reason}`;
+}
 
 /** Q1, Q2…: unique for the life of the workspace, never reused after a question closes. */
 export function nextQuestionId(questions: Pick<Question, "id">[]): string {
@@ -359,6 +372,21 @@ export function findOpenMatch<Q extends Matchable>(questions: readonly Q[], inpu
     if (!best || score > best.score) best = { question: q, verdict, score };
   }
   return best && { question: best.question, verdict: best.verdict };
+}
+
+/**
+ * The dismissed question `input` repeats, if any: the same candidates and rule as findOpenMatch, over questions the
+ * developer dismissed. A re-ask returns it instead of a new card, so an agent can't bring back what the developer set
+ * aside (no re-ask loop); `supersedes` is the way to ask again when something really changed.
+ */
+export function findDismissedMatch<Q extends Matchable>(questions: readonly Q[], input: QuestionShape, askedBy: string | null): Q | null {
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const q = questions[i];
+    if (!isDismissed(q) || q.taskRevision !== null) continue;
+    const own = q.askedBy === askedBy || q.via === "needs_you";
+    if ((own ? compareQuestions(input, q) : nearIdentical(input, q) ? "same" : null) === "same") return q;
+  }
+  return null;
 }
 
 /** Open questions that repeat an older open one in the same workspace: [duplicate, original] pairs. The invariant. */

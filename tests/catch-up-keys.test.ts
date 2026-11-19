@@ -41,7 +41,7 @@ test("within Catch up, no two actions share a key in the same place", () => {
 test("every action in the list is reachable through catchUpKey, and the handler reads only the list's actions", () => {
   const reached = new Set<string>();
   const states = [idle, { ...idle, moreOpen: true }, { ...idle, inRail: true }, { ...idle, moreOpen: true, typing: true, inMore: true }];
-  const keys = ["a", "h", "w", "j", "k", "m", "n", "l", "o", "r", "s", "x", "v", "1", "4", "ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Enter", "J"];
+  const keys = ["a", "h", "w", "j", "k", "m", "n", "l", "o", "r", "s", "x", "v", "1", "4", "ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Enter", "J", "D"];
   for (const at of states) for (const key of keys) for (const mods of [{}, { shift: true }, { meta: true }, { meta: true, shift: true }]) {
     const hit = catchUpKey(press(key, mods), at); if (hit) reached.add(hit.action);
   }

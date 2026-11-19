@@ -186,6 +186,8 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
           setTimeout(() => hit(mic()), 0);
           break;
         }
+        // The card's own Dismiss (QuestionBody), so the key does exactly what the click does.
+        case "dismiss": { const d = inCard('[aria-label^="Dismiss Q"]'); if (!d) return; d.click?.(); break; }
         case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
         case "later": if (!click('[aria-label="Later (L)"]')) return; break;

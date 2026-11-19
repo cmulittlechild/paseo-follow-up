@@ -16,7 +16,7 @@ export const STALE_BRIEF = {
   answered: "This brief was already answered or signed off.",
 } as const;
 // Q35 answered or withdrawn elsewhere (server/questions.ts developerAnswer, recordAnswer).
-const MOOT = [/^This brief was (replaced by a newer one|already answered or signed off)\./, /^Q\d+ (is already (answered|withdrawn)|was withdrawn)\b/];
+const MOOT = [/^This brief was (replaced by a newer one|already answered or signed off)\./, /^Q\d+ (is already (answered|withdrawn|dismissed)|was (withdrawn|dismissed))\b/];
 
 /**
  * A refusal that means the action is moot, not failed: what it acts on was already answered, replaced or withdrawn
@@ -28,8 +28,9 @@ export function isMoot(error: unknown): boolean {
 }
 
 /** Which moot refusal it is, so a surface says it in its own words instead of echoing the server's. */
-export function mootKind(error: unknown): "answered" | "withdrawn" | "replaced" | null {
+export function mootKind(error: unknown): "answered" | "withdrawn" | "replaced" | "dismissed" | null {
   const t = errorText(error);
+  if (/^Q\d+ (is already dismissed|was dismissed)\b/.test(t)) return "dismissed";
   if (/^This brief was replaced by a newer one\./.test(t)) return "replaced";
   if (/^Q\d+ (is already withdrawn|was withdrawn)\b/.test(t)) return "withdrawn";
   return isMoot(error) ? "answered" : null;
@@ -40,6 +41,7 @@ export function mootNote(error: unknown, typed = false): string {
   const kept = typed ? "Your answer wasn't sent." : "Your pick wasn't sent.";
   switch (mootKind(error)) {
     case "withdrawn": return `The agent withdrew this question. ${kept}`;
+    case "dismissed": return `This question was dismissed. ${kept}`;
     case "replaced": return `A newer card replaced this one. ${kept}`;
     default: return `Already answered elsewhere. ${kept}`;
   }

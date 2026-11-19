@@ -7,10 +7,10 @@ import { Pressable, Text, copyable } from "./text";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal, ScrollView, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { answerQuestionRpc } from "../shared/contracts";
+import { answerQuestionRpc, dismissQuestionRpc } from "../shared/contracts";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
-import { OTHER, OTHER_LABEL, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
 import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
@@ -26,6 +26,7 @@ import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
 import { prLinksByNumber } from "../shared/presentation";
 import { notice, openQuestion, runAction } from "./toasts";
+import { hasToastHost, pushToast } from "./toast-store";
 import { putInChatOrCopy } from "../shared/put-in-chat";
 import { useChatComposer } from "./put-in-chat";
 import { Marked, NoMatchRow, useSectionSearch } from "./section-search";
@@ -33,6 +34,8 @@ import { activityFields, questionFields, questionStatus } from "../shared/sectio
 import type { Activity } from "../shared/activity";
 import { clearPendingAnswer, failPendingAnswer, pendingKey, setPendingAnswer, usePendingAnswer, usePendingAnswers, type PendingAnswer } from "./pending-answers";
 
+/** As long as sign-off's Undo (6 s): the toast holds while the pointer or focus is on it. */
+const DISMISS_UNDO_MS = 6_000;
 const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !agentId || agentId === w.mainAgentId ? "the main agent" : "a root session";
 
 /**
@@ -209,6 +212,25 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     });
     onClose?.(); onAnswered?.();
   };
+  /**
+   * Dismiss (dismissing-a-question-sends-the-agent-nothing): the question no longer matters. It closes and leaves Needs
+   * you; nothing goes to the agent. Undo in the toast reopens it. The card moves on as after an answer.
+   */
+  const dismissRpc = useRpc(dismissQuestionRpc);
+  const undoDismiss = () => void runAction({ label: `Undo dismiss ${q.id}`, toast, run: () => dismissRpc({ workspaceId: w.id, questionId: q.id, undo: true }),
+    success: () => `${q.id} is open again`, onSuccess: refresh, failure: `Couldn't reopen ${q.id}` }, `dismiss:${w.id}:${q.id}`);
+  const dismiss = () => {
+    onClose?.(); onAnswered?.();
+    void runAction({ label: `Dismiss ${q.id}`, toast, run: () => dismissRpc({ workspaceId: w.id, questionId: q.id }), onSuccess: refresh, failure: `Couldn't dismiss ${q.id}`,
+      reconcile: e => { refresh(); notice(mootNote(e), toast); },
+      success: () => {
+        const message = `Dismissed ${q.id}. The agent wasn't messaged.`;
+        if (!hasToastHost()) return message;
+        pushToast("success", message, [{ label: "Undo", onPress: undoDismiss }], { durationMs: DISMISS_UNDO_MS, keep: true });
+        return null;
+      } }, `dismiss:${w.id}:${q.id}`);
+  };
+  const dismissLink = <NoteLink icon="X" label="Dismiss" a11y={`Dismiss ${q.id}: it no longer matters, and the agent isn't messaged`} disabled={run.isPending} c={c} compact={compact} onPress={dismiss} />;
   // The footer's Send calls the latest quick through a ref, so it never sends a stale choice or words.
   const quickRef = useRef(quick); quickRef.current = quick;
   const sendable = open && !!answer;
@@ -269,12 +291,15 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       </View>}
     </View>
     {q.closed && <View style={{ flexDirection: "row", gap: 6 }}>
-      <View style={{ paddingTop: 2 }}><Icon name="MessageCircleOff" size={12} color={c.foregroundMuted} /></View>
-      <Text style={[t.meta, { flex: 1 }]}>Withdrawn {ago(q.closed.at, now)}: {q.closed.reason}</Text>
+      <View style={{ paddingTop: 2 }}><Icon name={isDismissed(q) ? "X" : "MessageCircleOff"} size={12} color={c.foregroundMuted} /></View>
+      <Text style={[t.meta, { flex: 1 }]}>{isDismissed(q) ? `${closedLine(q)} ${ago(q.closed.at, now)}. The agent wasn't messaged.` : `Withdrawn ${ago(q.closed.at, now)}: ${q.closed.reason}`}</Text>
     </View>}
     {context}
     {/* Read before choosing: More context sits under the question's own context, its answer with it. */}
-    {open && moreContext && <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} />}
+    {/* The question's quiet row: More context first, then Dismiss (Catch up's move bar has its own More context). */}
+    {open && (moreContext
+      ? <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent}>{dismissLink}</QuestionMoreContext>
+      : <View style={{ flexDirection: "row" }}>{dismissLink}</View>)}
     {!!q.options.length && <View accessibilityRole="radiogroup" accessibilityLabel={`Options for ${q.id}`} style={{ gap: 6 }}>
       {q.options.map(o => <OptionCard key={o.letter} theme={theme} compact={compact} dense={dense} letter={o.letter} label={o.label} consequence={o.consequence} recommended={q.recommend === o.letter}
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}

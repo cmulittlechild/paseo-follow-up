@@ -205,7 +205,7 @@ export function statsOf(s: Session): SessionStats {
  * anywhere presets. Paseo takes Shift+? (its shortcuts dialog) and Escape (interrupt agent) when focus is outside a
  * field, which is exactly when these fire, so the sheet is S and leaving is X.
  */
-export type CatchUpAction = "pick" | "own" | "send" | "skip" | "skip-workspace" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave" | "dictate";
+export type CatchUpAction = "pick" | "own" | "send" | "skip" | "skip-workspace" | "back" | "more" | "chip" | "ask" | "note" | "later" | "chat" | "rail" | "rail-up" | "rail-down" | "keys" | "leave" | "dictate" | "dismiss";
 /**
  * a-move-bar-action-opens-in-view: where each move-bar action opens what it opens, so its result is where the eye
  * already is and never appended below the fold. `sheet`: drawn in the phone's dock, above the bar, kept above the
@@ -237,6 +237,8 @@ export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchU
   { key: "1–4", what: "Pick a More context ask", action: "chip", combos: ["Digit"], when: "more" },
   { key: "⌘↵", what: "Ask the agent", action: "ask", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
   { key: "N", what: "Add a note", action: "note", combos: ["N"] },
+  // D alone picks option D, so Dismiss takes Shift, as Skip workspace does beside J.
+  { key: "⇧D", what: "Dismiss the question (the agent isn't messaged)", action: "dismiss", combos: ["Shift+D"] },
   { key: "V", what: "Dictate your answer, and stop", action: "dictate", combos: ["V"], needs: "dictation" },
   { key: "L", what: "Later", action: "later", combos: ["L"] },
   { key: "O", what: "Open chat", action: "chat", combos: ["O"] },
@@ -266,6 +268,7 @@ export function catchUpKey(e: KeyPress, at: { typing: boolean; inMore: boolean; 
   if (e.key === "ArrowLeft") return { action: "back" };
   if (at.moreOpen && /^[1-4]$/.test(e.key)) return { action: "chip", arg: e.key };
   if (e.shift && e.key.toLowerCase() === "j") return { action: "skip-workspace" };
+  if (e.shift && e.key.toLowerCase() === "d") return { action: "dismiss" };
   if (e.shift || e.key.length !== 1) return null;
   const k = e.key.toLowerCase();
   if (/^[a-h]$/.test(k)) return { action: "pick", arg: k.toUpperCase() };

@@ -2,7 +2,7 @@ import type { ListWorkspace as Workspace } from "./list";
 import { recoveryBatch } from "./follow-up";
 import { shortRefs } from "./attention";
 import { isGithubFlow } from "./pr-actions";
-import { answerLabel, answerStatus } from "./questions";
+import { answerLabel, answerStatus, closedLine } from "./questions";
 
 export type ActivityTone = "merged" | "success" | "warning" | "danger" | "muted";
 export type Activity = { key: string; at: string; icon: string; tone: ActivityTone; text: string; detail: string | null; took: string | null };
@@ -59,7 +59,7 @@ export function activity(w: Workspace): Activity[] {
       const said = !s.delivered ? s.label : q.answer.by === "agent" ? "Answered in chat" : "Answered";
       rows.push({ key: `answered:${q.id}`, at: q.answer.at, icon: "MessageCircleReply", tone: s.delivered ? "success" : "muted", text: ref, detail: `${said}: ${answerLabel(q, q.answer.choice, q.answer.words)}`, took: duration(q.askedAt, q.answer.at) });
     }
-    if (q.closed) rows.push({ key: `withdrawn:${q.id}`, at: q.closed.at, icon: "MessageCircleOff", tone: "muted", text: ref, detail: `Withdrawn: ${q.closed.reason}`, took: null });
+    if (q.closed) rows.push({ key: `withdrawn:${q.id}`, at: q.closed.at, icon: "MessageCircleOff", tone: "muted", text: ref, detail: closedLine(q), took: null });
   }
   if (w.completion) rows.push({ key: "done", at: w.completion.declaredAt, icon: "CircleCheck", tone: "success", text: "Main agent declared Done", detail: null, took: null });
   return rows.filter(r => Number.isFinite(Date.parse(r.at))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.key.localeCompare(b.key));

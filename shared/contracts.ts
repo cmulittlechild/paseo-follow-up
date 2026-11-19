@@ -118,9 +118,11 @@ export const askQuestionRpc = defineRpc({ name: "follow.ask-question", input: z.
   background: z.string().trim().max(4000).optional(), links: z.array(linkInput).max(10).optional(),
   pr: z.string().trim().max(200).optional(), task: idSchema.optional(), supersedes: z.string().regex(/^Q\d+$/).optional(),
 }), output: z.object({ workspaceId: idSchema, question: questionSchema, mode: z.enum(QUESTION_MODES), instruction: z.string(),
-  outcome: z.enum(["asked", "duplicate", "superseded"]).default("asked"), of: z.string().nullable().default(null) }) });
+  outcome: z.enum(["asked", "duplicate", "superseded", "dismissed"]).default("asked"), of: z.string().nullable().default(null) }) });
 export const recordAnswerRpc = defineRpc({ name: "follow.record-answer", input: z.strictObject({ agentId: idSchema, id: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional() }), output: z.object({ workspaceId: idSchema, question: questionSchema }) });
 export const withdrawQuestionRpc = defineRpc({ name: "follow.withdraw-question", input: z.strictObject({ agentId: idSchema, id: z.string().regex(/^Q\d+$/), reason: z.string().trim().min(1).max(500) }), output: z.object({ workspaceId: idSchema, question: questionSchema }) });
+/** Dismiss a question that no longer matters, or undo that (dismissing-a-question-sends-the-agent-nothing). Sends nothing. */
+export const dismissQuestionRpc = defineRpc({ name: "follow.dismiss-question", input: z.strictObject({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), undo: z.boolean().optional() }), output: z.object({ workspace: workspaceSchema, question: questionSchema }) });
 export const answerQuestionRpc = defineRpc({ name: "follow.answer-question", input: z.object({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional(), action: z.enum(["send", "copy", "chat", "resend"]) }), output: z.object({ workspace: workspaceSchema, question: questionSchema }) });
 export const setSpecRpc = defineRpc({ name: "follow.set-spec", input: z.strictObject({ agentId: idSchema, url: z.string().trim().min(1).max(2000), title: z.string().trim().max(120).optional() }), output: z.object({ workspaceId: idSchema, spec: specSchema.nullable(), applied: z.boolean(), message: z.string() }) });
 export const workspaceSpecRpc = defineRpc({ name: "follow.workspace-spec", input: z.discriminatedUnion("action", [
@@ -180,7 +182,7 @@ export const needsYouRpc = defineRpc({ name: "follow.needs-you", input: z.strict
   questions: z.array(z.string()).optional(),
   context: z.string().optional(),
   links: z.array(z.strictObject({ label: z.string(), url: z.string().optional(), path: z.string().optional(), pr: z.string().optional() })).optional(),
-}), output: z.object({ ok: z.literal(true), briefId: z.string() }) });
+}), output: z.object({ ok: z.literal(true), briefId: z.string(), /** Decisions the developer had dismissed: left off the card, and why. */ note: z.string().optional() }) });
 /** Home's detail pane: the full stored brief for one agent (the list carries only its one-liner). */
 // The message queue (server/message-queue.ts): what waits to go to agents, and Retry or Cancel on one item.
 export const queueListRpc = defineRpc({ name: "follow.queue-list", input: z.strictObject({ workspaceId: idSchema.optional(), agentId: idSchema.optional() }), output: z.object({ items: z.array(queueViewSchema), recent: z.array(queueViewSchema) }) });
