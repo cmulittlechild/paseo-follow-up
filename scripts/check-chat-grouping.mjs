@@ -1,5 +1,5 @@
-// Renders a synthetic mixed turn (thinking, Bash, edits, Follow-up bookkeeping, a question, a repeated declare_done) in an
-// isolated Paseo daemon's web UI and screenshots it collapsed and expanded, desktop and phone, dark and light.
+// Renders a synthetic mixed turn (thinking, Bash, edits, Follow-up bookkeeping, a question, a repeated declare_done, a
+// create_agent and a create_workspace) in an isolated Paseo daemon's web UI and screenshots it collapsed and expanded, desktop and phone, dark and light.
 // Usage: node scripts/check-chat-grouping.mjs [--pack <paseo-follow-up.tgz>] [--out <dir>] [--label before|after]
 // Needs PLAYWRIGHT_CORE (a playwright-core directory) and CHROMIUM (a Chromium/headless-shell binary).
 import assert from "node:assert/strict";
@@ -32,7 +32,6 @@ try {
   await exec("tar", ["-xzf", pack, "--strip-components=1", "-C", plugin]);
   await fs.writeFile(join(fixture, "paseo-plugin.json"), JSON.stringify({ id: "followup-fixture", requirements: { paseo: ">=0.11.0" } }));
   await fs.writeFile(join(fixture, "index.server.ts"), await fs.readFile("scripts/fixture-provider.ts", "utf8"));
-  await fs.writeFile(join(home, "fixture-chat.json"), JSON.stringify(mixedTurn()));
   const env = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: url, PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 20 })).stdout);
   daemon = spawnDaemon(["daemon", "run", "--home", home], { env, stdio: ["ignore", openSync(join(root, "daemon.log"), "a"), openSync(join(root, "daemon.log"), "a")] });
@@ -42,6 +41,10 @@ try {
   const api = createPaseoApi(client);
   const w = await api.workspaces.create({ title: "Chat grouping", source: { kind: "directory", path: root } });
   const agent = await w.agents.create({ config: { provider: "followup-fixture/fixture", model: "fixture", modeId: "default" }, title: "Retry backoff" });
+  // What the turn's create_agent and create_workspace made, so their cards read live facts (tests/tool-result.test.ts).
+  const made = await api.workspaces.create({ title: "Billing retries", source: { kind: "directory", path: fixture } });
+  const child = await made.agents.create({ config: { provider: "followup-fixture/fixture", model: "fixture", modeId: "default", providerOptions: { fixture_mode: "deferred" } }, title: "Retry dashboards" });
+  await fs.writeFile(join(home, "fixture-chat.json"), JSON.stringify(mixedTurn({ agentId: child.id, workspaceId: made.id })));
   await client.sendMessage(agent.id, "Fixture: chat — ship the retry backoff and verify it", { messageId: "fixture-chat" });
   for (let i = 0; i < 80; i++) {
     const history = await client.fetchAgentTimeline(agent.id, { projection: "canonical", limit: 100 });
@@ -65,15 +68,23 @@ try {
     await page.waitForTimeout(1500);
     const shot = async name => { await page.mouse.move(0, 0); await page.waitForTimeout(300); await page.screenshot({ path: join(out, `${label}-${form}-${scheme}-${name}.png`) }); };
     await shot("collapsed");
-    const counts = async () => page.evaluate(() => ({ loose: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && /^(Synced Follow-up|Read Follow-up status|Task |Registered )/.test(n.textContent ?? "")).length, done: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && n.textContent === "Workspace done").length, asked: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && /· asked$/.test(n.textContent ?? "")).length, overflow: document.documentElement.scrollWidth > innerWidth }));
+    const counts = async () => page.evaluate(() => ({ loose: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && /^(Synced Follow-up|Read Follow-up status|Task |Registered )/.test(n.textContent ?? "")).length, done: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && n.textContent === "Workspace done").length, asked: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && /· asked$/.test(n.textContent ?? "")).length, created: [...document.querySelectorAll("body *")].filter(n => n.children.length === 0 && /^New (agent|workspace) · /.test(n.textContent ?? "")).length, overflow: document.documentElement.scrollWidth > innerWidth }));
     const collapsed = await counts();
     // The turn's summary line, then every run group inside it.
     await page.getByText(/(ran|edited) \d+ (commands?|files?)/i).first().click().catch(() => {});
     await page.waitForTimeout(500);
+    // The created cards, before any group opens (a phone opens a group as a sheet over the chat).
+    await page.getByText("Retry dashboards", { exact: true }).first().scrollIntoViewIfNeeded().catch(() => {});
+    await page.mouse.move(0, 0); await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, `${label}-${form}-${scheme}-created.png`) });
     for (const group of await page.getByTestId("tool-call-group").all()) await group.click().catch(() => {});
     await page.waitForTimeout(800);
     await shot("expanded");
-    report.push({ form, scheme, collapsed, expanded: await counts(), errors });
+    const expanded = await counts();
+    // Paseo 0.16 folds a finished turn's work into its summary line, cards included; expanded, both created cards are
+    // there and neither went back to a plain row in the group (tests/tool-result.test.ts).
+    assert.equal(expanded.created, 2, `${form} ${scheme}: both created cards stay after their calls complete`);
+    report.push({ form, scheme, collapsed, expanded, errors });
     await context.close(); context = null;
   }
   await browser.close();
@@ -84,13 +95,18 @@ try {
   await fs.rm(root, { recursive: true, force: true });
 }
 
-/** One realistic turn: work, bookkeeping between it, a question, the final message, then end-of-turn bookkeeping. */
-function mixedTurn() {
+/**
+ * One realistic turn: work, bookkeeping between it, a question, the final message, then end-of-turn bookkeeping. Tool
+ * results come in the shapes Paseo really sends (tests/fixtures/paseo-tool-results.ts): Claude's `{ output }` for
+ * Follow-up's tools and create_agent, Codex's MCP envelope for create_workspace.
+ */
+function mixedTurn(made) {
   let n = 0;
   const id = () => `fx-${++n}`;
   const think = text => ({ type: "reasoning", text });
   const tool = (name, detail) => ({ type: "tool_call", callId: id(), name, status: "completed", error: null, detail });
-  const mcp = (leaf, input, result) => tool(`mcp__paseo__follow_${leaf}`, { type: "unknown", input, output: { content: [{ type: "text", text: JSON.stringify(result) }] } });
+  const mcp = (leaf, input, result) => tool(`mcp__paseo__follow_${leaf}`, { type: "unknown", input, output: { output: result } });
+  const codex = result => ({ _meta: {}, content: [{ type: "text", text: JSON.stringify(result, null, 2) }], structuredContent: result });
   const ws = { id: "wks_fixture", completion: { summary: "Retry backoff shipped and verified in production" } };
   return [
     think("Read the tracker before starting."),
@@ -102,6 +118,10 @@ function mixedTurn() {
     tool("Bash", { type: "shell", command: "npm test", output: "pass 42" }),
     mcp("register_pr", { repo: "example/app", number: 412, stack: "Retry backoff" }, { ok: true }),
     mcp("update_obligation", { title: "Verify retries in production", status: "waiting", afterPrs: ["example/app#412"] }, { ok: true }),
+    tool("mcp__paseo__create_agent", { type: "unknown", input: { title: "Retry dashboards", provider: "claude/claude-opus-5-5", initialPrompt: "Add retry dashboards." },
+      output: { output: { agentId: made.agentId, type: "claude", status: "running", cwd: "/repo", workspaceId: made.workspaceId, currentModeId: "default", availableModes: [{ id: "default", label: "Default" }] } } }),
+    tool("paseo.create_workspace", { type: "unknown", input: { isolation: "worktree", branchName: "feat/billing-retry", path: "/repo/billing" },
+      output: codex({ workspaceId: made.workspaceId, projectId: "prj_fixture", cwd: "/repo/billing", isolation: "worktree", kind: "worktree", title: "Billing retries" }) }),
     think("The retry ceiling is a product decision."),
     mcp("ask_question", { title: "Retry ceiling", question: "Cap retries at 5 or 8?" }, { question: { id: "Q3", title: "Retry ceiling" }, instruction: "Asked Q3." }),
     tool("mcp__paseo__wait_prepare_job", { type: "unknown", input: { command: "npm run deploy:check" }, output: { content: [{ type: "text", text: "{\"jobId\":\"j1\"}" }] } }),

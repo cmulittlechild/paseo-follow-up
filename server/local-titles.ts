@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { isClaudeArtifact } from "../shared/spec";
+import { toolResult } from "../shared/tool-result";
 import { receiptTitle, rememberTitle, shortTitle, type TitleIndex } from "../shared/local-titles";
 
 export const TITLE_READ_BYTES = 8192;
@@ -16,12 +17,8 @@ export async function readTitleHtml(path: string): Promise<string | null> {
     } finally { await file.close(); }
   } catch { return null; }
 }
-export function resultText(output: unknown): string {
-  if (typeof output === "string") return output;
-  if (Array.isArray(output)) return output.map(resultText).join("\n");
-  if (output && typeof output === "object") return resultText((output as { text?: unknown }).text);
-  return "";
-}
+/** A tool result's text, in every shape Paseo sends (shared/tool-result.ts). */
+export const resultText = (output: unknown): string => toolResult(output).text;
 export function artifactPublishUrl(output: unknown): string | null {
   const url = /^(?:Published \S.*? at|Created a new Artifact at) (https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+)(?=[\s(.,]|$)/.exec(resultText(output).trimStart())?.[1];
   return url && isClaudeArtifact(url) ? url : null;
@@ -32,8 +29,9 @@ export async function receiptTitles(entries: readonly { item: unknown }[], readH
   const titles: TitleIndex = new Map();
   for (const entry of entries) {
     const v = object(entry.item), detail = object(v.detail), input = object(detail.input);
-    if (v.type !== "tool_call" || v.status !== "completed" || v.error || object(detail.output).isError === true) continue;
-    const output = resultText(detail.output);
+    const result = toolResult(detail.output);
+    if (v.type !== "tool_call" || v.status !== "completed" || v.error || result.isError) continue;
+    const output = result.text;
     if (v.name === "Artifact") {
       const action = input.action ?? "publish";
       if (input.asset === true || !["publish", "read"].includes(String(action))) continue;
@@ -42,15 +40,14 @@ export async function receiptTitles(entries: readonly { item: unknown }[], readH
       let html: string | null = null;
       if (!shortTitle(input.title) && action === "publish" && typeof input.file_path === "string") html = await readHtml(input.file_path).catch(() => null);
       // Read returns raw HTML or a title-labelled summary; structured read.result is preserved by Paseo too.
-      const read = object(object(detail.output).read);
+      const read = object(result.object?.read);
       if (action === "read") html = typeof read.result === "string" ? read.result : output;
-      const named = action === "read" ? shortTitle(object(detail.output).title) ?? shortTitle(/^(?:Title|Artifact title):\s*(.+)$/im.exec(output)?.[1]) : null;
+      const named = action === "read" ? shortTitle(result.object?.title) ?? shortTitle(/^(?:Title|Artifact title):\s*(.+)$/im.exec(output)?.[1]) : null;
       rememberTitle(titles, url, receiptTitle(named ? { ...input, title: named } : input, html));
     }
     if (v.name === "mcp__claude_ai_Claude_Docs__batch") {
       // Each successful create result carries its URL; pair by operation index rather than guessing from prose.
-      let parsed: unknown = detail.output;
-      try { if (output) parsed = JSON.parse(output); } catch { /* structured output may already be present */ }
+      const parsed = result.value;
       const operations = Array.isArray(input.batch) ? input.batch : Array.isArray(input.operations) ? input.operations : [];
       const results = Array.isArray(parsed) ? parsed : object(parsed).results ?? object(parsed).batch;
       if (!Array.isArray(results)) continue;
