@@ -71,7 +71,8 @@ export function githubWaitLine(w: { githubWait?: { until: string } | null }, now
   const until = Date.parse(w.githubWait?.until ?? "");
   if (!Number.isFinite(until) || until <= now) return null;
   const at = new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const title = `GitHub budget low · next check ${at}`;
-  const detail = "Follow-up paused its PR checks to leave GitHub's hourly limit to your agents. Statuses here are from the last check.";
+  // "updates", not "checks": this card also shows CI checks. "Limit", not "budget": GitHub's own word.
+  const title = `GitHub limit low · updates again at ${at}`;
+  const detail = "Follow-up paused to leave the rest to your agents. PR statuses here may be behind.";
   return { title, detail, label: `${title}. ${detail}` };
 }

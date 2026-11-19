@@ -1,2 +1,2 @@
 - Follow-up checks your PRs with a small fraction of GitHub's hourly limit, even with lots of PRs: it reads a PR in full only when something on it changed.
-- When the limit runs low, Follow-up pauses its checks and leaves the rest to your agents. The Pull requests card says when it checks again.
+- When the limit runs low, Follow-up pauses its checks and leaves the rest to your agents. The Pull requests card says when it updates again.

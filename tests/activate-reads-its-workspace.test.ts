@@ -48,7 +48,7 @@ test("github-budget-low-says-when: while reads wait for the budget, the workspac
   const [w, mergedOnly] = (await store.snapshot()).workspaces;
   assert.deepEqual(w.githubWait, { until: new Date(clock + 20 * 60_000).toISOString() });
   assert.equal(mergedOnly.githubWait ?? null, null, "only merged PRs: nothing to wait for");
-  assert.match(githubWaitLine(w, now)!.title, /^GitHub budget low · next check /);
+  assert.match(githubWaitLine(w, now)!.title, /^GitHub limit low · updates again at /);
   assert.equal(githubWaitLine(w, clock + 21 * 60_000), null, "past the reset the line is gone even before a tick");
   until = null; now += 15_000;
   await engine.tick({ background: true });

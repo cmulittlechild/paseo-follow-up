@@ -1219,7 +1219,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("secsearch-phone scrolls sideways");
     });
   }
-  // GitHub budget low (--github-wait-review): the account's GraphQL budget under Follow-up's 20 % reserve, so its PR
+  // GitHub limit low (--github-wait-review): the account's GraphQL budget under Follow-up's 20 % reserve, so its PR
   // reads wait for the reset and the panel's Pull requests card says until when (Workspace.githubWait). Billing retries'
   // panel, desktop light and dark, and the larger view at 390 light and dark.
   if (argv.includes("--github-wait-review")) {
@@ -1231,17 +1231,17 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     const panel = async page => {
       await openChat(page, billing.title, billing.prompt);
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
-      await page.getByText(/^GitHub budget low · next check /).last().waitFor({ timeout: 90000 });
+      await page.getByText(/^GitHub limit low · updates again at /).last().waitFor({ timeout: 90000 });
     };
     for (const scheme of ["light", "dark"]) await shoot(`github-wait-${scheme}`, DESKTOP, scheme, async page => {
       await panel(page);
-      await page.getByText(/^GitHub budget low/).last().evaluate(el => el.scrollIntoView({ block: "center" }));
+      await page.getByText(/^GitHub limit low/).last().evaluate(el => el.scrollIntoView({ block: "center" }));
     });
     for (const scheme of ["light", "dark"]) await shoot(`github-wait-phone-${scheme}`, PHONE, scheme, async page => {
       await panel(page);
       await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
       await page.setViewportSize(PHONE);
-      const line = page.getByText(/^GitHub budget low/).last();
+      const line = page.getByText(/^GitHub limit low/).last();
       await line.waitFor({ timeout: 60000 });
       await line.evaluate(el => el.scrollIntoView({ block: "center" }));
       if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("github-wait-phone scrolls sideways");

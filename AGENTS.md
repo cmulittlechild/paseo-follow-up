@@ -791,7 +791,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    probe moved something the full read decides on (`probeVerdict`, `shared/poll.ts`), or `SAFETY_READ_MS` after its
    last full read. Merged and closed PRs with a known status aren't read again (only Refresh reads them). Under 20 % of
    the account's limit (the reserve) background reads stop until GitHub's reset and the workspace says until when
-   (`githubWait`, "GitHub budget low · next check <time>"; `workspace_status` too); Refresh and agent tools still read
+   (`githubWait`, "GitHub limit low · updates again at <time>"; `workspace_status` too); Refresh and agent tools still read
    their own workspace above 100 points. Following a workspace reads only its own PRs fresh. 2026-11-19, Tom: "Github
    rate limit is a big problem in follow-up recently, I have LOTS of PRs"; 100 open PRs cost 4300-6400 points an hour
    plus ~2000 per pushed 60-PR stack, the shared 5000-point budget ran out in five hours that day, and agents' `gh`

@@ -108,8 +108,8 @@ settled PRs wait 5 minutes and only in repositories with something moving. Under
 background reads stop until the reset, so agents, gt and other plugins keep the rest (2026-11-19 live: Follow-up read
 the account down to 100 left and agents' `gh` calls failed first); the developer's Refresh and foreground reads (agent
 tools) still read their own workspace. The workspace then carries `githubWait` (`{ until }`, from `Github.waitUntil`,
-set by the engine's pass), its Pull requests card says "GitHub budget low · next check <time>" with why its statuses
-may be behind (`githubWaitLine`, `shared/presentation.ts`), and `workspace_status` returns it as `githubWait`. Under 100, or when GitHub
+set by the engine's pass), its Pull requests card says "GitHub limit low · updates again at <time>" and that its
+statuses may be behind (`githubWaitLine`, `shared/presentation.ts`; renders in `docs/evidence/github-wait/`, `scripts/screenshots.mjs --only panel --github-wait-review`), and `workspace_status` returns it as `githubWait`. Under 100, or when GitHub
 answers with a rate limit (GraphQL's `RATE_LIMIT` or `RATE_LIMITED` error, or a 403/429 with `retry-after` or no
 remaining budget), nothing is read until the reset (10 minutes when GitHub doesn't say) and the last observations
 stand in instead of errors.

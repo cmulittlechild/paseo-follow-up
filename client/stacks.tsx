@@ -137,7 +137,7 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
       <RichText style={[t.meta, { flex: 1, color: c.foreground }]}>{a.result || (isGithubFlow(w.prs.find(p => p.key === a.prs[0])?.snapshot) ? "Sending to GitHub…" : "Submitting to Graphite…")}</RichText>
     </View>)}
     {!hits && wait && <View accessible accessibilityLabel={wait.label} style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border }}>
-      <View style={{ paddingTop: 2 }}><Icon name="Clock" size={13} color={c.foregroundMuted} /></View>
+      <View style={{ paddingTop: 2 }}><Icon name="CirclePause" size={13} color={c.foregroundMuted} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{wait.title}</Text>
         <Text style={t.meta}>{wait.detail}</Text>
