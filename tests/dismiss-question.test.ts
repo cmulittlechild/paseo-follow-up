@@ -160,15 +160,15 @@ async function card(q: Question, props: Record<string, unknown> = {}) {
   return { labelled, texts, unmount: () => r.unmount() };
 }
 
-test("the card: Dismiss follows More context, sends only the dismiss, and moves on like an answer", async () => {
+test("the card: Dismiss is the card's x (no link in the quiet row), sends only the dismiss, and moves on like an answer", async () => {
   await act(() => { const none: never[] = []; setContextSource({ context: () => none, subscribe: () => () => {}, askContext: async () => { throw new Error("no"); } }); });
   rpcCalls.length = 0;
   let moved = 0;
   const c = await card(question, { onAnswered: () => { moved++; } });
-  const row = c.labelled(/^(More context on Q1|Dismiss Q1)/).map(n => String(n.props.accessibilityLabel)).filter((x, i, a) => a.indexOf(x) === i);
-  assert.deepEqual(row.map(x => x.split(":")[0]), ["More context on Q1", "Dismiss Q1"], "More context first, then Dismiss");
+  assert.equal(c.labelled(/^Dismiss Q1: it no longer needs you, and the agent isn't messaged$/).length > 0, true, "one x, labelled with what it does");
+  assert.doesNotMatch(c.texts(), /^Dismiss$/m, "the quiet row's old Dismiss link is gone");
   await act(async () => { c.labelled(/^Dismiss Q1/)[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
-  assert.deepEqual(rpcCalls.map(x => [x.name, x.input]), [["follow.dismiss-question", { workspaceId: "workspace", questionId: "Q1" }]], "nothing but the dismiss: no answer, no message");
+  assert.deepEqual(rpcCalls.map(x => [x.name, x.input]), [["follow.dismiss", { workspaceId: "workspace", key: "question:Q1" }]], "nothing but the dismiss: no answer, no message");
   assert.equal(moved, 1, "the surface moves on (Catch up settles the card, the pill steps)");
   c.unmount();
   await act(() => { setContextSource(null); });

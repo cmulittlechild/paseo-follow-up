@@ -26,6 +26,7 @@ import { cardStore } from "./card-store";
 import { PrSheet } from "./pr-sheet";
 import { isLight, withAlpha, type Colors } from "./theme";
 import { dismissToast, notice, runAction, runUndoable } from "./toasts";
+import { DismissX, RevealScope, useDismiss } from "./dismiss";
 
 /**
  * The brief card (design §2): the ask in one line, decisions as option rows, only the context needed, and the one
@@ -347,7 +348,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
 /** `embedded`: inside Home's detail pane, which has its own reply box and action bar, so the card drops its moves. */
 /** `snoozed`: the row is in Later, so the card wears the row's muted tone and says "Later" instead of "Needs you". */
 /** `bare`: a section of the Needs you block (client/needs-you.tsx), whose frame says "Needs you": no border, margin or second label. */
-type BriefCardProps = PluginTimelineItemProps<Brief> & { deps: BriefDeps; embedded?: boolean; snoozed?: boolean; bare?: boolean };
+type BriefCardProps = PluginTimelineItemProps<Brief> & { deps: BriefDeps; embedded?: boolean; snoozed?: boolean; bare?: boolean; /** After its x is pressed (Catch up moves on). */ onDismissed?: () => void };
 /** A brief names its PRs ("#240 is merged"): each "#N" its workspace tracks opens that PR (a-row-that-names-a-pr-opens-it-in-one-click). */
 export function BriefCard(props: BriefCardProps) {
   const workspace = props.item.data.workspaceId ? props.deps.workspace(props.item.data.workspaceId) : undefined;
@@ -355,7 +356,7 @@ export function BriefCard(props: BriefCardProps) {
   return <PrLinksProvider prs={prs}><BriefCardBody {...props} /></PrLinksProvider>;
 }
 
-function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, snoozed = false, bare = false }: BriefCardProps) {
+function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, snoozed = false, bare = false, onDismissed }: BriefCardProps) {
   const c = theme.colors; const row = item.data; const compact = layout.compact;
   // The row is a snapshot; the live brief decides (shownBrief). Only a row that still looks open asks, one query per
   // agent for every card in its chat. A card is actionable only when the server says this exact brief is open.
@@ -392,6 +393,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const [marked, setMarked] = useState<string | null>(null);
   // The send landed: green at once, before the server's answered brief replaces the card.
   const [sent, setSent] = useState(false);
+  const dismiss = useDismiss();
   const picks = usePicks(b.id);
   const words = useWords(b.id);
   const notes = useNotes(b.id);
@@ -420,6 +422,11 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const acts = flaggedAct && !snoozed;
   const tone = !snoozed && (acts || b.kind === "done" || b.kind === "review" || b.kind === "error") ? kindTone(b.kind, c) : c.foregroundMuted;
   const ageText = age(b.at, now);
+  // dismissing-anything-in-needs-you-sends-the-agent-nothing: an ask still in Needs you (or in Later) has the small x
+  // beside its age. It signs the row off as dismissed: the agent is sent nothing, and a restated ask isn't flagged again.
+  const x = flaggedAct && shown.actionable && agentId ? <View style={{ marginVertical: compact ? -8 : -5, marginRight: compact ? -8 : -6 }}>
+    <DismissX theme={theme} compact={compact} label="Dismiss the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
+  </View> : null;
   const border = acts ? withAlpha(attention, isLight(c) ? 0.5 : 0.45) : c.border;
   // Every send from the card (a pick, Something else, Send answers, the keyboard's Send) goes through runAction: the
   // card keeps the picks and words and says what failed, and the toast offers Retry. Success is the card itself.
@@ -470,7 +477,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   if (b.slim) {
     // Permission: Paseo's own prompt below is the control (F9). Fallback: the paragraph is right above.
     // The label and age share the top line so the ask always gets the full width; at a narrow panel the move wraps under it.
-    return <View accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you: " : ""}${askText}. ${b.sourceLine}`}
+    return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you: " : ""}${askText}. ${b.sourceLine}`}
       style={[{ marginVertical: embedded ? 0 : 10, gap: 4, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: border }, bare && BARE]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
         <Icon name={ICON[b.kind]} size={14} color={tone} />
@@ -478,6 +485,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
         <View style={{ flex: 1 }} />
         {/* In Later the age would read as a second clock beside "Later until"; the pane header keeps it. */}
         {!snoozed && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{ageText}</Text>}
+        {x}
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 8 }}>
         <RichText numberOfLines={3} tooltip={askText}
@@ -486,7 +494,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       </View>
       {!!error && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13, lineHeight: 18 }}>{error}</Text>}
       {!!mergeWhy && <Text accessibilityRole="alert" style={{ color: c.statusWarning, fontSize: 13, lineHeight: 18 }}>{mergeWhy}</Text>}
-    </View>;
+    </RevealScope>;
   }
 
   const tight = isTight(b, compact, height);
@@ -511,7 +519,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const otherId = !multi ? askedDecisions(b).find(d => isOther(picks[d.id]))?.id : undefined;
   const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : null;
   const sendOther = (decisionId: string) => { const text = words[decisionId]?.trim(); if (text) void run(`${decisionId}:${OTHER}`, async answerId => { await answer([{ decisionId, choice: OTHER, words: text }], answerId); clearCard(b.id); }); };
-  return <View accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you" : flaggedAct ? "Later" : word(b.kind)}: ${askText}`}
+  return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you" : flaggedAct ? "Later" : word(b.kind)}: ${askText}`}
     style={[{ marginVertical: embedded ? 0 : 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: c.surface1, overflow: "hidden" }, bare && BARE]}>
     <SubmitScope enabled={!!keySend && !busy} onSubmit={() => keySend?.()} style={{ paddingHorizontal: pad, paddingTop: compact ? 12 : 14, paddingBottom: 14, gap: tight ? 10 : 12 }}>
       <View style={{ gap: 4 }}>
@@ -525,9 +533,11 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
         {!snoozed && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{ageText}</Text>}
           {/* Phones: where the card's facts come from sits behind ⓘ instead of a footer under every card. */}
           {compact && <Pressable accessibilityRole="button" accessibilityLabel={why ? "Hide where this comes from" : "Where this comes from"} aria-expanded={why} accessibilityState={{ expanded: why }}
-            onPress={() => setWhy(v => !v)} style={{ width: 44, height: 44, marginVertical: -15, marginRight: -14, alignItems: "center", justifyContent: "center" }}>
+            onPress={() => setWhy(v => !v)} style={{ width: 44, height: 44, marginVertical: -15, marginRight: x ? -10 : -14, alignItems: "center", justifyContent: "center" }}>
             <Icon name="Info" size={14} color={why ? c.foreground : c.foregroundMuted} />
           </Pressable>}
+          {/* The x is always the card's last control, in its top-right corner, on every Needs-you item. */}
+          {x}
         </View>
         {/* The ask role on phones (react-native-web ignores hitSlop, so the ⓘ above is a real 44 box); desktop keeps 19/26. */}
         {/* Bare: a section of the Needs you block, so the same size as its question titles. */}
@@ -558,7 +568,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       <Text style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{b.sourceLine}</Text>
     </View>}
     {detail.workspace && sheet && <PrSheet workspace={detail.workspace} prKey={sheet.key} intent={sheet.intent} theme={theme} compact={compact} browserReady={browser.data?.ready ?? false} onClose={() => setSheet(null)} />}
-  </View>;
+  </RevealScope>;
 }
 
 const BARE = { marginVertical: 0, borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" } as const;

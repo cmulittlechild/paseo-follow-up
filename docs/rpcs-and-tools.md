@@ -98,7 +98,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `brief_action` | `follow.brief-action` | planned; never your own brief |
 | `queue_list` | `follow.queue-list` | read: the message queue per workspace or agent (state, why it waits, next try), plus the newest sent |
 | `queue_action` | `follow.queue-action` | planned: retry a queued or failed message now, or cancel it (a card's Retry, Needs you's message row) |
-| `dismiss_question` | `follow.dismiss-question` | planned; dismisses another agent's question for the developer and sends that agent nothing (`dismissing-a-question-sends-the-agent-nothing`); `undo: true` reopens it. Refused for a question you asked or own: that is `withdraw_question`. |
+| `dismiss_item` | `follow.dismiss` | planned; the small x on any Needs-you item for the developer: `{ workspaceId, key }` (an item's key, `question:Qn` included) or `{ agentId }` for another agent's turn-end brief. Sends no agent anything (`dismissing-anything-in-needs-you-sends-the-agent-nothing`); `undo: true` brings it back. Refused for your own brief or question, and for your own workspace's items. |
+| `dismiss_question` | `follow.dismiss-question` | planned; the question-only alias of `dismiss_item` (`key: "question:Qn"`). Dismisses another agent's question for the developer and sends that agent nothing (`dismissing-a-question-sends-the-agent-nothing`); `undo: true` reopens it. Refused for a question you asked or own: that is `withdraw_question`. |
 | `answer_question` | `follow.answer-question` | planned; never your own question. The tool sends; the UI's Copy and Put in chat (`action: "copy" \| "chat"`) only move the developer's own words into their clipboard or composer, so they have no tool (`server/agent-parity.ts`). |
 | `set_workspace_spec` | `follow.workspace-spec` | planned |
 | `set_task_trigger` | `follow.set-task-trigger` | planned |
@@ -178,7 +179,7 @@ nothing. On 0.15 there is no `client.subscribe`, and the client polls the RPCs a
 
 | Surface | RPCs |
 | --- | --- |
-| Home, panel, larger view, pill | `follow.list`, `follow.get`, `follow.control`, `follow.send`, `follow.recover`, `follow.refresh`, `follow.answer-question`, `follow.dismiss-question`, `follow.workspace-spec`, `follow.set-task-trigger`, `follow.workspace-about`, `follow.rename-status`, `follow.rename-workspace`, `follow.priorities`, `follow.usage`, `follow.rank-status`, `follow.rank-now` |
+| Home, panel, larger view, pill | `follow.list`, `follow.get`, `follow.control`, `follow.send`, `follow.recover`, `follow.refresh`, `follow.answer-question`, `follow.dismiss`, `follow.workspace-spec`, `follow.set-task-trigger`, `follow.workspace-about`, `follow.rename-status`, `follow.rename-workspace`, `follow.priorities`, `follow.usage`, `follow.rank-status`, `follow.rank-now` |
 | Needs-you inbox and brief card | `follow.inbox-list`, `follow.inbox-act`, `follow.inbox-brief`, `follow.brief-action` |
 | PR sheet | `follow.pr-control-status`, `follow.prepare-pr-action`, `follow.confirm-pr-action`, `follow.check-pr-action`, `follow.request-reviewers`, `follow.browser-status` |
 | Overseer card | `follow.overseer-status`, `follow.overseer-start`, `follow.overseer-restart`, `follow.overseer-ask` |

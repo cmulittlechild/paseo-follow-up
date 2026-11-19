@@ -429,7 +429,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -1937,9 +1937,9 @@ async function splitShots({ shoot, seeded, call, out }) {
 
 /**
  * shortcut (every-shortcut-is-configurable-and-never-paseo-s): the search-from-anywhere key, end to end. Headless
- * Chromium on Linux is "not a Mac", so the default is Ctrl+/. From an agent chat with the cursor in the composer it
+ * Chromium on Linux is "not a Mac", so the default is Ctrl+Shift+K. From an agent chat with the cursor in the composer it
  * opens Home with the cursor in Home's search; on Home it only moves the cursor; with Paseo's sidebar collapsed (its own
- * Ctrl+B) it still works; None does nothing; Ctrl+Shift+K works once chosen and Ctrl+/ then does nothing, also after a
+ * Ctrl+B) it still works; None does nothing; Ctrl+Shift+K works by default and Ctrl+/ does nothing, also after a
  * reload. Renders: Settings → Inbox & display's Keyboard row, Home's search chip and the ⌘K row, light and dark.
  * Writes shortcut.json; any failed check fails the run.
  */
@@ -1967,7 +1967,7 @@ async function homeKeysShots({ shoot, out }) {
   };
   const leftForChat = async (page, before) => settle(page, async () => !onHome(page) || page.url() !== before);
   await shoot("home-keys-check", DESKTOP, "dark", async page => {
-    // Tom's path: / (or ⌘/), type, Enter shows it, Enter again opens it.
+    // The search path: / (or ⌘⇧K), type, Enter shows it, Enter again opens it.
     check("search: the first Enter shows the result in the pane", await searchPick(page));
     const at = page.url();
     const where = () => page.evaluate(() => { const a = document.activeElement; return a === document.body ? "body" : `${a?.tagName}:${a?.getAttribute("aria-label") ?? a?.id ?? ""}`; });
@@ -2044,30 +2044,33 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
     await composer.click(); await composer.fill("draft");
     return composer;
   };
-  await setKey("mod-slash");
+  await setKey("mod-shift-k");
   await shoot("shortcut-check", DESKTOP, "dark", async page => {
     await page.goto(ORIGIN); await page.getByText("Follow-up", { exact: true }).first().waitFor();
     await inComposer(page);
-    await page.keyboard.press("Control+/");
-    check("Ctrl+/ from the composer opens Home with the cursor in its search", await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
+    const chatBefore = page.url();
+    await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+    check("Ctrl+/ does not open Home with the default key", page.url() === chatBefore && !await searchFocused(page));
+    await page.keyboard.press("Control+Shift+K");
+    check("Ctrl+Shift+K from the composer opens Home with the cursor in its search", await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
     // Already on Home, with the cursor elsewhere: only the cursor moves.
     await page.getByText("Morning brief", { exact: true }).first().click(); await page.waitForTimeout(300);
     const before = page.url();
-    await page.keyboard.press("Control+/");
+    await page.keyboard.press("Control+Shift+K");
     check("on Home it only moves the cursor", await settle(page, () => searchFocused(page)) && page.url() === before, { before, after: page.url() });
     // Paseo's sidebar collapsed (its own Ctrl+B): the key needs no sidebar row.
     await inComposer(page);
     await page.keyboard.press("Control+b"); await page.waitForTimeout(400);
     const sidebarRow = await page.getByText("Follow-up", { exact: true }).filter({ visible: true }).count();
     await page.locator("textarea").filter({ visible: true }).last().click();
-    await page.keyboard.press("Control+/");
+    await page.keyboard.press("Control+Shift+K");
     check("works with Paseo's sidebar collapsed", await settle(page, async () => onHome(page) && await searchFocused(page)), { sidebarRowsVisible: sidebarRow });
     await page.keyboard.press("Control+b"); await page.waitForTimeout(300);
     // None: nothing happens, and the composer keeps its draft.
     await setKey("none"); await page.reload();
     await inComposer(page);
     const chat = page.url();
-    await page.keyboard.press("Control+/"); await page.waitForTimeout(800);
+    await page.keyboard.press("Control+Shift+K"); await page.waitForTimeout(800);
     check("None does nothing", page.url() === chat && !await searchFocused(page), { url: page.url() });
     // Ctrl+Shift+K: works, and Ctrl+/ no longer does; both after a reload too.
     await setKey("mod-shift-k"); await page.reload();
@@ -2080,22 +2083,31 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
       await page.keyboard.press("Control+Shift+K");
       check(`Ctrl+Shift+K opens Home's search (${pass})`, await settle(page, async () => onHome(page) && await searchFocused(page)), { url: page.url() });
     }
-    await setKey("mod-slash");
+    await setKey("mod-shift-k");
   });
   // Renders: the settings row, Home's search chip, the ⌘K row; light and dark.
-  for (const theme of ["light", "dark"]) {
-    await shoot(`shortcut-settings-${theme}`, DESKTOP, theme, async page => {
+  for (const mac of [false, true]) for (const theme of ["light", "dark"]) {
+    const suffix = `${mac ? "mac-" : ""}${theme}`;
+    const label = mac ? "⌘⇧K" : "Ctrl+Shift+K";
+    const options = mac ? { init: () => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }) } : {};
+    await shoot(`shortcut-settings-${suffix}`, DESKTOP, theme, async page => {
       await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
       await page.getByRole("tab", { name: /^Inbox & display/ }).filter({ visible: true }).first().click();
       const row = page.getByText("Search from anywhere", { exact: true }).filter({ visible: true }).first();
       await row.waitFor(); await row.evaluate(el => el.scrollIntoView({ block: "center" }));
       return { x: 400, y: 0, width: DESKTOP.width - 400, height: DESKTOP.height };
-    });
-    await shoot(`shortcut-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("textbox", { name: SEARCH }).first().waitFor(); return { x: 320, y: 0, width: 840, height: 220 }; });
-    await shoot(`shortcut-cmdk-${theme}`, DESKTOP, theme, async page => {
-      await openHome(page); await page.keyboard.press("Control+k");
-      await page.keyboard.type("Follow-up: Search"); await page.getByText(/Follow-up: Search \(Ctrl\+\/\)/).first().waitFor();
-    });
+    }, options);
+    await shoot(`shortcut-home-${suffix}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("textbox", { name: SEARCH }).first().waitFor();
+      const chip = page.getByText(label, { exact: true }).filter({ visible: true }).first();
+      await chip.waitFor();
+      const title = `${label} from anywhere · / on Home`;
+      check(`${suffix}: Home hover title names both keys`, await page.getByTitle(title, { exact: true }).count() > 0);
+      await page.getByTitle(title, { exact: true }).first().hover(); page.keepPointer = true;
+      return { x: 320, y: 0, width: 840, height: 220 }; }, options);
+    await shoot(`shortcut-cmdk-${suffix}`, DESKTOP, theme, async page => {
+      await openHome(page); await page.keyboard.press(mac ? "Meta+k" : "Control+k");
+      await page.keyboard.type("Follow-up: Search"); await page.getByText(`Follow-up: Search (${label})`, { exact: true }).first().waitFor();
+    }, options);
   }
   await fs.writeFile(join(out, "shortcut.json"), JSON.stringify(checks, null, 2));
   log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
@@ -2747,45 +2759,60 @@ async function moreContextShots({ shoot, call }) {
 }
 
 /**
- * dismiss (dismissing-a-question-sends-the-agent-nothing): the quiet Dismiss after More context on the panel's card and
- * on a phone; after Dismiss, the toast with Undo; the dismissed card in the question dialog ("Dismissed by you"); and
- * Catch up's card with Dismiss (⇧D). Light and dark. Each dismissal is undone through follow.dismiss-question before
- * the next shot, and the run fails if any dismissal queued a message.
+ * dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the small x on every Needs-you item. In the panel:
+ * an agent's Action brief at rest (no x) and hovered (the x beside its age), the question card's x (no Dismiss link in
+ * its quiet row), and a merge row's x; after Dismiss, the toast with Undo; Catch up's card with its x always shown; Home's
+ * detail pane on a phone, x always there. Light and dark. Every dismissal is undone through follow.dismiss before the
+ * next shot, and the run fails if any dismissal queued a message.
  */
 async function dismissShots({ shoot, call }) {
   const TALL = { width: DESKTOP.width, height: 1000 };
-  const lone = pick("ny-lone");
+  const brief = pick("ny-other"), lone = pick("ny-lone"), merge = pick("mc-receipts");
   const visible = l => l.filter({ visible: true }).first();
-  const wsId = async () => (await call("follow.list", {})).workspaces.find(w => w.questions?.some(q => q.title === "Missing keys"))?.id;
-  const reopen = async () => { const id = await wsId(); const q = (await call("follow.list", {})).workspaces.find(w => w.id === id).questions.find(q => q.id === "Q1"); if (q.closed) await call("follow.dismiss-question", { workspaceId: id, questionId: "Q1", undo: true }); };
-  const queued = async () => (await call("follow.queue-list", { workspaceId: await wsId() })).items.length;
+  const list = async () => (await call("follow.list", {})).workspaces;
+  const wsOf = async title => (await list()).find(w => w.title === title);
+  const queued = async () => { let n = 0; for (const t of [brief.title, lone.title, merge.title]) n += (await call("follow.queue-list", { workspaceId: (await wsOf(t)).id })).items.length; return n; };
   const before = await queued();
-  const panel = async page => { await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText("Missing keys")).waitFor(); };
-  const phone = async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, lone.title)).click(); await visible(page.getByText("Missing keys")).waitFor(); };
-  const dismissLink = page => visible(page.getByRole("button", { name: /^Dismiss Q1/ }));
-  const settle = async (page, l) => { await l.scrollIntoViewIfNeeded(); await page.waitForTimeout(500); };
+  // Put back whatever a shot dismissed, so the next shot starts from the same Needs you.
+  const restore = async () => {
+    const q = (await wsOf(lone.title)).questions.find(q => q.id === "Q1");
+    if (q.closed) await call("follow.dismiss", { workspaceId: (await wsOf(lone.title)).id, key: "question:Q1", undo: true });
+    const m = await wsOf(merge.title);
+    for (const d of m.dismissed ?? []) await call("follow.dismiss", { workspaceId: m.id, key: d.key, undo: true });
+    const b = await wsOf(brief.title);
+    await call("follow.dismiss", { agentId: b.mainAgentId, undo: true }).catch(() => undefined);
+  };
+  const panel = async (page, w, text) => { await page.setViewportSize(TALL); await openChat(page, w.title, w.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText(text)).waitFor(); };
+  const x = (page, name) => visible(page.getByRole("button", { name }));
+  const away = async page => { await page.mouse.move(2, 2); await page.waitForTimeout(400); };
+  const BRIEF_X = /^Dismiss the agent's ask/, Q_X = /^Dismiss Q1/, MERGE_X = /^Dismiss #255/;
   for (const theme of ["light", "dark"]) {
-    await shoot(`dq-row-panel-${theme}`, TALL, theme, async page => { await panel(page); await settle(page, await dismissLink(page)); });
-    await shoot(`dq-row-phone-${theme}`, PHONE, theme, async page => { await phone(page); await settle(page, await dismissLink(page)); });
-    await shoot(`dq-undo-panel-${theme}`, TALL, theme, async page => { await panel(page); await (await dismissLink(page)).click(); await visible(page.getByText(/^Dismissed Q1\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
-    await shoot(`dq-dismissed-dialog-${theme}`, DESKTOP, theme, async page => {
-      await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
-      await visible(page.getByRole("tab", { name: /^Questions/ })).click();
-      await visible(page.getByRole("button", { name: /^Q1, Missing keys/ })).click();
-      await visible(page.getByText(/^Dismissed by you/)).waitFor(); await page.waitForTimeout(300);
+    await shoot(`dx-brief-rest-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await away(page); });
+    await shoot(`dx-brief-hover-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket");
+      // The panel's copy (the chat has the same card): point at its header, left of its x, so the x shows unhovered. The
+      // x draws once the live check says the ask is still open, so wait for it.
+      const box = await (await page.waitForFunction(min => { for (const e of document.querySelectorAll('[aria-label^="Dismiss the agent\'s ask"]')) { const r = e.getBoundingClientRect(); if (r.x > min) return { x: r.x, y: r.y, height: r.height }; } return null; }, TALL.width - 320)).jsonValue();
+      await page.mouse.move(box.x - 150, box.y + box.height / 2); page.keepPointer = true; await page.waitForTimeout(400); });
+    await shoot(`dx-question-${theme}`, TALL, theme, async page => { await panel(page, lone, "Missing keys"); await visible(page.getByText(/When a key is missing in both/)).hover(); await (await x(page, Q_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    await shoot(`dx-merge-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await (await x(page, MERGE_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    await shoot(`dx-undo-${theme}`, TALL, theme, async page => {
+      await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover();
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
     });
-    await reopen();
-    await shoot(`dq-catch-up-${theme}`, DESKTOP, theme, async page => {
+    await restore();
+    await shoot(`dx-catch-up-${theme}`, DESKTOP, theme, async page => {
       await openHome(page);
       await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
-      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("When a key is missing").filter({ visible: true }).first().isVisible()); i++) {
-        if (i > 30) throw new Error("dismiss: no Catch up card for Missing keys");
+      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("#255 is approved").filter({ visible: true }).first().isVisible()); i++) {
+        if (i > 40) throw new Error("dismiss: no Catch up card for #255");
         await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
       }
-      await settle(page, await dismissLink(page));
+      await away(page);
     });
+    await shoot(`dx-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await page.waitForTimeout(500); });
+    await restore();
   }
-  if (await queued() !== before) throw new Error("dismiss: a dismissal queued a message for the agent");
+  if (await queued() !== before) throw new Error("dismiss: a dismissal queued a message for an agent");
 }
 
 /**
@@ -2822,7 +2849,7 @@ async function dockInViewShots({ shoot }) {
   }
 }
 
-function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
+function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES, ...MERGE_CLICK_STATES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
 
 async function optimise(path, tool) {
   if (tool === "pngquant") await exec("pngquant", ["--force", "--skip-if-larger", "--quality", "70-95", "--strip", "--output", path, path]).catch(e => { if (e.code !== 98 && e.code !== 99) throw e; });

@@ -98,7 +98,7 @@ test("never on yourself: an agent can't answer its own brief or act on its own i
 
 test("set_display: trust bypass and the other Display switches, planned, merged into the current document", async () => {
   const f = rpcFixture();
-  assert.deepEqual((await f.agent.run("a", "display_settings", {}) as { values: unknown }).values, { home_sort: "priority", home_detail_fraction: 0.42, catch_up_rail_fraction: 0.28, search_shortcut: "mod-slash", enable_trust_bypass: true, enable_inbox: true });
+  assert.deepEqual((await f.agent.run("a", "display_settings", {}) as { values: unknown }).values, { home_sort: "priority", home_detail_fraction: 0.42, catch_up_rail_fraction: 0.28, search_shortcut: "mod-shift-k", enable_trust_bypass: true, enable_inbox: true });
   await assert.rejects(f.agent.run("a", "set_display", { values: { enable_everything: true } }), /unknown setting/);
   const same = await f.agent.run("a", "set_display", { values: { enable_inbox: true } }) as { planId: string | null };
   assert.equal(same.planId, null, "nothing changes, nothing to confirm");
@@ -147,10 +147,10 @@ test("home_detail_fraction round-trips through set_display and display_settings"
 test("search_shortcut round-trips through set_display and display_settings", async () => {
   const f = rpcFixture();
   await assert.rejects(f.agent.run("a", "set_display", { values: { search_shortcut: "mod-k" } }), /search_shortcut/);
-  const same = await f.agent.run("a", "set_display", { values: { search_shortcut: "mod-slash" } }) as { planId: string | null };
+  const same = await f.agent.run("a", "set_display", { values: { search_shortcut: "mod-shift-k" } }) as { planId: string | null };
   assert.equal(same.planId, null, "unset reads as the default key, so choosing it changes nothing");
   const plan = await f.agent.run("a", "set_display", { values: { search_shortcut: "none" } }) as { planId: string; changes: unknown };
-  assert.deepEqual(plan.changes, [{ key: "search_shortcut", from: "mod-slash", to: "none" }]);
+  assert.deepEqual(plan.changes, [{ key: "search_shortcut", from: "mod-shift-k", to: "none" }]);
   await f.agent.run("a", "set_display", { confirm: true, planId: plan.planId });
   assert.equal((await f.agent.run("a", "display_settings", {}) as { values: { search_shortcut: string } }).values.search_shortcut, "none");
 });

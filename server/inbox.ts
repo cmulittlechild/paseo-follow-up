@@ -13,7 +13,7 @@ import { copyOnAccess, detach, peek, type Changes } from "./cow";
 import { z } from "zod";
 import { BRIEF_ORIGINS_MAX, briefOriginSchema, emptyInbox, entrySchema, expired, inboxStateSchema, newEntry, reduce, StaleSignOff, type Entry, type InboxEvent, type InboxRow, type InboxState, type Reason, liveFlag, withoutRunState, FACT_REASONS, prEndEvent, reviewersBriefPr, markNotified, notifiedBefore, prNotice, pruneNotified } from "../shared/inbox";
 import type { State as FollowState, Workspace as FollowWorkspace } from "../shared/model";
-import { asksForReviewers } from "../shared/attention";
+import { reviewersAskStands } from "../shared/attention";
 import { followUpObligations } from "../shared/follow-up";
 import { configuredReviewers, reviewerLabel, withoutAuthor } from "../shared/reviewers";
 import { classify, finishedReply, turnPrompt, type Sources } from "./inbox-classifier";
@@ -287,7 +287,7 @@ export type InboxOptions = {
 export type BriefDecider = (prev: Entry, next: Entry, at: string) => BriefEvent | null;
 /** Brief steps every inbox event implies: sign-off collapses, undo reopens, an answered prompt retires its slim brief. */
 export function autoBrief(event: InboxEvent, prev?: Entry): BriefEvent | null {
-  if (event.type === "sign_off") return { type: "sign_off" };
+  if (event.type === "sign_off") return { type: "sign_off", ...(event.dismissed ? { dismissed: true } : {}) };
   // Undoing a Later only moves the snooze back: the brief was never collapsed, so nothing reopens.
   if (event.type === "undo") return prev?.undo?.kind === "snooze" ? null : { type: "undo" };
   if (event.type === "permission_resolved") return { type: "permission_resolved" };
@@ -957,7 +957,7 @@ export class Inbox {
       switch (input.action) {
         case "sign_off": {
           const before = Object.fromEntries((input.agentIds ?? []).map(id => [id, state.entries[id]]));
-          each(id => ({ type: "sign_off", ...(input.seqs?.[id] !== undefined ? { seq: input.seqs[id] } : {}), ...(input.muteTurn ? { muteTurn: true } : {}) }));
+          each(id => ({ type: "sign_off", ...(input.seqs?.[id] !== undefined ? { seq: input.seqs[id] } : {}), ...(input.muteTurn ? { muteTurn: true } : {}), ...(input.dismissed ? { dismissed: true } : {}) }));
           const done = results.filter(r => r.ok).map(r => r.agentId);
           cleared.push(...done); state.signOffs += done.length;
           if (done.length > 1) state.batchUndo = { at, expires: new Date(now + DAY).toISOString(), unsorted: null, entries: done.map(id => ({ agentId: id, seq: state.entries[id].seq, prev: before[id]?.needs ?? null, prevSnooze: before[id]?.snooze ?? null })) };
@@ -1031,6 +1031,29 @@ export class Inbox {
     });
     await this.flush(appends);
     return appends.map(a => a.agentId);
+  }
+
+  /**
+   * Dismiss an agent's turn-end brief (dismissing-anything-in-needs-you-sends-the-agent-nothing): a sign-off that sends
+   * the agent nothing and remembers the ask, so a needs_you restating it isn't flagged again (`dismissedAsk`). Undo
+   * brings the row and its card back. An agent can't dismiss its own brief.
+   */
+  async dismiss(agentId: string, undo: boolean, actor: Actor = DEVELOPER): Promise<{ name: string }> {
+    if (actor.kind === "agent" && actor.agentId === agentId) throw new Error("This is your own brief: it is the developer's to dismiss. dismiss_item dismisses another agent's brief for the developer.");
+    const e = (await this.store.snapshot()).entries[agentId];
+    if (undo) {
+      if (!e?.dismissedAsk || e.undo?.kind !== "sign_off") throw new Error("This agent's ask isn't dismissed, so there is nothing to undo.");
+      await this.act({ action: "undo", agentIds: [agentId] }, actor);
+      return { name: "the agent's ask" };
+    }
+    if (!e?.needs) throw new Error("This agent's ask is already gone from Needs you.");
+    await this.act({ action: "sign_off", agentIds: [agentId], dismissed: true }, actor);
+    return { name: "the agent's ask" };
+  }
+
+  /** The ask the developer dismissed on this agent's row, if it still stands (cleared by their next message or Undo). */
+  async dismissedAsk(agentId: string): Promise<{ ask: string; kind: string; at: string } | null> {
+    return (await this.store.snapshot()).entries[agentId]?.dismissedAsk ?? null;
   }
 
   /** The stored brief for one agent, for Home's detail pane. */
@@ -1109,6 +1132,8 @@ export function briefShare(state: Pick<InboxState, "briefOrigins">, now: number,
 export type InboxAction = {
   action: "sign_off" | "undo" | "snooze" | "unsnooze" | "mute_turn" | "set_finish_flags" | "unsorted_flag" | "unsorted_sign_off" | "batch_undo";
   agentIds?: string[]; seqs?: Record<string, number>; until?: string; value?: boolean; muteTurn?: boolean;
+  /** Dismiss (follow.dismiss, never the inbox RPC): a sign-off that remembers the ask, so a restated ask isn't flagged again. */
+  dismissed?: boolean;
 };
 
 /**
@@ -1208,7 +1233,7 @@ export function followUpEvents(follow: FollowState, enablePrClosed: boolean): { 
         if (s.conflict) events.push({ agentId, event: { type: "review", dedupeKey: `${pr.key}:conflict:${s.head}`, detail: `Merge conflict to fix on #${pr.number}`, suppressed: repairing || automatic } });
         // Reviewers are the developer's job, and don't wait for threads or CI. Skipped only while a reviewer request
         // or merge is already in flight for this PR (so a second request isn't asked for while GitHub catches up).
-        if (asksForReviewers(pr, w))
+        if (reviewersAskStands(pr, w))
           events.push({ agentId, event: { type: "reviewers", dedupeKey: `${pr.key}:reviewers`, detail: `#${pr.number}`, prKey: pr.key, url: prLink(pr).url,
             names: withoutAuthor(configuredReviewers(pr.repo), s.reviewers?.author).map(reviewerLabel) } });
       } else if (enablePrClosed) {

@@ -126,6 +126,13 @@ export const workspaceSchema = z.object({
    * needs it was set on (`keys`, needKey). A new need or the time ends it (workspaceSnoozed). Null: not snoozed.
    */
   snooze: z.object({ until: z.string(), at: z.string(), keys: z.array(z.string()) }).nullable().optional(),
+  /**
+   * Needs-you items the developer dismissed (dismissing-anything-in-needs-you-sends-the-agent-nothing): the item's key
+   * and its print (shared/attention.ts dismissPrint), what it said, when and by whom. An item stays hidden while its
+   * print matches; a change (a new head, a new failure, a new batch) is a new print, so it comes back. Nothing here is
+   * ever sent to an agent. A question's dismissal lives on the question (closed.dismissed), not here.
+   */
+  dismissed: z.array(z.object({ key: z.string().max(400), print: z.string().max(2000), title: z.string().max(400), at: z.string(), by: z.string() })).max(100).optional(),
   prs: z.array(prSchema), obligations: z.array(obligationSchema), batches: z.array(batchSchema),
   excludedStacks: z.array(z.object({ name: textSchema, reason: textSchema, excludedAt: z.string(), prs: z.array(prSchema), obligations: z.array(obligationSchema) })).default([]),
   prActions: z.array(z.object({ id: idSchema, kind: z.enum(["merge", "enable_mwr", "disable_mwr", "request_reviewers"]), reviewers: z.array(z.string()).optional(), prs: z.array(idSchema), heads: z.record(z.string(), z.string()), createdAt: z.string(), state: z.enum(["sending", "submitted", "failed", "uncertain"]), result: z.string(), /** A submitted merge: how far it got (mergeStageSchema). */ merge: z.enum(["merged", "queued", "requested"]).optional() })).default([]),
