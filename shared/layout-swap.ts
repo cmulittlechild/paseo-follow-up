@@ -8,9 +8,16 @@ export function swapLayout(text: string, target: "english" | "hebrew"): string {
 /** Only offer script-appropriate variants. Mixed-script text keeps the already-correct words. */
 export function layoutQueries(query: string, physical?: string | null): string[] {
   const variants: string[] = [];
-  if (physical) variants.push(physical);
-  if (/[\u0590-\u05ff]/u.test(query)) variants.push(swapLayout(query, "english"));
-  else if (/[a-z]/i.test(query)) variants.push(swapLayout(query, "hebrew"));
+  if (physical && physical !== query) return [physical];
+  if (/[\u0590-\u05ff]/u.test(query)) {
+    variants.push(swapLayout(query, "english"));
+    // Android Hebrew puts apostrophe and hyphen on Q/W; punctuation otherwise lives in its own row.
+    variants.push([...query].map(c => c === "'" ? "q" : c === "-" ? "w" : swapLayout(c, "english")).join(""));
+  }
+  else if (/[a-z]/i.test(query)) {
+    variants.push(swapLayout(query, "hebrew"));
+    variants.push([...query].map(c => c.toLowerCase() === "q" ? "'" : c.toLowerCase() === "w" ? "-" : swapLayout(c, "hebrew")).join(""));
+  }
   const en = "qwertyuiop[]asdfghjkl;'zxcvbnm,./", ru = "йцукенгшщзхъфывапролджэячсмитьбю.";
   const russian = /[а-яё]/i.test(query);
   if (russian || /[a-z]/i.test(query)) variants.push([...query].map(c => {

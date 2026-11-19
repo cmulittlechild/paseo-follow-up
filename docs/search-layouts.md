@@ -17,7 +17,8 @@ For phones, paste and agent queries, small built-in tables support standard Isra
 The [Unicode CLDR Hebrew keyboard charts](https://www.unicode.org/cldr/charts/40/keyboards/layouts/he.html) show the
 same Hebrew letter positions for macOS Hebrew and Android Hebrew. Punctuation differs: macOS uses geresh on W
 rather than the PC apostrophe; Android has separate punctuation keys and a shorter letter row. The fallback uses
-standard Israeli PC punctuation, accepts macOS geresh for W, and does not infer a phone's punctuation positions.
+standard Israeli PC punctuation, accepts macOS geresh for W, and tries Android’s apostrophe/hyphen Q/W variant.
+Separate phone punctuation keys are not treated as physical US punctuation positions.
 The charts describe Android's standard layout; Gboard is configurable, so custom variants are not guaranteed.
 Physical capture uses actual key positions instead. Spaces, digits and unmapped characters survive conversion.
 

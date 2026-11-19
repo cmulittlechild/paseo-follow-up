@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { search, indexDocs, byRank, filterHome, type SearchDoc } from "../shared/search";
+import { search, indexDocs, byRank, type SearchDoc } from "../shared/search";
 const doc = (key: string, title: string, field: "name" | "branch" = "name"): SearchDoc => ({ key, title, group: "quiet", at: null, fields: [{ field, text: title }] });
 const index = indexDocs([doc("smart", "Smart Session"), doc("invoice", "Invoice exports"), doc("hebrew", "שלום")]);
 
@@ -60,4 +60,13 @@ test("conversion explanation is quiet when direct hits suffice", async () => {
   assert.equal(layoutHint(search(index, "smart session")), null);
   const hits = search(indexDocs([doc("a", "דצשרא"), doc("b", "Smart")]), "דצשרא");
   assert.equal(layoutHint(hits), null);
+});
+
+
+test("macOS geresh and Android Hebrew Q/W punctuation variants", async () => {
+  const { swapLayout } = await import("../shared/layout-swap");
+  assert.equal(swapLayout("׳קנ", "english"), "web");
+  const i = indexDocs([doc("keys", "Qwerty work"), doc("mobile", "'-קראט -םרל")]);
+  assert.equal(search(i, "'-קראט -םרל").find(h => h.key === "keys")?.title, "Qwerty work");
+  assert.ok(search(i, "qwerty work").some(h => h.key === "mobile"));
 });
