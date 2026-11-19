@@ -1,0 +1,1 @@
+- Search from anywhere is now ⌘⇧K (Ctrl+Shift+K): Paseo 0.17 uses ⌘/ for its model picker. If you picked ⌘/, you’re moved to ⌘⇧K; change it in Settings → Display.

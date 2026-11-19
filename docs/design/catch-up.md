@@ -188,7 +188,7 @@ scrolls the field above it and the moves hide (the detail pane already does this
 | Esc | leave |
 
 No collisions: option letters stop at H and the moves use J to W. Home's own keys (j/k, Enter, /) aren't mounted while
-the mode is on screen, ⌘/ stays Search from anywhere, and nothing takes a modified key Paseo binds (`PASEO_BOUND`).
+the mode is on screen, ⌘⇧K stays Search from anywhere, and nothing takes a modified key Paseo binds (`PASEO_BOUND`).
 
 ![keys](catch-up/cu-keys-desktop-dark.png)
 

@@ -1,3 +1,4 @@
+import { normalizeCombos } from "../shared/paseo-keys";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -12,9 +13,9 @@ const press = (key: string, extra: Partial<KeyPress> = {}): KeyPress => ({ key, 
 const idle = { typing: false, inMore: false, moreOpen: false, inRail: false };
 
 test("no Catch up key is a combo Paseo binds, Home's search key, or a search-from-anywhere preset", () => {
-  const paseo = new Set(PASEO_BOUND);
-  const presets = new Set(SEARCH_SHORTCUTS.flatMap(shortcutCombos));
-  for (const k of CATCH_UP_KEYS) for (const combo of k.combos) {
+  const paseo = new Set(normalizeCombos(PASEO_BOUND));
+  const presets = new Set(normalizeCombos(SEARCH_SHORTCUTS.flatMap(shortcutCombos)));
+  for (const k of CATCH_UP_KEYS) for (const combo of normalizeCombos(k.combos)) {
     assert.ok(!paseo.has(combo), `${k.key} (${k.what}) is Paseo's ${combo}`);
     assert.ok(!presets.has(combo), `${k.key} (${k.what}) is a search-from-anywhere preset`);
     assert.notEqual(combo, "/", "/ is Home's search key");

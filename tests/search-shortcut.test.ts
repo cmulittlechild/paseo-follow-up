@@ -1,3 +1,4 @@
+import { normalizeCombos } from "../shared/paseo-keys";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -14,7 +15,6 @@ const root = join(import.meta.dirname, "..");
 const key = (over: Partial<KeyEventLike>): KeyEventLike => ({ key: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...over });
 const mod = (mac: boolean) => (mac ? { metaKey: true } : { ctrlKey: true });
 const PRESS: Record<Exclude<SearchShortcut, "none">, Partial<KeyEventLike>> = {
-  "mod-slash": { key: "/", code: "Slash" },
   "mod-shift-k": { key: "K", code: "KeyK", shiftKey: true },
   "mod-shift-h": { key: "H", code: "KeyH", shiftKey: true },
 };
@@ -44,23 +44,22 @@ for (const mac of [true, false]) {
   });
 }
 
-test("⌘/ matches by physical key too (a layout whose / sits elsewhere reports code Slash)", () => {
-  assert.equal(matchesShortcut(key({ key: "-", code: "Slash", metaKey: true }), "mod-slash", true), true);
+test("the physical key matches on another keyboard layout", () => {
+  assert.equal(matchesShortcut(key({ key: "л", code: "KeyK", metaKey: true, shiftKey: true }), "mod-shift-k", true), true);
 });
 
 test("labels print the way each platform does, and None has none", () => {
-  assert.equal(shortcutLabel("mod-slash", true), "⌘/");
   assert.equal(shortcutLabel("mod-shift-k", true), "⌘⇧K");
-  assert.equal(shortcutLabel("mod-slash", false), "Ctrl+/");
+  assert.equal(shortcutLabel("mod-shift-k", false), "Ctrl+Shift+K");
   assert.equal(shortcutLabel("mod-shift-h", false), "Ctrl+Shift+H");
   assert.equal(shortcutLabel("none", true), null);
-  assert.deepEqual(searchShortcutOptions(true).map(o => o.label), ["⌘/", "⌘⇧K", "⌘⇧H", "None"]);
+  assert.deepEqual(searchShortcutOptions(true).map(o => o.label), ["⌘⇧K", "⌘⇧H", "None"]);
   assert.equal(isMac("MacIntel"), true);
   assert.equal(isMac("Linux x86_64"), false);
 });
 
 test("every-shortcut-is-configurable-and-never-paseo-s: no preset takes a combo Paseo binds", () => {
-  const bound = new Set(PASEO_BOUND);
+  const bound = new Set(normalizeCombos(PASEO_BOUND));
   for (const preset of SEARCH_SHORTCUTS) for (const combo of shortcutCombos(preset)) assert.ok(!bound.has(combo), `${preset} (${combo}) is one of Paseo's own keys`);
   // The pinned list is the real one: ⌘K is Paseo's command center, ? its shortcut list.
   assert.ok(bound.has("Cmd+K") && bound.has("Ctrl+K") && bound.has("Shift+?"));

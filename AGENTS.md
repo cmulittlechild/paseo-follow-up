@@ -481,8 +481,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Follow-up handles outside its own focused surface is a Display setting with a None choice (so `display_settings`
    reads it and `set_display` sets it), matched with exact modifiers (Mod is ⌘ on a Mac, Ctrl elsewhere; never while
    composing or on auto-repeat), handled by one capture-phase document listener on web only, and never a combo Paseo's
-   web app binds (`PASEO_BOUND` in `shared/search-key.ts`, read from its bundles). Today that is Search from anywhere,
-   `search_shortcut` (⌘/ by default): it opens Home with the cursor in its search from any screen, even mid-message,
+   web app binds (`PASEO_BOUND` in `shared/search-key.ts`, read from its bundles). `PASEO_BOUND` covers Paseo's latest and beta; run
+   `npm run check:paseo-keys` manually when Paseo ships to keep it current. Today that is Search from anywhere,
+   `search_shortcut` (⌘⇧K by default): it opens Home with the cursor in its search from any screen, even mid-message,
    and on Home only moves the cursor (`client/search-key.ts`); inside a code editor (Paseo 0.16's CodeMirror binds
    Mod-/) the editor keeps the key. The ⌘K "Follow-up: Search" row and Home's search
    chip name the chosen key. A focus request made before Home mounts is kept until Home's search takes it
