@@ -9,7 +9,7 @@ import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shou
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
 import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, summary } from "./model";
-import { asksForReviewers, liveLine, needsYou, type NeedItem } from "./attention";
+import { liveLine, needsYou, reviewersAskStands, type NeedItem } from "./attention";
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
 import { freshPriorities, type Priority } from "./priorities";
 import { agentCard, automaticHold, batchView, holdSuperseded } from "./status";
@@ -570,7 +570,7 @@ export function factFlagViolations(rows: Pick<InboxRow, "agentId" | "needs">[], 
     if (!flag) continue;
     const prs = workspaces.filter(w => w.enable_tracking && !w.archived).flatMap(w => w.prs.filter(p => (p.registeredAgentId ?? w.mainAgentId) === row.agentId).map(p => ({ p, w })));
     if (prs.some(({ p }) => p.error || !p.snapshot?.complete)) continue;
-    if (!prs.some(({ p, w }) => p.snapshot!.state === "OPEN" && asksForReviewers(p, w))) out.push({ id: "outside-fact-is-live", detail: `${row.agentId} still flags "Add reviewers ${flag.detail}" but none of its PRs asks for reviewers` });
+    if (!prs.some(({ p, w }) => p.snapshot!.state === "OPEN" && reviewersAskStands(p, w))) out.push({ id: "outside-fact-is-live", detail: `${row.agentId} still flags "Add reviewers ${flag.detail}" but none of its PRs asks for reviewers` });
   }
   return out;
 }

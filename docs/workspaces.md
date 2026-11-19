@@ -299,9 +299,10 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 ### Dismissing a question
 
 A question that no longer matters can be dismissed instead of answered (invariant
-`dismissing-a-question-sends-the-agent-nothing`): a quiet Dismiss link on every open question card, after More context
-(the panel's Needs you, Home's detail pane, the question dialog, the pill, phones and Catch up, where ⇧D does it), and
-the `dismiss_question` agent tool for another agent's question. `follow.dismiss-question` closes it as dismissed
+`dismissing-a-question-sends-the-agent-nothing`): the small x every Needs-you item has (docs/needs-you.md#dismiss), on every
+open question card (the panel's Needs you, Home's detail pane, the question dialog, the pill, phones and Catch up, where
+⇧D does it), and the `dismiss_item` / `dismiss_question` agent tools for another agent's question. `follow.dismiss`
+(key `question:Qn`; `follow.dismiss-question` for the alias tool) closes it as dismissed
 (`closed.dismissed`, `closed.by` "developer" or "agent:<id>"; `dismissQuestion` in `server/questions.ts`) and queues and
 sends nothing, so the agent spends no turn and no tokens on it. It leaves Needs you and every count at once; the toast's
 Undo (`undo: true`) reopens it exactly as it was. The card reads "Dismissed by you" (`closedLine`), never an agent's

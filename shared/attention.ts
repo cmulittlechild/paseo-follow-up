@@ -186,10 +186,57 @@ export function asksForReviewers(pr: Pr, w: Pick<Workspace, "prActions">): boole
   return !agentMerges(pr) && noReviewers(pr) && !pr.snapshot!.draft && configuredReviewers(pr.repo).length > 0 && !w.prActions.some(a => prActionBlocks(a, [pr.key]));
 }
 
-/** What needs the developer, most urgent first. Answered once per store snapshot and clock reading (perSnapshot); each caller gets its own array. */
-const needsYouOnce = perSnapshot(computeNeedsYou);
+/**
+ * What an item's dismissal is pinned to (dismissing-anything-in-needs-you-sends-the-agent-nothing): Dismiss hides the
+ * item while this print matches, and a change to what it is about makes a new print, so a real new problem comes back.
+ * Per kind, what "changed" means:
+ * - merge, reviewers: the PR's head commit (a new push asks again).
+ * - retry: the batch, its state, attempts and result (a new failure, or the next attempt failing).
+ * - capped, person: the task's fingerprint (what GitHub shows for it) and why it is held.
+ * - send: the batch and its tasks' fingerprints (a new batch, or a task added or changed).
+ * - decision: the task's revision and ask. hold: the pause's reason. check: the action and its result.
+ * - answer: the delivery state and the answer (failed again after a Retry, copied then put in chat).
+ * - message: the queue item and its state (queued past the stuck mark, then failed).
+ * A question never needs a print: its dismissal closes it (server/questions.ts dismissQuestion).
+ */
+export function dismissPrint(i: NeedItem, w: Workspace): string {
+  switch (i.kind) {
+    case "hold": return `${w.hold ?? ""}`;
+    case "retry": { const b = w.batches.find(b => b.id === i.batchId); return `${i.batchId}|${b?.state ?? ""}|${b?.attempts ?? 0}|${b?.result ?? ""}`; }
+    case "capped": case "person": { const h = (w.heldTasks ?? []).find(h => h.task.key === i.taskKey); return `${i.taskKey}|${h?.task.fingerprint ?? ""}|${i.detail}`; }
+    case "send": { const b = w.batches.find(b => b.id === i.batchId); return `${i.batchId}|${(b?.tasks ?? []).map(t => `${t.key}:${t.fingerprint}`).sort().join(",")}`; }
+    case "decision": { const o = w.obligations.find(o => o.id === i.obligationId); return `${i.obligationId}|${o?.revision ?? ""}|${i.detail}`; }
+    case "question": return i.questionId;
+    case "answer": { const a = (w.questions ?? []).find(q => q.id === i.questionId)?.answer; return `${i.questionId}|${a?.delivery.state ?? ""}|${a?.at ?? ""}|${a?.choice ?? ""}|${a?.words ?? ""}`; }
+    case "check": return `${i.actionId}|${i.detail}`;
+    case "message": { const m = (w.undelivered ?? []).find(m => m.id === i.itemId); return `${i.itemId}|${m?.state ?? ""}`; }
+    case "merge": case "reviewers": return `${i.prKey}|${w.prs.find(p => p.key === i.prKey)?.snapshot?.head ?? ""}`;
+  }
+}
+/** The developer dismissed this item and it hasn't changed since (dismissPrint). */
+export const isDismissedNeed = (w: Pick<Workspace, "dismissed">, key: string, print: string) => !!w.dismissed?.some(d => d.key === key && d.print === print);
+/**
+ * Whether the reviewers ask for this PR stands: it asks (asksForReviewers) and the developer hasn't dismissed it since
+ * its last push. The inbox's "Add reviewers" flag reads this, so dismissing the ask in Needs you drops the agent row's
+ * flag too, and the two never disagree (reviewers-ask-agrees).
+ */
+export function reviewersAskStands(pr: Pr, w: Pick<Workspace, "prActions" | "dismissed">): boolean {
+  return asksForReviewers(pr, w) && !isDismissedNeed(w, `reviewers:${pr.key}`, `${pr.key}|${pr.snapshot?.head ?? ""}`);
+}
+
+/**
+ * Every Needs-you item, dismissed ones included: what Dismiss looks an item up in (server/dismiss.ts) and what
+ * workspace_status reads to say what the developer dismissed. Every count and surface reads needsYou.
+ */
+const allNeedsOnce = perSnapshot(computeAllNeeds);
+export const allNeeds = (w: Workspace, now = Date.now()): NeedItem[] => [...allNeedsOnce(w, now)];
+/** What needs the developer, most urgent first, without what they dismissed. Answered once per store snapshot and clock reading (perSnapshot); each caller gets its own array. */
+const needsYouOnce = perSnapshot((w: Workspace, now: number) => {
+  const all = allNeedsOnce(w, now);
+  return w.dismissed?.length ? all.filter(i => !isDismissedNeed(w, i.key, dismissPrint(i, w))) : all;
+});
 export const needsYou = (w: Workspace, now = Date.now()): NeedItem[] => [...needsYouOnce(w, now)];
-function computeNeedsYou(w: Workspace, now: number): NeedItem[] {
+function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   if (!w.enable_tracking || w.archived) return [];
   const items: NeedItem[] = [];
   const questions = w.questions ?? [];

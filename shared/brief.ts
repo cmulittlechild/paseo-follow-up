@@ -371,7 +371,8 @@ export type BriefEvent =
   | { type: "option"; decisionId: string; choice: string; words?: string }
   /** Several decisions answered together (1.4.0): every pick at once; the rest were skipped on purpose. */
   | { type: "options"; picks: { decisionId: string; choice: string; words?: string }[] }
-  | { type: "sign_off" }
+  /** `dismissed`: the developer's Dismiss (a sign-off that sends nothing and remembers the ask): the card reads Dismissed. */
+  | { type: "sign_off"; dismissed?: boolean }
   /** The developer did an Action brief's ask and said so with Done; the server already sent "Done: <ask>". */
   | { type: "done" }
   | { type: "undo" }
@@ -451,7 +452,7 @@ export function briefStep(prev: Brief | null, event: BriefEvent, now: string): {
       { const b = collapse(prev, "answered", "Done"); return { brief: b, appends: [b] }; }
     case "sign_off":
       if (prev?.state !== "open") return keep;
-      { const b = collapse(prev, "signed", "Signed off"); return { brief: b, appends: [b] }; }
+      { const b = collapse(prev, "signed", event.dismissed ? "Dismissed" : "Signed off"); return { brief: b, appends: [b] }; }
     case "undo":
       if (prev?.state !== "signed") return keep;
       { const b: Brief = { ...prev, state: "open", outcome: null, outcomeAt: null }; return { brief: b, appends: [b] }; }

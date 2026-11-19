@@ -11,7 +11,7 @@ import { sameText } from "../shared/home";
 import type { ListWorkspace as Workspace } from "../shared/list";
 import { Button, Card, CardRow, Chip, PrLinkButton, errorText, text, type Theme } from "./kit";
 import type { Colors } from "./theme";
-import { QuestionBody, meanwhile } from "./questions";
+import { QuestionBody, QuestionDismissX, meanwhile } from "./questions";
 import { needsYouBlock } from "../shared/needs-block";
 import { age } from "../shared/inbox";
 import { questionState } from "../shared/questions";
@@ -20,6 +20,7 @@ import { useState, type ReactNode } from "react";
 import { usePendingAnswer } from "./pending-answers";
 import { useReviewerSettings } from "./reviewers";
 import { NoReviewLink } from "./review-mode";
+import { DismissX, RevealScope, useDismiss } from "./dismiss";
 
 import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
@@ -99,6 +100,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   const inspect = useMutation({ mutationFn: (actionId: string) => check({ workspaceId: w.id, actionId }), onSuccess: reply => { toast.show(reply.result, { variant: reply.state === "failed" ? "warning" : "info" }); refresh(); }, onError: fail });
   const items = rows ?? needsYou(w, now);
   const mergeControl = useMergeButtons(w);
+  const dismiss = useDismiss();
   if (!items.length) return null;
   const busy = resume.isPending || retry.isPending || retryTask.isPending || deliver.isPending || sendAnswer.isPending || resendAnswer.isPending || queueAct.isPending || inspect.isPending;
   const openMain = actions.openAgent ? () => actions.openAgent!(w.mainAgentId) : undefined;
@@ -160,12 +162,15 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       const more = secondary(item);
       const button = act || link || more ? <>{pair ?? <>{act}{link}</>}{more}</> : null;
       const said = !!untitled?.has(item.key);
+      // The small x, top right, on every kind (dismissing-anything-in-needs-you-sends-the-agent-nothing).
+      const x = <DismissX theme={theme} compact={compact} label={`Dismiss ${item.kind === "question" ? item.questionId : item.title}`}
+        onPress={() => dismiss({ workspaceId: w.id, key: item.key }, { onDismissed: actions.after })} />;
       // Phones: the action sits at the row's right edge so rows never grow a second line of controls. A send batch
       // (the primary, with its task list) and Retry's pair keep their buttons full width under the row.
       // A stack's scope line and a blocker need the row's full width, so those rows put their button under the text.
       const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && !scopeLine && !notice;
       if (inline) return <CardRow key={item.key} theme={theme} compact first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <RevealScope style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {/* A row with the quiet link under it is taller: the glyph stays on the title's line. */}
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -174,10 +179,12 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
             {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
           </View>
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>
-        </View>
+          {/* Top right, a step away from the action so a thumb aimed at it doesn't land here. */}
+          <View style={{ alignSelf: "flex-start", marginTop: -4, marginRight: -6, marginLeft: 2 }}>{x}</View>
+        </RevealScope>
       </CardRow>;
       return <CardRow key={item.key} theme={theme} compact={compact} first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
-        <View style={{ flexDirection: "row", gap: 9 }}>
+        <RevealScope style={{ flexDirection: "row", gap: 9 }}>
           <View style={{ paddingTop: 2 }}><Icon name={g.name} size={14} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
             {!said && <RichText style={compact ? t.label : t.body}>{item.title}</RichText>}
@@ -191,7 +198,8 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
             </View>}
             {notice}
           </View>
-        </View>
+          <View style={{ marginTop: -3, marginRight: -5 }}>{x}</View>
+        </RevealScope>
       </CardRow>;
     })}
   </View></PrLinksProvider>;
@@ -246,6 +254,7 @@ export function NeedsYouBlock({ workspace: w, theme, compact, actions, now, brie
 function QuestionAsk({ workspace: w, questionId, context, theme, compact, now, open, onToggle, openAgent }: { workspace: Workspace; questionId: string; context: string | null; theme: Theme; compact: boolean; now: number; open: boolean; onToggle: () => void; openAgent?: (agentId: string) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const pending = usePendingAnswer(w.id, questionId);
+  const dismiss = useDismiss();
   const q = w.questions.find(x => x.id === questionId);
   if (!q) return null;
   const state = meanwhile(w, q, pending);
@@ -257,10 +266,20 @@ function QuestionAsk({ workspace: w, questionId, context, theme, compact, now, o
     <Text style={[t.meta, { paddingTop: 1 }]}>{age(q.askedAt, now)}</Text>
     <View style={{ paddingTop: 1 }}><Icon name={open ? "ChevronUp" : "ChevronDown"} size={14} color={c.foregroundMuted} /></View>
   </View>;
-  if (!open) return <CardRow theme={theme} compact={compact} onPress={onToggle} accessibilityLabel={`Show ${q.id}: ${q.title}`} style={{ minHeight: compact ? 48 : undefined, justifyContent: "center" }}>{header}</CardRow>;
+  // The x sits beside the header, outside its toggle, so dismissing never also opens or closes the section.
+  const x = <View style={{ marginTop: compact ? -4 : -3, marginRight: compact ? -8 : -6 }}><QuestionDismissX workspaceId={w.id} questionId={q.id} theme={theme} compact={compact} dismiss={dismiss} /></View>;
+  if (!open) return <CardRow theme={theme} compact={compact} style={{ minHeight: compact ? 48 : undefined, justifyContent: "center" }}>
+    <RevealScope style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Show ${q.id}: ${q.title}`} onPress={onToggle} style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : undefined, justifyContent: "center" }}>{header}</Pressable>
+      {x}
+    </RevealScope>
+  </CardRow>;
   return <CardRow theme={theme} compact={compact} style={{ paddingVertical: compact ? 14 : 12 }}>
-    <View style={{ gap: 12 }}>
-      <Pressable accessibilityRole="button" aria-expanded accessibilityState={{ expanded: true }} accessibilityLabel={`Hide ${q.id}: ${q.title}`} onPress={onToggle} style={{ minHeight: compact ? 44 : undefined }}>{header}</Pressable>
+    <RevealScope style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+        <Pressable accessibilityRole="button" aria-expanded accessibilityState={{ expanded: true }} accessibilityLabel={`Hide ${q.id}: ${q.title}`} onPress={onToggle} style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : undefined }}>{header}</Pressable>
+        {x}
+      </View>
       {/* What the agent does meanwhile sits under the question, as in the dialog; under the buttons goes what they do. */}
       <View style={{ flexDirection: "row", gap: 6 }}>
         <View style={{ paddingTop: 2 }}><Icon name={state.icon} size={12} color={state.color(c)} /></View>
@@ -268,6 +287,6 @@ function QuestionAsk({ workspace: w, questionId, context, theme, compact, now, o
       </View>
       {!!context && <RichText selectable linkColor={c.foreground} style={[t.body, { color: c.foregroundMuted }]}>{context}</RichText>}
       <QuestionBody workspace={w} question={q} theme={theme} compact={compact} now={now} openAgent={openAgent} inline />
-    </View>
+    </RevealScope>
   </CardRow>;
 }

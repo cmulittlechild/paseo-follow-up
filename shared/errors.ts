@@ -16,7 +16,9 @@ export const STALE_BRIEF = {
   answered: "This brief was already answered or signed off.",
 } as const;
 // Q35 answered or withdrawn elsewhere (server/questions.ts developerAnswer, recordAnswer).
-const MOOT = [/^This brief was (replaced by a newer one|already answered or signed off)\./, /^Q\d+ (is already (answered|withdrawn|dismissed)|was (withdrawn|dismissed))\b/];
+const MOOT = [/^This brief was (replaced by a newer one|already answered or signed off)\./, /^Q\d+ (is already (answered|withdrawn|dismissed)|was (withdrawn|dismissed))\b/,
+  // Dismiss (server/dismiss.ts, Inbox.dismiss): the item left Needs you by itself, or another surface dismissed it first.
+  /^\S+ is already (gone from Needs you|dismissed)\./, /^This agent's ask is already gone from Needs you\./];
 
 /**
  * A refusal that means the action is moot, not failed: what it acts on was already answered, replaced or withdrawn

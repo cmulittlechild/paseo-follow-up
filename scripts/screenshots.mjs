@@ -428,7 +428,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : [])];
   await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(Object.fromEntries(specs.map(w => [w.prompt, w.steps]))));
   const workspaces = [];
   for (const spec of specs) {
@@ -2717,45 +2717,60 @@ async function moreContextShots({ shoot, call }) {
 }
 
 /**
- * dismiss (dismissing-a-question-sends-the-agent-nothing): the quiet Dismiss after More context on the panel's card and
- * on a phone; after Dismiss, the toast with Undo; the dismissed card in the question dialog ("Dismissed by you"); and
- * Catch up's card with Dismiss (⇧D). Light and dark. Each dismissal is undone through follow.dismiss-question before
- * the next shot, and the run fails if any dismissal queued a message.
+ * dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the small x on every Needs-you item. In the panel:
+ * an agent's Action brief at rest (no x) and hovered (the x beside its age), the question card's x (no Dismiss link in
+ * its quiet row), and a merge row's x; after Dismiss, the toast with Undo; Catch up's card with its x always shown; Home's
+ * detail pane on a phone, x always there. Light and dark. Every dismissal is undone through follow.dismiss before the
+ * next shot, and the run fails if any dismissal queued a message.
  */
 async function dismissShots({ shoot, call }) {
   const TALL = { width: DESKTOP.width, height: 1000 };
-  const lone = pick("ny-lone");
+  const brief = pick("ny-other"), lone = pick("ny-lone"), merge = pick("mc-receipts");
   const visible = l => l.filter({ visible: true }).first();
-  const wsId = async () => (await call("follow.list", {})).workspaces.find(w => w.questions?.some(q => q.title === "Missing keys"))?.id;
-  const reopen = async () => { const id = await wsId(); const q = (await call("follow.list", {})).workspaces.find(w => w.id === id).questions.find(q => q.id === "Q1"); if (q.closed) await call("follow.dismiss-question", { workspaceId: id, questionId: "Q1", undo: true }); };
-  const queued = async () => (await call("follow.queue-list", { workspaceId: await wsId() })).items.length;
+  const list = async () => (await call("follow.list", {})).workspaces;
+  const wsOf = async title => (await list()).find(w => w.title === title);
+  const queued = async () => { let n = 0; for (const t of [brief.title, lone.title, merge.title]) n += (await call("follow.queue-list", { workspaceId: (await wsOf(t)).id })).items.length; return n; };
   const before = await queued();
-  const panel = async page => { await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText("Missing keys")).waitFor(); };
-  const phone = async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, lone.title)).click(); await visible(page.getByText("Missing keys")).waitFor(); };
-  const dismissLink = page => visible(page.getByRole("button", { name: /^Dismiss Q1/ }));
-  const settle = async (page, l) => { await l.scrollIntoViewIfNeeded(); await page.waitForTimeout(500); };
+  // Put back whatever a shot dismissed, so the next shot starts from the same Needs you.
+  const restore = async () => {
+    const q = (await wsOf(lone.title)).questions.find(q => q.id === "Q1");
+    if (q.closed) await call("follow.dismiss", { workspaceId: (await wsOf(lone.title)).id, key: "question:Q1", undo: true });
+    const m = await wsOf(merge.title);
+    for (const d of m.dismissed ?? []) await call("follow.dismiss", { workspaceId: m.id, key: d.key, undo: true });
+    const b = await wsOf(brief.title);
+    await call("follow.dismiss", { agentId: b.mainAgentId, undo: true }).catch(() => undefined);
+  };
+  const panel = async (page, w, text) => { await page.setViewportSize(TALL); await openChat(page, w.title, w.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText(text)).waitFor(); };
+  const x = (page, name) => visible(page.getByRole("button", { name }));
+  const away = async page => { await page.mouse.move(2, 2); await page.waitForTimeout(400); };
+  const BRIEF_X = /^Dismiss the agent's ask/, Q_X = /^Dismiss Q1/, MERGE_X = /^Dismiss #255/;
   for (const theme of ["light", "dark"]) {
-    await shoot(`dq-row-panel-${theme}`, TALL, theme, async page => { await panel(page); await settle(page, await dismissLink(page)); });
-    await shoot(`dq-row-phone-${theme}`, PHONE, theme, async page => { await phone(page); await settle(page, await dismissLink(page)); });
-    await shoot(`dq-undo-panel-${theme}`, TALL, theme, async page => { await panel(page); await (await dismissLink(page)).click(); await visible(page.getByText(/^Dismissed Q1\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
-    await shoot(`dq-dismissed-dialog-${theme}`, DESKTOP, theme, async page => {
-      await page.setViewportSize(TALL); await openChat(page, lone.title, lone.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
-      await visible(page.getByRole("tab", { name: /^Questions/ })).click();
-      await visible(page.getByRole("button", { name: /^Q1, Missing keys/ })).click();
-      await visible(page.getByText(/^Dismissed by you/)).waitFor(); await page.waitForTimeout(300);
+    await shoot(`dx-brief-rest-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await away(page); });
+    await shoot(`dx-brief-hover-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket");
+      // The panel's copy (the chat has the same card): point at its header, left of its x, so the x shows unhovered. The
+      // x draws once the live check says the ask is still open, so wait for it.
+      const box = await (await page.waitForFunction(min => { for (const e of document.querySelectorAll('[aria-label^="Dismiss the agent\'s ask"]')) { const r = e.getBoundingClientRect(); if (r.x > min) return { x: r.x, y: r.y, height: r.height }; } return null; }, TALL.width - 320)).jsonValue();
+      await page.mouse.move(box.x - 150, box.y + box.height / 2); page.keepPointer = true; await page.waitForTimeout(400); });
+    await shoot(`dx-question-${theme}`, TALL, theme, async page => { await panel(page, lone, "Missing keys"); await visible(page.getByText(/When a key is missing in both/)).hover(); await (await x(page, Q_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    await shoot(`dx-merge-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await (await x(page, MERGE_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    await shoot(`dx-undo-${theme}`, TALL, theme, async page => {
+      await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover();
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
     });
-    await reopen();
-    await shoot(`dq-catch-up-${theme}`, DESKTOP, theme, async page => {
+    await restore();
+    await shoot(`dx-catch-up-${theme}`, DESKTOP, theme, async page => {
       await openHome(page);
       await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
-      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("When a key is missing").filter({ visible: true }).first().isVisible()); i++) {
-        if (i > 30) throw new Error("dismiss: no Catch up card for Missing keys");
+      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("#255 is approved").filter({ visible: true }).first().isVisible()); i++) {
+        if (i > 40) throw new Error("dismiss: no Catch up card for #255");
         await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
       }
-      await settle(page, await dismissLink(page));
+      await away(page);
     });
+    await shoot(`dx-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await page.waitForTimeout(500); });
+    await restore();
   }
-  if (await queued() !== before) throw new Error("dismiss: a dismissal queued a message for the agent");
+  if (await queued() !== before) throw new Error("dismiss: a dismissal queued a message for an agent");
 }
 
 /**
@@ -2792,7 +2807,7 @@ async function dockInViewShots({ shoot }) {
   }
 }
 
-function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
+function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES, ...MERGE_CLICK_STATES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
 
 async function optimise(path, tool) {
   if (tool === "pngquant") await exec("pngquant", ["--force", "--skip-if-larger", "--quality", "70-95", "--strip", "--output", path, path]).catch(e => { if (e.code !== 98 && e.code !== 99) throw e; });
