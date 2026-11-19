@@ -5,12 +5,11 @@
  */
 
 /** "Search from anywhere": opens Home with the cursor in its search. Mod is ⌘ on a Mac and Ctrl elsewhere. */
-export const SEARCH_SHORTCUTS = ["mod-slash", "mod-shift-k", "mod-shift-h", "none"] as const;
+export const SEARCH_SHORTCUTS = ["mod-shift-k", "mod-shift-h", "none"] as const;
 export type SearchShortcut = typeof SEARCH_SHORTCUTS[number];
-export const DEFAULT_SEARCH_SHORTCUT: SearchShortcut = "mod-slash";
+export const DEFAULT_SEARCH_SHORTCUT: SearchShortcut = "mod-shift-k";
 
 const KEYS: Record<Exclude<SearchShortcut, "none">, { key: string; code: string; shift: boolean }> = {
-  "mod-slash": { key: "/", code: "Slash", shift: false },
   "mod-shift-k": { key: "k", code: "KeyK", shift: true },
   "mod-shift-h": { key: "h", code: "KeyH", shift: true },
 };
@@ -34,7 +33,7 @@ export type KeyEventLike = { key: string; code?: string; metaKey: boolean; ctrlK
 
 /**
  * True when `event` is exactly `preset`: Mod (⌘ on a Mac, Ctrl elsewhere), Shift as the preset says, no other modifier,
- * and the key by its character or its physical code (so ⌘/ works on layouts where / needs Shift-free code Slash).
+ * and the key by its character or its physical code (so the key works across keyboard layouts).
  * Never while an input method is composing, never on auto-repeat.
  */
 export function matchesShortcut(event: KeyEventLike, preset: SearchShortcut, mac: boolean): boolean {
@@ -45,7 +44,7 @@ export function matchesShortcut(event: KeyEventLike, preset: SearchShortcut, mac
   return event.key.toLowerCase() === want.key || event.code === want.code;
 }
 
-/** How the platform prints it: "⌘/", "⌘⇧K" on a Mac; "Ctrl+/", "Ctrl+Shift+K" elsewhere; null for None. */
+/** How the platform prints it: "⌘⇧K" on a Mac; "Ctrl+Shift+K" elsewhere; null for None. */
 export function shortcutLabel(preset: SearchShortcut, mac: boolean): string | null {
   if (preset === "none") return null;
   const { key, shift } = KEYS[preset];
@@ -53,7 +52,7 @@ export function shortcutLabel(preset: SearchShortcut, mac: boolean): string | nu
   return mac ? `⌘${shift ? "⇧" : ""}${k}` : `Ctrl+${shift ? "Shift+" : ""}${k}`;
 }
 
-/** The preset in Paseo's own combo spelling ("Cmd+/", "Ctrl+Shift+K"), to compare with PASEO_BOUND. */
+/** The preset in Paseo's own combo spelling ("Cmd+Shift+K", "Ctrl+Shift+K"), to compare with PASEO_BOUND. */
 export function shortcutCombos(preset: SearchShortcut): string[] {
   if (preset === "none") return [];
   const { key, shift } = KEYS[preset];
@@ -68,10 +67,11 @@ export function searchShortcutOptions(mac: boolean): { label: string; value: Sea
 
 /**
  * Every key combo Paseo's web app binds, read from its bundles (`combo:"…"` in the served web UI's index JS) of
- * 0.15.4 and 0.16.0, the union. Re-read it when a Paseo release adds shortcuts; tests/search-shortcut.test.ts fails
- * if a preset takes one of these.
+ * 0.15.4, 0.16.x and 0.17.0-beta.1, the union (Mod expanded for both platforms).
+ * check:paseo-keys checks latest and beta manually; tests fail if a preset takes one of these.
  */
 export const PASEO_BOUND: readonly string[] = [
+  "Cmd+/", "Ctrl+/", "Cmd+Shift+/", "Ctrl+Shift+/",
   "Alt+Digit", "Alt+Shift+Digit", "Alt+Shift+W", "Alt+Shift+[", "Alt+Shift+]", "Alt+[", "Alt+]",
   "Cmd+,", "Cmd+.", "Cmd+Alt+Digit", "Cmd+Alt+Shift+ArrowDown", "Cmd+Alt+Shift+ArrowLeft", "Cmd+Alt+Shift+ArrowRight",
   "Cmd+Alt+Shift+ArrowUp", "Cmd+Alt+T", "Cmd+B", "Cmd+D", "Cmd+Digit", "Cmd+E", "Cmd+K", "Cmd+L", "Cmd+N", "Cmd+O",

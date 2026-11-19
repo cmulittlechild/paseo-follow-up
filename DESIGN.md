@@ -27,10 +27,10 @@ plain border, with no grip or handle. Accent stays off the divider except for th
 
 ## Search from anywhere
 
-One key opens Home with the cursor in its search (⌘/ by default; Ctrl+/ off a Mac). Home's search field shows that
+One key opens Home with the cursor in its search (⌘⇧K by default; Ctrl+Shift+K off a Mac). Home's search field shows that
 key as its chip, in the platform's own spelling, because it works on Home too; plain / still focuses the search there,
-and the chip falls back to / when the key is None. The chip's hover title names both ("⌘/ from anywhere · / on
-Home"). Inside a code editor the editor keeps the key. The ⌘K row reads "Follow-up: Search (⌘/)". Settings → Inbox &
+and the chip falls back to / when the key is None. The chip's hover title names both ("⌘⇧K from anywhere · / on
+Home"). Inside a code editor the editor keeps the key. The ⌘K row reads "Follow-up: Search (⌘⇧K)". Settings → Inbox &
 display → Keyboard holds the one select, "Search from anywhere", with None last.
 
 ## Phones
