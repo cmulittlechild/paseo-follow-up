@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { modelName } from "./agent-settings";
 import { PRESENCE, type TaskAgentState } from "./task-status";
+import { toolResult } from "./tool-result";
 
 /**
  * The chat card for an agent or workspace another agent creates (Paseo's create_agent / create_workspace tool calls).
@@ -42,21 +43,10 @@ export function createdKind(name: string): "agent" | "workspace" | null {
   return m ? m[1] as "agent" | "workspace" : null;
 }
 
-/** An MCP result: a JSON string, `{ content: [{ type: "text", text }] }`, or the object itself. */
-function resultObject(output: unknown): Record<string, unknown> | null {
-  if (record(output) && Array.isArray(output.content)) {
-    const text = output.content.map(c => record(c) && typeof c.text === "string" ? c.text : "").join("");
-    return resultObject(text);
-  }
-  if (typeof output === "string") { try { const v: unknown = JSON.parse(output); return record(v) ? v : null; } catch { return null; } }
-  return record(output) ? output : null;
-}
-
+/** An error's words: Paseo's tool_result error ({ content }), { message }, or an MCP error result's text. */
 const errorText = (v: unknown): string | null => {
-  if (typeof v === "string") return str(v);
-  if (record(v)) return str(v.message) ?? str(v.error) ?? errorText(v.content);
-  if (Array.isArray(v)) return str(v.map(c => record(c) && typeof c.text === "string" ? c.text : "").join(" "));
-  return null;
+  if (record(v) && !Array.isArray(v.content) && !("output" in v)) return str(v.message) ?? str(v.error) ?? (v.content !== undefined ? errorText(v.content) : null);
+  return str(toolResult(v).text);
 };
 
 /** "claude/claude-opus-5-5" → { provider: "claude", model: "Opus 5.5" }; a bare provider has no model. */
@@ -75,7 +65,8 @@ export function createdCard(item: ToolCallLike): CreatedCard | null {
   const detail = record(item.detail) ? item.detail : {};
   const input = record(detail.input) ? detail.input : {};
   const output = "output" in detail ? detail.output : undefined;
-  const failed = item.status === "failed" || (record(output) && output.isError === true);
+  const result = toolResult(output);
+  const failed = item.status === "failed" || result.isError;
   const { provider, model } = kind === "agent" ? providerModel(input.provider, input.model) : { provider: null, model: null };
   const base = {
     kind, title: str(input.title) ?? (kind === "workspace" ? str(input.branchName) ?? str(input.worktreeSlug) : null), model, provider,
@@ -84,13 +75,14 @@ export function createdCard(item: ToolCallLike): CreatedCard | null {
   };
   if (failed) return { ...base, phase: "failed", id: null, workspaceId: null, error: errorText(item.error) ?? errorText(output) ?? "The call failed" };
   if (item.status === "running") return { ...base, phase: "starting", id: null, workspaceId: null, error: null };
-  const result = resultObject(output);
-  if (!result) return null;
-  const nested = record(result.workspace) ? result.workspace : null;
-  const id = kind === "agent" ? str(result.agentId) ?? str(result.id) : str(result.workspaceId) ?? str(nested?.id) ?? str(result.id);
+  // Every shape Paseo sends (shared/tool-result.ts): Claude's { output }, Codex's MCP envelope, a JSON string.
+  const data = result.object;
+  if (!data) return null;
+  const nested = record(data.workspace) ? data.workspace : null;
+  const id = kind === "agent" ? str(data.agentId) ?? str(data.id) : str(data.workspaceId) ?? str(nested?.id) ?? str(data.id);
   if (!id) return null;
-  return { ...base, phase: "created", id, title: base.title ?? (kind === "workspace" ? str(nested?.name) ?? str(result.name) : null),
-    workspaceId: kind === "agent" ? str(result.workspaceId) : id, error: null };
+  return { ...base, phase: "created", id, title: base.title ?? (kind === "workspace" ? str(nested?.name) ?? str(data.title) ?? str(data.name) : null),
+    workspaceId: kind === "agent" ? str(data.workspaceId) : id, error: null };
 }
 
 /** Live facts the card reads (follow.created-items), from the engine's directory snapshot. Missing: not known yet. */
