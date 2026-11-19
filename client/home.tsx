@@ -23,6 +23,7 @@ import { NeedsYouBlock } from "./needs-you";
 import { HeldMerges } from "./merge-button";
 import { PrSheet } from "./pr-sheet";
 import { QuestionSheet } from "./questions";
+import { DismissReveal } from "./dismiss";
 import { Age, BadgeView, BRIEF_KEY, glyphColor, HomeList, OVERSEER_KEY, PrChipView, PrSummaryText, type OverseerRowState } from "./home-list";
 import { answerLine, overseerRowState } from "../shared/overseer";
 import type { OmniboxItem } from "../shared/search";
@@ -592,7 +593,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   // Only a real ask joins it (shared briefAsks): a done brief on a row flagged for something else stays out of the count.
   const inBlock = !!w && !!showBrief && !later && briefAsks(b, row);
 
-  return <><DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }}
+  // Home's detail pane is the selected workspace: every x in it shows without hover (client/dismiss.tsx).
+  return <DismissReveal.Provider value="always"><DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }}
     dock={({ yields, typingInContent }) => s.agentId && !typingInContent && <View nativeID={compact ? TOAST_ANCHOR : undefined} style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
       {!yields && moves}
       <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} onSend={async text => {
@@ -617,7 +619,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
     {laterModal}
     {full && sheet && <PrSheet workspace={full} prKey={sheet.key} intent={sheet.intent} theme={theme} compact={compact} browserReady={browser.data?.ready ?? false} onClose={() => setSheet(null)} />}
     {full && <QuestionSheet workspace={full} questionId={question} theme={theme} compact={compact} onClose={() => setQuestion(null)} />}
-  </>;
+  </DismissReveal.Provider>;
 }
 
 /**

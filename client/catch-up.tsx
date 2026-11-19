@@ -21,7 +21,8 @@ import { bottomInset, Button, focusSoon, IconButton, SubmitScope, text, type The
 import { glyphColor } from "./home-list";
 import { useHomeModel, type HomeSources } from "./home-data";
 import { useInbox } from "./inbox";
-import { QuestionBody, type SendReady } from "./questions";
+import { QuestionBody, QuestionDismissX, type SendReady } from "./questions";
+import { DismissReveal, useDismiss } from "./dismiss";
 import { NeedsYouList } from "./needs-you";
 import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
@@ -187,7 +188,8 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
           break;
         }
         // The card's own Dismiss (QuestionBody), so the key does exactly what the click does.
-        case "dismiss": { const d = inCard('[aria-label^="Dismiss Q"]'); if (!d) return; d.click?.(); break; }
+        // The card's own x (client/dismiss.tsx), whatever the card is, so the key does exactly what the click does.
+        case "dismiss": { const d = inCard('[aria-label^="Dismiss"]'); if (!d) return; d.click?.(); break; }
         case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
         case "later": if (!click('[aria-label="Later (L)"]')) return; break;
@@ -286,10 +288,11 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
 
   const body = finished || !card ? <Finished theme={theme} compact={compact} stats={stats} empty={!total} onHome={onExit}
       onSkipped={() => setSession(s => ({ ...s, pos: s.order.findIndex(k => s.outcomes[k] === "skipped"), lapped: true }))} />
-    : <CardView key={card.key} card={card} w={w} theme={theme} compact={compact} deps={deps} navigation={navigation} gone={gone} more={more} setMore={setMore}
+    // The card on screen is the selected one: its x shows without hover (dismissing-anything-in-needs-you-sends-the-agent-nothing).
+    : <DismissReveal.Provider value="always"><CardView key={card.key} card={card} w={w} theme={theme} compact={compact} deps={deps} navigation={navigation} gone={gone} more={more} setMore={setMore}
       request={askFor(context, card)} waiting={!!session.parked[card.s.key]} onAsk={ask}
       sameWorkspace={session.order.filter(k => cardOf(k)?.s.key === card.s.key)}
-      onDone={() => settle("done")} onSkip={skip} onSkipWorkspace={wsLeft > 1 ? skipWs : undefined} wsLeft={wsLeft} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} />;
+      onDone={() => settle("done")} onSkip={skip} onSkipWorkspace={wsLeft > 1 ? skipWs : undefined} wsLeft={wsLeft} onBack={session.pos > 0 ? back : undefined} onLater={() => settle("later")} /></DismissReveal.Provider>;
 
   const rail = <ScrollView {...({ dataSet: { catchUpRail: "1" } } as object)} contentContainerStyle={{ paddingVertical: 8 }}>
     {session.order.map((k, i) => {
@@ -356,6 +359,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   const ws = openRowCopy<ListWorkspace>(w, full);
   const [laterOpen, setLaterOpen] = useState(false);
   const [ready, setReady] = useState<SendReady | null>(null);
+  const dismiss = useDismiss();
   const openChat = () => { if (!navigation) return; if (s.agentId) navigation.openAgent({ agentId: s.agentId }); else if (s.workspaceId) navigation.openWorkspace({ workspaceId: s.workspaceId }); };
   const word = cardWord(card);
   const color = card.item?.kind === "merge" ? mergedColor(c) : card.kind === "finished" ? c.foregroundMuted : c.statusWarning;
@@ -395,8 +399,11 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
 
   const askBlock = card.kind === "question" && q && ws
     ? <View style={{ gap: 8 }}>
-      <RichText plain style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{`${q.id} · ${q.title}`}</RichText>
-      <QuestionBody key={q.id} workspace={ws} question={q} theme={theme} compact={compact} inline={false}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+        <RichText plain style={[compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }], { flex: 1, minWidth: 0 }]}>{`${q.id} · ${q.title}`}</RichText>
+        <View style={{ marginTop: compact ? -4 : -1, marginRight: -5 }}><QuestionDismissX workspaceId={ws.id} questionId={q.id} theme={theme} compact={compact} onDismissed={onDone} dismiss={dismiss} /></View>
+      </View>
+      <QuestionBody key={q.id} workspace={ws} question={q} theme={theme} compact={compact} inline={false} dismissAt="host"
         openAgent={id => navigation?.openAgent({ agentId: id })} onAnswered={onDone} onSendReady={setReady} dictate moreContext={false} />
     </View>
     : card.kind === "item" && card.item && full
@@ -404,7 +411,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
       <NeedsYouList workspace={full} theme={theme} compact={compact} rows={[card.item]} flush actions={{ after: onDone, openAgent: openChat } as never} />
     </View>
     : card.kind === "permission" ? <PermissionCard s={s} theme={theme} compact={compact} onDone={onDone} />
-    : card.kind === "brief" ? <BriefAsk s={s} theme={theme} compact={compact} deps={deps} />
+    : card.kind === "brief" ? <BriefAsk s={s} theme={theme} compact={compact} deps={deps} onDismissed={onDone} />
     : <View style={{ gap: 10 }}>
       <Text style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{s.line || "The agent finished its turn."}</Text>
       <Text style={t.meta}>Nothing to decide. Sign it off once you've read it, or reply.</Text>
@@ -479,12 +486,12 @@ function PermissionCard({ s, theme, compact, onDone }: { s: DeckCard["s"]; theme
     onRespond={r => { void agent.handle?.respondToPermission({ requestId: p.id, response: r as never }); onDone(); }} />)}</View>;
 }
 
-function BriefAsk({ s, theme, compact, deps }: { s: DeckCard["s"]; theme: Theme; compact: boolean; deps: CatchUpDeps }) {
+function BriefAsk({ s, theme, compact, deps, onDismissed }: { s: DeckCard["s"]; theme: Theme; compact: boolean; deps: CatchUpDeps; onDismissed?: () => void }) {
   const read = useRpc(inboxBriefRpc);
   const brief = useQuery({ queryKey: ["follow-up", "home-brief", s.agentId, "catch-up"], queryFn: () => read({ agentId: s.agentId! }), enabled: !!s.agentId });
   const b = liveBrief(brief.data?.brief);
   if (!b) return <Text style={text(theme.colors, compact).ask}>{s.line}</Text>;
-  return <BriefCard {...({ embedded: true, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} />;
+  return <BriefCard {...({ embedded: true, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps, onDismissed } as unknown as Parameters<typeof BriefCard>[0])} />;
 }
 
 export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {

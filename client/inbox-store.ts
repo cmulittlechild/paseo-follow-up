@@ -1,5 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { inboxActRpc, inboxFeed, inboxListRpc } from "../shared/contracts";
+import { dismissRpc, inboxActRpc, inboxFeed, inboxListRpc } from "../shared/contracts";
 import { openFeed, type Feed } from "./feeds";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import { withoutWithdrawnAsks, type InboxRow } from "../shared/inbox";
@@ -142,6 +142,16 @@ export function createInboxStore(client: PluginClientContext) {
     refresh,
     nudge,
     stop() { stopped = true; feed?.stop(); offVisible(); offNoReview(); if (timer) clearTimeout(timer); if (nudged) clearTimeout(nudged); listeners.clear(); unsubscribe(); },
+
+    /**
+     * Dismiss an agent's ask (dismissing-anything-in-needs-you-sends-the-agent-nothing): it leaves Needs you at once and
+     * the agent is sent nothing. The caller's toast carries Undo (`undo: true`), so no Undo bar here.
+     */
+    async dismiss(agentId: string, undo = false) {
+      if (!undo) { patch([agentId], r => ({ ...r, needs: null, snooze: null, signedOffAt: new Date().toISOString(), undoable: true })); emit(); }
+      try { return await client.rpc(dismissRpc, { agentId, ...(undo ? { undo: true } : {}) }); }
+      finally { refresh(); }
+    },
 
     /** Sign off now; queue for replay when the host can't be reached. */
     async signOff(requested: string[], options: { muteTurn?: boolean } = {}) {

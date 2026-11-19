@@ -95,6 +95,11 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "answer_question", rpc: "follow.answer-question", kind: "planned",
     input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), choice: z.string().trim().min(1).max(200).optional(), words: z.string().trim().max(2000).optional(), ...confirm }),
     toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, choice: a.choice, words: a.words, action: "send" }) },
+  // dismissing-anything-in-needs-you-sends-the-agent-nothing: the small x on every Needs-you item and brief.
+  { name: "dismiss_item", rpc: "follow.dismiss", kind: "planned",
+    input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), undo: z.boolean().optional(), ...confirm }),
+    toRpc: a => ({ ...(a.agentId ? { agentId: a.agentId } : { workspaceId: a.workspaceId, key: a.key }), ...(a.undo ? { undo: true } : {}) }),
+    guard: (a, caller) => a.agentId === caller ? "dismiss_item dismisses another agent's brief for the developer; your own brief is the developer's to dismiss." : null },
   { name: "dismiss_question", rpc: "follow.dismiss-question", kind: "planned",
     input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), undo: z.boolean().optional(), ...confirm }),
     toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, ...(a.undo ? { undo: true } : {}) }) },
@@ -189,7 +194,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.queue-action": { tools: ["queue_action"] },
   "follow.inbox-act": { tools: ["sign_off", "snooze", "set_finish_flags", "inbox_act"] },
   "follow.brief-action": { tools: ["brief_action"] },
-  "follow.dismiss-question": { tools: ["dismiss_question"], note: "The server refuses an agent's own question (withdraw_question is the asker's way); undo: true is the card's Undo." },
+  "follow.dismiss": { tools: ["dismiss_item", "dismiss_question"], note: "The small x on every Needs-you item and brief. The server refuses an agent's own brief, question or workspace; undo: true is the toast's Undo. dismiss_question (follow.dismiss-question, which the client no longer calls) stays as the question-only alias of dismiss_item with key question:Qn." },
   "follow.answer-question": { tools: ["answer_question"], note: "The tool sends (action send). Copy and Put in chat (action copy, chat) only move the developer's own words into their clipboard or their composer for them to send; an agent answers by sending, so it has no Put in chat." },
   "follow.workspace-about": { tools: ["workspace_about"] },
   "follow.rename-status": { tools: ["ai_rename"], note: "The dry run shows the name now and the suggestion." },
@@ -221,6 +226,6 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
  * note says where an agent finds what the developer found.
  */
 export const VIEW_PARITY: Record<string, { tools: readonly string[]; note: string }> = {
-  "catch-up": { tools: ["catch_up_deck", "answer_question", "dismiss_question", "brief_action", "inbox_act", "snooze", "ask_context"], note: "Catch up deals Needs you one card at a time; moving between cards (Skip, Skip workspace, Back, the phone's drag) changes only the developer's view, so it has no server state and no tool. catch_up_deck reads the same deck, and every act on a card is a tool: answer_question, brief_action, inbox_act and snooze (Later), ask_context (More context). A permission is Paseo's own respond_to_permission." },
+  "catch-up": { tools: ["catch_up_deck", "answer_question", "dismiss_question", "dismiss_item", "brief_action", "inbox_act", "snooze", "ask_context"], note: "Catch up deals Needs you one card at a time; moving between cards (Skip, Skip workspace, Back, the phone's drag) changes only the developer's view, so it has no server state and no tool. catch_up_deck reads the same deck, and every act on a card is a tool: answer_question, brief_action, inbox_act and snooze (Later), ask_context (More context). A permission is Paseo's own respond_to_permission." },
   "section-search": { tools: ["workspace_status", "list_prs"], note: "The panel's Pull requests, Tasks and Activity search filters lists an agent already reads whole: workspace_status returns the workspace's PRs (title, branch, failed checks), tasks with their evidence, questions with their answers, and the sends, merges and PR actions the timeline is drawn from; list_prs returns every tracked PR with its checks." },
 };
