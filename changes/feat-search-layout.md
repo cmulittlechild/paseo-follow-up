@@ -1,0 +1,1 @@
+- Search finds workspaces typed on the wrong keyboard layout, with a quiet hint and your text kept intact. Desktop uses physical keys; Hebrew and Russian also work on phones and pasted text.

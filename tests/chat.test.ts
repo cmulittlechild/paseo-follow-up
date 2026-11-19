@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { followShellCall, followToolName, parseBatchPrompt, readText, toolRow, toolRowSchema, batchCardSchema } from "../shared/chat";
+import { followShellCall, followToolName, parseBatchPrompt, toolRow, toolRowSchema, batchCardSchema } from "../shared/chat";
 
 test("Follow-up tools are recognised under Claude and Codex names only", () => {
   assert.equal(followToolName("mcp__follow-up__register_pr"), "register_pr");
@@ -49,10 +49,10 @@ test("declare_done renders the shipped card only when nothing blocks it", () => 
   assert.equal(blocked.done, null); assert.equal(blocked.line, "Not done yet · 2 blockers"); assert.equal(blocked.more, "• Settle acme/app#2\n• Verify rollout");
 });
 
-test("tool output text is read from Claude and Codex result shapes", () => {
-  assert.equal(readText({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }), "a\nb");
-  assert.equal(readText({ output: "plain" }), "plain");
-  assert.equal(readText({ unknown: 1 }), undefined);
+test("tool output text is read from Claude and Codex result shapes", async () => {
+  const { toolResult } = await import("../shared/tool-result");
+  assert.equal(toolResult({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }).text, "a\nb");
+  assert.equal(toolResult({ output: "plain" }).text, "plain");
 });
 
 test("question and spec tools read as one line; answers sent from Follow-up become a card", async () => {
