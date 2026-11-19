@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import type { SettingsCategory } from "../shared/settings-nav";
 import { recoveryActions } from "./recovery-actions";
 import { View } from "react-native";
 import { Text } from "./text";
@@ -42,7 +43,7 @@ import { ToastHost, useQuestionOpener } from "./toasts";
 
 export { overviewKey, workspaceKey };
 
-export type PanelLinks = { openSettings: () => void; openOverview: () => void; openLarge?: (workspaceId: string) => void };
+export type PanelLinks = { openSettings: (category?: SettingsCategory) => void; openOverview: () => void; openLarge?: (workspaceId: string) => void };
 type PanelProps = PluginWorkspacePanelProps & PanelLinks & { inbox?: InboxStore; live?: LiveStore; briefDeps?: BriefDeps; sources?: HomeSources };
 
 /**
@@ -127,19 +128,19 @@ function NothingYet({ theme, layout, loadError, openOverview, openSettings }: Pa
         </View>)}
       </View>
       {loadError && <Text accessibilityRole="alert" style={[tp.meta, { color: c.statusDanger }]}>{loadError}</Text>}
-      <View style={{ flexDirection: "row" }}><Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" accessibilityHint="Choose which projects Follow-up tracks" onPress={openSettings} /></View>
+      <View style={{ flexDirection: "row" }}><Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" accessibilityHint="Choose which projects Follow-up tracks" onPress={() => openSettings("following")} /></View>
     </ScrollView>
   </View>;
 }
 
 /** The panel's top bar: back to Home, and settings. No other workspace's counts. */
-export function PanelTop({ theme, compact, openOverview, openSettings }: { theme: Theme; compact: boolean; openOverview: () => void; openSettings?: () => void }) {
+export function PanelTop({ theme, compact, openOverview, openSettings }: { theme: Theme; compact: boolean; openOverview: () => void; openSettings?: (category?: SettingsCategory) => void }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: compact ? 12 : 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
     <Button theme={theme} compact={compact} kind="ghost" icon="House" title="Home" accessibilityHint="Opens Follow-up Home with every workspace" onPress={openOverview} />
     <View style={{ flex: 1 }} />
     {openSettings && <VersionMark theme={theme} touch={compact} openSettings={openSettings} />}
-    {openSettings && <IconButton icon="Settings" label="Follow-up settings" onPress={openSettings} theme={theme} compact={compact} />}
+    {openSettings && <IconButton icon="Settings" label="Follow-up settings" onPress={() => openSettings()} theme={theme} compact={compact} />}
   </View>;
 }
 
@@ -342,7 +343,7 @@ const folds = z.object({ open: z.array(z.string()) });
 export const WIDE_MIN = 820;
 
 export function WorkspaceView({ theme, layout, workspace: w, navigation, loadError, openSettings, openOverview, folds: { isOpen, toggle }, resize, large = false, top, ask, sources }: PluginHostProps & {
-  navigation?: PluginWorkspacePanelProps["navigation"]; workspace: Workspace; loadError?: string | null; openSettings: () => void; openOverview: () => void; top?: ReactNode; /** The main agent's open brief and its card, for the Needs you block. */ ask?: { brief: Brief; card: ReactNode } | null;
+  navigation?: PluginWorkspacePanelProps["navigation"]; workspace: Workspace; loadError?: string | null; openSettings: (category?: SettingsCategory) => void; openOverview: () => void; top?: ReactNode; /** The main agent's open brief and its card, for the Needs you block. */ ask?: { brief: Brief; card: ReactNode } | null;
   folds: Folds; resize: { icon: "Maximize2" | "Minimize2"; label: string; onPress: () => void } | null; large?: boolean;
   /** Home's sources: the header's More menu (the row menu). Absent in the larger view. */
   sources?: HomeSources;

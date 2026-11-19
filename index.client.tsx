@@ -26,7 +26,8 @@ import { inboxSidebarView, sidebarViewHost } from "./client/sidebar-view";
 import { OVERSEER_KEY } from "./client/home-list";
 import { contributeBrief } from "./client/brief";
 import { clientTimeZoneRpc, setOnboardingRpc } from "./shared/contracts";
-import { isCategory, writeCategory } from "./shared/settings-nav";
+import { createSettings } from "./client/settings-screens";
+import type { SettingsCategory } from "./shared/settings-nav";
 import { openReportSheet, ReportSheetHost, setReportFallback } from "./client/report-issue";
 import { openRename, RenameHost } from "./client/rename";
 import { setReportError } from "./client/toast-store";
@@ -54,7 +55,6 @@ export default function contribute(host: PluginClientContext) {
       .catch(() => { if (attempt < 4) setTimeout(() => reportTimeZone(attempt + 1), [5_000, 30_000, 120_000, 600_000][attempt]); });
   };
   reportTimeZone();
-  const openSettings = (category?: string) => { if (isCategory(category)) writeCategory(category); client.openSettings("projects"); };
   const openOverview = () => client.openScreen({ screenId: OVERVIEW });
   const openLog = () => client.openScreen({ screenId: OVERVIEW, params: { view: "log" } });
   const openCatchUp = () => client.openScreen({ screenId: OVERVIEW, params: { view: "catchup", at: "0", n: String(Date.now()) } });
@@ -67,7 +67,10 @@ export default function contribute(host: PluginClientContext) {
   setReportFallback(() => client.openScreen({ screenId: OVERVIEW }));
   setReportError((message, at) => openReportSheet({ kind: "bug", error: message, at }));
   const reportHost = (props: PluginSurfaceProps | PluginWorkspacePanelProps) => <><ReportSheetHost theme={props.theme} layout={props.layout} openAgent={props.navigation ? agentId => props.navigation!.openAgent({ agentId }) : undefined} /><RenameHost theme={props.theme} compact={props.layout.compact} /></>;
-  const Settings = (props: PluginSurfaceProps) => <><FollowSettings {...props} openSetup={openSetup} openReport={() => openReportSheet()} />{reportHost(props)}</>;
+  const Settings = (props: PluginSurfaceProps & { category?: SettingsCategory }) => <><FollowSettings {...props} openSetup={openSetup} openReport={() => openReportSheet()} />{reportHost(props)}</>;
+  // Paseo 0.16: one settings screen per category (its own tabs); 0.15: one screen with Follow-up's tabs (client/settings-screens.ts).
+  const settings = createSettings(client, Settings);
+  const openSettings = settings.open;
   const store = createLiveStore(client);
   const inbox = createInboxStore(host);
   // A brief's x (client/dismiss.tsx) updates the inbox rows at once, like Sign off.
@@ -107,7 +110,7 @@ export default function contribute(host: PluginClientContext) {
     client.addScreen({ id: OVERVIEW, title: "Follow-up", Component: Overview }),
     client.addScreen({ id: LARGE_SCREEN, title: params => store.get(params.workspaceId ?? "")?.title ?? "Follow-up", Component: Large }),
     ...LEGACY_SETTINGS_SCREENS.map(id => client.addScreen({ id, title: "Follow-up settings", Component: Settings })),
-    client.addSettingsScreen({ id: "projects", title: "Follow-up", icon: FOLLOW_UP_ICON, Component: Settings }),
+    settings.remove,
     client.addWorkspacePanel({ id: PANEL, title: "Follow-up", icon: FOLLOW_UP_ICON, locations: ["workspace", "explorer"], Component: Panel }),
     client.addCommandCenterItem({ id: "open-follow-up", title: "Follow-up: open for this workspace", icon: FOLLOW_UP_ICON, keywords: ["PR", "stack", "repairs", "done", "archive"], context: "workspace", onSelect({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
     client.addCommandCenterItem({ id: "open-follow-up-large", title: "Follow-up: open the larger view", icon: "Maximize2", keywords: ["expand", "full screen", "maximize", "PR", "stack"], context: "workspace", onSelect({ workspace, openScreen }) { openScreen({ screenId: LARGE_SCREEN, params: { workspaceId: workspace.id } }); } }),

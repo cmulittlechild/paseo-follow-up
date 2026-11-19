@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dismissUpdateNoticeRpc, installUpdateRpc, retryMoveRpc, setUpdatesRpc, updatesRpc } from "../shared/contracts";
 import { moveLine } from "../shared/plugin-move";
 import { MODE_HINT, MODE_LABEL, UPDATE_MODES, WHATS_NEW_LABEL, channelHint, checkedText, copyCommand, statusCopy, versionMark, whatsNewHint, type StatusAction, type UpdateMode, type UpdatesChange, type UpdatesView } from "../shared/updates";
-import { writeCategory } from "../shared/settings-nav";
+import type { SettingsCategory } from "../shared/settings-nav";
 import type { Channel } from "../shared/version";
 import { Button, errorText, space, text, useNow, type Theme } from "./kit";
 import { Spinner } from "./motion";
@@ -28,7 +28,7 @@ export function useUpdates(check?: "settings") {
 
 const toneColor = (tone: "success" | "warning" | "muted", c: Theme["colors"]) => tone === "success" ? c.statusSuccess : tone === "warning" ? c.statusWarning : c.foregroundMuted;
 /** Home's top line: an update to install (Tell me mode) or a rollback. One slot; the rollback wins. */
-export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; compact: boolean; openSettings: () => void }) {
+export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; compact: boolean; openSettings: (category?: SettingsCategory) => void }) {
   const c = theme.colors; const t = text(c);
   const query = useUpdates(); const cache = useQueryClient(); const toast = useToast();
   const dismiss = useRpc(dismissUpdateNoticeRpc); const install = useRpc(installUpdateRpc);
@@ -53,7 +53,7 @@ export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; c
       </Pressable>
     </View>
     <View style={{ flexDirection: "row", gap: 8, paddingLeft: 25 }}>
-      {rolled ? <Button title="Details" theme={theme} compact={compact} onPress={() => { writeCategory("general"); openSettings(); }} />
+      {rolled ? <Button title="Details" theme={theme} compact={compact} onPress={() => openSettings("general")} />
         : confirm ? <>
           <Button title="Install now" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(() => install({ version: n.version, anyway: true }))} />
           <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={() => setConfirm(false)} />
@@ -212,7 +212,7 @@ export function UpdatesStep({ theme, compact }: { theme: Theme; compact: boolean
  * accessibility label still says it. Loading takes no width; a failed read shows nothing. `touch`: a 44pt box
  * (react-native-web ignores hitSlop).
  */
-export function VersionMark({ theme, touch, openSettings }: { theme: Theme; touch: boolean; openSettings: () => void }) {
+export function VersionMark({ theme, touch, openSettings }: { theme: Theme; touch: boolean; openSettings: (category?: SettingsCategory) => void }) {
   const c = theme.colors; const t = text(c, touch);
   const query = useUpdates();
   if (!query.data) return null;
@@ -220,7 +220,7 @@ export function VersionMark({ theme, touch, openSettings }: { theme: Theme; touc
   const style = touch ? t.meta : t.small;
   const box = touch ? { minHeight: 44, paddingHorizontal: 10, justifyContent: "center" as const } : { paddingHorizontal: 4, paddingVertical: 4 };
   return <Pressable accessibilityRole="button" accessibilityLabel={mark.label} accessibilityHint="Opens Follow-up settings, General" hitSlop={touch ? undefined : 8}
-    onPress={() => { writeCategory("general"); openSettings(); }} style={[box, { flexShrink: 1, minWidth: 0 }]}>
+    onPress={() => openSettings("general")} style={[box, { flexShrink: 1, minWidth: 0 }]}>
     {state => { const hover = !!(state as { hovered?: boolean }).hovered || state.pressed; const line = hover ? { color: c.foreground, textDecorationLine: "underline" as const } : null;
       return <Text numberOfLines={1} style={[style, line]}>{mark.version}</Text>; }}
   </Pressable>;
