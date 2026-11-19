@@ -128,8 +128,8 @@ export function search(index: SearchIndex, query: string, now = Date.now(), limi
     if (seen.has(hit.key)) continue;
     seen.add(hit.key); converted.push({ ...hit, layoutQuery: variant });
   }
-  // Direct matches retain their existing live/archived ranking. Converted matches follow them.
-  return [...direct, ...converted.sort((a, b) => Number(a.group === "archived") - Number(b.group === "archived") || byScore(a, b))].slice(0, limit);
+  // Keep archived rows under their own heading at the bottom. Inside each group, direct matches come first.
+  return [...direct, ...converted].sort((a, b) => Number(a.group === "archived") - Number(b.group === "archived") || byScore(a, b)).slice(0, limit);
 }
 
 /** Quiet explanation only when a converted query finds more rows than the typed query. */

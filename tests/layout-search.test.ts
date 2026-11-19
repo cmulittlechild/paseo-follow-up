@@ -72,3 +72,13 @@ test("macOS geresh and Android Hebrew Q/W punctuation variants", async () => {
   assert.equal(search(i, "'-קראט -םרל").find(h => h.key === "keys")?.title, "Qwerty work");
   assert.ok(search(i, "qwerty work").some(h => h.key === "mobile"));
 });
+
+test("converted live hits stay above the Archived heading, with direct matches first in each group", () => {
+  const i = indexDocs([
+    doc("live-converted", "Smart Session"),
+    { ...doc("archived-direct", "דצשרא דקדדןםמ"), group: "archived" },
+    doc("live-direct", "דצשרא דקדדןםמ"),
+    { ...doc("archived-converted", "Smart Session"), group: "archived" },
+  ]);
+  assert.deepEqual(search(i, "דצשרא דקדדןםמ").map(h => h.key), ["live-direct", "live-converted", "archived-direct", "archived-converted"]);
+});

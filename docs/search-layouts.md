@@ -1,7 +1,8 @@
 # Searching with another keyboard layout
 
 `shared/layout-swap.ts` owns layout conversion and physical-key reconstruction; `shared/search.ts` owns matching
-and ranking. `tests/layout-search.test.ts` covers both.
+and ranking. Direct matches rank first within live and archived results; archived workspaces stay under their
+own heading at the bottom. `tests/layout-search.test.ts` covers both.
 
 Home, the sidebar's workspace filter, the Follow-up Search command (which opens Home), and the agent tools
 `workstreams` and `list_prs` share the workspace matcher. Catch up and `inbox_list` have no workspace text filter.

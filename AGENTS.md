@@ -922,5 +922,6 @@ Guarded by `npm run check:notes` and `release:notes` (`scripts/release-notes.mjs
 README screenshot flows select questions by their stable reference, never their extracted title. Keep the dialog and Put in chat capture flows consistent when question wording changes.
 
 Search finds what you meant on either keyboard layout. Every workspace text filter (Home, sidebar and agent tools)
-uses shared/search.ts: direct hits rank before converted hits, and the typed query is never rewritten. Physical-key
+uses shared/search.ts: direct hits rank before converted hits within the live/archived groups, archived rows stay
+last under their heading, and the typed query is never rewritten. Physical-key
 reconstruction is trusted only for verified append/backspace edits; paste, selection edits and IME discard it.
