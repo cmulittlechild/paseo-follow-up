@@ -27,7 +27,7 @@ import { DismissReveal } from "./dismiss";
 import { Age, BadgeView, BRIEF_KEY, glyphColor, HomeList, OVERSEER_KEY, PrChipView, PrSummaryText, type OverseerRowState } from "./home-list";
 import { answerLine, overseerRowState } from "../shared/overseer";
 import type { OmniboxItem } from "../shared/search";
-import { ListTop, SearchField, SortMenu, StatusStrip, UsageMeters, useOmnibox, useSlashToFocus } from "./home-chrome";
+import { LayoutNotice, ListTop, SearchField, SortMenu, StatusStrip, UsageMeters, useOmnibox, useSlashToFocus } from "./home-chrome";
 import { useHomeModel, useTick, type HomeSources } from "./home-data";
 import { laterLabel, useInbox, UndoBar, useNextRelay } from "./inbox";
 import { Spinner } from "./motion";
@@ -249,6 +249,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>
+      <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
       {!compact && !omnibox.results && <StatusStrip theme={theme} model={model} filter={filter} onFilter={setFilter} touch={compact} dense={compact} />}
       {!compact && !omnibox.results && <UsageMeters theme={theme} sources={deps.sources} dense={compact} hold={!!model.hold} />}
       {!compact && !omnibox.results && <SetupOffer theme={theme} compact={compact} view={props.onboarding} />}
