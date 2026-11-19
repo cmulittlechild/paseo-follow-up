@@ -1049,7 +1049,8 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
       await shoot(`layout-search-${device}-${theme}`, viewport, theme, async page => {
         await openHome(page);
-        const field = page.getByRole("textbox", { name: "Search workspaces, branches, PRs", exact: true }).first();
+        await page.setViewportSize(viewport);
+        const field = page.getByRole("textbox", { name: /^(Search workspaces, branches, PRs|Search, or ask the Overseer|Search or ask the Overseer)$/ }).first();
         await field.fill("דצשרא דקדדןםמ");
         await page.getByText(/Showing results for.*smart session/).waitFor();
         if (await field.inputValue() !== "דצשרא דקדדןםמ") throw new Error("search rewrote the query");
@@ -1059,7 +1060,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     }
     await shoot("layout-search-physical-desktop-dark", DESKTOP, "dark", async page => {
       await openHome(page);
-      const field = page.getByRole("textbox", { name: "Search workspaces, branches, PRs", exact: true }).first();
+      const field = page.getByRole("textbox", { name: /^(Search workspaces, branches, PRs|Search, or ask the Overseer|Search or ask the Overseer)$/ }).first();
       await field.fill(""); await field.focus();
       const latin = "smart session", greek = "σμαρτ σεσσιον";
       for (const [i, key] of [...greek].entries()) {
