@@ -2637,7 +2637,9 @@ async function settingsTabsShots({ shoot, out }) {
   const order = Object.values(SETTINGS_TITLES);
   // 0.16+: from Paseo's plugin page's left edge ("Back to plugins"), so its tabs show whole; 0.15: Follow-up's pane.
   const settingsClip = async (page, vp) => {
-    const back = nativeSettingsTabs ? await page.getByText("Back to plugins").filter({ visible: true }).first().boundingBox().catch(() => null) : null;
+    // Wait for the page: a missing anchor fails the shot rather than cropping at a guess.
+    const back = nativeSettingsTabs ? await page.getByText("Back to plugins").filter({ visible: true }).first().boundingBox({ timeout: 15000 }) : null;
+    if (nativeSettingsTabs && !back) throw new Error("settings-tabs: no \"Back to plugins\" to crop from");
     const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
     return { x, y: 0, width: vp.width - x, height: vp.height };
   };
