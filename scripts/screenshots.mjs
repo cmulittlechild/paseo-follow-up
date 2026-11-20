@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -67,7 +67,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -888,6 +888,21 @@ async function settle(page) {
 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
+/** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
+const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
+const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", display: "display" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", display: "Inbox & display" };
+/** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
+async function openSettingsAt(page, category, vp = page.viewportSize()) {
+  if (nativeSettingsTabs) {
+    await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/${SETTINGS_SCREENS[category]}`);
+    await page.locator(`[data-testid="plugin-settings-tab-${SETTINGS_SCREENS[category]}"]`).filter({ visible: true }).first().waitFor();
+    return;
+  }
+  await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
+  const title = SETTINGS_TITLES[category];
+  await (vp.width >= 768 ? page.getByRole("tab", { name: new RegExp(`^${title}`) }) : page.getByRole("button", { name: title, exact: true })).filter({ visible: true }).first().click();
+}
 /** The sidebar shot's window: every group of the fixture fits, down to Quiet, and the chat beside it lays out whole. */
 const SIDEBAR = { width: 960, height: 1060 };
 /**
@@ -1727,6 +1742,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("dictation")) await dictationShots({ shoot });
   if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
+  if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -2137,8 +2153,7 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
     const label = mac ? "⌘⇧K" : "Ctrl+Shift+K";
     const options = mac ? { init: () => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }) } : {};
     await shoot(`shortcut-settings-${suffix}`, DESKTOP, theme, async page => {
-      await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
-      await page.getByRole("tab", { name: /^Inbox & display/ }).filter({ visible: true }).first().click();
+      await openSettingsAt(page, "display", DESKTOP);
       const row = page.getByText("Search from anywhere", { exact: true }).filter({ visible: true }).first();
       await row.waitFor(); await row.evaluate(el => el.scrollIntoView({ block: "center" }));
       return { x: 400, y: 0, width: DESKTOP.width - 400, height: DESKTOP.height };
@@ -2646,14 +2661,74 @@ async function sendingShots({ shoot, seeded, call, home }) {
   await shoot("sending-hold-home-phone-light", PHONE, "light", shown(held, true));
   await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 }));
 }
+/**
+ * Settings, one tab per category (Paseo 0.16+, client/settings-screens.ts), or Follow-up's own tabs on 0.15: every
+ * category on desktop and 390 px, light and dark, and the links into it (the version mark opens General; ⌘K's
+ * "Follow-up: settings" reopens the category last shown). Run on each host: HARNESS_PASEO=0.15.4, 0.16, and 0.17 via
+ * PATH. Writes settings-tabs.json; any failed check fails the run.
+ */
+async function settingsTabsShots({ shoot, out }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`settings-tabs: ${name}`); log(`settings-tabs check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const shape = page => page.evaluate(() => ({
+    native: [...document.querySelectorAll('[data-testid^="plugin-settings-tab-"]')].filter(e => e.offsetParent).map(e => e.textContent.trim()),
+    inner: [...document.querySelectorAll('[role="tablist"] [role="tab"]')].filter(e => e.offsetParent).map(e => e.textContent.trim()),
+    overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  const selected = page => page.evaluate(() => {
+    const native = [...document.querySelectorAll('[data-testid^="plugin-settings-tab-"]')].find(e => e.offsetParent && (e.getAttribute("aria-selected") === "true" || e.getAttribute("aria-checked") === "true" || e.closest("[aria-selected=true]")));
+    const inner = [...document.querySelectorAll('[role="tab"][aria-selected="true"]')].find(e => e.offsetParent);
+    return (native ?? inner)?.textContent.trim() ?? null;
+  });
+  const order = Object.values(SETTINGS_TITLES);
+  // 0.16+: from Paseo's plugin page's left edge ("Back to plugins"), so its tabs show whole; 0.15: Follow-up's pane.
+  const settingsClip = async (page, vp) => {
+    // Wait for the page: a missing anchor fails the shot rather than cropping at a guess.
+    const back = nativeSettingsTabs ? await page.getByText("Back to plugins").filter({ visible: true }).first().boundingBox({ timeout: 15000 }) : null;
+    if (nativeSettingsTabs && !back) throw new Error("settings-tabs: no \"Back to plugins\" to crop from");
+    const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+    return { x, y: 0, width: vp.width - x, height: vp.height };
+  };
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) for (const category of Object.keys(SETTINGS_SCREENS)) {
+    await shoot(`st-${category}-${size}-${theme}`, vp, theme, async page => {
+      await page.setViewportSize(vp);
+      await openSettingsAt(page, category, vp);
+      await page.waitForTimeout(800);
+      const got = await shape(page);
+      if (nativeSettingsTabs) {
+        check(`${size} ${theme} ${category}: Paseo's tabs are the five categories in order`, JSON.stringify(got.native) === JSON.stringify(order), got);
+        check(`${size} ${theme} ${category}: Follow-up draws no tabs of its own`, got.inner.length === 0, got);
+      } else if (vp.width >= 768) check(`${size} ${theme} ${category}: 0.15 keeps Follow-up's own tabs`, JSON.stringify(got.inner) === JSON.stringify(order), got);
+      check(`${size} ${theme} ${category}: no horizontal page scroll`, !got.overflowX, got);
+      // Only Follow-up's settings: the host settings sidebar beside it names the machine.
+      return vp.width >= 768 ? await settingsClip(page, vp) : undefined;
+    });
+  }
+  // Links into settings: the version mark on Home opens General, ⌘K reopens the last category (Reviewers here).
+  await shoot("st-links-check", DESKTOP, "dark", async page => {
+    await openSettingsAt(page, "reviewers", DESKTOP); await page.waitForTimeout(800);
+    await openHome(page);
+    await page.getByRole("button", { name: /^Follow-up version / }).filter({ visible: true }).first().click();
+    await page.waitForTimeout(1500);
+    check("the version mark opens General", /\/plugins\/follow-up\/projects$/.test(new URL(page.url()).pathname) && (!nativeSettingsTabs || await selected(page) === "General"), { url: new URL(page.url()).pathname, selected: await selected(page) });
+    await openSettingsAt(page, "reviewers", DESKTOP); await page.waitForTimeout(800);
+    await openHome(page);
+    await page.keyboard.press("Control+k"); await page.waitForTimeout(400);
+    await page.keyboard.type("Follow-up: settings"); await page.waitForTimeout(500); await page.keyboard.press("Enter"); await page.waitForTimeout(1500);
+    const path = new URL(page.url()).pathname;
+    check("⌘K Follow-up: settings reopens Reviewers", nativeSettingsTabs ? path.endsWith("/plugins/follow-up/reviewers") : await page.getByRole("tab", { name: /^Reviewers/, selected: true }).filter({ visible: true }).count() > 0, { url: path, selected: await selected(page) });
+    return settingsClip(page, DESKTOP);
+  });
+  await fs.writeFile(join(out, "settings-tabs.json"), JSON.stringify(checks, null, 2));
+  log(`settings-tabs: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
 /** A fictional deploy check (Q55 mocks): the values live in host settings, set by an agent. */
 const DEPLOY_FIXTURE = { gcpProject: "acme-prod", serviceLabel: "rollout-group=app", servicePrefix: "acme-service-app-", roles: ["backend", "web", "worker"], registry: "us-central1-docker.pkg.dev", imagePath: "acme-prod/acme-docker", images: ["prod-app-backend", "prod-app-web"] };
 async function deployCheckShots({ shoot, call }) {
   // Settings → Following → PR workflow → Repositories → example/app, scrolled to its Deploy check row: set up, then not.
   const fold = async (page, vp) => {
     await page.setViewportSize(vp);
-    await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
-    await (vp.width >= 768 ? page.getByRole("tab", { name: /^Following/ }) : page.getByRole("button", { name: "Following", exact: true })).filter({ visible: true }).first().click();
+    await openSettingsAt(page, "following", vp);
     const header = page.getByRole("button", { name: /^example\/app, / }).filter({ visible: true }).first();
     await header.waitFor();
     if (await header.getAttribute("aria-expanded") !== "true") await header.click();
@@ -2679,9 +2754,7 @@ async function reviewModeShots({ shoot, call }) {
   const row = async (page, vp) => { await openHome(page); if (vp) await page.setViewportSize(vp); await (await homeRow(page, title)).click(); await link(page).waitFor(); };
   const fold = async (page, vp) => {
     await page.setViewportSize(vp);
-    await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/projects`);
-    // Desktop: a tab per category. Phone: the category list, drilled into.
-    await (vp.width >= 768 ? page.getByRole("tab", { name: /^Following/ }) : page.getByRole("button", { name: "Following", exact: true })).filter({ visible: true }).first().click();
+    await openSettingsAt(page, "following", vp);
     const header = page.getByRole("button", { name: /^example\/app, / }).filter({ visible: true }).first();
     await header.waitFor();
     if (await header.getAttribute("aria-expanded") !== "true") await header.click();
@@ -2808,7 +2881,8 @@ async function moreContextShots({ shoot, call }) {
  * dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the small x on every Needs-you item. In the panel:
  * an agent's Action brief at rest (no x) and hovered (the x beside its age), the question card's x (no Dismiss link in
  * its quiet row), and a merge row's x; after Dismiss, the toast with Undo; Catch up's card with its x always shown; Home's
- * detail pane on a phone, x always there. Light and dark. Every dismissal is undone through follow.dismiss before the
+ * detail pane on a phone, x always there. Armed (the first click: the red Dismiss pill in place) on a merge row, a brief,
+ * Catch up's card (⇧D) and a phone; after the second click, the toast with Undo. Light and dark. Every dismissal is undone through follow.dismiss before the
  * next shot, and the run fails if any dismissal queued a message.
  */
 async function dismissShots({ shoot, call }) {
@@ -2841,8 +2915,15 @@ async function dismissShots({ shoot, call }) {
       await page.mouse.move(box.x - 150, box.y + box.height / 2); page.keepPointer = true; await page.waitForTimeout(400); });
     await shoot(`dx-question-${theme}`, TALL, theme, async page => { await panel(page, lone, "Missing keys"); await visible(page.getByText(/When a key is missing in both/)).hover(); await (await x(page, Q_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
     await shoot(`dx-merge-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await (await x(page, MERGE_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
+    // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x into the red pill, the second
+    // dismisses. The run fails if one click dismissed anything.
+    const arm = async (page, name) => { await (await x(page, name)).click(); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepPointer = true; page.keepFocus = true; await page.waitForTimeout(300); };
+    await shoot(`dx-merge-armed-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await arm(page, MERGE_X); });
+    await shoot(`dx-brief-armed-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover(); await arm(page, BRIEF_X); });
     await shoot(`dx-undo-${theme}`, TALL, theme, async page => {
       await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover();
+      await arm(page, BRIEF_X);
+      if (await page.getByText(/^Dismissed the agent's ask\./).count()) throw new Error("dismiss: one click dismissed");
       await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
     });
     await restore();
@@ -2855,6 +2936,20 @@ async function dismissShots({ shoot, call }) {
       }
       await away(page);
     });
+    await shoot(`dx-catch-up-armed-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page);
+      await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+      for (let i = 0; !(await page.locator("[data-catch-up-card]").getByText("#255 is approved").filter({ visible: true }).first().isVisible()); i++) {
+        if (i > 40) throw new Error("dismiss: no Catch up card for #255");
+        await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
+      }
+      // ⇧D presses the card's x: once arms it.
+      await page.keyboard.press("Shift+D"); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepFocus = true; await page.waitForTimeout(300);
+    });
+    await shoot(`dx-phone-armed-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X); });
+    await shoot(`dx-phone-undo-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X);
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
+    await restore();
     await shoot(`dx-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await page.waitForTimeout(500); });
     await restore();
   }

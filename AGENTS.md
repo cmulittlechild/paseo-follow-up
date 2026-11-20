@@ -384,7 +384,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `follow-up-view` on Paseo 0.16 (`client/view-store.ts`), with localStorage kept as the first-paint cache for one
    release; on 0.15 they stay in localStorage. Anything an agent can set stays host-scoped, so the worker and its
    tools reach it: `home_sort` is a Display field, never device-scoped. Reads paint the cache first and the document
-   when it loads, never the default in between. Needs you opens on every mount. Guarded by
+   when it loads, never the default in between; a write made while the document loads is replayed into it when it
+   arrives (`writes-while-loading-reach-the-document`), so a tab opened at start-up isn't forgotten. Needs you opens on
+   every mount. Guarded by
    `tests/view-settings.test.ts` (including the `home_sort` host-scope scan) and `scripts/check-view-settings.mjs`
    ([docs/settings.md](docs/settings.md)).
 23. **A row that names a PR opens it in one click** (`a-row-that-names-a-pr-opens-it-in-one-click`). Every Needs-you
@@ -779,7 +781,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 59. **Dismissing anything in Needs you sends the agent nothing** (`dismissing-anything-in-needs-you-sends-the-agent-nothing`,
    which widens `dismissing-a-question-sends-the-agent-nothing`). Every Needs-you item, on every surface (the panel, Home's
    detail pane, the pill, the question dialog, Catch up, phones), has one Dismiss: a small muted x top right beside its
-   age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo. An
+   age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo.
+   Dismissing takes two clicks in place (`dismiss-takes-two-clicks-in-place`): the first click, tap or key arms the x
+   into a small red "Dismiss" pill on the same spot (it grows leftward over its neighbours; the card never reflows) and
+   the second dismisses; a click elsewhere, Esc, focus leaving, the pointer leaving the card (600 ms grace) or 4 s
+   untouched disarms it, and only one x is armed app-wide. No pop-up. An
    agent dismisses for the developer with `dismiss_item` (planned, audited; never its own brief, question or
    workspace; `dismiss_question` is the question alias). It leaves Needs you and every count at once, and nothing is
    queued or sent, so no agent spends a turn on it; nothing Follow-up holds is dropped (a queued batch stays queued, a
@@ -790,7 +796,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `dismissedQuestions`, `dismissedItems`, `dismissedAsk`). Per kind: [docs/needs-you.md](docs/needs-you.md#dismiss).
    2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
    that again", then "Maybe the dismiss button should be on all "Needs you" actions? ... I want it to be really not
-   intrusive". Guarded by `tests/dismiss-question.test.ts` and `tests/dismiss-everywhere.test.ts`.
+   intrusive". Then, on 2.3.0-beta.2: "This is a destructive action, so maybe we should have a confirmation pop-up?" and
+   Q113=B, "Two clicks, in place ... No pop-up, no accidental dismiss. Undo stays." Guarded by
+   `tests/dismiss-question.test.ts`, `tests/dismiss-everywhere.test.ts` and `tests/dismiss-two-click.test.ts`.
 
 60. **Follow-up's GitHub reads scale with what changed, not with how many PRs it tracks**
    (`github-reads-scale-with-change`). A due PR read in full before is probed first (one query per account for all due
@@ -816,6 +824,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    JSON string, so every completed create fell back to Paseo's plain row inside the "N tool calls" group; on Claude
    the same misread hid the Done card and question ids, and artifact publish receipts named nothing. Guarded by
    `tests/tool-result.test.ts` (every reader over every shape, and a sweep for direct `detail.output` reads).
+
+62. **A settings link lands on its category** (`settings-link-lands-on-its-category`). Paseo 0.16 draws a plugin's
+   settings screens as tabs on its plugin page, so there each settings category (General, Following, Reviewers,
+   Agents, Inbox & display, in that order) is its own screen and Follow-up draws no tabs of its own; 0.15 lists every
+   screen as a ••• menu row, so it keeps one screen with Follow-up's tabs (`client/settings-screens.ts`, detected from
+   the 0.16 client API). General keeps the old id `projects`, so saved links land on the first tab. Every link into
+   settings passes its category to `openSettings`, which remembers it and opens the screen that shows it; nothing
+   writes the category and then opens settings. Guarded by `tests/settings-screens.test.ts` (both hosts, every
+   category, the host's refusal of an unknown screen id).
 
 ## Bugs
 

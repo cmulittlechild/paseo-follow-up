@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   CATEGORY_KEY, collapseKey, deviceStorage, homeFoldKey, homeGroupOpen, isViewKey, readCategory, setDeviceBackend, subscribeView, viewSnapshot,
-  writeCategory, writeHomeGroupOpen, type KeyValue,
+  writeCategory, writeHomeGroupOpen, localViewStorage, setViewStatus, type KeyValue,
 } from "../shared/settings-nav";
 import { documentBackend, seedValues, viewDefinition, VIEW_SCHEMA } from "../client/view-store";
 import { deviceSeenFrom, LAST_SEEN_KEY } from "../shared/changelog";
@@ -63,7 +63,7 @@ test("Home folds: the list keeps Needs you in session state only", async () => {
 
 test("no flash: before the document loads reads take the localStorage cache; then the document; writes reach both", () => {
   setDeviceBackend(null);
-  writeCategory("reviewers");
+  localViewStorage.set(CATEGORY_KEY, "reviewers");
   assert.equal(readCategory(), "reviewers", "first paint: the cached category, not the default");
   let renders = 0; const off = subscribeView(() => { renders++; });
   const before = viewSnapshot();
@@ -85,11 +85,28 @@ test("no flash: surfaces read view state on every render, not from per-mount sta
   const shell = await readFile(join(root, "client/settings-shell.tsx"), "utf8");
   const settings = await readFile(join(root, "client/settings.tsx"), "utf8");
   assert.match(shell, /useViewVersion\(\);\s*const open = readOpen\(id, defaultOpen\);/);
-  assert.match(settings, /useViewSync\(\); useViewVersion\(\);\s*const category = readCategory\(\);/);
+  assert.match(settings, /useViewSync\(\); useViewVersion\(\);\s*const category = only \?\? readCategory\(\);/);
   assert.doesNotMatch(settings, /useState<SettingsCategory>/);
   for (const [file, mark] of [["client/home.tsx", "<ViewSync />"], ["client/panel.tsx", "<ViewSync />"], ["client/live.tsx", "<ViewSync />"]]) {
     assert.ok((await readFile(join(root, file), "utf8")).includes(mark), `${file} mounts the device document sync`);
   }
+});
+
+test("a write made while the document loads isn't lost when it arrives (a settings tab opened at start-up)", () => {
+  // 2026-11-19 (0.16 harness): Settings opened straight onto Reviewers wrote the category before the document loaded;
+  // the document's older "general" then won, and "Follow-up: settings" reopened General.
+  setDeviceBackend(null); setViewStatus("loading");
+  writeCategory("reviewers");
+  const saved: { entries: Record<string, string> }[] = [];
+  setDeviceBackend(documentBackend({ migrated: true, entries: { [CATEGORY_KEY]: "general" } }, v => saved.push(v)));
+  assert.equal(readCategory(), "reviewers", "the newer write wins over the loaded document");
+  assert.equal(saved.at(-1)?.entries[CATEGORY_KEY], "reviewers", "and is saved into it");
+  // A value cached in an earlier session is not a new write: the document still wins over it.
+  setDeviceBackend(null); setViewStatus("loading");
+  localViewStorage.set(CATEGORY_KEY, "agents");
+  setDeviceBackend(documentBackend({ migrated: true, entries: { [CATEGORY_KEY]: "display" } }, () => undefined));
+  assert.equal(readCategory(), "display");
+  setDeviceBackend(null);
 });
 
 test("migration: seeds once from the localStorage cache, never overwrites a saved document, skips non-view keys", () => {

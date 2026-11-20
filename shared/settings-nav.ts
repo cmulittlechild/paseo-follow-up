@@ -32,8 +32,20 @@ const memory = new Map<string, string>();
 let backend: KeyValue | null = null;
 const viewListeners = new Set<() => void>();
 let viewVersion = 0;
+/**
+ * Writes made while the document is still loading (`writes-while-loading-reach-the-document`): a surface opened at
+ * start-up (a settings tab straight from a link, a fold) writes before the document arrives, and the document's older
+ * value must not win over it. They are replayed into the document when it arrives. A value merely cached from an
+ * earlier session is not one of them, so the document still wins over that.
+ */
+const pending = new Map<string, string>();
 /** Swap in (or out, with null) the device document behind deviceStorage; re-renders whatever reads view state. */
-export function setDeviceBackend(next: KeyValue | null) { backend = next; if (next) status = "ready"; viewChanged(); }
+export function setDeviceBackend(next: KeyValue | null) {
+  backend = next;
+  if (next) { status = "ready"; for (const [key, value] of pending) next.set(key, value); }
+  pending.clear();
+  viewChanged();
+}
 /** none: this host keeps no device document (0.15). loading: expected, not loaded yet. ready / failed. */
 export type ViewStatus = "none" | "loading" | "ready" | "failed";
 let status: ViewStatus = "none";
@@ -48,7 +60,7 @@ const local = {
 };
 export const deviceStorage: KeyValue = {
   get(key) { return backend?.get(key) ?? local.get(key); },
-  set(key, value) { local.set(key, value); backend?.set(key, value); viewChanged(); },
+  set(key, value) { local.set(key, value); if (backend) backend.set(key, value); else if (status === "loading") pending.set(key, value); viewChanged(); },
 };
 /** The localStorage cache alone: what a device migrates into its document once. */
 export const localViewStorage: KeyValue = local;

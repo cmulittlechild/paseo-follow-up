@@ -189,7 +189,11 @@ test("the row: every kind draws the x top right, and it sends only follow.dismis
     const labels = [...new Set(xs.map(n => n.props.accessibilityLabel))];
     assert.equal(labels.length, items.length, `${k.kind}: one x per row`);
     rpcCalls.length = 0;
+    // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x and sends nothing.
     await act(async () => { xs[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
+    assert.equal(rpcCalls.length, 0, `${k.kind}: one click sends nothing`);
+    const armed = r.root.findAll(n => typeof n.props.onPress === "function" && String(n.props.accessibilityLabel).endsWith(". Press again to dismiss"));
+    await act(async () => { armed[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
     assert.deepEqual(rpcCalls.map(x => [x.name, x.input]), [["follow.dismiss", { workspaceId: "workspace", key: items[0].key }]], `${k.kind}: nothing but the dismiss`);
     assert.equal(moved, 1, `${k.kind}: the surface moves on (Catch up settles the card)`);
     r.unmount();

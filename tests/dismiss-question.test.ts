@@ -167,7 +167,9 @@ test("the card: Dismiss is the card's x (no link in the quiet row), sends only t
   const c = await card(question, { onAnswered: () => { moved++; } });
   assert.equal(c.labelled(/^Dismiss Q1: it no longer needs you, and the agent isn't messaged$/).length > 0, true, "one x, labelled with what it does");
   assert.doesNotMatch(c.texts(), /^Dismiss$/m, "the quiet row's old Dismiss link is gone");
+  // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x, the second dismisses.
   await act(async () => { c.labelled(/^Dismiss Q1/)[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
+  await act(async () => { c.labelled(/^Dismiss Q1\. Press again to dismiss$/)[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
   assert.deepEqual(rpcCalls.map(x => [x.name, x.input]), [["follow.dismiss", { workspaceId: "workspace", key: "question:Q1" }]], "nothing but the dismiss: no answer, no message");
   assert.equal(moved, 1, "the surface moves on (Catch up settles the card, the pill steps)");
   c.unmount();

@@ -41,6 +41,18 @@ export function readable(color: string, colors: Colors): string {
   return color;
 }
 
+/**
+ * A status hue as a solid fill under white text: darkened until white reads on it (4.5:1), then by `shade` (hover
+ * 0.9, pressed 0.82). Dark hosts' danger red is a light text red; as a fill it is deepened, light hosts' red already passes.
+ */
+export function solidFor(color: string, shade = 1): string {
+  const rgb = channels(color);
+  if (!rgb) return color;
+  let k = 1;
+  while (k > 0.3 && 1.05 / (luminance(rgb.map(v => v * k)) + 0.05) < 4.5) k -= 0.02;
+  return `rgb(${rgb.map(v => Math.round(v * k * shade)).join(", ")})`;
+}
+
 export function withAlpha(color: string, alpha: number): string {
   const rgb = channels(color);
   return rgb ? `rgba(${rgb.join(", ")}, ${alpha})` : color;

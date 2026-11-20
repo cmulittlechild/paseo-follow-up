@@ -1,0 +1,2 @@
+- On Paseo 0.16 and later, Follow-up's settings categories (General, Following, Reviewers, Agents, Inbox & display) are Paseo's own tabs on the Follow-up settings page, and every Settings link opens the right one.
+- The panel's Project settings button now opens Following.
