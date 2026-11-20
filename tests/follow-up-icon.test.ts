@@ -49,7 +49,9 @@ test("the app tile is the same mark", async () => {
 
 test("Follow-up's own surfaces use the mark, never GitPullRequest", async () => {
   const entry = await readFile("index.client.tsx", "utf8");
-  for (const call of [/addSettingsScreen\(\{ id: "projects"[^\n]*/, /addWorkspacePanel\(\{ id: PANEL[^\n]*/, /addCommandCenterItem\(\{ id: "open-follow-up",[^\n]*/]) {
+  const settings = await readFile("client/settings-screens.ts", "utf8");
+  assert.match(settings, /addSettingsScreen\(\{ id: SETTINGS_SCREEN, title: "Follow-up", icon: FOLLOW_UP_ICON/, "the one-screen Settings (Paseo 0.15)");
+  for (const call of [/addWorkspacePanel\(\{ id: PANEL[^\n]*/, /addCommandCenterItem\(\{ id: "open-follow-up",[^\n]*/]) {
     const line = entry.match(call)?.[0];
     assert.ok(line, String(call));
     assert.match(line, /icon: FOLLOW_UP_ICON/, line.slice(0, 60));

@@ -384,7 +384,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `follow-up-view` on Paseo 0.16 (`client/view-store.ts`), with localStorage kept as the first-paint cache for one
    release; on 0.15 they stay in localStorage. Anything an agent can set stays host-scoped, so the worker and its
    tools reach it: `home_sort` is a Display field, never device-scoped. Reads paint the cache first and the document
-   when it loads, never the default in between. Needs you opens on every mount. Guarded by
+   when it loads, never the default in between; a write made while the document loads is replayed into it when it
+   arrives (`writes-while-loading-reach-the-document`), so a tab opened at start-up isn't forgotten. Needs you opens on
+   every mount. Guarded by
    `tests/view-settings.test.ts` (including the `home_sort` host-scope scan) and `scripts/check-view-settings.mjs`
    ([docs/settings.md](docs/settings.md)).
 23. **A row that names a PR opens it in one click** (`a-row-that-names-a-pr-opens-it-in-one-click`). Every Needs-you
@@ -822,6 +824,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    JSON string, so every completed create fell back to Paseo's plain row inside the "N tool calls" group; on Claude
    the same misread hid the Done card and question ids, and artifact publish receipts named nothing. Guarded by
    `tests/tool-result.test.ts` (every reader over every shape, and a sweep for direct `detail.output` reads).
+
+62. **A settings link lands on its category** (`settings-link-lands-on-its-category`). Paseo 0.16 draws a plugin's
+   settings screens as tabs on its plugin page, so there each settings category (General, Following, Reviewers,
+   Agents, Inbox & display, in that order) is its own screen and Follow-up draws no tabs of its own; 0.15 lists every
+   screen as a ••• menu row, so it keeps one screen with Follow-up's tabs (`client/settings-screens.ts`, detected from
+   the 0.16 client API). General keeps the old id `projects`, so saved links land on the first tab. Every link into
+   settings passes its category to `openSettings`, which remembers it and opens the screen that shows it; nothing
+   writes the category and then opens settings. Guarded by `tests/settings-screens.test.ts` (both hosts, every
+   category, the host's refusal of an unknown screen id).
 
 ## Bugs
 

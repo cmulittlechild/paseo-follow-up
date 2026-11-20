@@ -53,8 +53,16 @@
   - **Manual check (the harness can't drive the phone):** on the phone app, pick a settings category and fold a
     section, close the app fully, reopen it: the same category and folds come back.
 - **The settings screen.** `client/settings.tsx` (categories), `client/settings-shell.tsx` (collapsible blocks) and
-  `shared/settings-nav.ts` (categories, summaries, saved view state). Settings open through Paseo's settings screen
-  `projects`; legacy screen ids still map there.
+  `shared/settings-nav.ts` (categories, summaries, saved view state). `client/settings-screens.ts` registers them
+  with Paseo (`settings-link-lands-on-its-category`):
+  - **Paseo 0.16 and later:** one settings screen per category, in the same order. Paseo draws them as tabs on
+    Follow-up's plugin page, so Follow-up draws no tabs of its own. General keeps the old screen id `projects`.
+  - **Paseo 0.15:** one screen, `projects` ("Follow-up"), with Follow-up's own tabs (a phone gets the category list),
+    because 0.15 would list every settings screen as its own row in the plugin's ••• menu.
+  - Every link into settings calls `openSettings(category)` (Home, the panel, the header, setup, the version mark,
+    ⌘K), which remembers the category and opens the screen that shows it; without a category it reopens the last one
+    this device showed. Nothing writes the category and then opens settings. Legacy screen ids still open the
+    one-screen page. Guarded by `tests/settings-screens.test.ts`.
 
 ## Adding a setting
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { SettingsCategory } from "../shared/settings-nav";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
@@ -47,7 +48,7 @@ function LiveGlyph({ icon, colors }: { icon: LiveIcon; colors: Colors }) {
 }
 
 export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings, onRefresh, refreshing, onAuto, autoPending, notice, onOpenPr, resize, hideTitle = false, onHome, more }: {
-  workspace: Workspace; theme: Theme; compact: boolean; now: number; onSettings: () => void; onRefresh: () => void; refreshing: boolean; onAuto: (next: boolean) => void; autoPending: boolean; notice: string | null; onOpenPr?: (key: string) => void;
+  workspace: Workspace; theme: Theme; compact: boolean; now: number; onSettings: (category?: SettingsCategory) => void; onRefresh: () => void; refreshing: boolean; onAuto: (next: boolean) => void; autoPending: boolean; notice: string | null; onOpenPr?: (key: string) => void;
   /** Expand to the larger view, or collapse back to the panel. Absent where the panel is already as wide as it gets. */
   resize?: { icon: "Maximize2" | "Minimize2"; label: string; onPress: () => void } | null;
   /** The larger view's screen bar already names the workspace. */
@@ -67,7 +68,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
   const controls = <View style={{ flexDirection: "row", alignItems: "center", gap: 2, marginVertical: compact ? -12 : -4, marginRight: compact ? -10 : -4 }}>
     {resize && <IconButton icon={resize.icon} label={resize.label} onPress={resize.onPress} theme={theme} compact={compact} />}
     {more}
-    <IconButton icon="Settings" label="Follow-up settings" onPress={onSettings} theme={theme} compact={compact} />
+    <IconButton icon="Settings" label="Follow-up settings" onPress={() => onSettings()} theme={theme} compact={compact} />
   </View>;
   const tail = <>
     <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
