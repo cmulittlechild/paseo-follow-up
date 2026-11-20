@@ -180,7 +180,8 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           </View>
           <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>
           {/* Top right, a step away from the action so a thumb aimed at it doesn't land here. */}
-          <View style={{ alignSelf: "flex-start", marginTop: -4, marginRight: -6, marginLeft: 2 }}>{x}</View>
+          {/* Flush (Catch up's bordered card): no pull to the edge, so the armed Dismiss pill keeps clear of the border. */}
+          <View style={{ alignSelf: "flex-start", marginTop: -4, marginRight: flush ? 0 : -6, marginLeft: 2 }}>{x}</View>
         </RevealScope>
       </CardRow>;
       return <CardRow key={item.key} theme={theme} compact={compact} first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
@@ -198,7 +199,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
             </View>}
             {notice}
           </View>
-          <View style={{ marginTop: -3, marginRight: -5 }}>{x}</View>
+          <View style={{ marginTop: -3, marginRight: flush ? 2 : -5 }}>{x}</View>
         </RevealScope>
       </CardRow>;
     })}
