@@ -61,11 +61,12 @@ test("no dialog primary action awaits its RPC before closing (quick actions clos
 
 test("Send, Copy and Put in chat on a question close the dialog before the server answers", async () => {
   const source = await readFile(join(import.meta.dirname, "..", "client", "questions.tsx"), "utf8");
-  const quick = /const quick = \(action: "send" \| "copy" \| "chat"\) => \{([\s\S]*?)\n  \};/.exec(source);
+  const quick = /const quick = \(action: "send" \| "copy" \| "chat", pick\?: \{ choice: string; words\?: string \}\) => \{([\s\S]*?)\n  \};/.exec(source);
   assert.ok(quick, "QuestionBody has its quick send");
   assert.match(quick[1], /setPendingAnswer\([\s\S]*void runAction\([\s\S]*\}\);\s*onClose\?\.\(\); onAnswered\?\.\(\);$/, "the answer is kept, the work starts, and the dialog closes without awaiting it");
   assert.match(source, /onPress=\{\(\) => quick\("send"\)\}/);
-  assert.match(source, /onSubmit=\{\(\) => open \? quick\("send"\)/, "the keyboard's Send takes the same quick path");
+  assert.match(source, /onSubmit=\{\(\) => doneOnly \? done\(\) : open \? quick\("send"\)/, "the keyboard's Send takes the same quick path (Done on an action card, itself quick)");
+  assert.match(source, /const done = \(\) => quick\("send", \{ choice: TASK_DONE\.letter/, "Done is the same quick send");
 });
 
 test("one runAction and one toast path: every quick action, the row menu's included, uses client/toast-store.ts", async () => {

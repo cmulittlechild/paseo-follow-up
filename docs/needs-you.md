@@ -139,6 +139,9 @@
   clears) and collapses the card to `Done · <ask>`. The card collapses at once; `runUndoable` (`client/toast-store.ts`)
   holds the send for the toast's Undo window, since a sent message can't be taken back. With no ToastHost mounted it
   sends at once. Only Action briefs take it; reviews, decisions and failed turns are refused.
+  A brief that folded into a task's action card (`isDoneOnly`) answers that card instead: Done sends the card's A
+  through `follow.answer-question` (with the note, when one is open), the brief settles when the card does, and no
+  `Done: <ask>` goes out beside it. Such a card draws no option rows: Done, Add note and Reply instead (one-ask-one-item).
   During the window the composer pill reads Done and its Undo cancels the same toast (`client/done-windows.ts`, one
   window per agent); Ctrl+Z (Cmd+Z on a Mac) presses the showing toast's Undo, never inside a text field.
 - **`needs_you`** (`follow.needs-you`) is the agent's end-of-turn statement.
@@ -374,6 +377,8 @@ card beside a question list.
   questions' cards: the question's title, its Q chip and asked age, the brief's context, the options with Send, and
   what the agent does meanwhile as the footer. A brief that points at no open question keeps its own card, drawn bare
   as the block's first section (unless every question it points at is settled: it is resolving).
+  A `needs_you` that reports a blocked task points at that task's card even when the agent didn't name it: cards made
+  during the turn, named, or restated (`taskCardsFor`, `one-ask-one-item`), so the brief and the task never both ask.
 - **Every other open question** gets the same card. The first is open, the rest are headers that open in place.
 - **Rows** follow: every other decision (send, merge, retry, a check), never a question.
 - **One answer path.** A question card, the pill, the question dialog and the chat's brief card all answer a stored

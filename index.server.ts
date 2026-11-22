@@ -1626,7 +1626,7 @@ export default function contribute(server: PluginServerContext) {
       const mode = await questionMode();
       const linked = await store.mutate(state => {
         const w = findWorkspace(state, tracked.id);
-        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null);
+        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null, turn?.at ?? null);
         if (result.createdIds.length) syncTaskQuestions(w, Date.now());
         if (result.questionIds.length || sameTurn) changed(w);
         return { ...result, ask: foldedAsk(call.ask, result.questionIds, w.questions) };

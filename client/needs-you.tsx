@@ -261,7 +261,7 @@ function QuestionAsk({ workspace: w, questionId, context, theme, compact, now, o
   const state = meanwhile(w, q, pending);
   // "Q1 · title" (DESIGN.md): the chip leads so a long title wraps under itself, and the age stays on the right.
   const header = <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-    <View style={{ paddingTop: 2 }}><Icon name={questionState(q) === "stopped" ? "CirclePause" : "MessageCircleQuestion"} size={compact ? 16 : 14} color={c.statusWarning} /></View>
+    <View style={{ paddingTop: 2 }}><Icon name={questionState(q) === "stopped" ? "CirclePause" : q.need === "action" ? "Hand" : "MessageCircleQuestion"} size={compact ? 16 : 14} color={c.statusWarning} /></View>
     <View style={{ paddingTop: 1 }}><Chip theme={theme} label={q.id} color={c.foregroundMuted} /></View>
     <RichText accessibilityRole="header" numberOfLines={open ? undefined : 1} style={[open ? t.ask : t.label, { flex: 1, minWidth: 0 }]}>{q.title}</RichText>
     <Text style={[t.meta, { paddingTop: 1 }]}>{age(q.askedAt, now)}</Text>
