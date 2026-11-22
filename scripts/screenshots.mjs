@@ -269,6 +269,10 @@ if (process.argv[2] === "upstream" && process.argv[3] === "list") {
   console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : [])].map(up)));
   process.exit(0);
 }
+// The morning sweep, only for the Sources shots (over.linear): an empty queue, so the card reads Linear as fine. Other
+// shots seed their queue and must not have it replaced by a sweep.
+if (over.linear && tool === "list_issues") reply(JSON.stringify({ issues: [], hasNextPage: false }));
+if (over.linear && tool === "get_user") reply(JSON.stringify({ id: "user-alice", name: "alice" }));
 if (tool === "list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
 if (tool === "get_issue") {
   const i = issues[args.id];
@@ -2954,11 +2958,13 @@ async function morningBriefShots({ shoot, call, home }) {
   const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
   ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true });
+  await call("follow.sweep-queue", {});
   await states("sources", sourcesReady, { top: true });
   // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
   ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
   await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
   await setSources({});
   ranHealth = { health: {}, errors: {} };

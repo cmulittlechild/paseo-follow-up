@@ -75,7 +75,7 @@ test("health: turned off, quarantined, waiting for a sign-in, not connected, a f
   const row = (id: string) => rows.find(r => r.id === id)!;
   assert.deepEqual([row(`mcp:${FAKE_SERVERS.issues}`).health, row(`mcp:${FAKE_SERVERS.issues}`).detail], ["failed", "Linear didn't answer in time."]);
   assert.deepEqual([row(`mcp:${FAKE_SERVERS.calendar}`).health, row(`mcp:${FAKE_SERVERS.calendar}`).detail], ["off", "Off in the brief."]);
-  assert.deepEqual([row(`mcp:${FAKE_SERVERS.mail}`).on, row(`mcp:${FAKE_SERVERS.mail}`).detail], [false, "Off until you turn it on."], "mail is off by default");
+  assert.deepEqual([row(`mcp:${FAKE_SERVERS.mail}`).on, row(`mcp:${FAKE_SERVERS.mail}`).detail], [false, "Off by default: it reads your inbox."], "mail is off by default");
   assert.equal(row(`mcp:${FAKE_SERVERS.db}`).kind, "unknown"); assert.equal(row(`mcp:${FAKE_SERVERS.db}`).canToggle, false);
   assert.equal(row("gh").adds, "Review requests on your 2 gh accounts");
   assert.equal(row("paseo").canToggle, false);

@@ -162,8 +162,9 @@ shape and input schema.
 | Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |
 
 GitHub (every `gh` account's review requests) and Paseo (Follow-up's own state, always on) are built in. A server
-with read tools but no recipe shows as "no recipe yet"; one with no read tools as "can't read". The developer's own
-chat id is read from the chat tool's description at run time.
+with read tools but no recipe ("not a kind of source the brief can read yet") or with no read tools at all is listed
+under "more on mcpproxy the brief can't read", folded. The developer's own chat id is read from the chat tool's
+description at run time.
 
 **Only reads** (`sources-are-read-only`): `SourceDirectory.call` is the one place that runs `mcpproxy call`, always
 `tool-read`, with a tool from the read list, carrying only the inputs that tool's schema takes (`fitArgs`; a calendar's
@@ -172,7 +173,7 @@ any depth, else text lines).
 
 **Health per source:** `ok`; `sign-in` (the server waits for an OAuth sign-in: sign in through mcpproxy or the claude.ai
 connector, since a headless host can't open a browser); `failed` (not connected, quarantined, or the last read's one
-line, with Retry); `off` (turned off here, or in mcpproxy). The last read is the newest of the ranker's run (chat,
+line, with Retry; a sign-in row has Check again and the command to copy); `off` (turned off here, or in mcpproxy). The last read is the newest of the ranker's run (chat,
 calendar, mail, GitHub; `ranker.json` keeps each failed source's line), the sweep (Linear) and a Retry. A source turned
 off is skipped by the ranker (shown as off, not failed) and by Find it for me.
 

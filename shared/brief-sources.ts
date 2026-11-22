@@ -79,6 +79,8 @@ export type Recipe = {
   cost: string;
   /** Mail is off until turned on (it reads the most personal source). */
   defaultOn: boolean;
+  /** Why it starts off, for a recipe that does. */
+  offWhy?: string;
   roles: Record<string, Matcher>;
   /** The roles a server must have to match. */
   required: string[];
@@ -90,12 +92,12 @@ export type Recipe = {
  */
 export const RECIPES: readonly Recipe[] = [
   {
-    id: "linear", label: "Linear", adds: "Your issue queue, swept each workday morning", cost: "about 7 reads a morning", defaultOn: true,
+    id: "linear", label: "Linear", adds: "Your issue queue, swept each workday morning", cost: "about 7 lookups a morning", defaultOn: true,
     roles: { list_issues: { name: /^list_issues$/ }, get_issue: { name: /^get_issue$/ }, get_user: { name: /^get_user$/ }, list_teams: { name: /^list_teams$/ } },
     required: ["list_issues", "get_issue"],
   },
   {
-    id: "chat", label: "Chat", adds: "DMs and mentions over the window, and this week's plan link", cost: "2 reads, plus 1 for the plan", defaultOn: true,
+    id: "chat", label: "Chat", adds: "DMs and mentions in the chat window, and this week's plan link", cost: "2 lookups, plus 1 for the plan", defaultOn: true,
     roles: {
       messages: { name: /search/, not: /user|people|channel|file|emoji/, props: ["filters"], anyProps: ["keywords", "query", "natural_language_query"], prefer: /private|dm|all/ },
       channels: { name: /search_?channels|channels_?search/ },
@@ -105,12 +107,12 @@ export const RECIPES: readonly Recipe[] = [
     required: ["messages", "channels"],
   },
   {
-    id: "calendar", label: "Calendar", adds: "Today's meetings", cost: "1 read", defaultOn: true,
+    id: "calendar", label: "Calendar", adds: "Your meetings", cost: "1 lookup", defaultOn: true,
     roles: { events: { name: /(list|search)[-_]?events|events[-_]?(list|search)/, anyProps: ["timeMin", "time_min", "start", "startTime", "start_time", "from", "after"] } },
     required: ["events"],
   },
   {
-    id: "mail", label: "Mail", adds: "Unread mail addressed to you that asks something", cost: "1 read", defaultOn: false,
+    id: "mail", label: "Mail", adds: "Unread mail addressed to you that asks something", cost: "1 lookup", defaultOn: false, offWhy: "Off by default: it reads your inbox.",
     roles: { messages: { name: /(search|list)[-_]?(e?mails?|messages|threads)/, anyProps: ["query", "q", "search"], description: /e-?mail|inbox/i } },
     required: ["messages"],
   },
@@ -246,6 +248,8 @@ export const briefSourceSchema = z.object({
   health: z.enum(SOURCE_HEALTH),
   /** One short line: why it isn't ok, or what it read. */
   detail: z.string().nullable(),
+  /** A command that fixes it (a sign-in), shown to copy. */
+  command: z.string().nullable(),
   /** When the brief last read it (ok or not). */
   readAt: z.string().nullable(),
   readTools: z.number().int(),
@@ -256,11 +260,11 @@ export type BriefSource = z.infer<typeof briefSourceSchema>;
 export type SourceRead = { at: string; ok: boolean; error: string | null };
 
 /** An upstream's own health: turned off, quarantined, waiting for a sign-in, not connected, or fine. */
-export function upstreamHealth(u: Upstream | undefined): { health: SourceHealthState; detail: string | null } {
+export function upstreamHealth(u: Upstream | undefined): { health: SourceHealthState; detail: string | null; command?: string } {
   if (!u) return { health: "failed", detail: "mcpproxy no longer lists it." };
   if (!u.enabled) return { health: "off", detail: "Turned off in mcpproxy." };
   if (u.quarantined) return { health: "failed", detail: "Quarantined in mcpproxy: approve it there first." };
-  if (/login|auth/i.test(u.action ?? "") || (u.oauth && !u.authenticated && !u.connected)) return { health: "sign-in", detail: "Sign in through mcpproxy (mcpproxy auth login) or the claude.ai connector." };
+  if (/login|auth/i.test(u.action ?? "") || (u.oauth && !u.authenticated && !u.connected)) return { health: "sign-in", detail: "Needs a sign-in in mcpproxy, or connect it on claude.ai.", command: "mcpproxy auth login" };
   if (!u.connected) return { health: "failed", detail: u.summary ? `Not connected: ${u.summary}` : "Not connected." };
   return { health: "ok", detail: null };
 }
@@ -287,14 +291,14 @@ export function briefSources(input: {
     if (r) {
       const on = input.on[id] ?? r.defaultOn;
       const health = !on ? "off" : up.health !== "ok" ? up.health : read && !read.ok ? "failed" : "ok";
-      const detail = !on ? (input.on[id] === false ? "Off in the brief." : "Off until you turn it on.") : up.health !== "ok" ? up.detail : read && !read.ok ? read.error : null;
-      rows.push({ id, kind: "recipe", recipe: r.id, label: r.label, server, adds: r.adds, cost: r.cost, on, canToggle: true, health, detail, readAt: read?.at ?? null, readTools: m!.readTools });
+      const detail = !on ? (input.on[id] === false ? "Off in the brief." : r.offWhy ?? "Off until you turn it on.") : up.health !== "ok" ? up.detail : read && !read.ok ? read.error : null;
+      rows.push({ id, kind: "recipe", recipe: r.id, label: r.label, server, adds: r.adds, cost: r.cost, on, canToggle: true, health, detail, command: on && up.health === "sign-in" ? up.command ?? null : null, readAt: read?.at ?? null, readTools: m!.readTools });
     } else {
       const readTools = m?.readTools ?? 0;
       rows.push({
         id, kind: readTools ? "unknown" : "skipped", recipe: null, label: server, server,
-        adds: readTools ? "Follow-up has no recipe for its tools yet." : "No read-only tools, so the brief can't read it.",
-        cost: null, on: false, canToggle: false, health: up.health === "ok" ? "off" : up.health, detail: up.health === "ok" ? null : up.detail, readAt: null, readTools,
+        adds: readTools ? "Not a kind of source the brief can read yet." : "Only has tools that change things, so the brief stays away.",
+        cost: null, on: false, canToggle: false, health: up.health === "ok" ? "off" : up.health, detail: up.health === "ok" ? null : up.detail, command: null, readAt: null, readTools,
       });
     }
   }
@@ -302,14 +306,15 @@ export function briefSources(input: {
   const ghOn = input.on[GITHUB_SOURCE] ?? true;
   rows.push({
     id: GITHUB_SOURCE, kind: "builtin", recipe: null, label: "GitHub", server: null,
-    adds: (input.github.accounts ?? 0) > 1 ? `Review requests on your ${input.github.accounts} gh accounts` : "Review requests for you", cost: (input.github.accounts ?? 0) > 1 ? `1 read per account` : "1 read",
+    adds: (input.github.accounts ?? 0) > 1 ? `Review requests on your ${input.github.accounts} gh accounts` : "Review requests for you", cost: (input.github.accounts ?? 0) > 1 ? "1 lookup per account" : "1 lookup",
     on: ghOn, canToggle: true,
     // accounts null: gh didn't answer in time; the last read decides.
     health: !ghOn ? "off" : input.github.accounts === 0 ? "sign-in" : gh && !gh.ok ? "failed" : "ok",
-    detail: !ghOn ? "Off in the brief." : input.github.accounts === 0 ? "Sign in with gh auth login." : gh && !gh.ok ? gh.error : null,
+    detail: !ghOn ? "Off in the brief." : input.github.accounts === 0 ? "Needs a sign-in to the GitHub CLI." : gh && !gh.ok ? gh.error : null,
+    command: ghOn && input.github.accounts === 0 ? "gh auth login" : null,
     readAt: gh?.at ?? null, readTools: 0,
   });
-  rows.push({ id: PASEO_SOURCE, kind: "builtin", recipe: null, label: "Paseo", server: null, adds: "Your workspaces, their asks and PRs", cost: "none (Follow-up's own state)", on: true, canToggle: false, health: "ok", detail: null, readAt: null, readTools: 0 });
+  rows.push({ id: PASEO_SOURCE, kind: "builtin", recipe: null, label: "Paseo", server: null, adds: "Your workspaces, their asks and PRs", cost: "no outside calls", on: true, canToggle: false, health: "ok", detail: null, command: null, readAt: null, readTools: 0 });
   return rows;
 }
 

@@ -209,7 +209,7 @@ export function Switch({ theme, label, value, onChange, disabled = false, access
     accessibilityState={{ checked: value === null ? "mixed" : on, disabled: inactive }} accessibilityValue={{ text: value === null ? "Unknown" : on ? "On" : "Off" }}
     disabled={inactive} onPress={() => onChange(!on)} hitSlop={compact ? 0 : 4}
     style={({ pressed }) => ({ minHeight: compact ? 44 : 28, flexDirection: "row", alignItems: "center", gap: 8, opacity: inactive ? 0.5 : pressed ? 0.8 : 1 })}>
-    <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{label}</Text>
+    {label ? <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{label}</Text> : null}
     <View style={{ width: 30, height: 18, borderRadius: 9, backgroundColor: on ? c.accent : c.surface2, borderWidth: 1, borderColor: on ? c.accent : c.border, justifyContent: "center" }}>
       <View style={{ width: 12, height: 12, borderRadius: 6, marginLeft: value === null ? 8 : on ? 14 : 2, backgroundColor: on ? c.accentForeground : value === null ? c.border : c.foregroundMuted }} />
     </View>

@@ -349,11 +349,12 @@ export function planCard(v: Pick<PlanView, "mode" | "url" | "source" | "found" |
  * Settings → Morning brief's line under the tab: the plan and the sweep. Built from the same card the screen shows, so
  * the line never says "found" while the card says not found or failed.
  */
-export function briefSummary(v: BriefSettingsView, now = Date.now()): string {
+export function briefSummary(v: BriefSettingsView, now = Date.now(), sources?: { tone: "muted" | "warn"; text: string }): string {
   const card = planCard(v.plan, now, v.clock.timeZone);
   const plan = v.plan.source === "env" ? "plan set by the environment" : v.plan.mode === "off" ? "no plan"
     : v.plan.mode === "link" ? (v.plan.source === "found" ? "a newer plan found" : "plan from a link")
     : !card || card.tone === "quiet" ? (card?.title.startsWith("Pick") ? "pick where the plan is posted" : "looking for the plan")
     : card.tone === "ok" ? "this week's plan found" : card.tone === "warn" ? (card.inUse ? "using last week's plan" : "no plan found") : !card.retry ? "no chat search connected" : card.inUse ? "plan search failed, using last week's" : "plan search failed";
-  return `Sweeps ${v.queue.sweepAt} on workdays · ${plan}`;
+  // A source that failed or needs a sign-in leads the line (Settings → Morning brief → Sources says which).
+  return `${sources?.tone === "warn" ? `${sources.text} · ` : ""}Sweeps ${v.queue.sweepAt} on workdays · ${plan}`;
 }

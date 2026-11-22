@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
-import { Button, Switch, errorText, text, type Theme } from "./kit";
-import { tint, withAlpha } from "./theme";
+import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
+import { raised, tint, withAlpha } from "./theme";
 import { briefChatSearchRpc, briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
 import type { BriefSource, SourcesChange, SourcesView } from "../shared/brief-sources";
 import { QUEUE_STATE_TYPES, WEEKDAYS, defaultWorkdays, isZone, type Weekday } from "../shared/linear-queue";
@@ -61,51 +61,95 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
   const used = (data?.sources ?? []).filter(r => r.kind === "recipe" || r.kind === "builtin");
   const notRead = (data?.sources ?? []).filter(r => r.kind === "unknown" || r.kind === "skipped");
   const pending = change.isPending ? change.variables : null;
-  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. Agents can turn sources on and off too.">
+  const [showNotRead, setShowNotRead] = useState(false);
+  const checking = !!data?.checking || !!pending?.check;
+  const copy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
+  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. A lookup is one read-only call. Agents can turn sources on and off too.">
     {query.isPending && <ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label="Couldn't read the sources" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
-    {data?.error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning }]}>{data.error}</Text>}
-    {data && <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface1, overflow: "hidden" }}>
-      {used.map((row, i) => <SourceRow key={row.id} row={row} first={i === 0} theme={theme} compact={compact}
+    {/* The section's one line: "5 sources read", or what failed, so a broken source shows above the fold. */}
+    {data && (data.error || data.line.tone === "warn"
+      ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} />
+      : <Text style={t.meta}>{data.line.text}</Text>)}
+    {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
+      {used.map((row, i) => <SourceRow key={row.id} row={row} first={i === 0} theme={theme} compact={compact} checking={checking}
         busy={data.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
-        onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} />)}
-    </View>}
-    {notRead.length > 0 && <View style={{ gap: 4 }}>
-      <Text style={t.label}>Not read</Text>
-      {notRead.map(row => <Text key={row.id} style={t.meta}>{`${row.label}: ${row.detail ?? row.adds}`}</Text>)}
-    </View>}
-    {data && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <Button title="Check sources again" icon="RotateCcw" theme={theme} compact={compact} loading={data.checking || !!pending?.check} onPress={() => change.mutate({ check: true })} />
-      {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${new Date(data.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</Text>}
+        onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} onCheck={() => change.mutate({ check: true })} onCopy={copy} />)}
     </View>}
     <SettingsCard>
-      <SettingsSelect label="Chat window" hint="DMs and mentions the brief reads." value={String(view.queue.chatHours)} disabled={windows.isPending}
+      <SettingsSelect label="Chat window" hint="How far back the brief reads DMs and mentions." value={String(view.queue.chatHours)} disabled={windows.isPending}
         options={[24, 48, 72].map(h => ({ value: String(h), label: `Last ${h} h` }))} onValueChange={v => windows.mutate({ chatHours: Number(v) as 24 | 48 | 72 })} />
-      <SettingsSelect label="Calendar" hint="Meetings the brief reads." value={String(view.queue.calendarDays)} disabled={windows.isPending}
+      <SettingsSelect label="Calendar" hint="Which meetings the brief reads." value={String(view.queue.calendarDays)} disabled={windows.isPending}
         options={[{ value: "1", label: "Today" }, { value: "2", label: "Today and tomorrow" }]} onValueChange={v => windows.mutate({ calendarDays: Number(v) as 1 | 2 })} />
     </SettingsCard>
+    {notRead.length > 0 && <View style={{ gap: 6 }}>
+      <Pressable accessibilityRole="button" aria-expanded={showNotRead} accessibilityState={{ expanded: showNotRead }} onPress={() => setShowNotRead(v => !v)}
+        style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 24 }}>
+        <Text style={t.meta}>{`${notRead.length} more on mcpproxy the brief can't read`}</Text>
+        <Icon name={showNotRead ? "ChevronUp" : "ChevronDown"} size={13} color={c.foregroundMuted} />
+      </Pressable>
+      {showNotRead && notRead.map(row => <View key={row.id} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
+        <Text style={[t.meta, MONO, { color: c.foreground }]}>{row.label}</Text>
+        <Text style={t.meta}>{row.detail ?? row.adds}</Text>
+      </View>)}
+    </View>}
+    {data && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <Button title="Check sources again" icon="RotateCcw" theme={theme} compact={compact} loading={checking} onPress={() => change.mutate({ check: true })} />
+      {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${clock(data.checkedAt)}`}</Text>}
+    </View>}
   </SettingsSection>;
 }
 
-/** One source: healthy ones show no colour; one that failed or needs a sign-in says why, in amber, with Retry. */
-function SourceRow({ row, first, busy, onToggle, onRetry, theme, compact }: { row: BriefSource; first: boolean; busy: boolean; onToggle: (on: boolean) => void; onRetry: () => void; theme: Theme; compact: boolean }) {
+const MONO = { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11 } as const;
+/** 24-hour time, like the sweep's "07:00". */
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** An amber line: the icon stays beside the first line, the text wraps under itself, an action follows it. */
+function Warning({ text: line, action, theme, compact }: { text: string; action?: ReactNode; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name="TriangleAlert" size={12} color={c.statusWarning} /></View>
+    <View style={{ flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8 }}>
+      <Text style={[t.meta, { color: c.statusWarning, flexShrink: 1 }]}>{line}</Text>
+      {action}
+    </View>
+  </View>;
+}
+
+/**
+ * One source: healthy ones show no colour; one that failed says why in amber with Retry, one that needs a sign-in
+ * gives the command to copy and Check again.
+ */
+function SourceRow({ row, first, busy, checking, onToggle, onRetry, onCheck, onCopy, theme, compact }: {
+  row: BriefSource; first: boolean; busy: boolean; checking: boolean; onToggle: (on: boolean) => void; onRetry: () => void; onCheck: () => void; onCopy: (command: string) => void; theme: Theme; compact: boolean;
+}) {
   const c = theme.colors; const t = text(c, compact);
   const bad = row.on && (row.health === "failed" || row.health === "sign-in");
+  const meta = [row.adds, row.cost, row.on && row.health === "ok" && row.readAt ? `read ${clock(row.readAt)}` : null].filter(Boolean).join(" · ");
+  const action = (title: string, onPress: () => void, loading: boolean) => <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} hitSlop={compact ? 0 : 6}
+    style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: compact ? 44 : 18, opacity: loading ? 0.6 : 1 }}>
+    {loading ? <ActivityIndicator size="small" color={c.accent} /> : <Icon name="RotateCcw" size={12} color={c.accent} />}
+    <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>{title}</Text>
+  </Pressable>;
   return <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: compact ? 14 : 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
         <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }]}>{row.label}</Text>
-        {row.server && <Text style={[t.meta, { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11 }]}>{row.server}</Text>}
+        {/* The mcpproxy server it reads, unless it says the same as the label. */}
+        {row.server && row.server.toLowerCase() !== row.label.toLowerCase() && <Text style={[t.meta, MONO]}>{row.server}</Text>}
       </View>
-      <Text style={t.meta}>{row.cost ? `${row.adds} · ${row.cost}` : row.adds}</Text>
-      {bad && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-        <Icon name="TriangleAlert" size={12} color={c.statusWarning} />
-        <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, flexShrink: 1 }]}>{row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")}</Text>
-        {row.health === "failed" && <Button title="Retry" kind="ghost" icon="RotateCcw" theme={theme} compact={compact} loading={busy} onPress={onRetry} />}
+      <Text style={t.meta}>{meta}</Text>
+      {bad && <Warning text={row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")} theme={theme} compact={compact}
+        action={row.health === "failed" ? action("Retry", onRetry, busy) : action("Check again", onCheck, checking)} />}
+      {bad && row.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", marginLeft: 18, paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
+        <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: MONO.fontFamily }}>{row.command}</Text>
+        <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.command}`} onPress={() => onCopy(row.command!)} />
       </View>}
       {!row.on && row.detail && <Text style={t.meta}>{row.detail}</Text>}
     </View>
-    {row.canToggle && <Switch theme={theme} compact={compact} label={row.on ? "On" : "Off"} accessibilityLabel={`Read ${row.label} in the brief`} value={row.on} disabled={busy} onChange={onToggle} />}
+    {row.canToggle
+      ? <Switch theme={theme} compact={compact} label={compact ? "" : row.on ? "On" : "Off"} accessibilityLabel={`Read ${row.label} in the brief`} value={row.on} disabled={busy} onChange={onToggle} />
+      : <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Always</Text>}
   </View>;
 }
 
