@@ -12,6 +12,7 @@ import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
 import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
 import { z } from "zod";
+import { actionChangeSchema, dispatchActionSchema, dispatchInputSchema, dispatchRecordSchema, settingsChangeSchema } from "./dispatch";
 import { inboxRowSchema } from "./inbox";
 import { briefSchema } from "./brief";
 import { idSchema, textSchema, workspaceSchema } from "./model";
@@ -306,6 +307,18 @@ export const reportLinkRpc = defineRpc({ name: "follow.report-issue-link", input
  */
 const followLineSchema = z.object({ question: z.object({ id: z.string(), title: z.string() }).nullable(),
   chips: z.array(z.object({ text: z.string(), tone: z.enum(["success", "danger", "warning", "merged", "muted"]) })), line: z.string().nullable() });
+// New (shared/dispatch.ts, server/dispatch.ts): start work from a Linear issue, a GitHub issue or PR, a link or the
+// developer's words. The dispatch records and replies; the workspace and agent start after the reply.
+const dispatchIdInput = z.strictObject({ dispatchId: idSchema });
+export const dispatchSourcesRpc = defineRpc({ name: "follow.dispatch-sources", input: z.strictObject({ fresh: z.boolean().optional(), query: z.string().trim().min(1).max(200).optional() }), output: z.unknown() });
+export const dispatchPreviewRpc = defineRpc({ name: "follow.dispatch-preview", input: dispatchInputSchema, output: z.unknown() });
+export const dispatchRpc = defineRpc({ name: "follow.dispatch", input: dispatchInputSchema.extend({ expectHash: z.string().max(40).optional() }), output: z.unknown() });
+export const dispatchRecordsRpc = defineRpc({ name: "follow.dispatch-records", input: z.strictObject({}), output: z.object({ records: z.array(dispatchRecordSchema) }) });
+export const dispatchUndoRpc = defineRpc({ name: "follow.dispatch-undo", input: dispatchIdInput, output: dispatchRecordSchema });
+export const dispatchActionsRpc = defineRpc({ name: "follow.dispatch-actions", input: z.strictObject({}), output: z.object({ actions: z.array(dispatchActionSchema), edited: z.boolean() }) });
+export const setDispatchActionsRpc = defineRpc({ name: "follow.set-dispatch-actions", input: z.strictObject({ change: actionChangeSchema }), output: z.object({ actions: z.array(dispatchActionSchema) }) });
+export const dispatchSettingsRpc = defineRpc({ name: "follow.dispatch-settings", input: z.strictObject({}), output: z.unknown() });
+export const setDispatchSettingsRpc = defineRpc({ name: "follow.set-dispatch-settings", input: settingsChangeSchema, output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),
   output: z.object({

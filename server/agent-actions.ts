@@ -27,6 +27,11 @@ import { DISPLAY_KEYS, displayPreferences, HOME_DETAIL_DEFAULT, CATCH_UP_RAIL_DE
 import { DEFAULT_SEARCH_SHORTCUT, SEARCH_SHORTCUTS } from "../shared/search-key";
 import { DEFAULT_SORT, SORT_MODES } from "../shared/sort";
 import { SCALE } from "../shared/scale";
+import { dispatchInputSchema } from "../shared/dispatch";
+import type { DispatchInput, DispatchPlan } from "./dispatch";
+
+type DispatchToolInput = Partial<DispatchInput> & { dry_run?: boolean; planId?: string; confirm?: boolean };
+type DispatchPreview = DispatchPlan;
 
 /**
  * Agent parity: every action the developer can click in Follow-up has a tool that runs the same server path.
@@ -49,14 +54,14 @@ export function rowPrs(state: State, r: InboxRow, now: number): PrLink[] {
   return [...out.values()];
 }
 
-export const AGENT_TOOLS = ["make_main_agent", "list_prs", "add_reviewers", "merge", "enable_merge_when_ready", "disable_merge_when_ready", "send_repairs", "set_auto_send", "clear_hold", "retry_batch", "track", "inbox_list", "sign_off", "snooze", "snooze_workspace", "set_finish_flags", "set_priorities", "workspace_about", "agent_settings", "follow_settings", "set_follow_settings", "project_settings", "set_project_tracking", "pr_workflow", "set_pr_workflow", "reviewer_settings", "reviewer_suggestions", "save_reviewers", "set_agent_setting", "set_wait_for_jobs", "onboarding_status", "onboarding_checks", "set_onboarding", "priorities", "rank_status", "rerank_priorities", "usage", "overseer_status", "overseer_start", "overseer_restart", "overseer_ask", "inbox_brief", "brief_action", "queue_list", "queue_action", "inbox_act", "answer_question", "dismiss_question", "dismiss_item", "run_recovery", "refresh", "set_workspace_spec", "set_task_trigger", "pr_controls", "browser_status", "trust_bypass_status", "release_notes", "link_items", "set_linked_items", "updates_status", "check_updates", "set_updates", "install_update", "display_settings", "set_display", "retry_move", "report_issue", "report_send", "ai_rename", "catch_up_deck", "context_requests", "ask_context"] as const;
+export const AGENT_TOOLS = ["make_main_agent", "list_prs", "add_reviewers", "merge", "enable_merge_when_ready", "disable_merge_when_ready", "send_repairs", "set_auto_send", "clear_hold", "retry_batch", "track", "inbox_list", "sign_off", "snooze", "snooze_workspace", "set_finish_flags", "set_priorities", "workspace_about", "agent_settings", "follow_settings", "set_follow_settings", "project_settings", "set_project_tracking", "pr_workflow", "set_pr_workflow", "reviewer_settings", "reviewer_suggestions", "save_reviewers", "set_agent_setting", "set_wait_for_jobs", "onboarding_status", "onboarding_checks", "set_onboarding", "priorities", "rank_status", "rerank_priorities", "usage", "overseer_status", "overseer_start", "overseer_restart", "overseer_ask", "inbox_brief", "brief_action", "queue_list", "queue_action", "inbox_act", "answer_question", "dismiss_question", "dismiss_item", "run_recovery", "refresh", "set_workspace_spec", "set_task_trigger", "pr_controls", "browser_status", "trust_bypass_status", "release_notes", "link_items", "set_linked_items", "updates_status", "check_updates", "set_updates", "install_update", "display_settings", "set_display", "retry_move", "report_issue", "report_send", "ai_rename", "catch_up_deck", "context_requests", "ask_context", "dispatch", "dispatch_sources", "dispatch_records", "dispatch_undo", "dispatch_actions", "set_dispatch_actions", "dispatch_settings", "set_dispatch_settings"] as const;
 export type AgentTool = typeof AGENT_TOOLS[number];
 /** Tools that only read. */
 export const READ_ONLY_TOOLS: readonly AgentTool[] = ["list_prs", "inbox_list", "workspace_about", "agent_settings", "display_settings", ...RPC_TOOLS.filter(t => t.kind === "read").map(t => t.name as AgentTool)];
 /** Tools that can't be undone from Follow-up. */
 export const DESTRUCTIVE_TOOLS: readonly AgentTool[] = ["merge"];
 /** Tools that plan first and run only with `confirm: true` and the plan's id. */
-export const PLANNED_TOOLS: readonly AgentTool[] = ["make_main_agent", "add_reviewers", "merge", "enable_merge_when_ready", "disable_merge_when_ready", "sign_off", "snooze", "snooze_workspace", "set_finish_flags", "set_priorities", "set_display", "ai_rename", ...RPC_TOOLS.filter(t => t.kind === "planned").map(t => t.name as AgentTool)];
+export const PLANNED_TOOLS: readonly AgentTool[] = ["make_main_agent", "add_reviewers", "merge", "enable_merge_when_ready", "disable_merge_when_ready", "sign_off", "snooze", "snooze_workspace", "set_finish_flags", "set_priorities", "set_display", "ai_rename", "dispatch", ...RPC_TOOLS.filter(t => t.kind === "planned").map(t => t.name as AgentTool)];
 /** Tools with a dry run and confirm of their own (not AgentActions' plans): report_issue (server/report-issue/). */
 export const SELF_PLANNED_TOOLS: readonly AgentTool[] = ["report_issue"];
 const RPC_TOOL = new Map<string, RpcTool>(RPC_TOOLS.map(t => [t.name, t]));
@@ -173,6 +178,7 @@ export const TOOL_INPUT = {
   agent_settings: z.strictObject({}),
   sign_off: z.strictObject({ agentIds: agentIds.optional(), ...confirm }),
   snooze: z.strictObject({ agentIds: agentIds.optional(), until: z.string().trim().min(1).max(200).optional(), ...confirm }),
+  dispatch: dispatchInputSchema.partial().extend({ dry_run: z.boolean().optional(), ...confirm }),
   ai_rename: z.strictObject({ workspaceId: id.optional(), title: z.string().trim().min(1).max(300).optional(), undo: z.boolean().optional(), ...confirm }),
   snooze_workspace: z.strictObject({ workspace: id.optional(), until: z.string().trim().min(1).max(200).optional(), bring_back: z.boolean().optional(), ...confirm }),
   set_finish_flags: z.strictObject({ agentIds: agentIds.optional(), value: z.boolean().optional(), ...confirm }),
@@ -244,6 +250,7 @@ export class AgentActions {
       case "set_auto_send": return this.control(caller, tool, args.task ? { workspaceId: args.workspace, taskAuto: { key: args.task, auto: args.value } } : { workspaceId: args.workspace, enable_auto_sends: args.value });
       case "clear_hold": return this.control(caller, tool, { workspaceId: args.workspace, clearHold: true });
       case "ai_rename": return this.planRename(caller, args as { workspaceId?: string; title?: string; undo?: boolean });
+      case "dispatch": return this.planDispatch(caller, args as DispatchToolInput);
       case "snooze_workspace": return this.planWorkspaceSnooze(caller, args as { workspace?: string; until?: string; bring_back?: boolean });
       case "retry_batch": return this.control(caller, tool, args.task ? { workspaceId: args.workspace, retryTask: args.task } : { workspaceId: args.workspace, retryBatchId: args.batchId });
       case "track": {
@@ -460,6 +467,31 @@ export class AgentActions {
     const planId = this.plan(caller, "ai_rename", async () => { const out = await this.d.rpc!.call("follow.rename-workspace", input, actor); await this.note(caller, caller, "ai_rename"); return out; });
     return { dryRun: true, planId, workspaceId, from: status.current, to, ...(status.last && !args.undo ? { undoable: status.last } : {}),
       next: `Only when the developer asked for this: call ai_rename with confirm=true and planId=${planId} within 5 minutes. It can be undone for 24 h with undo=true.` };
+  }
+
+  /**
+   * New's dispatch (server/dispatch.ts): the dry run is the dialog's preview (project and why, base, branch, agent, the
+   * exact instructions); confirm starts exactly that, refused if the instructions changed since
+   * (dispatch-needs-a-click-or-a-confirmed-plan). The plan freezes the resolved project, so a rule changed in between
+   * can't move the work.
+   */
+  private async planDispatch(caller: string, args: DispatchToolInput) {
+    if (!this.d.rpc) throw new Error("dispatch isn't available in this Follow-up.");
+    if (!args.source?.trim()) throw new Error("dispatch: give source (a Linear key or link, a GitHub issue or PR link, another link, or the developer's words for the work).");
+    const actor = agentActor(caller, await this.d.agentTitle?.(caller).catch(() => null));
+    const { dry_run: _dry, planId: _p, confirm: _c, ...input } = args;
+    const plan = await this.d.rpc.call("follow.dispatch-preview", input, actor) as DispatchPreview;
+    const frozen = { ...input, ...(plan.where.projectId ? { projectId: plan.where.projectId } : {}), expectHash: plan.hash };
+    const planId = plan.blockers.length ? null : this.plan(caller, "dispatch", async () => { const out = await this.d.rpc!.call("follow.dispatch", frozen, actor); await this.note(caller, caller, "dispatch"); return out; }, 10 * 60_000);
+    return {
+      dryRun: true, planId, blockers: plan.blockers,
+      source: { kind: plan.source.kind, key: plan.source.key, title: plan.source.title, read: plan.source.read, state: plan.source.state },
+      action: plan.action, actions: plan.actions.map(a => a.id), project: plan.where.projectName, projectId: plan.where.projectId, why: plan.where.reason,
+      ...(plan.where.how === "ambiguous" ? { candidates: plan.where.candidates } : {}),
+      workspace: plan.workspace, base: plan.base, branch: plan.branch, title: plan.title, agent: plan.agent, instructions: plan.instructions,
+      ...(plan.existing ? { existing: plan.existing, note: `${plan.existing.title} already has this. Open it instead unless the developer wants a second workspace.` } : {}),
+      next: planId ? `Only when the developer asked for this: call dispatch with confirm=true and planId=${planId} within 10 minutes. It starts in the background; dispatch_records shows how it went, and dispatch_undo can undo it for 10 minutes.` : "Blocked: resolve the blockers (a projectId, an actionId) and run the dry run again.",
+    };
   }
 
   private async planWorkspaceSnooze(caller: string, args: { workspace?: string; until?: string; bring_back?: boolean }) {

@@ -89,6 +89,9 @@ import { Overseer, OVERSEER_TOOLS, type OverseerPaseo, type OverseerTool, provid
 import { OVERSEER_LABEL, isOverseerAgent } from "./shared/overseer";
 import { withDaemon } from "./server/daemon";
 import { RenameService, RenameStore, renameDaemon } from "./server/rename";
+import { DispatchService, DispatchStore, type ActionChange, type DispatchPaseo, type DispatchProject } from "./server/dispatch";
+import { LinearIssues } from "./server/linear-issues";
+import { teamOf } from "./shared/linked";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostFeature, type ServerInfo } from "./server/host-features";
@@ -1173,6 +1176,115 @@ export default function contribute(server: PluginServerContext) {
     if (!(OVERSEER_TOOLS as readonly string[]).includes(tool)) throw new Error(`Unknown Overseer tool ${tool}.`);
     return overseer!.act(paseo as unknown as OverseerPaseo, agentId, tool as OverseerTool, args);
   });
+  // New (server/dispatch.ts, docs/dispatch.md): start work from a Linear issue, a GitHub issue or PR, a link or the
+  // developer's words. Linear is read through mcpproxy only when New asks (new-reads-nothing-while-closed).
+  const linearIssues = new LinearIssues(undefined, Date.now);
+  const baseCache = new Map<string, { at: number; value: Promise<string | null> }>();
+  const dispatchProjects = async (): Promise<DispatchProject[]> => {
+    const rows = await gateway.directory.projects(60_000);
+    return rows.map(p => ({ id: p.projectId, name: p.projectCustomName || p.projectDisplayName, repo: p.projectKind === "git" ? projectRepo(p.projectKey) : null, worktree: p.projectKind === "git", path: p.projectRootPath }));
+  };
+  const linkedOf = async () => Object.entries((await linkedStore.read()).workspaces);
+  const dispatcher = new DispatchService({
+    store: new DispatchStore(directory),
+    linear: linearIssues,
+    github: async (kind, repo, number) => {
+      const j = await githubApi().rest(repo, `repos/${repo}/${kind === "pr" ? "pulls" : "issues"}/${number}`) as { title?: unknown; body?: unknown; state?: unknown; merged_at?: unknown } | null;
+      if (!j || typeof j.title !== "string") return null;
+      return { title: j.title, body: typeof j.body === "string" ? j.body : null, state: j.merged_at ? "merged" : typeof j.state === "string" ? j.state : null };
+    },
+    projects: dispatchProjects,
+    // Team → project → workspaces with an issue of that team linked: where the developer already starts that team's work.
+    learned: async () => {
+      const rows = await gateway.directory.read().catch(() => null);
+      const projectOf = new Map((rows?.workspaces ?? []).map(w => [w.id, (w as { projectId?: string | null }).projectId ?? null]));
+      const out: Record<string, Record<string, number>> = {};
+      for (const [workspaceId, links] of await linkedOf()) {
+        const projectId = projectOf.get(workspaceId);
+        if (!projectId) continue;
+        for (const team of new Set(links.items.filter(i => i.kind === "linear").map(i => teamOf(i.key)))) {
+          const t = out[team] ??= {};
+          t[projectId] = (t[projectId] ?? 0) + 1;
+        }
+      }
+      return out;
+    },
+    existing: async source => {
+      const state = await store.snapshot();
+      const live = (id: string) => state.workspaces.find(w => w.id === id && !w.archived) ?? null;
+      if (source.kind === "pr" && source.repo && source.number) {
+        const owner = prOwner(state, source.repo, source.number);
+        const w = owner ? live(owner.workspaceId) : null;
+        return w ? { workspaceId: w.id, title: w.title, state: "tracked" } : null;
+      }
+      if (source.kind !== "linear" || !source.key) return null;
+      for (const [workspaceId, links] of await linkedOf()) {
+        if (!links.items.some(i => i.kind === "linear" && i.key === source.key)) continue;
+        const w = live(workspaceId);
+        if (w) return { workspaceId: w.id, title: w.title, state: w.enable_tracking ? "tracked" : "untracked" };
+      }
+      return null;
+    },
+    // The repository's default branch (origin/HEAD), read from the checkout once an hour.
+    defaultBase: async projectId => {
+      const hit = baseCache.get(projectId);
+      if (hit && Date.now() - hit.at < 3_600_000) return hit.value;
+      const value = (async () => {
+        const project = (await dispatchProjects()).find(p => p.id === projectId);
+        if (!project?.worktree) return null;
+        const out = await new Promise<string>((resolve, reject) => execFile("git", ["-C", project.path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { timeout: 5_000 }, (error, stdout) => error ? reject(error) : resolve(String(stdout))));
+        return out.trim().replace(/^origin\//, "") || null;
+      })().catch(() => null);
+      baseCache.set(projectId, { at: Date.now(), value });
+      return value;
+    },
+    // The action's own agent, else New's default: the Overseer's agent (Settings → Agents) until New has its own row.
+    agent: async action => {
+      const role = await agentSettings.role("overseer").catch(() => null);
+      const provider = action.agent?.provider ?? role?.provider?.split("/")[0] ?? "claude";
+      const model = action.agent?.model ?? (action.agent?.provider ? null : role?.model ?? null);
+      const mode = action.agent?.mode ?? (action.agent?.provider ? null : role?.mode ?? null) ?? (provider === "claude" ? "bypassPermissions" : null);
+      const thinking = action.agent?.thinking ?? (action.agent?.provider ? null : role?.thinking ?? null);
+      const selection = model ? `${provider}/${model}` : api ? await providerModel(api as unknown as OverseerPaseo, provider) : provider;
+      return { config: { provider: selection, ...(mode ? { modeId: mode } : {}), ...(thinking ? { thinkingOptionId: thinking } : {}) }, label: model ? `${provider} ${model}` : provider.charAt(0).toUpperCase() + provider.slice(1) };
+    },
+    multiplicity: () => hostMultiplicity(),
+    paseo: async () => api ? {
+      workspaces: {
+        create: o => (api!.workspaces as unknown as DispatchPaseo["workspaces"]).create(o),
+        archive: id => (api!.workspaces as unknown as { ref(id: string): { archive(): Promise<unknown> } }).ref(id).archive(),
+      },
+    } : null,
+    // The Overseer's own dispatch needs the developer's ask or approval, as start_workspace always did.
+    gate: async actor => {
+      if (actor.kind !== "agent" || !overseer) return null;
+      const s = await overseer.state().catch(() => null);
+      if (!s?.agentId || s.agentId !== actor.agentId || !api) return null;
+      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo);
+    },
+    afterCreate: async (record, source) => {
+      if (!record.workspaceId) return;
+      const ref = source.kind === "linear" ? source.key : source.url;
+      if (ref) await linked.link(record.workspaceId, ref, { origin: "manual", by: record.by, title: source.title || null }).catch(() => undefined);
+    },
+    onChange: () => feeds.home(),
+    log: line => console.warn(`[follow-up] ${line}`),
+  });
+  void ready.then(() => { if (!stopped && !loadError) return dispatcher.start(); }).catch(() => undefined);
+  handle(rpc.dispatchSourcesRpc, async ({ fresh, query }) => { await requireReady(); return dispatcher.sources({ fresh, query }); });
+  handle(rpc.dispatchPreviewRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.preview(input, actorOf(context)); });
+  handle(rpc.dispatchRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.dispatch(input, actorOf(context)); });
+  handle(rpc.dispatchRecordsRpc, async () => { await requireReady(); return { records: await dispatcher.records() }; });
+  handle(rpc.dispatchUndoRpc, async ({ dispatchId }, context) => { await requireReady(); seen(context.paseo); return dispatcher.undo(dispatchId); });
+  handle(rpc.dispatchActionsRpc, async () => { await requireReady(); return dispatcher.actions(); });
+  handle(rpc.setDispatchActionsRpc, async ({ change }, context) => { await requireReady(); return dispatcher.setActions(change as ActionChange, actorOf(context)); });
+  handle(rpc.dispatchSettingsRpc, async () => { await requireReady(); return dispatcher.settings(); });
+  handle(rpc.setDispatchSettingsRpc, async input => { await requireReady(); return dispatcher.setSettings(input); });
+  overseer!.dispatcher = {
+    preview: (input, actor) => dispatcher.preview(input as never, actor),
+    dispatch: (input, actor) => dispatcher.dispatch(input as never, actor),
+    projects: dispatchProjects,
+  };
   // Summary: small model jobs through the shared runner, cached per workspace in about.json.
   const aiJobs = new AiJobs({ concurrency: 1, logPath: join(directory, "ai-jobs.jsonl"), generic: jobAgentRunner({ paseo: () => api as unknown as JobPaseo | null, directory }) });
   // The ranker behind Home's Priority sort (1.4.0-beta.0). Its provider, model and limits come from the ranker role
@@ -1683,7 +1795,7 @@ export default function contribute(server: PluginServerContext) {
   const stop = () => stopping ??= (async () => {
     process.off("disconnect", hostGone);
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); dispatcher.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.

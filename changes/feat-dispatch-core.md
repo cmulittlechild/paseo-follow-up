@@ -1,0 +1,2 @@
+- Agents can start new work for you from a Linear issue, a GitHub issue or PR, a link or a sentence: they show what they would start and where, and start it only once you agree. A start can be undone for 10 minutes.
+- The Overseer now starts new workspaces the same way, so it picks the project your team's work usually goes to and says why.
