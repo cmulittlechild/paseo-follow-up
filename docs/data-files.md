@@ -26,6 +26,7 @@ Everything lives in `$PASEO_HOME/plugin-data/follow-up/`.
 | `queue.json` | `server/message-queue.ts` | The message queue: every message to an agent waiting, in flight or retrying (answers today), with its state, retry time, last envelope messageId and every messageId it went out under (`sentIds`); the newest settled ones without text; the one-time moves done (`migrations`). Saved before each send. |
 | `agents.json` | `server/agent-settings.ts` | Settings → Agents: per-role provider, model, effort and mode, plus `enable_wait`. |
 | `reviewers.json` | `server/reviewer-config.ts` | Reviewer lists per repository, plus a default. |
+| `check-watches.json` | `server/check-watches.ts` | Wait for checks: each agent's open watches (PR, when it began and ends, the head it saw checks running on). One-shot, so it stays small (at most `SCALE.perWorkspace` per agent). Saved behind the reply; losing it costs the agent a call ([wait-for-checks.md](wait-for-checks.md)). |
 | `context.json` | `server/context-requests.ts` | Catch up's More context asks and their answers: at most 50, none older than 24 h. Saved behind the reply; losing it costs a re-ask. |
 | `pr-workflow.json` | `server/pr-workflow.ts` | Graphite or GitHub, the default and per repository, merge methods, the review-fix command. |
 | `priorities.json`, `ranker.json` | `server/priorities.ts`, `server/ranker.ts` | Home's Priority sort, the ranker's input hash, run count, source health and plan summary. |

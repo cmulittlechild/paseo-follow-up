@@ -23,9 +23,9 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | Session | Tools |
 | --- | --- |
 | Tracked main agent | Core tools (below), the action tools, and `needs_you` while the inbox is on. |
-| Contributor (another root agent of a tracked workspace) | `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, and `make_main_agent` (its claim rules apply). |
+| Contributor (another root agent of a tracked workspace) | `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, `wait_for_checks`, and `make_main_agent` (its claim rules apply). |
 | Recovery agent | Core tools except `declare_done`, `sync_workspace`, the question tools, `set_spec`, `link_item` and `unlink_item`. No action tools. |
-| Untracked root agent | The action tools, and `needs_you` while the inbox is on. |
+| Untracked root agent | The action tools, `wait_for_checks` (it names where else to wait), and `needs_you` while the inbox is on. |
 | Overseer | `needs_you`, the action tools and the Overseer tools. |
 | Subagents | None (Wait still applies: [wait.md](wait.md)). |
 | Any interactive Claude session | `wait_prepare_job`, `wait_for_job`, `wait_get_job` while Wait is on. |
@@ -44,13 +44,14 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | `enroll_workspace` | `follow.enroll` | Refines the goal of a workspace the developer activated. |
 | `register_pr` | `follow.register-pr` | Registers a submitted PR and its stack and parent. `agentMerges: true` marks a PR the agent merges itself: Follow-up never asks the developer to review or merge it. In a No review repository every PR counts as `agentMerges` unless the agent sets it false ([review mode](prs.md#review-mode)). |
 | `exclude_stack` | `follow.exclude-stack` | Removes a wrongly registered stack, with an audit (`server/exclusions.ts`). |
-| `update_obligation` | `follow.obligation` | Creates or updates a task (an obligation), with an optional trigger and communication receipt. `status: working` records the caller as the task's agent, or `workingAgentId` (another agent Paseo knows). `ask`, with `blocked`, is the question the developer must answer; only then does the task ask them. |
+| `update_obligation` | `follow.obligation` | Creates or updates a task (an obligation), with an optional trigger and communication receipt. `status: working` records the caller as the task's agent, or `workingAgentId` (another agent Paseo knows). `ask`, with `blocked`, is the question the developer must answer; only then does the task ask them. `question: "Q<n>"`, with `blocked`, points at a question already asked with `ask_question` instead: no second card (`one-decision-one-card`), and the reply's `note` says when the task is already asked or answered as a question. |
 | `acknowledge_batch` | `follow.acknowledge` | Records a repair batch's result: completed or blocked; blocked with `humanOnly` when only a person can move it (a PR item for the developer, not an agent failure). |
 | `ask_question`, `record_answer`, `withdraw_question` | `follow.ask-question`, `follow.record-answer`, `follow.withdraw-question` | Questions for the developer (`server/questions.ts`). |
 | `set_spec` | `follow.set-spec` | The agent's spec link. The developer's own link wins over it. |
 | `link_item`, `unlink_item` | `follow.link-item`, `follow.unlink-item` | Links what the work is about (a Linear key is confirmed with Linear first; a PR is refused), or removes one for good ([linked-items.md](linked-items.md)). Main and contributors. |
 | `needs_you` | `follow.needs-you` | The end-of-turn brief: what the developer must do next. |
 | `declare_done` | `follow.done` | Declares the goal fulfilled and returns any blockers. |
+| `wait_for_checks` | `follow.wait-for-checks` | Waits for a PR's checks without polling: answers at once from the caller's own workspace read, then sends one message after the turn when the checks on the current head finish (or it merges, closes or conflicts). Every root agent (main, contributors, untracked); not recovery. PRs Follow-up can't see get the way on (Paseo's `subscribe_change_request` on 0.17+) ([wait-for-checks.md](wait-for-checks.md)). |
 | `context_reply` | `follow.context-reply` | Answers the developer's Catch up More context ask with the `requestId` the ask carried; only the agent it was asked of (or the Overseer, for its asks) may answer ([needs-you.md](needs-you.md#catch-up)). Not offered to recovery sessions or contributors. |
 
 ## Action tools (agent parity)
