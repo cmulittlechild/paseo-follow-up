@@ -924,7 +924,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
    `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
 
-70. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
+74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
    waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
    from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
    later" never count as waiting. A stacked PR (based on another PR's head; stack-aware is the default) starts no
