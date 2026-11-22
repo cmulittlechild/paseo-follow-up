@@ -135,7 +135,7 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   while background work is paused. The hook injects it at each UserPromptSubmit.
 - **Its tools** come through `follow.overseer-act`: `workstreams`, `agent_digest` (the transcript on disk for an
   unloaded agent, never its timeline), `route_candidates`, `send_to_agent`, `start_workspace` (dry run, then
-  confirm) and `rerank`.
+  confirm; it runs as New's Create PR, [dispatch.md](dispatch.md)) and `rerank`.
 - **What it can't do:** merge, archive or post anywhere.
 - **Overrides.** `FOLLOW_UP_OVERSEER_PROVIDER` overrides the model, for isolated test daemons only.
 - **UI.** Home's Overseer card (`client/home.tsx`) and the Command Center item "Ask the Overseer"
