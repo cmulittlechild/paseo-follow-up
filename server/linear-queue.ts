@@ -187,7 +187,7 @@ export class LinearQueue {
   async view(o: { filter?: QueueFilter; since?: string | null; limit?: number }): Promise<QueueView> {
     const [file, settings, clock, workspaces] = await Promise.all([this.read(), this.settings(), this.d.clock(), this.d.workspaces?.().catch(() => new Map()) ?? Promise.resolve(new Map())]);
     const now = this.now();
-    const since = o.since !== undefined ? o.since : briefSince(file, now, clock);
+    const since = o.since !== undefined ? o.since : briefSince(file, now, clock, settings.since);
     const snap = current(file);
     const changes = changesSince(file.log, since).map(c => ({ ...c, line: changeLine(c), workspace: workspaces.get(c.key) ?? null }));
     const changed = new Map(changes.map(c => [c.key, c.line]));
