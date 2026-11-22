@@ -29,6 +29,19 @@ Follow-up in Paseo's sidebar. A two-minute setup walks you through the rest.
 - Ask one agent about all your workspaces from Home's search box.
 - Background jobs run on any model Paseo has, and your agents can do anything you can click.
 - It updates itself when nothing is busy and rolls back if an update fails.
+- On the pull request itself, see which workspace owns it and what it needs ([Send to Paseo](#on-the-pull-request-too)).
+
+## On the pull request, too
+
+Add the [Send to Paseo](https://chromewebstore.google.com/detail/send-to-paseo/blflbbgkckbabbkoigpocilbkkmfijfg)
+Chrome extension and a pull request on GitHub or Graphite shows the workspace that owns it and what it needs, like
+"Needs you · Merge ready". **Open** jumps to its agent in Paseo, or send that agent an instruction from the same popup.
+Follow-up can also switch Graphite's **Merge when ready** through it, after you confirm in Chrome.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-send-to-paseo-dark.png">
+  <img alt="Send to Paseo open on a GitHub pull request: a Workspace for this PR section with Follow-up's icon, the workspace webhook-retries marked Needs you · Merge ready · agent idle and an Open button, and below it a box to send the agent an instruction" src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-send-to-paseo-light.png">
+</picture>
 
 ## What it never does on its own
 
