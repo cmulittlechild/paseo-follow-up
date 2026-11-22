@@ -1,0 +1,2 @@
+- Needs you no longer lists closed agents' flags that ask nothing, or flags from archived workspaces. A closed agent's real ask with nothing new for 3 days moves to a folded Older group under Needs you, out of the count, and comes back if the agent runs again.
+- On an action card, Sign off shows ✕ instead of ✓ and is never the main button, because Done is what tells the agent. The card has no Q1 chip, and Add note and Reply instead fit beside Done in the narrow panel.

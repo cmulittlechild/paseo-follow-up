@@ -144,7 +144,7 @@ test("one-done-button: the panel and the chat card draw one Done, and a brief's 
   assert.match(panel, /const doneOnly = open && isDoneOnly\(q\) && !other;/);
   assert.match(panel, /!!q\.options\.length && !doneOnly && <View accessibilityRole="radiogroup"/, "no option to pick on an action card");
   assert.match(panel, /open && !doneOnly && <Button shortcut[^\n]*title="Send to agent"/, "no Send beside Done");
-  assert.match(panel, /doneOnly && <Button shortcut[^\n]*title="Done"/);
+  assert.match(panel, /doneOnly && <Button theme[^\n]*title="Done"/, "Done carries no Ctrl ⏎ chip, as on the chat card, so its links fit beside it (Ctrl+Enter still sends it)");
   assert.match(chat, /!done && d\.options\.map\(o => <OptionRow/, "the chat card draws no 'A Done' row beside its Done button");
   assert.match(chat, /doneQ && workspace \? answerQuestion\(\{ workspaceId: workspace\.id, questionId: doneQ\.id, choice: TASK_DONE\.letter/, "Done answers the card, never a second message");
 });

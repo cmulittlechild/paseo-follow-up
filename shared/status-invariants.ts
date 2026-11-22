@@ -7,7 +7,7 @@ import type { ListWorkspace as Workspace } from "./list";
 import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, TASK_DONE, taskCardsFor, taskNeed, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
-import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
+import { flagFate, newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, summary } from "./model";
 import { liveLine, needsYou, reviewersAskStands, type NeedItem } from "./attention";
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
@@ -666,6 +666,28 @@ export function homeViolations(model: Pick<HomeModel, "byKey"> & Partial<Pick<Ho
     else if (model.byKey.get(keys[0])!.priority!.reason !== p.reason) out.push({ id: "row-lines-own-row", detail: `${keys[0]} shows another reason than ${workspaceId}'s` });
   }
   return [...counted, ...out];
+}
+
+/**
+ * `briefs-from-closed-agents` (AGENTS.md 80): Home against the inbox rows it was built from. A dropped flag has no
+ * row, an Older row is a closed agent's with nothing new for 3 days and no live workspace item, and every other
+ * flagged row (a running or idle agent's above all) is in Needs you. 2026-11-22: 49 flagged rows, 42 of them closed.
+ */
+export function closedFlagViolations(model: Pick<HomeModel, "byKey">, rows: readonly InboxRow[], tracked: readonly Workspace[], now: number): { id: string; detail: string }[] {
+  const out: { id: string; detail: string }[] = [];
+  const archived = new Set(tracked.filter(w => w.archived).map(w => w.id));
+  for (const row of rows) {
+    if (!row.needs || row.snooze) continue;
+    const s = model.byKey.get(`agent:${row.agentId}`);
+    const fate = flagFate(row, now, !!row.workspaceId && archived.has(row.workspaceId));
+    const w = tracked.find(w => w.id === row.workspaceId && !w.archived);
+    const live = !!w && needsYou(w, now).length > 0;
+    if (!s) continue;
+    if (fate === "drop") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} asks nothing anyone can act on but shows in ${s.group}` });
+    else if (s.group === "older" && (fate !== "older" || live)) out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} is in Older but ${live ? "its workspace has a live item" : `is ${row.status} with a flag from the last 3 days`}` });
+    else if (fate === "show" && s.group !== "needs") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId}'s live ask is in ${s.group}, not Needs you` });
+  }
+  return out;
 }
 
 /**

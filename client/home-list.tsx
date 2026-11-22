@@ -326,7 +326,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const archived = s.icon === "Archive" && s.sig.startsWith("archived:");
   const color = archived ? c.foregroundMuted : glyphColor(s, c, touch);
   const blocking = s.group === "needs" && s.tier === 0;
-  const muted = s.group === "quiet" || s.group === "later";
+  const muted = s.group === "quiet" || s.group === "later" || s.group === "older";
   // Desktop rows are one line beside badges and the PR chip: the ask and the "<Field> · excerpt" line are cut around the
   // match (about 44 characters, the match near the start), so the highlight is never past the "…". Phones and the
   // sidebar view wrap to two lines and keep more.

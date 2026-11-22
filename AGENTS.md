@@ -990,6 +990,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
    ([docs/workspaces.md](docs/workspaces.md)).
 
+80. **Briefs from closed agents** (`briefs-from-closed-agents`). Needs you lists what someone can still act on. At
+   render, from facts Follow-up already holds (`flagFate`), a flag whose workspace is archived or gone from Paseo's
+   list (agent not running) drops, and so does a closed agent's flag that asks nothing (no asking brief, no question,
+   only finished or PR-closed/merged flags). A closed agent's real ask with nothing new for 3 days folds into Home's
+   Older group, out of the count, and comes back when the agent runs again or a new flag comes. Nothing is stored or
+   deleted. Never hidden: a running or idle agent's ask, an ask under 3 days old, and a workspace's live item (an Older
+   row whose workspace has one stays in Needs you; a dropped row's workspace row carries it). 2026-11-22, live: 49
+   flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
+   old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
+
 ## Bugs
 
 Every bug is fixed for its whole class:

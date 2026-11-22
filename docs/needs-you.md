@@ -30,6 +30,18 @@
   plain finish doesn't flag (F7's settle sees "running"), its row sits in Running with `backgroundWork`, and
   `liveFlag` hides an older "finished" until the work ends (shown again after, not erased). Invariant
   `background-work-is-running` in `rowViolations`. On 0.15 the field is absent and nothing changes.
+- **Briefs from closed agents** (`flagFate`, invariant `briefs-from-closed-agents`). Home decides at render, from facts
+  it already holds, what a flag nobody may be waiting on does; nothing is stored or deleted, so `inbox_list` still lists
+  it. A flag **drops** when its workspace is archived (tracked `archived`) or gone from Paseo's workspace list (the row's
+  `workspaceTitle` is null) and the agent isn't running, or when a closed agent's flag asks nothing: no brief that
+  asks (no open brief, or kind `unknown`/`done`, or source `none`) and no question, and only `finished`, `pr_merged` or
+  `pr_closed` reasons. A closed agent's real ask (action, decision, review, an error) with nothing new for 3 days
+  (`OLDER_AFTER_MS`) moves to Home's **Older** group, right under Needs you and folded until opened, out of the Needs-you
+  count, the sidebar badge and the brief's headline. It comes back the moment the agent runs or idles again, or a new
+  flag comes. A running or idle agent's ask always shows, and an Older row whose workspace has a live item (an open
+  question, a blocked task) stays in Needs you; a dropped row never hides a workspace item, which the workspace's own
+  row then carries. Live on 2026-11-22: 49 flagged rows; 19 drop (17 closed agents that asked nothing, 2 in archived
+  or gone workspaces), 13 fold into Older, 17 stay.
 - **Pure logic** is in `shared/inbox.ts`: the reducer, `REASONS` in urgency order (permission, error, paused, ci,
   review, reviewers, finished, pr_closed, pr_merged), snoozes (`next-event`, an ISO time, or `pr:<repo#n>`), finish flags, and
   undo. A registered PR that leaves OPEN (`prEndEvent`, shared by the worker and the invariants) flags `pr_merged`
