@@ -139,6 +139,12 @@ the time zone (blank: automatic) and the workdays (the zone's usual week until c
 **Agents** read and change all of it through `brief_settings` / `set_brief_settings` and `brief_plan` /
 `set_brief_plan` (planned; the dry run reads the new link's title first through `brief_plan {link}`).
 
+## Known gaps
+
+- **The chat search's tool names are hard-wired.** `CHAT_TOOLS` in `server/morning-brief.ts` names one chat server's
+  message, people and channel search tools. Phase 3 (discovery and recipes) removes it: the chat source is found by
+  its tools' shape through mcpproxy, and the three names come from that recipe, not from a constant.
+
 ## Cost
 
 | | Reads | Model calls |
