@@ -1,2 +1,5 @@
-- Needs you no longer lists closed agents' flags that ask nothing, or flags from archived workspaces. A closed agent's real ask with nothing new for 3 days moves to a folded Older group under Needs you, out of the count, and comes back if the agent runs again. Sign off & next and `/ok next` skip those rows too.
-- On an action card, Sign off shows ✕ instead of ✓ and is never the main button, because Done is what tells the agent. The card has no Q1 chip, and Add note and Reply instead fit beside Done in the narrow panel; Done keeps its Ctrl ⏎ hint where the row has room, and Ctrl+Enter now sends Done on the chat card too.
+- Needs you no longer lists closed agents' flags that ask nothing, or flags from archived workspaces.
+- A closed agent's real ask with nothing new for 3 days moves to a folded Older group under Needs you, out of the count. It comes back if the agent runs again.
+- Sign off & next and `/ok next` skip the rows Needs you no longer shows.
+- On an action card, Sign off shows ✕ instead of ✓ and is never the main button, because Done is what tells the agent. The card has no Q1 chip.
+- Add note and Reply instead fit beside Done in the narrow panel. Done keeps its Ctrl ⏎ hint where there's room, and Ctrl+Enter sends Done on the chat card too.
