@@ -1,1 +1,2 @@
-- Removing an item from Needs you now shows Remove and Keep side by side, so backing out is one obvious click. Keep is where the keyboard lands, so pressing Enter twice never removes anything, and a double-click on the x doesn't either. The toast now says "Removed".
+- Removing an item from Needs you now shows Remove and Keep side by side, so backing out is one obvious click.
+- Keep is where the keyboard lands, so pressing Enter twice never removes anything, and neither does a double-click on the x.
