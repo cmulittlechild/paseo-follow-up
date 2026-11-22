@@ -14,6 +14,7 @@ import { applyDiscovery, interruptionHold, startsWithAutoSend, type DiscoveredWo
 import { ACTIVE_SCOPE_MIGRATION, followsByDefault, migrateActiveScope } from "../shared/settings";
 import { replyRecorded } from "../shared/communication";
 import { DeliveryDeferred, ConversationGone } from "./delivery";
+import type { CheckWatches } from "./check-watches";
 import type { MessageQueue, Resolution, Target } from "./message-queue";
 import { PASEO_UNREACHABLE, deliveryOf, type NewQueueItem, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { recordSnapshot } from "./deployment-anchor";
@@ -253,12 +254,12 @@ export class Engine {
     // sends). Before 2.0.1-beta.2 it read nothing, so a stale PR error there outlived every Refresh.
     const asleep = o.workspaceId ? current.workspaces.find(w => w.id === o.workspaceId && w.enable_tracking && !w.archived && w.dormant) : undefined;
     if (asleep) await this.refreshPrs(asleep);
-    if (!active.length) { this.error = null; return; }
+    if (!active.length) { await this.afterPass(o.affected); this.error = null; return; }
     // Busy workspaces keep every-tick PR reads: their agent may push or answer review at any moment.
     const keys = (ws: Workspace[]) => new Set(ws.flatMap(w => w.prs.map(p => p.key)));
     const hot = keys(active.filter(isHot));
     const read = o.affected ? active.filter(w => o.affected!.has(w.id)) : active;
-    const observations = await this.github.observe(read.flatMap(w => w.prs), o.background || o.workspaceId ? { background: true, hot, fresh: keys(active.filter(w => w.id === o.workspaceId)) } : {});
+    const observations = await this.github.observe(read.flatMap(w => w.prs), o.background || o.workspaceId ? { background: true, hot, fresh: keys(active.filter(w => w.id === o.workspaceId)), watched: this.checkWatches?.watched() } : {});
     // A nudge observes only its workspaces (a-nudge-costs-its-workspace); the timer's tick observes every active one.
     for (const original of o.affected ? read : active) {
       if (this.stopped) return;
@@ -376,7 +377,17 @@ export class Engine {
       this.observedPass.set(original.id, { w: after, runtime: runtimeKey, at: untouched ? last!.at : this.now(), dueAt: nextDue(after, this.now()) });
       await this.statusCheck(after, this.now(), runtimeKey).catch(() => undefined);
     }
+    await this.afterPass(o.affected);
     this.error = null;
+  }
+  /**
+   * Wait for checks (server/check-watches.ts): agents waiting on a PR's checks hear from the reads this pass just made,
+   * never from a read of their own (waiting-for-checks-adds-no-github-read). A nudge's pass judges only its workspaces.
+   */
+  checkWatches: Pick<CheckWatches, "watched" | "evaluate"> | null = null;
+  private async afterPass(affected?: ReadonlySet<string>): Promise<void> {
+    if (!this.checkWatches || this.stopped) return;
+    await this.checkWatches.evaluate(affected).catch(error => console.warn(`[follow-up] couldn't check the waits for checks: ${error instanceof Error ? error.message : String(error)}`));
   }
   /**
    * A nudge's discovery (a-nudge-costs-its-workspace): only the nudged workspaces and their dirty agents (the kept turn
