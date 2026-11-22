@@ -84,6 +84,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
+| Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
 | Wait for background jobs | `server/wait.ts`, `server/host-features.ts`, `server/wait-jobs.ts`, `server/wait-runner.sh`, `shared/wait.ts` | [wait](docs/wait.md) |
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
@@ -267,8 +268,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      putting one on hold, so there's no tool for those either.
 4. **Agents act on others, not themselves.** An agent can't sign itself off, answer its own question through
    `answer_question`, or act on its own brief. Goal, tasks, questions and Done belong to the main agent.
-   Contributors get `workspace_status`, `register_pr`, `sync_workspace` and `make_main_agent` (under its claim
-   rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else. `report_send` refuses to send a
+   Contributors get `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, `wait_for_checks`
+   and `make_main_agent` (under its claim rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else. `report_send` refuses to send a
    report to the calling agent itself.
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
@@ -881,6 +882,24 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    and unknown statuses keep their own rows in stack order. A section search shows its hits unfolded. 2026-11-22: a
    120-PR stack drew about 8000 px of rows with its seven PRs to fix spread through it. Guarded by
    `tests/big-stack.test.ts`.
+67. **Waiting for checks adds no GitHub read** (`waiting-for-checks-adds-no-github-read`). `wait_for_checks` answers
+   from the reads Follow-up already makes: a watched PR is due once after its wait began, then at the running-checks
+   cadence (`watchedSince`, `shared/poll.ts`), never past the reserve and never for a merged or closed PR, and every
+   verdict comes from an engine pass's observations (`CheckWatches.evaluate` after `Engine.run`). Measured 2026-11-22:
+   Paseo 0.17's own PR watch reads every watched PR every 15 s, 1 point a read for 1-5 PRs and 6 for 25, so a second
+   poller would cost ~240-1440 points an hour for PRs Follow-up already reads. That day agents ran ~117 polling loops
+   in 24 h (`gh pr checks`, `gh api graphql` every 1-60 s). Guarded by `tests/wait-for-checks.test.ts`
+   ([docs/wait-for-checks.md](docs/wait-for-checks.md)).
+68. **A watch never wakes a closed or archived agent; a waited-for failure is sent once**
+   (`a-watch-never-wakes-a-closed-agent`, `a-waited-for-failure-is-sent-once`). A verdict is one `checks` queue message
+   after the agent's turn; a closed or archived agent's watch ends with nothing sent, and the channel checks again when
+   it goes. An idle agent that asked is messaged even when unloaded (it asked for that message: invariant 1's one
+   exception). A failure a repair will carry (main agent, Auto-send on, its checks task queued or out) ends the watch
+   quietly. Guarded by `tests/wait-for-checks.test.ts`.
+69. **The polling nudge never blocks** (`the-polling-nudge-never-blocks`). The PostToolUse hook (already run for every
+   tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
+   `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
+   `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
 
 ## Bugs
 

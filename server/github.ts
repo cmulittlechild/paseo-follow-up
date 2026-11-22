@@ -257,7 +257,7 @@ export class Github {
    * per account for every such PR, and read in full only when the probe saw a change that matters (`probeVerdict`).
    * A fresh request (Refresh, opening the panel) and a foreground read (agent tools, actions) read in full.
    */
-  async observe(prs: Pr[], o: { background?: boolean; fresh?: Set<string>; hot?: Set<string> } = {}): Promise<Map<string, Observation>> {
+  async observe(prs: Pr[], o: { background?: boolean; fresh?: Set<string>; hot?: Set<string>; watched?: ReadonlyMap<string, number> } = {}): Promise<Map<string, Observation>> {
     const result = new Map<string, Observation>();
     const repositories = [...new Set(prs.map(p => p.repo))];
     const modes = new Map<string, PrWorkflow>();
@@ -282,7 +282,7 @@ export class Github {
         if (tier === "reserve" && o.background && !o.fresh?.has(p.key)) return false;
         if (!o.background || !this.last.has(p.key) || o.fresh?.has(p.key) || o.hot?.has(p.key)) return true;
         const last = this.last.get(p.key)!;
-        return dueForRead({ snapshot: last.snapshot, error: p.error || last.error, changedAt: this.changedAt.get(p.key) ?? null, readAt: this.readAt.get(p.key) ?? 0, now: this.now(), tier, repoUrgent, since: this.changedAt.get(p.key) ?? this.seenAt.get(p.key) ?? null });
+        return dueForRead({ snapshot: last.snapshot, error: p.error || last.error, changedAt: this.changedAt.get(p.key) ?? null, readAt: this.readAt.get(p.key) ?? 0, now: this.now(), tier, repoUrgent, since: this.changedAt.get(p.key) ?? this.seenAt.get(p.key) ?? null, watchedSince: o.watched?.get(p.key) ?? null });
       });
       const dueKeys = new Set(due.map(p => p.key));
       for (const p of targets) if (!dueKeys.has(p.key)) { this.stats.skipped++; result.set(p.key, finalMerged(p) ? { snapshot: { ...p.snapshot! }, error: null } : this.standIn(p, owner)); }
@@ -434,6 +434,8 @@ export class Github {
    * While Follow-up holds back reads on this repository's account for the budget (the reserve or less), when they
    * resume (GitHub's reset); null when reads run. Feeds the workspace's "GitHub budget low" line (Workspace.githubWait).
    */
+  /** When this PR's content last changed, else when this worker first read it; null before any read (wait for checks' settle rule). */
+  quietSince(key: string): number | null { return this.changedAt.get(key) ?? this.seenAt.get(key) ?? null; }
   waitUntil(repo: string): number | null {
     const budget = this.budgets.get(repo.split("/")[0]);
     const tier = budgetTier(budget, this.now());

@@ -230,6 +230,12 @@ export const contextListRpc = defineRpc({ name: "follow.context-list", input: z.
 export const catchUpDeckRpc = defineRpc({ name: "follow.catch-up-deck", input: z.strictObject({}), output: z.object({
   cards: z.array(z.object({ key: z.string(), kind: z.string(), workspaceId: z.string().nullable(), agentId: z.string().nullable(), title: z.string(), line: z.string(),
     questionId: z.string().nullable(), item: z.string().nullable(), context: contextRequestSchema.pick({ id: true, state: true, target: true }).nullable() })) }) });
+/**
+ * Wait for checks (docs/wait-for-checks.md): the caller's PRs whose checks it waits on. `prs`: URLs, owner/repo#N or
+ * numbers; none means every open PR of the caller's workspace. `cancel` stops waiting. One message comes after the turn.
+ */
+export const waitForChecksRpc = defineRpc({ name: "follow.wait-for-checks", input: z.strictObject({ agentId: z.string().min(1).max(200), prs: z.array(z.string().trim().min(1).max(2000)).max(60).optional(), minutes: z.number().int().min(1).max(720).optional(), cancel: z.boolean().optional() }),
+  output: z.object({ text: z.string(), waiting: z.array(z.string()), done: z.array(z.object({ pr: z.string(), result: z.string(), text: z.string() })), notFollowed: z.array(z.string()) }) });
 export const contextReplyRpc = defineRpc({ name: "follow.context-reply", input: z.strictObject({ agentId: z.string().min(1).max(200), requestId: z.string().min(1).max(80), text: z.string().trim().min(1).max(CONTEXT_ANSWER_MAX) }), output: z.object({ ok: z.boolean() }) });
 export const rankStatusSchema = z.object({ enabled: z.boolean(), running: z.boolean(), lastRunAt: z.string().nullable(), healthLine: z.string(), error: z.string().nullable(), costUsd: z.number().nullable(), notStarted: z.number().int(),
   last: z.object({ ok: z.boolean(), skipped: z.string().nullable(), top: z.string().nullable(), provider: z.string().nullable(), inputTokens: z.number().nullable(), outputTokens: z.number().nullable() }).nullable() });
