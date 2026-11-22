@@ -89,8 +89,9 @@ test("one-ask-one-title: a brief folded into its question is named by the questi
 });
 
 test("one-ask-one-title: the chat's fallback card points at open questions instead of saying there's no ask", () => {
-  const brief = src("client/brief.tsx");
-  assert.match(brief, /Waiting on your answer to \$\{waitingOn\.join\(", "\)\}/);
+  // The wording lives in the one predicate's helper (briefCardAsk, invariant 21); the chat's card only calls it.
+  assert.match(src("client/brief.tsx"), /briefCardAsk\(/);
+  assert.match(src("shared/brief.ts"), /Waiting on your answer to \$\{questions\.join\(", "\)\}/);
 });
 
 test("a blocked task without an ask says what it waits on", async () => {
