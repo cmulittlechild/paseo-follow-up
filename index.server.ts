@@ -95,6 +95,8 @@ import { hostFeature, type ServerInfo } from "./server/host-features";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
+import { CheckWatches } from "./server/check-watches";
+import { waitForChecksAnswer } from "./server/wait-for-checks";
 import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
 import { liveRankSources, planningUrl, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
@@ -228,6 +230,17 @@ export default function contribute(server: PluginServerContext) {
   const actions = new PrActions(store, github, graphite, browser);
   actions.savedMethod = repo => prWorkflow.current().repos[repoKey(repo)]?.mergeMethod ?? null;
   const engine = new Engine(store, github, gateway);
+  // Wait for checks (docs/wait-for-checks.md): judged after each engine pass from the reads it made; a verdict is one
+  // queued message. The agent is read from the directory's list (no load), live only when the list lacks it.
+  const checkWatches = new CheckWatches(directory, {
+    snapshot: () => store.snapshot(),
+    quietSince: key => github.quietSince(key),
+    agent: async id => {
+      const a = gateway.directory.cached(id) ?? (await gateway.directory.read({ fresh: "agents" })).agents.find(r => r.agent.id === id)?.agent;
+      return a ? { status: a.status, archived: !!a.archivedAt, workspaceId: a.workspaceId ?? null } : null;
+    },
+  });
+  engine.checkWatches = checkWatches;
   engine.wording = { reviewFix: repo => commandName(prWorkflow.reviewFix(repo)) };
   actions.settleTasks = w => engine.settleTasks(w);
   const governor = new Governor();
@@ -324,6 +337,7 @@ export default function contribute(server: PluginServerContext) {
   // a-message-is-saved-before-sent-and-arrives-once: every message to an agent goes through one queue (queue.json).
   const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth });
   engine.attachQueue(queue);
+  checkWatches.attachQueue(queue);
   inbox.attachQueue(queue);
   // Overseer forwards and reports handed to an agent: no record of their own, so the queue item is their status
   // (follow_queue_list). Archived agents cancel, with the reason on the item.
@@ -1005,6 +1019,16 @@ export default function contribute(server: PluginServerContext) {
     }) };
   });
   handle(rpc.contextListRpc, async ({ workspaceId }) => ({ requests: await contextRequests.list(workspaceId ? { workspaceId } : {}) }));
+  // Paseo 0.17's own PR watch (subscribe_change_request): named only for PRs Follow-up can't see. No feature flag says
+  // it's there; server_info's version does, read from the connection's last hello (no request).
+  const hostVersion = async () => { try { return String(((await withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.())) as { version?: unknown } | null)?.version ?? ""); } catch { return ""; } };
+  handle(rpc.waitForChecksRpc, async (input, { paseo }) => {
+    await requireReady();
+    return waitForChecksAnswer(input, {
+      state: () => store.snapshot(), watches: checkWatches, nudge: id => engine.nudge(id), hostVersion,
+      register: (repo, number) => handlers.get(rpc.registerPrRpc.name)!.run({ agentId: input.agentId, repo, number, stack: `${repo}#${number}` }, { paseo } as PluginHandlerContext) as Promise<unknown>,
+    });
+  });
   handle(rpc.contextReplyRpc, async ({ agentId, requestId, text }) => {
     await requireReady();
     await contextRequests.reply(requestId, agentId, text);
@@ -1659,7 +1683,7 @@ export default function contribute(server: PluginServerContext) {
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ files: [contextRequests, reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [contextRequests, checkWatches, reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   })();
   return stop;
 }
