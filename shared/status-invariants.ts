@@ -4,7 +4,7 @@ import type { Actor } from "./actor";
 import { ANY_HOOK_TEXT_PREFIXES } from "./message-sender";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 import type { ListWorkspace as Workspace } from "./list";
-import { answerMessage, awaitingSend, duplicateOpenQuestions, isOpen, isOther, questionRefs, parseAnswerMessage, parseAnswersMessage } from "./questions";
+import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
 import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
@@ -449,10 +449,9 @@ export const INVARIANTS: Invariant[] = [
           if (own) return `${own.id} repeats ${o.coveredBy} for task ${o.title}`;
         }
         if (!own) continue;
-        // Uncovered but asked: an open question asked with task set to it, or one its ask names.
-        const refs = questionRefs(o.ask!);
-        const twin = questions.find(q => q !== own && q.taskRevision === null && isOpen(q) && (q.taskId === o.id || refs.includes(q.id)));
-        if (twin) return `${own.id} repeats ${twin.id} for task ${o.title}`;
+        // Uncovered but asked: the same rule the sync uses (findTaskCover), so the check and the fix can't disagree.
+        const twin = findTaskCover(o, questions, w.mainAgentId);
+        if (twin && isOpen(twin)) return `${own.id} repeats ${twin.id} for task ${o.title}`;
       }
       const decision = needsYou(w, now).find(i => i.kind === "decision" && w.obligations.find(o => o.id === i.obligationId)?.coveredBy);
       return decision && decision.kind === "decision" ? `Needs you asks task ${decision.title}'s decision beside the question that covers it` : null;

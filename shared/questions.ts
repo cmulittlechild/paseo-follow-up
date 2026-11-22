@@ -430,6 +430,8 @@ export function currentQuestion<Q extends Pick<Question, "id" | "answer" | "clos
   }
   return q;
 }
+/** The ask leads with this question's id: "Q4: …", "Q4 - …", "Q4 (…", "(Q4) …", never "Q40". */
+const leadsWith = (ask: string, id: string) => new RegExp(`^[\\s(\\[]*${id}(?!\\d)`).test(ask);
 /** True when an ask restates `q` (its words, apart from the Q reference, are mostly the question's, title's or options'). */
 function askRepeats(ask: string, q: QuestionShape): boolean {
   const words = tokensOf(wordsOf(ask.replace(/\bQ\d+\b/g, " ")), false);
@@ -455,10 +457,16 @@ export function findTaskCover<Q extends Coverable>(o: { id: string; title: strin
     if (!settled && restated) settled = q;
     return null;
   };
+  // A reference links only when the ask leads with the id ("Q1: may I …?", "Q1 - …", "(Q1) …"), restates the question,
+  // or the question was asked for this task. A mention in passing ("ship the Q4 report") links nothing: covering the task
+  // with an unrelated question would drop its decision, which is worse than a second card.
   for (const id of questionRefs(ask)) {
+    const named = questions.find(x => x.id === id);
     const q = currentQuestion(questions, id);
     if (!asked(q)) continue;
-    const hit = consider(q, ask.startsWith(id) || askRepeats(ask, q));
+    const links = leadsWith(ask, id) || askRepeats(ask, q) || q.taskId === o.id || named?.taskId === o.id;
+    if (!links) continue;
+    const hit = consider(q, true);
     if (hit) return hit;
   }
   for (let i = questions.length - 1; i >= 0; i--) {

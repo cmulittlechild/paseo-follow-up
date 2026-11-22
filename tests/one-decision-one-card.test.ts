@@ -161,3 +161,27 @@ test("one-decision-one-card: a changed ask drops the cover and looks again; leav
   assert.equal(w.obligations[0].coveredBy, undefined);
   oneCard(w);
 });
+
+test("one-decision-one-card: an ask that mentions an unrelated open question in passing still gets its own card", () => {
+  const w = empty();
+  for (const [title, question] of [["Staging host", "Which staging host runs the nightly batch?"], ["Font for the invoices", "Should invoices switch to the new serif font?"], ["Cache size", "How large may the thumbnail cache grow?"]])
+    askQuestion(w, MAIN, { title, question, options: [], recommend: undefined }, "work-around", clock);
+  const q4 = askQuestion(w, MAIN, { title: "Retry window for the importer", question: "How long should the importer wait between retries?", options, recommend: "A" }, "work-around", clock).question;
+  assert.equal(q4.id, "Q4");
+  const o = block(w, { ask: "May I ship the Q4 report to finance?" });
+  syncTaskQuestions(w, clock);
+  assert.equal(w.obligations[0].coveredBy, undefined, "a passing mention links nothing");
+  assert.equal(taskCards(w).length, 1, "the decision gets its own card, so it isn't dropped");
+  assert.ok(isOpen(q4), "the unrelated question is untouched");
+  assert.equal(coverNote(w, o.id), null);
+  oneCard(w);
+  // Leading with the id ("Q4 - …", "(Q4) …") or a question asked for this task still links.
+  for (const ask of ["Q4 - how long between retries?", "(Q4) retry window?"]) {
+    const v = empty();
+    askQuestion(v, MAIN, { title: "Retry window for the importer", question: "How long should the importer wait between retries?", options, recommend: "A" }, "work-around", clock);
+    block(v, { ask: ask.replace("Q4", "Q1") });
+    syncTaskQuestions(v, clock);
+    assert.equal(v.obligations[0].coveredBy, "Q1", ask);
+    assert.deepEqual(taskCards(v), []);
+  }
+});
