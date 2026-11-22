@@ -145,6 +145,9 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   const downInside = useRef(false);
   /** Disarmed from the keyboard (Esc, Keep): focus goes back to the x. */
   const refocus = useRef(false);
+  /** Just armed with the pointer still where the x was, which is now Remove: it stays quiet (no solid red) until the
+   * pointer leaves it once, so the loudest thing on the card is never one nobody chose to point at. */
+  const [fresh, setFresh] = useState(false);
   const dom = (r: { current: View | null }) => r.current as unknown as DomNode | null;
   useEffect(() => { if (Platform.OS === "web" && !armed) dom(tip)?.setAttribute?.("title", `Remove: ${DISMISS_HINT}`); }, [armed]);
   // Gone (removed, the card moved on) or disabled: never leave an armed x behind.
@@ -153,7 +156,7 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   // Armed: focus lands on Keep (the safe default: a second Enter or Space keeps). Disarmed: the pair is gone, so its
   // focus is too, unless Esc or Keep hands it back to the x.
   useEffect(() => {
-    if (armed) { if (Platform.OS === "web") dom(keep)?.focus?.(); return; }
+    if (armed) { setFresh(true); if (Platform.OS === "web") dom(keep)?.focus?.(); return; }
     setFocused(false); setKeyed(false);
     if (refocus.current) { refocus.current = false; dom(tip)?.focus?.(); }
   }, [armed]);
@@ -230,6 +233,8 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
       {state => <Icon name="X" size={touch ? 16 : 14} color={state.pressed || (state as { hovered?: boolean }).hovered ? c.foreground : c.foregroundMuted} />}
     </Pressable>
     : <Animated.View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap, opacity: fade }}>
+      {/* One solid ground under both pills and the gap between them, so the age or title they cover never shows through. */}
+      <View style={{ position: "absolute", left: 0, right: 0, top: (box - pillH) / 2, height: pillH, borderRadius: pillH / 2, backgroundColor: c.surface0 }} />
       {/* Keep: the way back, quiet and neutral (the card's own ground, a hairline, body ink), first in reading order. */}
       <Pressable ref={keep} accessibilityRole="button" accessibilityLabel={keepLabel(label)} hitSlop={touch ? 0 : 2} onPress={back} onFocus={focusIn} onBlur={focusOut as () => void}
         style={(state: { pressed: boolean; focused?: boolean }) => ({ ...focusRing(state.focused, c), ...pill(keepW) })}>
@@ -243,10 +248,10 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
       {/* Remove: a danger tint with danger ink and a hairline at rest, over the page ground so what it covers doesn't
           show through; solid (white on deepened danger) only under the pointer or finger, the moment it acts. Red,
           quietly: removing is undoable, and a solid red pill at rest read as a new blocker on an amber card. */}
-      <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={touch ? 0 : 2} onPress={remove as () => void} onFocus={focusIn} onBlur={focusOut as () => void}
+      <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={touch ? 0 : 2} onPress={remove as () => void} onFocus={focusIn} onBlur={focusOut as () => void} onHoverOut={() => setFresh(false)}
         style={(state: { pressed: boolean; focused?: boolean }) => ({ ...focusRing(state.focused, c), ...pill(removeW) })}>
         {state => {
-          const hot = state.pressed || !!(state as { hovered?: boolean }).hovered;
+          const hot = state.pressed || (!fresh && !!(state as { hovered?: boolean }).hovered);
           const ink = isLight(c) ? solidFor(c.statusDanger) : readable(c.statusDanger, c);
           return <View style={{ height: pillH, borderRadius: pillH / 2, overflow: "hidden", backgroundColor: c.surface0 }}>
             <View style={{ flex: 1, borderRadius: pillH / 2, borderWidth: 1, alignItems: "center", justifyContent: "center",
