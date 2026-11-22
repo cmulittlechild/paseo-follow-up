@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { PRIORITY_NAMES, type LinearIssue } from "./linear-issues";
+import { WEEKDAYS, defaultWorkdays, type Weekday } from "./workweek";
+
+export { WEEKDAYS, defaultWorkdays, type Weekday };
 
 /**
  * The Morning brief's Linear queue (docs/morning-brief.md): every issue assigned to the developer in the states that
@@ -14,8 +17,6 @@ import { PRIORITY_NAMES, type LinearIssue } from "./linear-issues";
 /** Linear state types that can count as the queue. Completed and canceled never do. */
 export const QUEUE_STATE_TYPES = ["triage", "backlog", "unstarted", "started"] as const;
 export type QueueStateType = typeof QUEUE_STATE_TYPES[number];
-export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-export type Weekday = typeof WEEKDAYS[number];
 
 /** What "since" falls back to: the last time the developer read the brief (default), or always the last workday's sweep. */
 export const SINCE_MODES = ["read", "workday"] as const;
@@ -36,19 +37,6 @@ export const briefSettingsSchema = z.object({
 });
 export type BriefSettings = z.infer<typeof briefSettingsSchema>;
 export const BRIEF_SETTINGS_DEFAULT: BriefSettings = briefSettingsSchema.parse({});
-
-/**
- * Zones whose working week is Sunday to Thursday (a Friday–Saturday weekend), from CLDR's week data by region. Every
- * other zone works Monday to Friday. General calendar knowledge, not a workplace's: the setting overrides it.
- */
-const FRI_SAT_WEEKEND = new Set([
-  "Asia/Jerusalem", "Asia/Tel_Aviv", "Asia/Hebron", "Asia/Gaza", "Asia/Riyadh", "Asia/Kuwait", "Asia/Bahrain", "Asia/Qatar",
-  "Asia/Baghdad", "Asia/Amman", "Asia/Damascus", "Asia/Aden", "Asia/Muscat", "Asia/Dhaka", "Africa/Cairo", "Africa/Algiers",
-  "Africa/Tripoli", "Africa/Khartoum", "Egypt", "Israel",
-]);
-export function defaultWorkdays(timeZone: string): Weekday[] {
-  return FRI_SAT_WEEKEND.has(timeZone) ? ["Sun", "Mon", "Tue", "Wed", "Thu"] : ["Mon", "Tue", "Wed", "Thu", "Fri"];
-}
 
 /** Where "today", "07:00" and "a workday" are. Built once per question by the worker (`clockFor`). */
 export type Clock = { timeZone: string; workdays: readonly Weekday[] };

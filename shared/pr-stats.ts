@@ -1,8 +1,9 @@
 import type { StatsRecord } from "./pr-stats-records";
+import { defaultWeekStart, defaultWorkdayNumbers } from "./workweek";
 
 /**
  * PR statistics' metrics (docs/pr-stats.md, design §1): pure functions of the stored records, a period, the settings
- * and `now`. Every number is computed when it is read (invariant 68); nothing here keeps state.
+ * and `now`. Every number is computed when it is read (invariant 68, `stats-are-computed-on-read`); nothing here keeps state.
  *
  * Shared rules:
  * - A person is a GitHub login. Bots were dropped when records were parsed; the repository's ignore list
@@ -27,13 +28,13 @@ export const SIZE_BUCKETS = [["XS", 10], ["S", 50], ["M", 250], ["L", 1000], ["X
 export type SizeBucket = (typeof SIZE_BUCKETS)[number][0];
 
 export type Schedule = { days: number[]; from: number; to: number };
-/** Mon–Fri 09:00–18:00 (minutes from local midnight; days 0 = Sunday). */
-export const DEFAULT_HOURS: Schedule = { days: [1, 2, 3, 4, 5], from: 9 * 60, to: 18 * 60 };
+/** The zone's usual workdays (shared/workweek.ts), 09:00–18:00 (minutes from local midnight; days 0 = Sunday). A saved schedule wins. */
+export const defaultHours = (timeZone: string): Schedule => ({ days: defaultWorkdayNumbers(timeZone), from: 9 * 60, to: 18 * 60 });
 export type Period = "week" | "last-week" | "30d" | "90d";
 export const PERIODS: Period[] = ["week", "last-week", "30d", "90d"];
 export type StatsOptions = {
   timeZone: string;
-  /** 1 = Monday (default), 0 = Sunday. */
+  /** 1 = Monday, 0 = Sunday; unset: the zone's usual week start. */
   weekStart?: number;
   /** Working hours for the working clock; calendar time when `clock` is "calendar". */
   clock?: "calendar" | "working";
@@ -81,14 +82,14 @@ export function zonedTime(y: number, m: number, d: number, minutes: number, time
 const addDays = (y: number, m: number, d: number, days: number) => { const t = new Date(Date.UTC(y, m - 1, d + days)); return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }; };
 
 /** A period's `[start, end)` in the time zone (D9: This week, Last week, 30 days, 90 days). */
-export function periodRange(period: Period, now: number, timeZone: string, weekStart = 1): Range {
+export function periodRange(period: Period, now: number, timeZone: string, weekStart: number = defaultWeekStart(timeZone)): Range {
   if (period === "30d" || period === "90d") return { start: now - (period === "30d" ? 30 : 90) * 86_400, end: now };
   const p = localParts(now, timeZone);
   const back = (p.weekday - weekStart + 7) % 7;
-  const monday = addDays(p.y, p.m, p.d, -back);
-  const start = zonedTime(monday.y, monday.m, monday.d, 0, timeZone);
+  const first = addDays(p.y, p.m, p.d, -back);
+  const start = zonedTime(first.y, first.m, first.d, 0, timeZone);
   if (period === "week") return { start, end: now };
-  const before = addDays(monday.y, monday.m, monday.d, -7);
+  const before = addDays(first.y, first.m, first.d, -7);
   return { start: zonedTime(before.y, before.m, before.d, 0, timeZone), end: start };
 }
 /** The period of the same length right before (a comparison). */
@@ -139,7 +140,7 @@ export function workingSeconds(from: number, to: number, schedule: Schedule, tim
 /** The duration function a read measures with: calendar seconds, or working seconds on one clock built for the read. */
 export function durationClock(o: Pick<StatsOptions, "clock" | "hours" | "timeZone">): (from: number, to: number) => number {
   if (o.clock !== "working") return (from, to) => Math.max(0, to - from);
-  const clock = new WorkingClock(o.hours ?? DEFAULT_HOURS, o.timeZone);
+  const clock = new WorkingClock(o.hours ?? defaultHours(o.timeZone), o.timeZone);
   return (from, to) => clock.between(from, to);
 }
 

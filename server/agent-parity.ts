@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AGENT_ROLES, savedRoleSchema } from "../shared/agent-settings";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS } from "../shared/onboarding";
 import { setPrWorkflowInputSchema } from "../shared/pr-workflow";
+import { prStatsInputSchema, setPrStatsInputSchema, statsRepoName } from "../shared/pr-stats-settings";
 import { reviewerListSchema } from "../shared/reviewers";
 import { taskTriggerSchema } from "../shared/task-trigger";
 import { UPDATE_MODES } from "../shared/updates";
@@ -48,6 +49,11 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   // Settings → Following → Shipping PRs (workflow, merge method and review fixes, per repository or the default)
   { name: "pr_workflow", rpc: "follow.pr-workflow", kind: "read", input: z.strictObject({ refresh: z.boolean().optional() }) },
   { name: "set_pr_workflow", rpc: "follow.set-pr-workflow", kind: "planned", before: { rpc: "follow.pr-workflow" }, input: setPrWorkflowInputSchema.extend(confirm) },
+  // PR statistics (docs/pr-stats.md): the page's model, Settings → PR statistics, and its writes. Turning a repository
+  // on shows the estimate first (the dry run's `before`), like the opt-in sheet.
+  { name: "pr_stats", rpc: "follow.pr-stats", kind: "read", input: prStatsInputSchema },
+  { name: "pr_stats_settings", rpc: "follow.pr-stats-settings", kind: "read", input: z.strictObject({ repo: statsRepoName.optional(), estimate: z.boolean().optional() }) },
+  { name: "set_pr_stats", rpc: "follow.set-pr-stats", kind: "planned", before: { rpc: "follow.pr-stats-settings", input: a => ({ ...(a.repo ? { repo: a.repo } : {}), estimate: a.enable === true }) }, input: setPrStatsInputSchema.extend(confirm) },
   // Settings → Reviewers
   { name: "reviewer_settings", rpc: "follow.reviewer-settings", kind: "read", input: none },
   { name: "reviewer_suggestions", rpc: "follow.reviewer-suggestions", kind: "read", input: z.strictObject({ repo }) },
@@ -194,6 +200,8 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-project-tracking": { tools: ["set_project_tracking"] },
   "follow.pr-workflow": { tools: ["pr_workflow", "agent_settings"] },
   "follow.set-pr-workflow": { tools: ["set_pr_workflow"] },
+  "follow.pr-stats-settings": { tools: ["pr_stats_settings"], note: "With estimate: true it is the opt-in sheet's numbers; set_pr_stats enable shows them as its dry run." },
+  "follow.set-pr-stats": { tools: ["set_pr_stats"] },
   "follow.reviewer-settings": { tools: ["reviewer_settings"] },
   "follow.reviewer-suggestions": { tools: ["reviewer_suggestions"] },
   "follow.save-reviewers": { tools: ["save_reviewers"] },

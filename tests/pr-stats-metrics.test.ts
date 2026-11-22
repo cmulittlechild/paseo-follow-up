@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { derive, firstResponse, ignored, MIN_N, nearestRank, periodRange, personDetail, previousRange, sizeBucket, stackParents, statsModel, summarize, workingSeconds, zonedTime, type StatsOptions } from "../shared/pr-stats";
+import { defaultHours, derive, durationClock, firstResponse, ignored, MIN_N, nearestRank, periodRange, personDetail, previousRange, sizeBucket, stackParents, statsModel, summarize, workingSeconds, zonedTime, type StatsOptions } from "../shared/pr-stats";
 import { parseStatsRecord, type StatsRecord } from "../shared/pr-stats-records";
 import { FakeStatsGithub, PEOPLE } from "./support/fake-stats-github";
 import { clock } from "./fixtures";
@@ -35,7 +35,11 @@ test("stats metrics: periods in a time zone (This week from Monday 00:00 local, 
   assert.equal(new Date(last.start * 1000).toISOString(), "2025-12-28T23:00:00.000Z");
   assert.equal(last.end, week.start);
   assert.equal(periodRange("30d", now, "Europe/Berlin").start, now - 30 * 86_400);
-  assert.equal(new Date(periodRange("week", now, "Europe/Berlin", 0).start * 1000).toISOString(), "2026-01-03T23:00:00.000Z", "a Sunday week start");
+  assert.equal(new Date(periodRange("week", now, "Europe/Berlin", 0).start * 1000).toISOString(), "2026-01-03T23:00:00.000Z", "a saved Sunday week start");
+  // Unsaved, a Friday–Saturday-weekend zone's week starts on Sunday; a saved Monday wins.
+  const sunday = Date.parse("2026-01-11T08:00:00Z") / 1000;
+  assert.equal(new Date(periodRange("week", sunday, "Asia/Jerusalem").start * 1000).toISOString(), "2026-01-10T22:00:00.000Z");
+  assert.equal(new Date(periodRange("week", sunday, "Asia/Jerusalem", 1).start * 1000).toISOString(), "2026-01-04T22:00:00.000Z");
   assert.deepEqual(previousRange({ start: 100, end: 160 }), { start: 40, end: 100 });
   // Across the spring DST change: Monday 2026-03-30 00:00 is UTC+2.
   assert.equal(new Date(periodRange("week", Date.parse("2026-03-31T12:00:00Z") / 1000, "Europe/Berlin").start * 1000).toISOString(), "2026-03-29T22:00:00.000Z");
@@ -56,6 +60,12 @@ test("stats metrics: working hours are the overlap with the schedule, across a w
   // A working-hours model measures in working seconds.
   const model = statsModel([rec({ n: 1, c: fri, r: fri, k: fri, rv: [["bob", "A", mon]] })], all, mon, { timeZone: "Europe/Berlin", clock: "working", hours });
   assert.equal(model.team.wait.median, 2 * 3600);
+  // Unsaved, the zone's usual week counts: Sun–Thu in Jerusalem (Thursday 17:00 to Sunday 10:00 is two hours,
+  // Friday counts nothing); Mon–Fri elsewhere.
+  assert.deepEqual(defaultHours("Asia/Jerusalem").days, [0, 1, 2, 3, 4]);
+  assert.deepEqual(defaultHours("Europe/Berlin").days, [1, 2, 3, 4, 5]);
+  const thu = zonedTime(2026, 1, 8, 17 * 60, "Asia/Jerusalem"), sun = zonedTime(2026, 1, 11, 10 * 60, "Asia/Jerusalem");
+  assert.equal(durationClock({ clock: "working", timeZone: "Asia/Jerusalem" })(thu, sun), 2 * 3600);
 });
 
 test("stats metrics: drafts count as opened; bots, the ignore list and deleted users never make a row", () => {
