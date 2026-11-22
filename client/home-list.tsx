@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { View, type FlatList as NativeFlatList } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon, FlatList } from "@getpaseo/plugin/client/ui";
-import { type Badge, type HomeGroupId, type HomeModel, type Workstream, railChips } from "../shared/home";
+import { type Badge, type HomeGroupId, type HomeModel, type Workstream, prChipSpoken, railChips } from "../shared/home";
 import { ASK_KEY, excerpt, FIELD_LABEL, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
 import { age, wakeLabel, wakeShort } from "../shared/inbox";
@@ -260,7 +260,7 @@ export function BadgeView({ b, c }: { b: Badge; c: Colors }) {
 export function PrChipView({ s, c }: { s: Workstream; c: Colors }) {
   if (!s.pr) return null;
   const checks = s.pr.checks;
-  return <View testID="follow-up-row-chip" style={{ flexShrink: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
+  return <View testID="follow-up-row-chip" role="img" aria-label={prChipSpoken(s.pr)} style={{ flexShrink: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
     <Icon name="GitPullRequest" size={11} color={toneColor(c, s.pr.tone)} />
     <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foreground, fontSize: 11, lineHeight: 14, fontVariant: ["tabular-nums"] }}>{s.pr.label}</Text>
     {checks && <Text numberOfLines={1} style={{ flexShrink: 1, minWidth: 0, color: checks.tone === "muted" ? c.foregroundMuted : badgeColor({ text: "", tone: checks.tone }, c), fontSize: 11, lineHeight: 14 }}>{checks.text}</Text>}
@@ -343,7 +343,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const waited = s.group === "later" && s.at ? age(s.at, Date.now()) : "";
   const label = [s.title + (s.agent ? ` › ${s.agent}` : ""), s.word, s.line, hit?.via && `${FIELD_LABEL[hit.via.field]}: ${hit.via.text}`,
     // Every chip, even one a narrow row hides (row-chips-never-cover-the-time).
-    ...s.badges.map(b => b.text), s.pr && `Pull request ${s.pr.label}${s.pr.checks ? ` ${s.pr.checks.text}` : ""}`, wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
+    ...s.badges.map(b => b.text), s.pr && prChipSpoken(s.pr), wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
   return <Pressable ref={trigger.ref} nativeID={rowDomId(s.key)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label} accessibilityHint={quickActionsHint(touch)}
     onPress={() => onSelect(s.key)} onLongPress={trigger.onLongPress} delayLongPress={450}
     style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: dense ? "flex-start" : "center", gap: touch ? 10 : dense ? 8 : 10, minHeight: touch ? 56 : dense ? 36 : 38, paddingLeft: touch ? 14 : dense ? 8 : 16, paddingRight: touch ? 16 : dense ? 8 : 16, paddingVertical: touch ? 12 : dense ? 6 : 0,

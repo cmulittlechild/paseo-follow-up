@@ -67,7 +67,7 @@ The bar above the message box (the pill) shows what needs you in the chat you're
 
 ### A PR
 
-Tap a PR, or its segment in the stack bar, for its checks, reviewers and Merge. When Merge isn't available yet, the
+Tap a PR (on desktop, its segment in the stack bar too) for its checks, reviewers and Merge. When Merge isn't available yet, the
 sheet says what it's waiting for. Follow-up never merges on its own, and Merge checks the stack again first.
 
 <img alt="The PR sheet for a PR whose required test check failed" src="screenshots/follow-up-pr-sheet.png">

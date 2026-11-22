@@ -151,7 +151,7 @@ the cold start's spawns and compares).
   opens the PR sheet's confirm instead. Merge is offered only when every PR it would merge can merge, and once per stack: on the highest ready PR, whose
   button names the PRs under it (a lower PR's own merge stays in its PR sheet). An approved PR
   held by one under it isn't an ask (that PR is the agent's repair) but never goes quiet: `heldMerges`
-  (`shared/attention.ts`) puts "#143 approved · waits on #142 (checks failing)" in the panel's Pull requests card and
+  (`shared/attention.ts`) puts "#143 approved · waits on #142 (checks failed)" in the panel's Pull requests card and
   Home's detail pane (`HeldMerges`, `client/merge-button.tsx`), both numbers linked.
   After a click the button, the toast and Activity read one outcome (`mergeWords`, `shared/merge-click.ts`): Merged
   only when GitHub merged, Queued, or Merge requested (Graphite). A GitHub merge also marks its PRs merged in the

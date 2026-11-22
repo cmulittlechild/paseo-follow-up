@@ -39,7 +39,7 @@ test("chips rank red, amber, green, grey: a failing check outlasts Approved", ()
 test("a Needs-you row's word keeps its place, and the row's label names every chip, even a hidden one", async () => {
   const row = block(await src(), "const Row = memo(");
   assert.match(row, /s\.word && s\.group === "needs" \? <Text numberOfLines=\{1\} style=\{\{ flexShrink: 0, color, fontSize: 12 \}\}>\{s\.word\}/);
-  assert.match(row, /\.\.\.s\.badges\.map\(b => b\.text\), s\.pr && `Pull request \$\{s\.pr\.label\}/);
+  assert.match(row, /\.\.\.s\.badges\.map\(b => b\.text\), s\.pr && prChipSpoken\(s\.pr\)/);
 });
 
 test("a lone chip truncates instead of overflowing; the time never shrinks", async () => {
