@@ -401,6 +401,13 @@ const NEEDS_YOU_STATES = [
       rpc("follow.obligation", { title: "Wire alert thresholds", status: "blocked", evidence: "Waits for #232's review before the thresholds move to config", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Check alert emails in staging", status: "waiting", afterPrs: ["example/app#232"] }),
       msg("Thresholds are in #232. One task needs your call on who gets the alerts.")], flag: false },
+  // one-ask-one-item: a task blocked on something the developer does and reports back, and the turn's Action brief
+  // about it: one Done card, carrying the brief's context, never a brief beside a "write the decision" card.
+  { key: "ny-action", title: "Export layouts", minute: 186, prompt: "WEB-44: ship the export layout the design lead picks.",
+    steps: [rpc("follow.enroll", { goal: "WEB-44 Export layouts" }),
+      rpc("follow.obligation", { title: "Get alice's pick of the export layout", status: "blocked", ask: "Share the layout preview with alice and tell me when they've picked; I read the choice from the page.", enable_follow_up: false }),
+      msg("Both layouts are on the preview page; the export ships whichever alice picks."),
+      rpc("follow.needs-you", { kind: "action", ask: "Still needed: alice's pick on the layout preview", context: "Both layouts are built. Share the preview with alice; once they pick, the export ships that layout." })] },
   { key: "ny-person", title: "Webhook retries", minute: 180, prompt: "APP-195: retry failed invoice webhooks with backoff.", flag: false,
     steps: [rpc("follow.enroll", { goal: "APP-195 Retry failed invoice webhooks" }),
       rpc("follow.register-pr", { repo: "example/app", number: 262, stack: "Webhook retries" }),
@@ -1804,6 +1811,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       { state: "just-answered", ...pick("ny-answered"), wait: null },
       { state: "tasks", ...pick("ny-tasks"), wait: "Wire alert thresholds", homeToo: false },
       { state: "person", ...pick("ny-person"), wait: "#262 waits on its reviewer" },
+      { state: "task-action", ...pick("ny-action"), wait: "A task waits on this. The agent works on the rest" },
     ];
     const TALL = { width: DESKTOP.width, height: 1300 };
     for (const s of states) for (const theme of ["light", "dark"]) {

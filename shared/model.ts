@@ -73,6 +73,11 @@ export const obligationSchema = z.object({
    * the agent has the answer), dropped when the ask changes or the task leaves blocked.
    */
   coveredBy: z.string().regex(/^Q\d+$/).optional(),
+  /**
+   * While blocked on the developer: what the ask wants, a decision or an action they take and report back
+   * (one-ask-one-item). Set by update_obligation `need`; without it Follow-up reads the ask (shared/questions.ts taskNeed).
+   */
+  need: z.enum(["decision", "action"]).optional(),
   enable_follow_up: z.boolean().default(false), revision: z.number().int().nonnegative(),
   dependencyStage: z.enum(["merged", "deployed"]).optional(), category: z.enum(["follow_up", "pr_lifecycle"]).optional(),
   previousTitles: z.array(z.string()).optional(),

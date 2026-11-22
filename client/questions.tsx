@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { answerQuestionRpc } from "../shared/contracts";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
-import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, questionState, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, isDoneOnly, questionState, TASK_DONE, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
 import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
@@ -44,6 +44,7 @@ const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !
 export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAnswer | null | undefined): { icon: string; color: (c: Colors) => string; text: string } {
   if (pending?.error) return { icon: "CircleAlert", color: c => c.statusDanger, text: `Your answer wasn't sent: ${sentence(pending.error)} Open it to retry; your words are kept.` };
   if (pending) return { icon: "Send", color: c => c.foregroundMuted, text: "Sending your answer…" };
+  if (q.taskId && q.need === "action") return { icon: "Clock", color: c => c.foregroundMuted, text: "A task waits on this. The agent works on the rest meanwhile." };
   if (q.taskId && !q.options.length) return { icon: "Clock", color: c => c.foregroundMuted, text: "A task is blocked on this. The agent works on the rest." };
   switch (questionState(q)) {
     case "stopped": return { icon: "CirclePause", color: c => c.statusWarning, text: q.big ? `The agent stopped and waits for your answer. Big question: ${q.big}.` : "The agent stopped and waits for your answer." };
@@ -158,6 +159,9 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const answer = draft.answer;
   // What Send sends with the answer: Something else's words or a pick's note, from the draft (what-you-typed-is-what-gets-sent).
   const sentWords = draft.words;
+  // one-done-button: an action card is answered by Done itself; the options and Send appear only for Reply instead.
+  const doneOnly = open && isDoneOnly(q) && !other;
+  const done = () => quick("send", { choice: TASK_DONE.letter, words: choice === TASK_DONE.letter ? sentWords : undefined });
   const run = useMutation({
     mutationFn: async (action: "send" | "copy" | "resend") => {
       if (action === "copy") await copyText(answerMessage(q, q.answer?.choice ?? answer!, q.answer?.words ?? sentWords));
@@ -190,12 +194,13 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       copy: () => { toast.show("Couldn't open the agent's chat, so your answer was copied instead.", { variant: "info" }); quick("copy"); },
     });
   };
-  const quick = (action: "send" | "copy" | "chat") => {
-    if (!answer) return;
-    const input = { workspaceId: w.id, questionId: q.id, choice: answer, words: sentWords, action };
-    if (action === "copy") void copyText(answerMessage(q, answer, sentWords)).catch(() => undefined);
+  const quick = (action: "send" | "copy" | "chat", pick?: { choice: string; words?: string }) => {
+    const chosen = pick?.choice ?? answer; const said = pick ? pick.words : sentWords;
+    if (!chosen) return;
+    const input = { workspaceId: w.id, questionId: q.id, choice: chosen, words: said, action };
+    if (action === "copy") void copyText(answerMessage(q, chosen, said)).catch(() => undefined);
     // The unsent copy keeps exactly what was sent, so Retry (which rebuilds the draft from it) sends it again.
-    setPendingAnswer(w.id, q.id, { choice: answer, words: sentWords });
+    setPendingAnswer(w.id, q.id, { choice: chosen, words: said });
     const agent = who(w, q.askedBy);
     void runAction({
       label: `Answer to ${q.id}`, toast, run: () => answerRpc(input),
@@ -223,8 +228,9 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const dismissAny = useDismiss();
   const dismissX = open && dismissAt !== "host" ? <QuestionDismissX workspaceId={w.id} questionId={q.id} theme={theme} compact={compact} disabled={run.isPending} onDismissed={() => { onClose?.(); onAnswered?.(); }} dismiss={dismissAny} /> : null;
   // The footer's Send calls the latest quick through a ref, so it never sends a stale choice or words.
-  const quickRef = useRef(quick); quickRef.current = quick;
-  const sendable = open && !!answer;
+  // On an action card the form's Send is Done (one-done-button), wherever it is pressed from.
+  const quickRef = useRef(quick); quickRef.current = doneOnly ? (action: "send" | "copy" | "chat") => action === "send" ? done() : quick(action) : quick;
+  const sendable = open && (!!answer || doneOnly);
   useEffect(() => { onSendReady?.(sendable ? { send: () => quickRef.current("send"), busy: run.isPending } : null); }, [sendable, run.isPending]);
   useEffect(() => () => onSendReady?.(null), []);
   // The body says Not sent · Retry itself, with the button; the state line stays on what the agent is doing.
@@ -254,7 +260,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     </View>}
   </View>;
   // Cmd+Enter (and Enter outside the answer field) does what Send does, only when Send is enabled.
-  const submittable = !run.isPending && (open ? !!answer : q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat");
+  const submittable = !run.isPending && (open ? !!answer || doneOnly : q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat");
   // In the pill popover the answer field and actions stay pinned below a scrolling body.
   const pinned = dense && !!bodyMaxHeight;
   // Re-keyed by role, so the field that opens on Something else or Add note takes the caret; typing never re-keys it.
@@ -292,7 +298,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     {/* Read before choosing: More context sits under the question's own context, its answer with it. */}
     {/* The question's quiet row: More context (Catch up's move bar has its own). Dismiss is the card's x, top right. */}
     {open && moreContext && <QuestionMoreContext workspace={w} question={q} theme={theme} compact={compact} openAgent={openAgent} />}
-    {!!q.options.length && <View accessibilityRole="radiogroup" accessibilityLabel={`Options for ${q.id}`} style={{ gap: 6 }}>
+    {!!q.options.length && !doneOnly && <View accessibilityRole="radiogroup" accessibilityLabel={`Options for ${q.id}`} style={{ gap: 6 }}>
       {q.options.map(o => <OptionCard key={o.letter} theme={theme} compact={compact} dense={dense} letter={o.letter} label={o.label} consequence={o.consequence} recommended={q.recommend === o.letter}
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}
       {/* Built in on every question with options, after the agent's own: the developer's own answer. */}
@@ -320,17 +326,21 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       </Pressable>
     </View>}
     {/* A note on a lettered pick: the brief card's quiet links, under the options, in every mode. */}
-    {open && (draft.canAddNote || draft.canRemoveNote) && <NoteLink icon={draft.canAddNote ? "MessageSquarePlus" : "X"} label={draft.canAddNote ? "Add note" : "Remove note"}
+    {open && (draft.canAddNote || draft.canRemoveNote) && !(doneOnly && draft.canAddNote) && <NoteLink icon={draft.canAddNote ? "MessageSquarePlus" : "X"} label={draft.canAddNote ? "Add note" : "Remove note"}
       a11y={draft.canAddNote ? `Add a note for the agent about ${q.id}` : `Remove the note on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
       onPress={() => { if (draft.canAddNote) setNoteOpen(true); else { setWords(""); setNoteOpen(false); } }} />}
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      {open && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending} onPress={() => quick("send")} />}
-      {open && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title="Put in chat" accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
+      {doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending} onPress={done} />}
+      {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label="Add note" a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
+        onPress={() => { setChoice(TASK_DONE.letter); setNoteOpen(true); }} />}
+      {doneOnly && <NoteLink icon="Reply" label="Reply instead" a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}
+      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending} onPress={() => quick("send")} />}
+      {open && !doneOnly && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title="Put in chat" accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
       {/* Paseo 0.16: Copy steps back to an icon beside Put in chat (both move the words without sending). 0.15 keeps the label. */}
-      {open && !composer && <Button theme={theme} compact={compact} icon="Copy" title="Copy" accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
-      {open && composer && <IconButton theme={theme} compact={compact} icon="Copy" label="Copy answer" tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
+      {open && !doneOnly && !composer && <Button theme={theme} compact={compact} icon="Copy" title="Copy" accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
+      {open && !doneOnly && composer && <IconButton theme={theme} compact={compact} icon="Copy" label="Copy answer" tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
       {q.answer && resendTitle(q.answer.delivery) && <Button theme={theme} compact={compact} kind={q.answer.delivery.state === "failed" ? "primary" : undefined} icon="RotateCcw" title={resendTitle(q.answer.delivery)!} accessibilityLabel={q.answer.delivery.state === "failed" ? `Send the ${q.id} answer again` : `Try sending the ${q.id} answer now`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
       {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
@@ -339,7 +349,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {dense && onDetails && <IconButton theme={theme} compact={compact} icon="Maximize2" label={`Open ${q.id} with its links and full context`} onPress={onDetails} />}
     </View>
     {/* Same words as the brief card's, so a disabled Send always says why. */}
-    {open && draft.hint ? <Text style={t.small}>{draft.hint}</Text>
+    {doneOnly ? null : open && draft.hint ? <Text style={t.small}>{draft.hint}</Text>
       // Two ways to deliver (Paseo 0.16) need telling apart everywhere, the phone and the Needs you block included.
       : open && !dense && composer ? <Text style={t.small}>Send delivers it now, even mid-turn. Put in chat adds it to your message box to edit first.</Text>
       : open && !dense && !compact && !inline && <Text style={t.small}>Send puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under {q.id}.</Text>}
@@ -347,7 +357,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   // In the pill popover the question scrolls and the answer field and actions stay put, so Send is never cut off.
   if (pinned) {
     const showInput = open && !!draft.field;
-    return <SubmitScope enabled={submittable} onSubmit={() => open ? quick("send") : run.mutate("send")} style={{ gap: 10 }}>
+    return <SubmitScope enabled={submittable} onSubmit={() => doneOnly ? done() : open ? quick("send") : run.mutate("send")} style={{ gap: 10 }}>
       <View>
         <ScrollView style={{ maxHeight: bodyMaxHeight! - (showInput ? 62 : 0), flexGrow: 0 }} contentContainerStyle={{ paddingRight: 2 }} scrollEventThrottle={32}
           onLayout={e => { const view = e.nativeEvent.layout.height; setScroll(s => ({ ...s, view })); }}
@@ -365,7 +375,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       </View>
     </SubmitScope>;
   }
-  return <SubmitScope enabled={submittable} onSubmit={() => open ? quick("send") : run.mutate("send")} style={{ gap: dense ? 10 : 14 }}>
+  return <SubmitScope enabled={submittable} onSubmit={() => doneOnly ? done() : open ? quick("send") : run.mutate("send")} style={{ gap: dense ? 10 : 14 }}>
     {body}
     {/* The field with its Send: kept on screen together while typing (a-focused-field-and-its-send-stay-in-view). */}
     <View {...PRIMARY_FORM} style={{ gap: dense ? 10 : 14 }}>

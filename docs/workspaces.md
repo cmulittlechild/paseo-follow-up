@@ -278,6 +278,23 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   richer question arrives. 2026-11-22, Tom: "a lot of the time, 2 questions are created for the same thing"; live data
   had 33 of 96 task-made questions repeating an `ask_question` question, 19 while it was open and 13 after it was
   answered. Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS`.
+- **One ask, one item** (`one-ask-one-item`). A blocked task's card is shaped by what its ask wants (`taskNeed`,
+  `shared/questions.ts`): a decision keeps the free answer, and an action the developer takes and reports back ("Share
+  the decision page with alice and tell me when they've picked") gets one Done option (`TASK_DONE`), with Something else
+  for anything more, never "Write the decision for the agent". `update_obligation` `need` says which; without it the ask
+  decides (it asks to be told when something is done, or opens with something to do and asks no question). A card from
+  before that framed an action as a decision is reshaped in place and keeps its id. The agent's turn-end brief folds into
+  the task's card instead of standing beside it: `needsYouQuestions` points an action or decision `needs_you` at every
+  open task card it names ("Q3") and every card it restates (`taskCardsFor`: half of the card's words; for a card made
+  during that turn, `turn.at`, where the agent blocked the task and is reporting it, two shared words and 0.3 of the
+  card's words), as `questions: ["Q3"]` would, so `needsYouBlock` draws the card once with the brief's context. A card
+  the brief doesn't name or restate never hides it, even one made in the same turn: both show. The fold is the server's, so `update_obligation` says nothing about the task's own
+  card: the agent reads zero extra words. An action card is answered by one Done button (`isDoneOnly`) in the panel, on
+  Home and in the chat brief, never an option to pick and then Send; a brief's Done on it answers the card (A).
+  2026-11-22, the developer: an Action brief and its blocked task's card showed the same ask,
+  and the card read "Write the decision" for an action; live, 7 of 9 open task cards sat beside an open action or
+  decision brief from the same agent, and none was pointed at. Guarded by `tests/one-ask-one-item.test.ts` and
+  `INVARIANTS`.
 - **The activity log.** `shared/activity.ts` builds it from stored state.
 
 ## Questions
