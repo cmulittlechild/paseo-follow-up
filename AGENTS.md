@@ -82,7 +82,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
-| PR statistics (records, store, sync, the GitHub budget gate) | `shared/pr-stats-records.ts`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
+| PR statistics (records, store, sync, the GitHub budget gate, metrics) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
 | Wait for background jobs | `server/wait.ts`, `server/host-features.ts`, `server/wait-jobs.ts`, `server/wait-runner.sh`, `shared/wait.ts` | [wait](docs/wait.md) |
@@ -905,6 +905,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `shared/pr-stats-records.ts`) holds numbers, times, logins, branch names and a title capped at `TITLE_MAX`; the
    queries never ask for a body, a comment's text, a diff or a file list, and the schema is strict, so nothing else
    can be stored. Records stay on the host. Guarded by `tests/pr-stats-privacy.test.ts`.
+
+70. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
+   waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
+   from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
+   later" never count as waiting. A stacked PR (based on another PR's head; stack-aware is the default) starts no
+   earlier than its parent's first response, or its parent's merge when that came first without one; until then it is
+   folded under the PR it waits behind ("+N above in its stack"), never listed as waiting. One function derives it
+   (`derive`, `shared/pr-stats.ts`) for every metric. Guarded by `tests/pr-stats-metrics.test.ts`.
 
 ## Bugs
 
