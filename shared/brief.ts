@@ -679,7 +679,9 @@ export function briefCardAsk<B extends Pick<Brief, "state" | "kind" | "source" |
   if (!liveBrief(brief) || briefCardShown(brief, row, drawn.length)) return brief.ask;
   const questions = drawn.flatMap(i => i.kind === "question" && i.questionId ? [i.questionId] : []);
   if (questions.length === drawn.length) return `Waiting on your answer to ${questions.join(", ")}`;
-  return `Needs you: ${drawn[0]!.title}${drawn.length > 1 ? ` +${drawn.length - 1} more` : ""}`;
+  // "and N more" in words, unbreakable: "+1 more" after a title with its own " · " read as part of its last clause, and
+  // wrapped "more" alone onto a phone's second line.
+  return `Needs you: ${drawn[0]!.title}${drawn.length > 1 ? `, and\u00a0${drawn.length - 1}\u00a0more` : ""}`;
 }
 
 /** The PR an add-reviewers brief asks about: its Add reviewers move's PR. Null for every other kind. */

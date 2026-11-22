@@ -28,7 +28,7 @@ test("a-pr-summary-says-the-worst: Home's PR chip names the worst open PR and ad
   assert.equal(chip.label, "#1058+119", "names the first failing PR in stack order");
   assert.equal(chip.url, "https://github.com/example/app/pull/1058");
   assert.equal(invariant.check(w, clock), null);
-  assert.match(liveLine(w, clock).text, /^Checks failing on 4 PRs$/);
+  assert.match(liveLine(w, clock).text, /^Checks failed on 4 PRs$/);
 });
 
 test("a-pr-summary-says-the-worst: threads beat a clear stack; an unknown PR never reads ✓", () => {
@@ -45,7 +45,7 @@ test("a-pr-summary-says-the-worst: threads beat a clear stack; an unknown PR nev
 test("a-pr-summary-says-the-worst: the invariant catches the old first-PR chip and running-over-failing line", () => {
   const w = bigStack(20, i => i === 12 ? { failedChecks: [{ name: "test" }] as never } : i === 3 ? { checksPending: true } : {});
   assert.equal(invariant.check(w, clock), null);
-  assert.equal(liveLine(w, clock).text, "Checks failing on #1013");
+  assert.equal(liveLine(w, clock).text, "Checks failed on #1013");
 });
 
 import { barMarks, stackBar, STACK_BAR_BUDGET } from "../shared/attention";

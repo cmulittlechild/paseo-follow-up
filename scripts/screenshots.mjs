@@ -1878,8 +1878,11 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
 /**
  * pr-scale (pr-scale-lists-batch-not-throw): Ledger rewrite's 120-PR stack and three example/web stacks. The panel's
  * Pull requests card at its top, scrolled to the middle of the stack and at its end; Home with the workspace selected
- * (desktop and 390x844); the PR sheet of the top PR (#1120), desktop and phone (opened from the panel, then narrowed). Light and dark. Each shot fails on a
- * schema error's text ("Too big", "expected array") or, on a phone, a page that scrolls sideways.
+ * (desktop and 390x844); the PR sheet of the top failing PR (#1116; #1120 is folded), desktop and phone (opened from the panel, then narrowed); the
+ * first "+N in review" fold closed and expanded; the stack bar cropped close; the panel's larger view on a phone; the
+ * chat's brief card beside the panel and on a phone (never "No ask stated"); and Billing retries (3 PRs) on the same
+ * surfaces, with no fold. Light and dark. Each shot fails on a schema error's text ("Too big", "expected array") or, on
+ * a phone, a page that scrolls sideways.
  */
 async function prScaleShots({ shoot }) {
   const spec = PR_SCALE_STATES[0];
@@ -1894,12 +1897,16 @@ async function prScaleShots({ shoot }) {
   const panel = async page => {
     await page.setViewportSize(TALL); await openChat(page, spec.title, spec.prompt);
     await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
-    await row(page, PR_SCALE_TOP).waitFor({ timeout: 60_000 });
+    await fold(page).waitFor({ timeout: 60_000 });
   };
+  // The top PR (#1120) sits in the first "+4 in review" fold (a-long-stack-shows-its-problems): shots that need a row
+  // on screen use #1116, the top failing PR, which keeps its row.
+  const SHOWN = 1116;
+  const fold = page => page.getByRole("button", { name: /^Show \d+ PRs in review, / }).filter({ visible: true }).first();
   const home = async (page, vp) => { await openHome(page); if (vp) await page.setViewportSize(vp); await (await homeRow(page, spec.title)).click(); await page.getByText(spec.title).filter({ visible: true }).first().waitFor(); };
   for (const theme of ["light", "dark"]) {
     await shoot(`ps-panel-top-${theme}`, TALL, theme, async page => { await panel(page); await healthy(page); });
-    await shoot(`ps-panel-middle-${theme}`, TALL, theme, async page => { await panel(page); const r = row(page, PR_SCALE.bottom + 60); await r.evaluate(el => el.scrollIntoView({ block: "center" })); await healthy(page); });
+    await shoot(`ps-panel-middle-${theme}`, TALL, theme, async page => { await panel(page); const r = row(page, 1058); await r.evaluate(el => el.scrollIntoView({ block: "center" })); await healthy(page); });
     await shoot(`ps-panel-end-${theme}`, TALL, theme, async page => {
       await panel(page);
       const r = row(page, PR_SCALE.bottom); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
@@ -1910,16 +1917,66 @@ async function prScaleShots({ shoot }) {
     await shoot(`ps-home-${theme}`, DESKTOP, theme, async page => { await home(page); await healthy(page); });
     await shoot(`ps-home-phone-${theme}`, PHONE, theme, async page => { await home(page, PHONE); await healthy(page, PHONE); });
     await shoot(`ps-sheet-${theme}`, TALL, theme, async page => {
-      await panel(page); await row(page, PR_SCALE_TOP).click();
-      await page.getByText(`Pull request #${PR_SCALE_TOP}`).first().waitFor();
+      await panel(page); await row(page, SHOWN).click();
+      await page.getByText(`Pull request #${SHOWN}`).first().waitFor();
       await page.waitForTimeout(500); await healthy(page);
     });
     await shoot(`ps-sheet-phone-${theme}`, PHONE, theme, async page => {
       // Home's phone pane lists no PRs: open the sheet from the panel, then narrow to the phone (as tasks-phone does).
-      await panel(page); await row(page, PR_SCALE_TOP).click();
-      await page.getByText(`Pull request #${PR_SCALE_TOP}`).first().waitFor();
-      await page.setViewportSize(PHONE); await page.getByText(`Pull request #${PR_SCALE_TOP}`).filter({ visible: true }).first().waitFor();
+      await panel(page); await row(page, SHOWN).click();
+      await page.getByText(`Pull request #${SHOWN}`).first().waitFor();
+      await page.setViewportSize(PHONE); await page.getByText(`Pull request #${SHOWN}`).filter({ visible: true }).first().waitFor();
       await page.waitForTimeout(500); await healthy(page, PHONE);
+    });
+    // The quiet fold (a-long-stack-shows-its-problems): its first "+N in review" row closed, then expanded in place.
+    await shoot(`ps-fold-closed-${theme}`, TALL, theme, async page => { await panel(page); await fold(page).evaluate(el => el.scrollIntoView({ block: "center" })); await healthy(page); });
+    await shoot(`ps-fold-open-${theme}`, TALL, theme, async page => {
+      await panel(page); const f = fold(page); const name = await f.getAttribute("aria-label"); await f.click();
+      const hide = page.getByRole("button", { name: name.replace(/^Show/, "Hide") }).filter({ visible: true }).first();
+      await hide.waitFor(); await hide.evaluate(el => el.scrollIntoView({ block: "start" })); await healthy(page);
+    });
+    // The stack bar (stack-bar-reads-at-any-size), cropped close at 2x so each mark can be read.
+    const barClip = async page => {
+      const bar = page.getByRole("progressbar", { name: /PRs merged$/ }).filter({ visible: true }).first();
+      await bar.waitFor(); const b = await bar.boundingBox();
+      return { x: Math.max(0, b.x - 24), y: Math.max(0, b.y - 64), width: b.width + 48, height: b.height + 96 };
+    };
+    await shoot(`ps-bar-${theme}`, TALL, theme, async page => { await panel(page); await healthy(page); return barClip(page); }, { scale: 2 });
+    // The panel on a phone: the larger view (Paseo's screen), opened at desktop then narrowed.
+    const phonePanel = async page => {
+      await panel(page); await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+      await row(page, SHOWN).waitFor({ timeout: 60_000 }); await page.setViewportSize(PHONE); await row(page, SHOWN).waitFor({ timeout: 60_000 });
+    };
+    await shoot(`ps-panel-phone-${theme}`, PHONE, theme, async page => { await phonePanel(page); await page.evaluate(() => window.scrollTo(0, 0)); await healthy(page, PHONE); });
+    await shoot(`ps-fold-phone-${theme}`, PHONE, theme, async page => { await phonePanel(page); await fold(page).evaluate(el => el.scrollIntoView({ block: "center" })); await healthy(page, PHONE); });
+    await shoot(`ps-bar-phone-${theme}`, PHONE, theme, async page => { await phonePanel(page); await healthy(page, PHONE); return barClip(page); }, { scale: 3 });
+    // The chat's brief card beside the panel (a-brief-without-an-ask-never-sits-beside-needs-you): it points at Needs
+    // you, never "No ask stated". Desktop with the panel open, and the phone's chat.
+    const card = page => page.getByText(/^(Needs you: |Waiting on your answer to |No ask stated)/).filter({ visible: true }).last();
+    const noBareCard = async page => { if (await page.getByText("No ask stated", { exact: true }).filter({ visible: true }).count()) throw new Error("pr-scale: the chat card says No ask stated beside Needs you"); };
+    await shoot(`ps-chat-${theme}`, TALL, theme, async page => { await panel(page); await card(page).waitFor({ timeout: 60_000 }); await card(page).evaluate(el => el.scrollIntoView({ block: "center" })); await noBareCard(page); await healthy(page); });
+    await shoot(`ps-chat-phone-${theme}`, PHONE, theme, async page => {
+      await page.setViewportSize(TALL); await openChat(page, spec.title, spec.prompt); await page.setViewportSize(PHONE);
+      await card(page).waitFor({ timeout: 60_000 }); await card(page).evaluate(el => el.scrollIntoView({ block: "center" })); await noBareCard(page); await healthy(page, PHONE);
+    });
+    // A normal 3-PR workspace (Billing retries) on the same surfaces, so small stacks don't regress: one mark per PR,
+    // no fold, the chip and the sheet as before.
+    const small = WORKSPACES.find(w => w.key === "billing");
+    const smallPanel = async page => { await page.setViewportSize(TALL); await openChat(page, small.title, small.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await row(page, 142).waitFor({ timeout: 60_000 }); };
+    const noFold = async page => { if (await fold(page).count()) throw new Error("pr-scale: a 3-PR stack shows a quiet fold"); };
+    await shoot(`ps-small-panel-${theme}`, TALL, theme, async page => { await smallPanel(page); await noFold(page); await healthy(page); });
+    await shoot(`ps-small-bar-${theme}`, TALL, theme, async page => { await smallPanel(page); return barClip(page); }, { scale: 2 });
+    await shoot(`ps-small-panel-phone-${theme}`, PHONE, theme, async page => {
+      await smallPanel(page); await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+      await row(page, 142).waitFor({ timeout: 60_000 }); await page.setViewportSize(PHONE); await row(page, 142).waitFor({ timeout: 60_000 }); await noFold(page); await healthy(page, PHONE);
+    });
+    const smallHome = async (page, vp) => { await openHome(page); if (vp) await page.setViewportSize(vp); await (await homeRow(page, small.title)).click(); await page.getByText("Only network failures").filter({ visible: true }).first().waitFor(); };
+    await shoot(`ps-small-home-${theme}`, DESKTOP, theme, async page => { await smallHome(page); await healthy(page); });
+    await shoot(`ps-small-home-phone-${theme}`, PHONE, theme, async page => { await smallHome(page, PHONE); await healthy(page, PHONE); });
+    await shoot(`ps-small-sheet-${theme}`, TALL, theme, async page => { await smallPanel(page); await row(page, 142).click(); await page.getByText("Pull request #142").first().waitFor(); await page.waitForTimeout(500); await healthy(page); });
+    await shoot(`ps-small-sheet-phone-${theme}`, PHONE, theme, async page => {
+      await smallPanel(page); await row(page, 142).click(); await page.getByText("Pull request #142").first().waitFor();
+      await page.setViewportSize(PHONE); await page.getByText("Pull request #142").filter({ visible: true }).first().waitFor(); await page.waitForTimeout(500); await healthy(page, PHONE);
     });
   }
 }

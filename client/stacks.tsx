@@ -109,14 +109,18 @@ function StackRows({ name, prs, theme, open, toggle, onOpen, compact, showRepo, 
       const range = `#${item.prs[0]!.number} to #${item.prs.at(-1)!.number}`;
       return <Pressable key={item.key} accessibilityRole="button" aria-expanded={expanded} accessibilityState={{ expanded }} accessibilityLabel={`${expanded ? "Hide" : "Show"} ${n} PRs in review, ${range}, in ${name}`} onPress={() => toggle(item.key)}
         style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, minHeight: compact ? 44 : 32, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+        {/* The node and the words sit on the row's middle (the rail runs through both ends), and the ring and chevron
+            take the in-review nodes' muted ink, not the border's, so the fold reads as a row you can open. */}
         <View style={{ width: NODE, alignItems: "center" }}>
-          <View style={{ width: 2, height: 8, backgroundColor: first ? "transparent" : c.border }} />
-          <View style={{ width: NODE, height: NODE, borderRadius: NODE / 2, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border, backgroundColor: c.surface0 }}>
-            <Icon name={expanded ? "ChevronUp" : "ChevronsUpDown"} size={10} color={c.foregroundMuted} />
+          <View style={{ width: 2, flex: 1, minHeight: 4, backgroundColor: first ? "transparent" : c.border }} />
+          <View style={{ width: NODE, height: NODE, borderRadius: NODE / 2, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.foregroundMuted, backgroundColor: c.surface0 }}>
+            <Icon name={expanded ? "ChevronUp" : "ChevronsUpDown"} size={12} color={c.foregroundMuted} />
           </View>
           <View style={{ width: 2, flex: 1, minHeight: 4, backgroundColor: last ? "transparent" : c.border }} />
         </View>
-        <Text style={[t.meta, { paddingTop: 8, fontVariant: ["tabular-nums"] }]}>{expanded ? `Hide ${n} in review` : `+${n} in review`}<Text style={{ color: c.foregroundMuted }}>{` · #${item.prs[0]!.number}–#${item.prs.at(-1)!.number}`}</Text></Text>
+        <View style={{ flex: 1, justifyContent: "center", paddingVertical: 4 }}>
+          <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{expanded ? `Hide ${n} in review` : `+${n} in review`}<Text style={{ color: c.foregroundMuted }}>{` · #${item.prs[0]!.number}–#${item.prs.at(-1)!.number}`}</Text></Text>
+        </View>
       </Pressable>;
     })}
     {fold && <Pressable accessibilityRole="button" aria-expanded={showDone} accessibilityState={{ expanded: showDone }} accessibilityLabel={`${showDone ? "Hide" : "Show"} ${done.length} merged PR${done.length === 1 ? "" : "s"} in ${name}`} onPress={() => toggle(foldKey)}

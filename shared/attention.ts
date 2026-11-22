@@ -438,7 +438,7 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
   return parts;
 }
 
-export type LiveIcon = "spinner" | "sent" | "done" | "paused" | "waiting" | "alert" | "idle";
+export type LiveIcon = "spinner" | "sent" | "done" | "paused" | "waiting" | "alert" | "failing" | "idle";
 /** What is happening right now, in one line, with the time it started when known. */
 /**
  * The panel header's live line. Say it once (Q49): while a message is queued, the Tasks strip right below carries when
@@ -481,7 +481,8 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
   // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
   const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);
-  if (failing.length) return { icon: "alert", text: failing.length === 1 ? `Checks failing on #${failing[0]!.number}` : `Checks failing on ${failing.length} PRs`, since: null };
+  // Red, in the rows' words ("Checks failed"): a failed check is a repair, not something waiting on the developer.
+  if (failing.length) return { icon: "failing", text: failing.length === 1 ? `Checks failed on #${failing[0]!.number}` : `Checks failed on ${failing.length} PRs`, since: null };
   if (w.prs.some(p => p.snapshot?.state === "OPEN" && p.snapshot.checksPending)) return { icon: "waiting", text: "Checks are running", since: null };
   if (w.prs.some(p => p.snapshot?.state === "OPEN")) return { icon: "waiting", text: "Waiting on review and merges", since: null };
   return { icon: "idle", text: "Waiting for the main agent to declare Done", since: null };

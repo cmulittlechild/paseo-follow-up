@@ -50,7 +50,7 @@ test("the stress case: the chat's card points at Needs you instead of No ask sta
   const none = { kind: "unknown" as const, source: "none" as const, state: "open" as const, ask: FALLBACK_ASK };
   const drawn = [{ kind: "send", title: "7 tasks ready · auto-send is off here" }, { kind: "merge", title: "#1003 is approved" }];
   assert.equal(briefCardShown(none, null, drawn.length), false);
-  assert.equal(briefCardAsk(none, null, drawn), "Needs you: 7 tasks ready · auto-send is off here +1 more");
+  assert.equal(briefCardAsk(none, null, drawn), "Needs you: 7 tasks ready · auto-send is off here, and\u00a01\u00a0more");
   assert.equal(briefCardAsk(none, null, [{ kind: "question", title: "Q1 · Pick", questionId: "Q1" }, { kind: "question", title: "Q2 · Pick", questionId: "Q2" }]), "Waiting on your answer to Q1, Q2");
   assert.equal(briefCardAsk(none, null, []), FALLBACK_ASK, "nothing in Needs you: the card says what it says");
   assert.equal(briefCardAsk({ ...none, state: "answered" as never }, null, drawn), FALLBACK_ASK, "history keeps its words");

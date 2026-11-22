@@ -45,6 +45,7 @@ function LiveGlyph({ icon, colors }: { icon: LiveIcon; colors: Colors }) {
     case "done": return <Icon name="CircleCheck" size={12} color={colors.statusSuccess} />;
     case "paused": return <Icon name="CirclePause" size={12} color={colors.statusWarning} />;
     case "alert": return <Icon name="TriangleAlert" size={12} color={colors.statusWarning} />;
+    case "failing": return <Icon name="CircleX" size={12} color={colors.statusDanger} />;
     case "waiting": return <Icon name="Clock" size={12} color={colors.foregroundMuted} />;
     default: return <Icon name="Circle" size={12} color={colors.foregroundMuted} />;
   }

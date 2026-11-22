@@ -379,7 +379,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    "No ask stated" or a done brief's "Nothing needed" is drawn only while nothing in Needs you speaks for the row;
    beside a question or an answer waiting to be sent it would say there's nothing to do. One predicate decides it,
    `briefCardShown` in `shared/brief.ts`, and what a card says comes from `briefCardAsk` on every surface, the chat's
-   card included: an open brief without an ask points at what Needs you holds ("Needs you: 7 tasks ready +1 more",
+   card included: an open brief without an ask points at what Needs you holds ("Needs you: 7 tasks ready, and 1 more",
    "Waiting on your answer to Q1"). 2026-11-22: the chat's card read "Finished · No ask stated" beside Send 7 tasks
    and Merge 3 PRs; it had its own check, for open questions only. Guarded by `tests/brief-card.test.ts`.
 22. **View state is per device; settings are per host** (`view-state-is-per-device-settings-are-per-host`). The
