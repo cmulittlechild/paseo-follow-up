@@ -883,25 +883,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    and unknown statuses keep their own rows in stack order. A section search shows its hits unfolded. 2026-11-22: a
    120-PR stack drew about 8000 px of rows with its seven PRs to fix spread through it. Guarded by
    `tests/big-stack.test.ts`.
-67. **Waiting for checks adds no GitHub read** (`waiting-for-checks-adds-no-github-read`). `wait_for_checks` answers
-   from the reads Follow-up already makes: a watched PR is due once after its wait began, then at the running-checks
-   cadence (`watchedSince`, `shared/poll.ts`), never past the reserve and never for a merged or closed PR, and every
-   verdict comes from an engine pass's observations (`CheckWatches.evaluate` after `Engine.run`). Measured 2026-11-22:
-   Paseo 0.17's own PR watch reads every watched PR every 15 s, 1 point a read for 1-5 PRs and 6 for 25, so a second
-   poller would cost ~240-1440 points an hour for PRs Follow-up already reads. That day agents ran ~117 polling loops
-   in 24 h (`gh pr checks`, `gh api graphql` every 1-60 s). Guarded by `tests/wait-for-checks.test.ts`
-   ([docs/wait-for-checks.md](docs/wait-for-checks.md)).
-68. **A watch never wakes a closed or archived agent; a waited-for failure is sent once**
-   (`a-watch-never-wakes-a-closed-agent`, `a-waited-for-failure-is-sent-once`). A verdict is one `checks` queue message
-   after the agent's turn; a closed or archived agent's watch ends with nothing sent, and the channel checks again when
-   it goes. An idle agent that asked is messaged even when unloaded (it asked for that message: invariant 1's one
-   exception). A failure a repair will carry (main agent, Auto-send on, its checks task queued or out) ends the watch
-   quietly. Guarded by `tests/wait-for-checks.test.ts`.
-69. **The polling nudge never blocks** (`the-polling-nudge-never-blocks`). The PostToolUse hook (already run for every
-   tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
-   `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
-   `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
-
 67. **PR statistics never spend below low** (`stats-never-spend-below-low`, `stats-stay-in-their-slice`,
    `stats-wait-for-the-governor`, `stats-take-one-slot`, `stats-feed-the-shared-budget`). PR statistics are the least
    important thing Follow-up reads from GitHub, so every stats request (page or follow-up) goes through one gate,
@@ -924,6 +905,24 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `shared/pr-stats-records.ts`) holds numbers, times, logins, branch names and a title capped at `TITLE_MAX`; the
    queries never ask for a body, a comment's text, a diff or a file list, and the schema is strict, so nothing else
    can be stored. Records stay on the host. Guarded by `tests/pr-stats-privacy.test.ts`.
+70. **Waiting for checks adds no GitHub read** (`waiting-for-checks-adds-no-github-read`). `wait_for_checks` answers
+   from the reads Follow-up already makes: a watched PR is due once after its wait began, then at the running-checks
+   cadence (`watchedSince`, `shared/poll.ts`), never past the reserve and never for a merged or closed PR, and every
+   verdict comes from an engine pass's observations (`CheckWatches.evaluate` after `Engine.run`). Measured 2026-11-22:
+   Paseo 0.17's own PR watch reads every watched PR every 15 s, 1 point a read for 1-5 PRs and 6 for 25, so a second
+   poller would cost ~240-1440 points an hour for PRs Follow-up already reads. That day agents ran ~117 polling loops
+   in 24 h (`gh pr checks`, `gh api graphql` every 1-60 s). Guarded by `tests/wait-for-checks.test.ts`
+   ([docs/wait-for-checks.md](docs/wait-for-checks.md)).
+71. **A watch never wakes a closed or archived agent; a waited-for failure is sent once**
+   (`a-watch-never-wakes-a-closed-agent`, `a-waited-for-failure-is-sent-once`). A verdict is one `checks` queue message
+   after the agent's turn; a closed or archived agent's watch ends with nothing sent, and the channel checks again when
+   it goes. An idle agent that asked is messaged even when unloaded (it asked for that message: invariant 1's one
+   exception). A failure a repair will carry (main agent, Auto-send on, its checks task queued or out) ends the watch
+   quietly. Guarded by `tests/wait-for-checks.test.ts`.
+72. **The polling nudge never blocks** (`the-polling-nudge-never-blocks`). The PostToolUse hook (already run for every
+   tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
+   `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
+   `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
 
 ## Bugs
 
