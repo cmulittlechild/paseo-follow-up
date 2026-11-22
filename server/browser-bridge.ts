@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { browserCommandSchema, type BrowserCommand, type BrowserPr, type BrowserResult } from "../shared/pr-actions";
+import { browserBatches, browserCommandSchema, type BrowserCommand, type BrowserPr, type BrowserResult } from "../shared/pr-actions";
 
 type Pending = { command: BrowserCommand; clientId: string | null; timer: ReturnType<typeof setTimeout>; resolve: (r: BrowserResult) => void };
 export class BrowserBridge {
@@ -41,7 +41,25 @@ export class BrowserBridge {
     for (const job of jobs) job.clientId = clientId;
     return { jobs: jobs.map(j => j.command), accepted };
   }
-  request(op: BrowserCommand["op"], repo: string, prs: BrowserCommand["prs"]): Promise<BrowserResult> {
+  /**
+   * Any number of PRs: a stack longer than BROWSER_BATCH goes as consecutive commands, one at a time, and the results
+   * merge into one (invariant pr-scale-lists-batch-not-throw). It stops at the first batch that doesn't complete; a
+   * write that already changed earlier batches then reads as uncertain, so the caller checks state before retrying.
+   */
+  async request(op: BrowserCommand["op"], repo: string, prs: BrowserCommand["prs"]): Promise<BrowserResult> {
+    if (!prs.length) throw new Error("No PRs to send to Graphite.");
+    const merged: BrowserResult[] = [];
+    for (const batch of browserBatches(prs)) {
+      const r = await this.requestOne(op, repo, batch); merged.push(r);
+      if (r.outcome !== "completed") break;
+    }
+    const last = merged.at(-1)!;
+    if (merged.length === 1) return last;
+    const applied = merged.flatMap(r => r.applied);
+    const outcome = last.outcome === "failed" && op !== "read" && applied.length ? "uncertain" : last.outcome;
+    return { id: last.id, nonce: last.nonce, outcome, prs: merged.flatMap(r => r.prs), applied, error: last.error };
+  }
+  private requestOne(op: BrowserCommand["op"], repo: string, prs: BrowserCommand["prs"]): Promise<BrowserResult> {
     if (!this.status(repo).ready) return Promise.reject(new Error(this.status(repo).reason!));
     if (this.pending.size >= 50) return Promise.reject(new Error("Too many browser requests are pending."));
     const budget = op === "read" ? 20_000 : 120_000;

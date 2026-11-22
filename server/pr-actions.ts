@@ -1,6 +1,6 @@
 import { STOP_WAIT_MS, settleWithin, type Deadline } from "./teardown";
 import { randomUUID } from "node:crypto";
-import { downstack, isGithubFlow, mergeBlockers, prActionBlocks, type ActionPlan, type BrowserPr, type MergeStage, type PrActionKind } from "../shared/pr-actions";
+import { downstack, isGithubFlow, prRefs, mergeBlockers, prActionBlocks, type ActionPlan, type BrowserPr, type MergeStage, type PrActionKind } from "../shared/pr-actions";
 import type { MergeMethod } from "../shared/pr-workflow";
 import type { Workspace, Pr } from "../shared/model";
 import { findWorkspace } from "./engine";
@@ -10,6 +10,7 @@ import { GraphiteWriteError, type Graphite } from "./graphite";
 import { BrowserBridge } from "./browser-bridge";
 import { allAssigned, configuredReviewers, noReviewers, reviewerLabel, sameLogin, withoutAuthor, type ReviewerEntry } from "../shared/reviewers";
 import { chooseMethod, GithubWriteError, ReviewRequestError } from "./github";
+import { errorText, plainError } from "../shared/errors";
 
 function active(w: Workspace) {
   if (!w.enable_tracking || w.archived) throw new Error("This workspace is not actively tracked.");
@@ -72,7 +73,7 @@ export class PrActions {
     const readKey = `${w.id}:${identity(rows)}`;
     if (!this.reads.has(readKey)) this.reads.set(readKey, this.read(rows).finally(() => this.reads.delete(readKey)));
     try { return { browser, pr: (await this.reads.get(readKey)!).find(row => row.number === p.number) ?? null, error: null }; }
-    catch (error) { return { browser: this.browser.status(), pr: null, error: error instanceof Error ? error.message : "Could not read Graphite state." }; }
+    catch (error) { return { browser: this.browser.status(), pr: null, error: error instanceof Error ? errorText(plainError(error)) : "Could not read Graphite state." }; }
   }
   async prepare(workspaceId: string, key: string, kind: PrActionKind): Promise<ActionPlan> {
     const w = await this.fresh(workspaceId);
@@ -201,13 +202,15 @@ export class PrActions {
       } else {
         const reply = await this.browser.request(plan.kind, prs[0].repo, wire(prs));
         state = reply.outcome === "completed" ? "submitted" : reply.outcome;
-        const changed = reply.applied.map(n => `#${n}`).join(", ");
+        const changed = prRefs(reply.applied);
         result = reply.outcome === "completed" ? `Merge when ready ${plan.kind === "enable_mwr" ? "enabled" : "disabled"} for ${changed}.` : `${changed ? `Changed ${changed}. ` : ""}${reply.error || "Graphite could not confirm every selected PR."}`;
       }
     } catch (error) {
       state = (error instanceof GraphiteWriteError || error instanceof GithubWriteError) && error.uncertain ? "uncertain" : "failed";
-      result = error instanceof Error ? error.message : `${via(prs)} action failed.`;
+      result = error instanceof Error ? errorText(plainError(error)) : `${via(prs)} action failed.`;
     }
+    // The result crosses an RPC as textSchema (2000 chars): a long one ends in an ellipsis, it never fails the reply.
+    if (result.length > 2000) result = `${result.slice(0, 1999)}…`;
     await this.store.mutate(s => {
       const current = findWorkspace(s, w.id);
       const action = current.prActions.find(a => a.id === id)!; action.state = state; action.result = result; if (state === "submitted" && merge) action.merge = merge;
@@ -233,15 +236,18 @@ export class PrActions {
   private async githubExecute(kind: PrActionKind, prs: Pr[]): Promise<{ state: "submitted" | "failed" | "uncertain"; result: string; merge?: MergeStage }> {
     const gh = this.github;
     if (!gh.merge || !gh.autoMerge || !gh.retarget) throw new Error("GitHub merging isn't available here.");
-    const done: string[] = [];
-    const partial = (error: unknown) => { const message = error instanceof Error ? error.message : "GitHub action failed."; return done.length ? `${done.join(" ")} Then: ${message}` : message; };
+    // What happened so far, as numbers: said with prRefs, so a long stack's result stays one short paragraph.
+    const retargeted: number[] = [], merged: number[] = [], toggled: number[] = []; let queued: number | null = null;
+    const progress = () => [retargeted.length ? `Retargeted ${prRefs(retargeted)} to ${prs[0].snapshot!.trunk}.` : "", merged.length ? `Merged ${prRefs(merged)}.` : "",
+      queued !== null ? `Added #${queued} to the merge queue.` : "", toggled.length ? `Auto-merge ${kind === "enable_mwr" ? "on" : "off"} for ${prRefs(toggled)}.` : ""].filter(Boolean).join(" ");
+    const partial = (error: unknown) => { const message = error instanceof Error ? error.message : "GitHub action failed."; const done = progress(); return done ? `${done} Then: ${message}` : message; };
     const method = (p: Pr) => chooseMethod(p.snapshot!.repoMerge, this.savedMethod(p.repo));
     try {
       if (kind === "merge") {
         const queue = !!prs[0].snapshot!.repoMerge?.mergeQueue;
         for (const [i, p] of prs.entries()) {
           const s = p.snapshot!;
-          if (i > 0 && s.base !== s.trunk) { await gh.retarget(p, s.trunk); done.push(`Retargeted #${p.number} to ${s.trunk}.`); }
+          if (i > 0 && s.base !== s.trunk) { await gh.retarget(p, s.trunk); retargeted.push(p.number); }
           for (let attempt = 0; ; attempt++) {
             try { await gh.merge(p, { method: method(p), head: s.head, mergeQueue: queue }); break; }
             catch (error) {
@@ -250,16 +256,16 @@ export class PrActions {
               await this.settle(3_000);
             }
           }
-          done.push(queue ? `Added #${p.number} to the merge queue.` : `Merged #${p.number}.`);
+          if (queue) queued = p.number; else merged.push(p.number);
           if (queue) break; // The queue merges the rest in order once the first lands; GitHub retargets nothing yet.
         }
-        return { state: "submitted", result: done.join(" "), merge: queue ? "queued" : "merged" };
+        return { state: "submitted", result: progress(), merge: queue ? "queued" : "merged" };
       }
       for (const p of prs) {
         await gh.autoMerge(p, kind === "enable_mwr" ? { enable: true, method: method(p), head: p.snapshot!.head, mergeQueue: !!p.snapshot!.repoMerge?.mergeQueue } : { enable: false });
-        done.push(`#${p.number}`);
+        toggled.push(p.number);
       }
-      return { state: "submitted", result: `Auto-merge ${kind === "enable_mwr" ? "on" : "off"} for ${done.join(", ")}.` };
+      return { state: "submitted", result: progress() };
     } catch (error) {
       return { state: error instanceof GithubWriteError && !error.uncertain ? "failed" : "uncertain", result: partial(error) };
     }

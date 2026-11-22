@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PRIORITY_SOURCES, priorityNote, prioritySourceSchema, type Priority } from "./priorities";
 import type { WorkstreamRow } from "./overseer";
+import { SCALE, truncated } from "./scale";
 
 /**
  * The ranker (1.4.0-beta.0, slice 3): one bounded model job that orders Tom's workstreams by what matters today and
@@ -90,7 +91,7 @@ export function rankPrompt(inputs: RankInputs, today: string, maxChars: number, 
 
 const sourceOut = z.object({ kind: z.enum(PRIORITY_SOURCES), label: z.string().trim().min(1).max(60), url: z.string().url().max(2000).optional().catch(undefined) });
 export const rankReplySchema = z.object({
-  priorities: z.array(z.object({ workspace: z.string().trim().min(1).max(200), score: z.number().min(0).max(100), reason: z.string().trim().max(300).catch(""), sources: z.array(sourceOut).max(5).catch([]).default([]) })).max(200),
+  priorities: truncated(z.object({ workspace: z.string().trim().min(1).max(200), score: z.number().min(0).max(100), reason: z.string().trim().max(300).catch(""), sources: z.array(sourceOut).max(5).catch([]).default([]) }), SCALE.workspaces),
   notStarted: z.array(z.object({ key: z.string().trim().min(1).max(30), title: z.string().trim().min(1).max(200), url: z.string().url().max(2000).optional().catch(undefined), reason: z.string().trim().max(300).catch("") })).max(20).catch([]).default([]),
 });
 export type RankReply = z.infer<typeof rankReplySchema>;
@@ -108,7 +109,7 @@ Rules:
 - When no outside input names it, use its strongest Paseo fact (its open ask, PR state or checks, "agent stopped") with sources [{"kind":"paseo","label":"Paseo"}].
 - Use only facts in the material. An empty reason is invalid.`;
 export const reasonReplySchema = z.object({
-  reasons: z.array(z.object({ workspace: z.string().trim().min(1).max(200), reason: z.string().trim().max(300).catch(""), sources: z.array(sourceOut).max(5).catch([]).default([]) })).max(200),
+  reasons: truncated(z.object({ workspace: z.string().trim().min(1).max(200), reason: z.string().trim().max(300).catch(""), sources: z.array(sourceOut).max(5).catch([]).default([]) }), SCALE.workspaces),
 });
 export type ReasonReply = z.infer<typeof reasonReplySchema>;
 

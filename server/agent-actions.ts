@@ -26,6 +26,7 @@ import type { RenameStatus } from "../shared/rename";
 import { DISPLAY_KEYS, displayPreferences, HOME_DETAIL_DEFAULT, CATCH_UP_RAIL_DEFAULT } from "../shared/display";
 import { DEFAULT_SEARCH_SHORTCUT, SEARCH_SHORTCUTS } from "../shared/search-key";
 import { DEFAULT_SORT, SORT_MODES } from "../shared/sort";
+import { SCALE } from "../shared/scale";
 
 /**
  * Agent parity: every action the developer can click in Follow-up has a tool that runs the same server path.
@@ -155,10 +156,10 @@ const login = reviewerLoginSchema;
 const prKey = z.string().trim().regex(/^[\w.-]+\/[\w.-]+#\d+$/, "Use owner/repo#number keys from list_prs.");
 const id = z.string().trim().min(1).max(200);
 const confirm = { planId: id.optional(), confirm: z.boolean().optional() };
-const agentIds = z.array(id).min(1).max(100);
+const agentIds = z.array(id).min(1).max(SCALE.agents);
 export const TOOL_INPUT = {
   list_prs: z.strictObject({ workspace: id.optional(), needs_reviewers: z.boolean().optional(), ready_to_merge: z.boolean().optional(), include_closed: z.boolean().optional() }),
-  add_reviewers: z.strictObject({ prs: z.array(prKey).min(1).max(50).optional(), reviewers: z.array(login).min(1).max(15).optional(), ...confirm }),
+  add_reviewers: z.strictObject({ prs: z.array(prKey).min(1).max(SCALE.perWorkspace).optional(), reviewers: z.array(login).min(1).max(15).optional(), ...confirm }),
   merge: z.strictObject({ pr: prKey.optional(), scope: z.enum(["target", "downstack"]).optional(), ...confirm }),
   enable_merge_when_ready: z.strictObject({ pr: prKey.optional(), scope: z.enum(["target", "downstack"]).optional(), ...confirm }),
   disable_merge_when_ready: z.strictObject({ pr: prKey.optional(), scope: z.enum(["target", "downstack"]).optional(), ...confirm }),
@@ -175,7 +176,7 @@ export const TOOL_INPUT = {
   ai_rename: z.strictObject({ workspaceId: id.optional(), title: z.string().trim().min(1).max(300).optional(), undo: z.boolean().optional(), ...confirm }),
   snooze_workspace: z.strictObject({ workspace: id.optional(), until: z.string().trim().min(1).max(200).optional(), bring_back: z.boolean().optional(), ...confirm }),
   set_finish_flags: z.strictObject({ agentIds: agentIds.optional(), value: z.boolean().optional(), ...confirm }),
-  set_priorities: z.strictObject({ priorities: z.array(priorityInputSchema).max(200).optional(), replace: z.boolean().optional(), ...confirm }),
+  set_priorities: z.strictObject({ priorities: z.array(priorityInputSchema).max(SCALE.workspaces).optional(), replace: z.boolean().optional(), ...confirm }),
   display_settings: z.strictObject({}),
   make_main_agent: z.strictObject({ agentId: id.optional(), reason: z.string().trim().min(1).max(200).optional(), requested: z.enum(["developer", "self"]).optional(), ...confirm }),
   set_display: z.strictObject({ values: z.record(z.string(), z.union([z.boolean(), z.string(), z.number()])).optional(), ...confirm }),

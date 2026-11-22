@@ -24,6 +24,7 @@ import { HOME_GROUPS } from "./home";
 import { prWorkflowViewSchema, setPrWorkflowInputSchema } from "./pr-workflow";
 import { setUpdatesInputSchema, updatesViewSchema } from "./updates";
 import { releaseNotesViewSchema } from "./changelog";
+import { SCALE } from "./scale";
 import { actionPlanSchema, actionResultSchema, browserCommandSchema, browserExchangeSchema, browserPrSchema, browserStatusSchema, prActionKind } from "./pr-actions";
 
 const agentCommunicationSchema = z.strictObject({
@@ -100,7 +101,7 @@ export const renameWorkspaceRpc = defineRpc({ name: "follow.rename-workspace", i
 export const usageRpc = defineRpc({ name: "follow.usage", input: z.object({}), output: usageSchema });
 // Trust bypass agents: how many permission prompts were approved today, and the newest few (tool and a short summary).
 export const trustBypassRpc = defineRpc({ name: "follow.trust-bypass", input: z.object({}), output: z.object({ today: z.number().int().nonnegative(), recent: z.array(z.object({ at: z.string(), agentId: z.string(), tool: z.string(), summary: z.string(), mode: z.string() })).max(20) }) });
-export const refineTasksRpc = defineRpc({ name: "follow.refine-tasks", input: z.object({ workspaceId: idSchema, tasks: z.array(z.object({ id: idSchema, title: textSchema, afterPrs: z.array(idSchema), dependencyStage: z.enum(["merged", "deployed"]), enable_follow_up: z.boolean(), communication: communicationSchema.optional(), trigger: taskTriggerSchema.nullable().optional() })).max(50) }), output: workspaceSchema });
+export const refineTasksRpc = defineRpc({ name: "follow.refine-tasks", input: z.object({ workspaceId: idSchema, tasks: z.array(z.object({ id: idSchema, title: textSchema, afterPrs: z.array(idSchema), dependencyStage: z.enum(["merged", "deployed"]), enable_follow_up: z.boolean(), communication: communicationSchema.optional(), trigger: taskTriggerSchema.nullable().optional() })).max(SCALE.perWorkspace) }), output: workspaceSchema });
 export const taskTriggerRpc = defineRpc({ name: "follow.set-task-trigger", input: z.object({ workspaceId: idSchema, obligationId: idSchema, expectedRevision: z.number().int().nonnegative(), trigger: taskTriggerSchema.nullable(), afterPrs: z.array(idSchema) }), output: workspaceSchema });
 
 // Narrow integration: no inventory, messages, paths, or credentials cross this RPC.

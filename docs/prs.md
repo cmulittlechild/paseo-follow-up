@@ -211,8 +211,12 @@ task waits with "Deploy check not set up for owner/repo" without firing, errorin
 - **Graphite's Merge when ready** is toggled through the paired extension, confirmed in Chrome
   (`follow.pr-control-status`, `follow.browser-status`; tools `pr_controls`, `browser_status`).
 - **Unknown toggle state never means off.**
+- **Long stacks go in batches** (invariant `pr-scale-lists-batch-not-throw`). One exchange command carries at most
+  `BROWSER_BATCH` (50) PRs, a bound the extension enforces too. `BrowserBridge.request` splits a longer list into
+  consecutive commands and merges the results; a write that stops after changing earlier batches reads `uncertain`.
+  PR numbers in a result say the first few and "+N more" (`prRefs`), so a result never outgrows its 2000-char text.
 - **Checks:** `scripts/check-browser-controls.mjs` with `scripts/browser-control-fixture.mjs` and
   `scripts/browser-control-preload.cjs`.
 
-Tests: `tests/pr-actions.test.ts`, `tests/pr-owner.test.ts`, `tests/github.test.ts`, `tests/graphite.test.ts`,
+Tests: `tests/pr-actions.test.ts`, `tests/pr-scale.test.ts`, `tests/pr-owner.test.ts`, `tests/github.test.ts`, `tests/graphite.test.ts`,
 `tests/reviewers.test.ts`, `tests/reviewer-config.test.ts`, `tests/deployments.test.ts`.

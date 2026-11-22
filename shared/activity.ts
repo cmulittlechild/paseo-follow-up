@@ -1,7 +1,7 @@
 import type { ListWorkspace as Workspace } from "./list";
 import { recoveryBatch } from "./follow-up";
 import { shortRefs } from "./attention";
-import { isGithubFlow } from "./pr-actions";
+import { isGithubFlow, prRefs } from "./pr-actions";
 import { answerLabel, answerStatus, closedLine } from "./questions";
 
 export type ActivityTone = "merged" | "success" | "warning" | "danger" | "muted";
@@ -44,7 +44,7 @@ export function activity(w: Workspace): Activity[] {
   for (const a of w.prActions) {
     // Say a merge once: when every PR it merged has its own "#N merged" row, the action's "Merged …" row would repeat it.
     if (a.kind === "merge" && a.merge === "merged" && a.prs.every(key => { const s = w.prs.find(p => p.key === key)?.snapshot; return s?.state === "MERGED" && !!s.mergedAt; })) continue;
-    const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");
+    const numbers = prRefs(a.prs.map(key => key.split("#")[1]));
     const toggle = isGithubFlow(w.prs.find(p => p.key === a.prs[0])?.snapshot) ? "Auto-merge" : "Merge when ready";
     // The same outcome the button and toast said (mergeWords): Merged only when GitHub merged.
     const what = a.kind === "merge" ? a.merge === "merged" ? `Merged ${numbers}` : a.merge === "queued" ? `Queued ${numbers.split(", ")[0]} to merge` : `Merge requested for ${numbers}` : a.kind === "request_reviewers" ? `Reviewers requested on ${numbers}` : a.kind === "enable_mwr" ? `${toggle} on for ${numbers}` : `${toggle} off for ${numbers}`;

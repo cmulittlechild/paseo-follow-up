@@ -68,3 +68,21 @@ test("a-check-costs-linear-in-its-workspace: an edited question is compared on i
   b.title = "Rename the billing ledger"; b.question = "Which ledger name ships?";
   assert.ok(textSimilarity(a, b) < 0.2, "the edit is seen");
 });
+
+// 2026-11-22 (a 65-PR stack, tests/pr-scale.test.ts): with every PR in one ready stack, Needs you's Merge check walked
+// each PR's downstack with a find per step (cubic), then one downstack per Merge to fold them (quadratic): 2.5 s of
+// one Home build at 520 PRs. Now one memoised pass (`downstackScan`) and one covering walk.
+const READY_STACK = 300;
+/** Measured 2026-11-22: 18.0 per PR at 300 and at 900 PRs (violations plus one Home build: each Needs-you pass reads it a few times). */
+const READY_PARENT_READS_PER_PR = 24;
+test("a-check-costs-linear-in-its-workspace: an all-ready stack's Merge check reads each PR's parent a constant number of times", async () => {
+  const { buildHome } = await import("../shared/home");
+  const prs = Array.from({ length: READY_STACK }, (_, i) => pr({ key: `example/app#${i + 1}`, number: i + 1, parent: i ? `example/app#${i}` : null,
+    snapshot: snapshot({ head: `h${i}`, headBranch: `b${i}`, base: i ? `b${i - 1}` : "main", reviewDecision: "APPROVED", graphiteMergeStatus: i ? "READY_TO_MERGE_AS_STACK" : "READY_TO_MERGE" }) }));
+  let reads = 0;
+  const w = workspace({ prs: prs.map(p => new Proxy(p, { get(target, key, receiver) { if (key === "parent") reads++; return Reflect.get(target, key, receiver); } })) });
+  violations(w, clock);
+  buildHome({ rows: [], tracked: [w], paseo: [], now: clock });
+  assert.ok(reads > 0);
+  assert.ok(reads <= READY_PARENT_READS_PER_PR * READY_STACK, `${reads} parent reads for ${READY_STACK} PRs (${(reads / READY_STACK).toFixed(1)} each, bound ${READY_PARENT_READS_PER_PR})`);
+});

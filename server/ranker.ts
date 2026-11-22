@@ -15,6 +15,7 @@ import {
 } from "../shared/ranker";
 import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
+import { truncated } from "../shared/scale";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
 const exec = promisify(execFile);
@@ -125,10 +126,10 @@ export function parseReviewRequests(stdout: string): RankReview[] {
 export const planReplySchema = z.object({
   title: z.string().trim().max(200).nullable().catch(null).default(null),
   // Items as objects, or plain lines (models sometimes flatten them); anything else is dropped, not fatal.
-  items: z.array(z.union([
+  items: truncated(z.union([
     z.object({ level: z.string().trim().min(1).max(30).catch("item"), title: z.string().trim().min(1).max(300), keys: z.array(z.string().trim().max(30)).max(10).catch([]).default([]) }),
     z.string().trim().min(1).max(300).transform(title => ({ level: "item", title, keys: title.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) ?? [] })),
-  ]).nullable().catch(null)).max(120).transform(items => items.filter((i): i is { level: string; title: string; keys: string[] } => !!i).slice(0, 80)),
+  ]).nullable().catch(null), 120).transform(items => items.filter((i): i is { level: string; title: string; keys: string[] } => !!i).slice(0, 80)),
 });
 export const PLAN_SYSTEM = "You read one Claude artifact with the Artifact tool, action \"read\" only, and summarise its planning content. Never call the Artifact tool with any other action (never publish, update, delete, comment or share). Reply with one JSON object only: {\"title\": string|null, \"items\": [{\"level\": \"initiative|project|milestone|issue\", \"title\": string, \"keys\": [Linear keys like ACME-123]}]}. Focus on this week; at most 60 items. Never include share keys, links or raw HTML.";
 

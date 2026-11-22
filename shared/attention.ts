@@ -7,7 +7,7 @@ import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from ".
 import { workingLine } from "./task-status";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { orderedStacks, prLink, settledForDisplay, type PrLink } from "./presentation";
-import { downstack, githubApproved, graphiteReady, isGithubFlow, mergeBlockers, prActionBlocks } from "./pr-actions";
+import { downstackScan, githubApproved, graphiteReady, isGithubFlow, mergeBlockers, prActionBlocks } from "./pr-actions";
 import { configuredReviewers, noReviewers, reviewersAsk, suggestedReviewers } from "./reviewers";
 import { agentMerges } from "./pr-workflow";
 import { awaitingSend, isOpen as questionOpen, questionState, type QuestionState } from "./questions";
@@ -297,14 +297,18 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   const blocking = (pr: Pr) => w.prActions.some(a => prActionBlocks(a, [pr.key]));
   // One click merges the PR and its unmerged downstack (a-click-on-merge-merges), so Merge is offered only when every
   // PR it would merge can merge: never a button the plan will refuse. A stack it can't read keeps the PR's own verdict.
-  const stackReady = (pr: Pr) => { let below: Pr[]; try { below = downstack(w.prs, pr.key).slice(0, -1); } catch { return true; }
-    return below.every(p => mergeReady(p, w, now) && workflowReady(p) && !blocking(p)); };
+  // Each PR's own verdict once: every PR's stack check reads the PRs under it, so recomputing made a long stack's
+  // check cubic (invariant a-check-costs-linear-in-its-workspace; tests/pr-scale.test.ts).
+  const own = new Map<string, boolean>();
+  const canMerge = (p: Pr) => { let v = own.get(p.key); if (v === undefined) own.set(p.key, v = mergeReady(p, w, now) && workflowReady(p) && !blocking(p)); return v; };
+  const holding = downstackScan(w.prs, canMerge);
+  const stackReady = (pr: Pr) => { const by = holding(pr.key); return by === "unreadable" || by === null; };
   for (const pr of stackOrder(w.prs)) {
     // Only offer Merge here when the PR's workflow (Graphite, or GitHub itself) agrees; otherwise the PR sheet explains what is missing.
     // A PR the agent merges itself (its own register_pr answer, else a No review repository) is the agent's work in
     // flight, never the developer's merge or review. Invariant a-no-review-repo-never-asks-for-review-or-merge.
     if (agentMerges(pr)) continue;
-    if (mergeReady(pr, w, now) && workflowReady(pr) && !blocking(pr) && stackReady(pr)) items.push({ kind: "merge", key: `merge:${pr.key}`, prKey: pr.key, number: pr.number, pr: prLink(pr), title: isGithubFlow(pr.snapshot) && pr.snapshot!.reviewDecision !== "APPROVED" ? `#${pr.number} is ready to merge` : `#${pr.number} is approved`, detail: pr.snapshot!.title });
+    if (canMerge(pr) && stackReady(pr)) items.push({ kind: "merge", key: `merge:${pr.key}`, prKey: pr.key, number: pr.number, pr: prLink(pr), title: isGithubFlow(pr.snapshot) && pr.snapshot!.reviewDecision !== "APPROVED" ? `#${pr.number} is ready to merge` : `#${pr.number} is approved`, detail: pr.snapshot!.title });
     // One ask per PR (one-reviewers-ask-per-pr): it names whom Follow-up suggests, so Follow-up's own reviewers brief
     // folds into it (shared/needs-block.ts) instead of drawing a second ask for the same PR.
     else if (asksForReviewers(pr, w)) { const suggested = suggestedReviewers(pr.repo, pr.snapshot!.reviewers?.author); items.push({ kind: "reviewers", key: `reviewers:${pr.key}`, prKey: pr.key, number: pr.number, pr: prLink(pr), suggested, title: reviewersAsk(pr.number, suggested, `#${pr.number} has no reviewers`), detail: pr.snapshot!.title }); }
@@ -312,7 +316,14 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   // One Merge per stack: the topmost ready PR's Merge names and merges the PRs under it ("Merge 3 PRs"), so a ready PR
   // under it isn't a second ask for the same decision. Merging only a lower one stays in its PR sheet.
   const merges = items.filter((i): i is Extract<NeedItem, { kind: "merge" }> => i.kind === "merge");
-  const covered = new Set(merges.flatMap(m => { try { return downstack(w.prs, m.prKey).slice(0, -1).map(p => p.key); } catch { return []; } }));
+  // Walk each Merge's parents only until a PR another Merge already covers: everything under it is covered too, so
+  // the whole pass reads each PR once (a downstack per Merge was quadratic on a long, all-ready stack).
+  const covered = new Set<string>();
+  const parentOf = merges.length > 1 ? new Map(w.prs.map(p => [p.key, p.parent] as const)) : new Map<string, string | null>();
+  if (merges.length > 1) for (const m of merges) {
+    if (holding(m.prKey) === "unreadable") continue;
+    for (let k = parentOf.get(m.prKey) ?? null; k !== null && !covered.has(k); k = parentOf.get(k) ?? null) covered.add(k);
+  }
   return items.filter(i => i.kind !== "merge" || !covered.has(i.prKey));
 }
 
@@ -337,12 +348,14 @@ function holdReason(p: Pr): string {
 export function heldMerges(w: Workspace, now = Date.now()): { pr: Pr; by: Pr; line: string }[] {
   if (!w.enable_tracking || w.archived) return [];
   const blocking = (pr: Pr) => w.prActions.some(a => prActionBlocks(a, [pr.key]));
+  const own = new Map<string, boolean>();
+  const canMerge = (p: Pr) => { let v = own.get(p.key); if (v === undefined) own.set(p.key, v = mergeReady(p, w, now) && workflowReady(p) && !blocking(p)); return v; };
+  const holding = downstackScan(w.prs, canMerge);
   const out: { pr: Pr; by: Pr; line: string }[] = [];
   for (const pr of stackOrder(w.prs)) {
-    if (agentMerges(pr) || !mergeReady(pr, w, now) || !workflowReady(pr) || blocking(pr)) continue;
-    let below: Pr[]; try { below = downstack(w.prs, pr.key).slice(0, -1); } catch { continue; }
-    const by = below.find(p => !(mergeReady(p, w, now) && workflowReady(p) && !blocking(p)));
-    if (by) out.push({ pr, by, line: `#${pr.number} ${isGithubFlow(pr.snapshot) && pr.snapshot!.reviewDecision !== "APPROVED" ? "is ready" : "approved"} · waits on #${by.number} (${holdReason(by)})` });
+    if (agentMerges(pr) || !canMerge(pr)) continue;
+    const by = holding(pr.key);
+    if (by && by !== "unreadable") out.push({ pr, by, line: `#${pr.number} ${isGithubFlow(pr.snapshot) && pr.snapshot!.reviewDecision !== "APPROVED" ? "is ready" : "approved"} · waits on #${by.number} (${holdReason(by)})` });
   }
   return out;
 }
