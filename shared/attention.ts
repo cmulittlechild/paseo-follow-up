@@ -336,8 +336,9 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
       detail: inChat ? "It's in the agent's chat. Send it there, or from here." : "You copied it. Paste it into the agent's chat, or send it from here." });
   }
   for (const q of open.filter(q => questionState(q) !== "stopped")) items.push({ kind: "question", key: `question:${q.id}`, questionId: q.id, title: `${q.id} · ${q.title}`, detail: q.question, state: questionState(q), big: q.big });
-  // A blocked task is a question once the server mirrors it; until then it still shows as a decision.
-  for (const o of followUpObligations(w).filter(o => blockedOnDeveloper(o) && !questions.some(q => q.taskId === o.id && q.taskRevision !== null)))
+  // A blocked task is a question once the server mirrors it, or the question that covers it (one-decision-one-card);
+  // until then it still shows as a decision.
+  for (const o of followUpObligations(w).filter(o => blockedOnDeveloper(o) && !o.coveredBy && !questions.some(q => q.taskId === o.id && q.taskRevision !== null)))
     items.push({ kind: "decision", key: `decision:${o.id}`, obligationId: o.id, title: o.title, detail: o.ask! });
   // Repairs Auto won't send (an idle agent Follow-up doesn't wake) wait on you just like hand-sent ones (shared/status.ts).
   const view = batchView(w, now);

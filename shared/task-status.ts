@@ -32,8 +32,15 @@ export type TaskStatus = {
 
 export const finishedTask = (o: Obligation) => o.status === "done" || o.status === "waived";
 
-/** The question a blocked task became, if the server has mirrored it. */
-export const linkedQuestion = (o: Obligation, w: Workspace) => o.status === "blocked" ? [...(w.questions ?? [])].reverse().find(q => q.taskId === o.id && q.taskRevision !== null) ?? null : null;
+/**
+ * The question a blocked task waits on: the one that covers it (one-decision-one-card: asked once, with ask_question),
+ * else the card the server made from it. Answering it shows on the task ("Q1 · answered, waiting on the agent").
+ */
+export const linkedQuestion = (o: Obligation, w: Workspace) => {
+  if (o.status !== "blocked") return null;
+  const questions = w.questions ?? [];
+  return (o.coveredBy ? questions.find(q => q.id === o.coveredBy) : undefined) ?? [...questions].reverse().find(q => q.taskId === o.id && q.taskRevision !== null) ?? null;
+};
 
 const name = (live: TaskAgentLive) => live.title?.trim() || "Agent";
 
