@@ -89,7 +89,7 @@ export const homeFoldKey = (group: string) => `follow-up.home.fold.${group}`;
 export const homeGroupOpen = (group: string, store: KeyValue = deviceStorage): boolean => {
   if (group === "needs") return true;
   const v = store.get(homeFoldKey(group));
-  return v === "1" ? true : v === "0" ? false : group !== "quiet";
+  return v === "1" ? true : v === "0" ? false : group !== "quiet" && group !== "older";
 };
 export const writeHomeGroupOpen = (group: string, open: boolean, store: KeyValue = deviceStorage) => { if (group !== "needs") store.set(homeFoldKey(group), open ? "1" : "0"); };
 /** Every key that is view state: what a device copies into its document the first time (never home_sort). */

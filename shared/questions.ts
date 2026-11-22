@@ -533,7 +533,7 @@ export function taskCardsFor<Q extends QuestionShape & Pick<Question, "id" | "an
     let n = 0; for (const t of theirs) if (words.has(t)) n++;
     if (!n) return false;
     // A card made or asked again this turn needs less to match (two shared words, and 0.3 of the card's words), never
-    // nothing: 2.4.0-beta.1 folded every same-turn card, so an unrelated "merge #5" brief vanished behind it.
+    // nothing: a first draft folded every same-turn card, so an unrelated "merge #5" brief vanished behind it.
     if (turnStartedAt !== null && Date.parse(q.askedAt) >= turnStartedAt) return n >= Math.min(2, theirs.size) && n / theirs.size >= 0.3;
     return n >= Math.min(3, theirs.size) && n / theirs.size >= 0.5;
   });

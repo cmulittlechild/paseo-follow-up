@@ -581,6 +581,37 @@ export function sectionOf(row: InboxRow, now: number): Section | null {
   return null;
 }
 
+// ---------- briefs from closed agents (briefs-from-closed-agents) ----------
+//
+// 2026-11-22, live: 49 agents flagged in Needs you, 42 of them closed. A closed agent's "No ask stated" or "finished"
+// flag asked nothing and nobody was left to read an answer; two sat in workspaces archived 13 days before.
+
+/** A closed agent's ask folds into Home's Older group after this long without a new flag or brief. */
+export const OLDER_AFTER_MS = 3 * 24 * 3_600_000;
+/** Flags that report, never ask: with no asking brief, a closed agent flagged only for these asks nothing. */
+const REPORT_REASONS: readonly Reason[] = ["finished", "pr_merged", "pr_closed"];
+export type FlagFate = "show" | "drop" | "older";
+/**
+ * Invariant briefs-from-closed-agents: what Needs you does with a flagged agent that can't be waiting on the developer.
+ * - drop: its workspace is archived or gone from Paseo's list (and the agent isn't running), or the agent is closed
+ *   and its flag asks nothing (no brief that asks, no question, only finished or PR-closed/merged flags);
+ * - older: the agent is closed and nothing new came for 3 days; Home folds it into Older, and it comes back the
+ *   moment the agent runs again or a new flag comes;
+ * - show: everything else, including every running or idle agent's ask.
+ * Never stored: the flag and its brief stay, so `inbox_list` still lists them. Dropping a row never hides a workspace
+ * item (an open question, a task): Home shows the workspace's own row for those.
+ */
+export function flagFate(row: Pick<InboxRow, "status" | "needs" | "brief" | "workspaceId" | "workspaceTitle">, now: number, archivedWorkspace = false): FlagFate {
+  if (!row.needs || ["running", "initializing"].includes(row.status)) return "show";
+  if (row.workspaceId && (archivedWorkspace || row.workspaceTitle === null)) return "drop";
+  if (row.status !== "closed") return "show";
+  const b = row.brief?.state === "open" ? row.brief : null;
+  const asks = !!b && (!!b.questionIds?.length || (b.source !== "none" && b.kind !== "done" && b.kind !== "unknown"));
+  if (!asks && row.needs.reasons.every(r => REPORT_REASONS.includes(r.reason))) return "drop";
+  const last = Math.max(...row.needs.reasons.map(r => Date.parse(r.at)), b?.at ? Date.parse(b.at) : 0);
+  return now - last > OLDER_AFTER_MS ? "older" : "show";
+}
+
 /** The rows of one section in display order. Needs you follows D9; the others put the newest first. */
 export function sectionRows(rows: InboxRow[], section: Section, now: number): InboxRow[] {
   const picked = rows.filter(r => sectionOf(r, now) === section);
@@ -590,9 +621,13 @@ export function sectionRows(rows: InboxRow[], section: Section, now: number): In
   return picked.sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
 }
 
-/** "Sign off & next" opens the top of Needs you, never the row below, so it can't walk past a permission. */
-export function nextAfter(rows: InboxRow[], currentAgentId: string | null, now: number): InboxRow | null {
-  return sectionRows(rows, "needs", now).find(r => r.agentId !== currentAgentId) ?? null;
+/**
+ * "Sign off & next" opens the top of Needs you, never the row below, so it can't walk past a permission. Only a row
+ * Home shows is next (briefs-from-closed-agents): a row `flagFate` drops or folds into Older never is. `archived` holds
+ * the archived workspaces' ids, as Home reads them from tracked state.
+ */
+export function nextAfter(rows: InboxRow[], currentAgentId: string | null, now: number, archived: ReadonlySet<string> = new Set()): InboxRow | null {
+  return sectionRows(rows, "needs", now).find(r => r.agentId !== currentAgentId && flagFate(r, now, !!r.workspaceId && archived.has(r.workspaceId)) === "show") ?? null;
 }
 
 /** Title for a row: "Workspace › Agent" only when the workspace has more than one root agent. */

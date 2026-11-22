@@ -23,6 +23,7 @@ import { NeedsYouBlock } from "./needs-you";
 import { HeldMerges } from "./merge-button";
 import { PrSheet } from "./pr-sheet";
 import { QuestionSheet } from "./questions";
+import { isDoneOnly } from "../shared/questions";
 import { DismissReveal } from "./dismiss";
 import { Age, BadgeView, BRIEF_KEY, glyphColor, HomeList, OVERSEER_KEY, PrChipView, PrSummaryText, type OverseerRowState } from "./home-list";
 import { answerLine, overseerRowState } from "../shared/overseer";
@@ -113,7 +114,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     navigation.openWorkspace({ workspaceId });
     if (compact) deps.openPanel(workspaceId); else setTimeout(() => deps.openPanel(workspaceId), 900);
   } : undefined, [navigation, compact, deps]);
-  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay);
+  const archivedIds = useCallback(() => new Set(deps.sources.live.archived().map(w => w.id)), [deps.sources.live]);
+  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay, archivedIds);
   useEffect(() => { if (params.select) setSelected(`agent:${params.select}`); }, [params.select]);
   // An already-open Home asked to show an item (the sidebar view's Overseer row: Start and Restart live here). `at` makes
   // the same item twice a second request.
@@ -459,7 +461,12 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const [laterSheet, setLaterSheet] = useState(false);
   // A snoozed row keeps its moves: Sign off is a normal end for something put off, and Later changes the time.
   const flagged = !!row?.needs;
-  const plan = paneButtons({ permissions: agent.permissions.length, decisions: !!b?.decisions.some(d => d.options.length), items, flagged, hasAgent: !!s.agentId });
+  // one-done-button: while an action card waits here, Done tells the agent and Sign off doesn't, so Sign off yields:
+  // never the primary, and the row's ✕ instead of a ✓ that would read as Done.
+  const actionOpen = !!w && asks.some(i => i.kind === "question" && w.questions.some(q => q.id === i.questionId && isDoneOnly(q)));
+  const signOffIcon = actionOpen ? "X" : "Check";
+  const planned = paneButtons({ permissions: agent.permissions.length, decisions: !!b?.decisions.some(d => d.options.length), items, flagged, hasAgent: !!s.agentId });
+  const plan = actionOpen && planned.primary === "sign_off" ? { ...planned, primary: "item" as const } : planned;
   const run = async (key: string, work: () => Promise<unknown>, done?: string) => {
     if (busy) return; setBusy(key);
     try { await work(); if (done) toast.show(done, { variant: "success" }); inbox.refresh(); } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); }
@@ -517,7 +524,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const canMove = plan.buttons.includes("sign_off") || plan.buttons.includes("later");
   const actionBar = !compact && (plan.buttons.includes("sign_off") || plan.buttons.includes("later")) && <View style={{ gap: 8 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      <Button nativeID={PANE_PRIMARY} theme={theme} compact={compact} kind={plan.primary === "sign_off" ? "primary" : "secondary"} icon="Check" title="Sign off" loading={busy === "sign_off"}
+      <Button nativeID={PANE_PRIMARY} theme={theme} compact={compact} kind={plan.primary === "sign_off" ? "primary" : "secondary"} icon={signOffIcon} title="Sign off" loading={busy === "sign_off"}
         onPress={() => void run("sign_off", () => inbox.signOff([s.agentId!]))} />
       <Button theme={theme} compact={compact} icon="ArrowRight" title="Sign off & next" onPress={() => signOffNext(s)} />
       <Button theme={theme} compact={compact} icon="AlarmClock" title="Later…" onPress={() => setLaterOpen(v => !v)} />
@@ -551,7 +558,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const narrow = useWindowDimensions().width < 380;
   // The dock's extras step aside while a field in the pane has focus (DockedPane, a-focused-field-and-its-send-stay-in-view).
   const moves = compact && canMove && <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 }}>
-    <View style={{ flex: 1 }}><Button nativeID={PANE_PRIMARY} theme={theme} compact grow kind={plan.primary === "sign_off" && !itemFirst ? "primary" : "secondary"} icon={narrow ? undefined : "Check"} title="Sign off" loading={busy === "sign_off"}
+    <View style={{ flex: 1 }}><Button nativeID={PANE_PRIMARY} theme={theme} compact grow kind={plan.primary === "sign_off" && !itemFirst ? "primary" : "secondary"} icon={narrow ? undefined : signOffIcon} title="Sign off" loading={busy === "sign_off"}
       onPress={() => void run("sign_off", () => inbox.signOff([s.agentId!]))} /></View>
     <View style={{ flex: 1.3 }}><Button theme={theme} compact grow icon={narrow ? undefined : "ArrowRight"} title="Sign off & next" onPress={() => signOffNext(s)} /></View>
     <IconButton theme={theme} compact icon="AlarmClock" label="Later…" onPress={() => setLaterSheet(true)} />

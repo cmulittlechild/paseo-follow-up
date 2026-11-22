@@ -527,7 +527,9 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const sendAll = () => void run("answers", async answerId => { await answer(cardPicks(sendable, words, openNotes), answerId); clearCard(b.id); });
   // The keyboard's Send: every pick on a multi-decision card, or a single card's Something else once it has words.
   const otherId = !multi ? askedDecisions(b).find(d => isOther(picks[d.id]))?.id : undefined;
-  const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : null;
+  // one-done-button: on an action card the keyboard sends Done (with its note), as the panel's card does.
+  const doneMove = doneQ && !multi && !isOther(picks[doneQ.id]) && moves[0]?.kind === "done" ? moves[0] : null;
+  const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : doneMove ? () => press(doneMove) : null;
   const sendOther = (decisionId: string) => { const text = words[decisionId]?.trim(); if (text) void run(`${decisionId}:${OTHER}`, async answerId => { await answer([{ decisionId, choice: OTHER, words: text }], answerId); clearCard(b.id); }); };
   return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you" : flaggedAct ? "Later" : word(b.kind)}: ${askText}`}
     style={[{ marginVertical: embedded ? 0 : 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: c.surface1, overflow: "hidden" }, bare && BARE]}>
@@ -562,7 +564,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       {multi && <SendBar b={b} picks={sendable} noted={notedCount(sendable, openNotes)} busy={busy} error={error} onSend={sendAll} c={c} compact={compact} />}
 
       {!embedded && moves.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, columnGap: 14 }}>
-        {moves.map((m, i) => <Btn key={m.kind} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} primary={i === 0 && !multi} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
+        {moves.map((m, i) => <Btn key={m.kind} shortcut={m === doneMove} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} primary={i === 0 && !multi} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
         {/* one-done-button: the quiet choices sit beside Done, never above the context, away from it. */}
         {doneQ && !notesOpen[doneQ.id] && !isOther(picks[doneQ.id]) && <NoteLink icon="MessageSquarePlus" label="Add note" a11y="Add a note, sent with Done" disabled={!!busy} onPress={() => noteOpenStore.set(b.id, doneQ.id, "1")} c={c} compact={compact} />}
         {doneQ && !isOther(picks[doneQ.id]) && <NoteLink icon="Reply" label="Reply instead" a11y="Write a reply instead of Done" disabled={!!busy} onPress={() => pickStore.set(b.id, doneQ.id, OTHER)} c={c} compact={compact} />}

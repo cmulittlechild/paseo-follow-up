@@ -3,7 +3,7 @@ import { liveLine, needsYou, prTone, stackOrder, workspaceSnoozed, type NeedItem
 import { activity, type Activity } from "./activity";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { sayNew, flagHeadline, HEADLINE_ICON, HEADLINE_TONE, HEADLINE_WORD, workspaceHeadline, withoutBriefQuestions, type Headline, type HeadlineKey, type HeadlineTone } from "./headline";
-import { rowTitle, sectionOf, type InboxRow } from "./inbox";
+import { flagFate, rowTitle, sectionOf, type InboxRow } from "./inbox";
 import { settled, summary } from "./model";
 import type { ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { isOpen as questionOpen } from "./questions";
@@ -18,10 +18,10 @@ import { messageSender, notificationText, senderLabel, workItems } from "./messa
  * agent; a workspace with several flagged root agents shows one row per agent.
  */
 
-export const HOME_GROUPS = ["needs", "sending", "running", "waiting", "later", "quiet"] as const;
+export const HOME_GROUPS = ["needs", "older", "sending", "running", "waiting", "later", "quiet"] as const;
 export type HomeGroupId = typeof HOME_GROUPS[number];
 export const GROUP_TITLE: Record<HomeGroupId, string> = {
-  needs: "Needs you", sending: "Sending", running: "Running", waiting: "Waiting on others", later: "Later", quiet: "Quiet",
+  needs: "Needs you", older: "Older", sending: "Sending", running: "Running", waiting: "Waiting on others", later: "Later", quiet: "Quiet",
 };
 
 /** Inside Needs you: blocking asks first, then decisions only the developer makes, then finished turns to sign off. */
@@ -235,9 +235,13 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   /** Any root agent per workspace, so a workspace row can still show the agent's tail. */
   const anyAgent = new Map<string, string>();
 
+  const archived = new Set(input.tracked.filter(w => w.archived).map(w => w.id));
   for (const row of rows) {
     if (row.workspaceId && !anyAgent.has(row.workspaceId)) anyAgent.set(row.workspaceId, row.agentId);
     const section = sectionOf(row, now);
+    // briefs-from-closed-agents: a flag nobody can act on leaves the list; a closed agent's old ask folds into Older.
+    const fate = section === "needs" ? flagFate(row, now, !!row.workspaceId && archived.has(row.workspaceId)) : "show";
+    if (fate === "drop") continue;
     const w = row.workspaceId ? tracked.get(row.workspaceId) : undefined;
     // Paseo's live workspace list names the workspace (a rename shows at once); the inbox's copy can be a minute old.
     const live = row.workspaceId && row.workspaceTitle ? paseo.get(row.workspaceId)?.name : undefined;
@@ -250,7 +254,9 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
       if (!h) continue;
       // a-headline-says-only-what-is-new: the row's chip names its PR, so the line drops that ref ("on #240").
       const chip = prChip(w); const line = sayNew(h.line, { chip: chip?.label });
-      out.push(make({ ...base, group: "needs", tier: tierOf(h.key), icon: HEADLINE_ICON[h.key], tone: HEADLINE_TONE[h.key], word: HEADLINE_WORD[h.key],
+      // An Older row never carries a live workspace item: with one, it stays in Needs you.
+      const group = fate === "older" && !(w && needsYou(w, now).length) ? "older" : "needs";
+      out.push(make({ ...base, group, tier: tierOf(h.key), icon: HEADLINE_ICON[h.key], tone: HEADLINE_TONE[h.key], word: HEADLINE_WORD[h.key],
         line: line === HEADLINE_WORD[h.key] ? "" : line, badges: badges({ headline: h, row, workspace: w, items }), pr: chip, at: row.needs!.since }));
       if (row.workspaceId) covered.add(row.workspaceId);
     } else if (section === "later") {
