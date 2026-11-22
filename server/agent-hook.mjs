@@ -13,7 +13,7 @@ const directory = dirname(fileURLToPath(import.meta.url));
 /** 1.4.0-beta.2: launched with Follow-up's tools served by Paseo's MCP (follow_<name>), or the follow-up bridge (<name>). Agents opened before the upgrade carry no flag and keep the bridge names. */
 let native = env("TOOLS") === "native";
 // Tool names that read unambiguously in prose; kept identical to server/mcp.mjs's underscore names (a test checks it).
-export const TOOL_NAMES = ["workspace_status", "sync_workspace", "enroll_workspace", "register_pr", "exclude_stack", "update_obligation", "acknowledge_batch", "ask_question", "record_answer", "withdraw_question", "set_spec", "link_item", "unlink_item", "link_items", "set_linked_items", "workspace_about", "agent_settings", "needs_you", "declare_done", "list_prs", "add_reviewers", "enable_merge_when_ready", "disable_merge_when_ready", "send_repairs", "set_auto_send", "clear_hold", "retry_batch", "inbox_list", "sign_off", "snooze_workspace", "set_finish_flags", "set_priorities", "agent_digest", "route_candidates", "send_to_agent", "start_workspace", "display_settings", "set_display", "follow_settings", "set_follow_settings", "project_settings", "set_project_tracking", "pr_workflow", "set_pr_workflow", "pr_stats", "pr_stats_settings", "set_pr_stats", "reviewer_settings", "reviewer_suggestions", "save_reviewers", "set_agent_setting", "set_wait_for_jobs", "onboarding_status", "onboarding_checks", "set_onboarding", "rank_status", "rerank_priorities", "overseer_status", "overseer_start", "overseer_restart", "overseer_ask", "inbox_brief", "brief_action", "queue_list", "queue_action", "inbox_act", "answer_question", "dismiss_question", "dismiss_item", "run_recovery", "set_workspace_spec", "set_task_trigger", "pr_controls", "browser_status", "trust_bypass_status", "release_notes", "updates_status", "check_updates", "set_updates", "install_update", "make_main_agent", "retry_move", "report_issue", "report_send", "ai_rename", "catch_up_deck", "context_requests", "ask_context", "context_reply"];
+export const TOOL_NAMES = ["workspace_status", "sync_workspace", "enroll_workspace", "register_pr", "exclude_stack", "update_obligation", "acknowledge_batch", "ask_question", "record_answer", "withdraw_question", "set_spec", "link_item", "unlink_item", "link_items", "set_linked_items", "workspace_about", "agent_settings", "needs_you", "declare_done", "list_prs", "add_reviewers", "enable_merge_when_ready", "disable_merge_when_ready", "send_repairs", "set_auto_send", "clear_hold", "retry_batch", "inbox_list", "sign_off", "snooze_workspace", "set_finish_flags", "set_priorities", "agent_digest", "route_candidates", "send_to_agent", "start_workspace", "display_settings", "set_display", "follow_settings", "set_follow_settings", "project_settings", "set_project_tracking", "pr_workflow", "set_pr_workflow", "pr_stats", "pr_stats_settings", "set_pr_stats", "reviewer_settings", "reviewer_suggestions", "save_reviewers", "set_agent_setting", "set_wait_for_jobs", "onboarding_status", "onboarding_checks", "set_onboarding", "rank_status", "rerank_priorities", "overseer_status", "overseer_start", "overseer_restart", "overseer_ask", "inbox_brief", "brief_action", "queue_list", "queue_action", "inbox_act", "answer_question", "dismiss_question", "dismiss_item", "run_recovery", "set_workspace_spec", "set_task_trigger", "pr_controls", "browser_status", "trust_bypass_status", "release_notes", "updates_status", "check_updates", "set_updates", "install_update", "make_main_agent", "retry_move", "report_issue", "report_send", "ai_rename", "catch_up_deck", "context_requests", "ask_context", "context_reply", "wait_for_checks"];
 const toolPattern = new RegExp(`(?<![\\w])(${TOOL_NAMES.join("|")})(?![\\w])`, "g");
 /** Names Follow-up's tools the way this agent has them. */
 export function named(text, isNative = native) { return isNative ? text.replace(toolPattern, "follow_$1") : text; }
@@ -124,6 +124,32 @@ export function batchParagraph(workflow) {
 export const NO_REVIEW_MERGE = "This repository has no review: merge your own PR once CI is green, without asking the developer. Archiving remains the developer's action.";
 /** Who merges, closing the batch paragraph: the developer (team review, unchanged text), or the agent in a No review repository. */
 export const mergeLine = workflow => workflow?.noReview ? NO_REVIEW_MERGE : "Merging and archiving remain the developer's actions.";
+/**
+ * Wait for checks (docs/wait-for-checks.md). One SessionStart line for root agents, and a PostToolUse nudge when a
+ * shell command polls GitHub for CI: said at most once per turn, never blocking (the-polling-nudge-never-blocks).
+ * The hook already runs on every PostToolUse (no matcher), so this costs no new process.
+ */
+export const checksLine = "To wait for CI, don't poll GitHub (gh pr checks --watch, gh run watch, sleep loops over gh): call wait_for_checks with the PR after pushing and end your turn; Follow-up messages you when the checks finish.";
+export const pollNudge = "That command polls GitHub for CI, which spends the developer's shared GitHub budget. Stop it, call wait_for_checks with the PR (no prs = every open PR of this workspace) and end your turn: Follow-up messages you once when the checks finish, from reads it already makes. A single gh pr checks to look once is fine.";
+const SHELL_TOOL = /(bash|shell|exec_command|write_stdin|monitor|terminal)/i;
+const GH_QUERY = /\bgh\s+(?:pr\s+(?:checks|view|status)\b|run\s+(?:list|view)\b|api\b[^\n;|&]*(?:graphql|\/pulls\b|check-runs|check-suites|\/statuses\b|\/status\b|\/actions\/runs))/;
+const GH_WATCH = /\bgh\s+(?:pr\s+checks\b[^\n;|&]*--watch\b|run\s+watch\b)/;
+// A for loop over PRs (reading each one once) isn't polling; a wait between reads is.
+const LOOP = /(?:^|[\s;&|({])(?:while|until)\b[\s\S]*?\bdo\b|\bsleep\s+\d|\bwatch\s+-n\b|\bsetInterval\b|\btime\.sleep\(/;
+/** The text a tool call runs: every string in its input (Bash command, Codex cmd, Monitor's command, a script). */
+function commandText(input) {
+  const out = [];
+  const walk = v => { if (typeof v === "string") out.push(v); else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === "object") Object.values(v).forEach(walk); };
+  walk(input);
+  return out.join("\n").slice(0, 20_000);
+}
+/** Whether a shell tool call polls GitHub for CI: a watch command, or a loop or sleep around a gh status read. */
+export function pollsGithub(tool, input) {
+  if (!SHELL_TOOL.test(String(tool ?? ""))) return false;
+  const text = commandText(input);
+  if (GH_WATCH.test(text)) return true;
+  return GH_QUERY.test(text) && LOOP.test(text);
+}
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
 async function json(path) { return JSON.parse(await readFile(path, "utf8")); }
 async function save(path, value) {
@@ -247,7 +273,7 @@ async function main() {
     return;
   }
   const context = () => instructions(lease, contributor, workflow);
-  const sessionText = async () => [workspace ? context() : null, ...await nativeExtras(brief), ...await waitExtras()].filter(Boolean).join("\n\n");
+  const sessionText = async () => [workspace ? context() : null, ...await nativeExtras(brief), ...await waitExtras(), workspace || env("ROOT") === "1" ? named(checksLine) : null].filter(Boolean).join("\n\n");
   const name = event.hook_event_name;
   if (!["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"].includes(name)) return;
   const session = createHash("sha256").update(String(event.session_id ?? agentId)).digest("hex").slice(0, 24);
@@ -272,8 +298,11 @@ async function main() {
   if (name === "PostToolUse") {
     // Said once per session per worker: the tools stay detached until the session reopens.
     const notice = detached && turn?.detachedNotice !== instance.instance;
+    // Once per turn (the turn's start, or the session's when no prompt was seen), and never a block.
+    const turnId = turn?.startedAt || 0;
+    const polling = (workspace || env("ROOT") === "1") && turn?.pollNudged !== turnId && pollsGithub(event.tool_name, event.tool_input);
     if (!workspace) {
-      if (notice) { await save(path, { ...turn, detachedNotice: instance.instance }); emit(detachedNotice); }
+      if (notice || polling) { await save(path, { ...turn, ...(notice ? { detachedNotice: instance.instance } : {}), ...(polling ? { pollNudged: turnId } : {}) }); emit([notice ? detachedNotice : null, polling ? named(pollNudge) : null].filter(Boolean).join("\n\n")); }
       return;
     }
     const tool = String(event.tool_name ?? "");
@@ -286,8 +315,8 @@ async function main() {
     // sync record the RPC handler wrote rather than tool names.
     const now = Date.now();
     const callStart = turn?.lastToolAt || turn?.startedAt || now;
-    await save(path, { ...turn, startedAt: turn?.startedAt ?? (dirty ? callStart : 0), stopped: turn?.stopped ?? false, ...(dirty ? { dirtyAt: callStart } : {}), quietRevision, lastToolAt: now, ...(notice ? { detachedNotice: instance.instance } : {}) });
-    const text = [upgrade ? quietInstruction : null, notice ? detachedNotice : null].filter(Boolean).join("\n\n");
+    await save(path, { ...turn, startedAt: turn?.startedAt ?? (dirty ? callStart : 0), stopped: turn?.stopped ?? false, ...(dirty ? { dirtyAt: callStart } : {}), quietRevision, lastToolAt: now, ...(notice ? { detachedNotice: instance.instance } : {}), ...(polling ? { pollNudged: turnId } : {}) });
+    const text = [upgrade ? quietInstruction : null, notice ? detachedNotice : null, polling ? named(pollNudge) : null].filter(Boolean).join("\n\n");
     if (text) emit(text);
     return;
   }

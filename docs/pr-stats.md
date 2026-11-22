@@ -54,7 +54,7 @@ Overseer and untracked root agents with the other action tools.
 syncs every 5 minutes until its backfill is done, then hourly while nobody looks (~1-2 points an hour), and every 5
 minutes while its page is on screen (`watching`). One repository at a time; every request through the gate. A GitHub
 team filter's members are read once a day (1 point); a token that can't read the team leaves the filter showing
-everyone and says so in one line (invariant 71, `stats-learn-the-team-from-the-data`).
+everyone and says so in one line (invariant 75, `stats-learn-the-team-from-the-data`).
 
 ## The query
 
@@ -112,7 +112,7 @@ when it is read. `statsModel` returns what the leaderboard, its header and `pr_s
   (`deletedUsers`) and never make a row. With a team filter only its people count.
 - **Periods** (`periodRange`, D9): This week (from the week's first day, Monday by default, 00:00 in the time zone),
   Last week, 30 days and 90 days. `previousRange` is the same length right before.
-- **Clocks** (invariant 70, `stats-measure-from-the-ask`). Every review clock starts at `reviewStart`: the ask, and
+- **Clocks** (invariant 74, `stats-measure-from-the-ask`). Every review clock starts at `reviewStart`: the ask, and
   for a stacked PR (stack-aware, the default) no earlier than its parent's first response, or its parent's merge
   without one. Calendar seconds by default; working seconds (`WorkingClock`: one weekly schedule in one zone,
   Mon-Fri 9-18 by default, each local day's hours computed in the zone so DST is exact) as a setting. A working

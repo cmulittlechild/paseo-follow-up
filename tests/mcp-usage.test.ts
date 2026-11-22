@@ -50,7 +50,7 @@ test("CLI retains full replies for existing scripts and offers compact calls plu
   const run=async(args:string[])=>JSON.parse((await exec(process.execPath,[resolve("server/mcp.mjs"),...args],{env:f.env})).stdout);
   assert.equal((await run(["call","workspace_status","{}"])) .obligations.length,2);
   assert.equal((await run(["call","workspace_status","{}","--compact"])).obligations.length,1);
-  assert.equal((await run(["list"])).tools.length, 97); // pr_stats + pr_stats_settings + set_pr_stats (PR statistics) + dismiss_item + dismiss_question + context_reply + catch_up_deck + context_requests + ask_context (Catch up) + queue_list + queue_action + ai_rename + report_issue + report_send + retry_move + 33 (link_item, unlink_item, snooze_workspace among them) + the Overseer's 5 routing tools + rerank + 42 parity tools (server/agent-parity.ts, release_notes, set_wait_for_jobs, the four Updates tools, link_items and set_linked_items among them) + make_main_agent
+  assert.equal((await run(["list"])).tools.length, 98); // wait_for_checks + pr_stats + pr_stats_settings + set_pr_stats (PR statistics) + dismiss_item + dismiss_question + context_reply + catch_up_deck + context_requests + ask_context (Catch up) + queue_list + queue_action + ai_rename + report_issue + report_send + retry_move + 33 (link_item, unlink_item, snooze_workspace among them) + the Overseer's 5 routing tools + rerank + 42 parity tools (server/agent-parity.ts, release_notes, set_wait_for_jobs, the four Updates tools, link_items and set_linked_items among them) + make_main_agent
   assert.ok((await exec(process.execPath,[resolve("server/mcp.mjs"),"--help"],{env:f.env})).stdout.includes("--compact"));
 });
 test("native discovery is silent outside tracked scope and recovery never gains main-only tools",async t=>{
@@ -72,7 +72,7 @@ test("an already-open MCP connection announces activation changes without messag
   assert.ok(output.includes('"listChanged":true'));f.w.enable_tracking=true;await f.save();
   for(let i=0;!output.includes("notifications/tools/list_changed")&&i<150;i++)await new Promise(r=>setTimeout(r,20));
   assert.ok(output.includes("notifications/tools/list_changed"));child.stdin.end(JSON.stringify({jsonrpc:"2.0",id:2,method:"tools/list"})+"\n");await done;
-  const result=output.trim().split("\n").map(l=>JSON.parse(l)).find(r=>r.id===2);assert.equal(result.result.tools.length,15);assert.equal(error,"");
+  const result=output.trim().split("\n").map(l=>JSON.parse(l)).find(r=>r.id===2);assert.equal(result.result.tools.length,16);assert.equal(error,"");
 });
 test("replacement recovery discovery can ask the authoritative status handler to validate a handoff",async t=>{
   const f=await fixture(t);

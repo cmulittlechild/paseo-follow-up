@@ -1,0 +1,1 @@
+- Agents wait for CI without polling GitHub: they ask Follow-up once and get one message when the checks finish, so your GitHub limit lasts longer.
