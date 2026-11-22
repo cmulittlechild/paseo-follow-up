@@ -175,7 +175,7 @@ try {
   const browserView = await call("follow.pr-workspaces", { repo: "Example/App", number: 1 });
   assert.equal(browserView.tracked, true); assert.equal(browserView.more, 0);
   assert.deepEqual(browserView.workspaces.map(v => [v.workspaceId, v.agentId]), [[w.id, agent.id]]);
-  assert.match(browserView.workspaces[0].state, /\S/); assert.deepEqual(Object.keys(browserView.workspaces[0]).sort(), ["agentId", "agentStatus", "group", "state", "title", "workspaceId"]);
+  assert.match(browserView.workspaces[0].state, /\S/); assert.deepEqual(Object.keys(browserView.workspaces[0]).sort(), ["agentId", "agentStatus", "group", "state", "title", "tone", "workspaceId"]); assert.ok(["attention", "danger", "success", "accent", "muted"].includes(browserView.workspaces[0].tone));
   for (let n = 0; n < 3; n++) await call("follow.obligation", { agentId: agent.id, title: `Regression requirement ${n}`, status: "done", evidence: "Verified by the isolated test fixture", afterPrs: ["example/app#1"], enable_follow_up: false });
   assert.equal((await call("follow.agent-status", { agentId: agent.id })).obligations.length, 4);
   await waitFor(w => w.batches.some(b => b.tasks.some(t => t.kind === "conflict") && b.state === "pending"), "queued conflict follow-up");

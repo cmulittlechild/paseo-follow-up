@@ -156,7 +156,7 @@ These have no tool because only another component calls them:
 | `follow.activate` | The `track` tool runs the same `engine.activate`; integration scripts call the RPC to track one workspace explicitly. |
 | `follow.refine-tasks` | Integration scripts: replace a workspace's task list. |
 | `follow.browser-exchange` | The Send to Paseo extension's job exchange ([prs.md](prs.md)). |
-| `follow.pr-owner`, `follow.pr-workspaces` | Send to Paseo: who owns a PR, and the read-only browser view of it. |
+| `follow.pr-owner`, `follow.pr-workspaces` | Send to Paseo: who owns a PR, and the read-only browser view of it (each row's `group`, one-line `state` and its `tone`; a closed main agent reads "Needs you · Agent closed"; [prs.md](prs.md#send-to-paseo-browser-companion)). |
 
 ## Subscriptions (Paseo 0.16)
 
