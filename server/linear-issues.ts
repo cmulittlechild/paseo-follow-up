@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mcpproxyText } from "./about";
-import { ISSUE_FIELDS, LIST_FIELDS, PAGE_SIZE, openIssues, parseIssue, parseIssuePage, type LinearIssue } from "../shared/linear-issues";
+import { ISSUE_FIELDS, LEFT_FIELDS, LIST_FIELDS, PAGE_SIZE, QUEUE_FIELDS, openIssues, parseIssue, parseIssuePage, type LinearIssue } from "../shared/linear-issues";
 
 const exec = promisify(execFile);
 export type Run = (command: string, args: string[], timeoutMs: number) => Promise<string>;
@@ -11,6 +11,8 @@ const runFile: Run = async (command, args, timeout) => (await exec(command, args
 export const LIST_TTL_MS = 60_000;
 /** One mcpproxy call's bound. */
 export const CALL_TIMEOUT_MS = 8_000;
+/** One sweep call's bound: the sweep runs in the background, so a slow Linear gets longer than New's open does. */
+export const SWEEP_CALL_TIMEOUT_MS = 20_000;
 /** Pages one list read may walk (PAGE_SIZE each): a bound on a runaway cursor, not a cap New chose. */
 export const PAGES_MAX = 40;
 /** Pages read per PAGE_SIZE open issues wanted, at most (closed issues in between take room). */
@@ -38,9 +40,22 @@ export class LinearIssues {
   calls = 0;
   constructor(private run: Run = runFile, private now: () => number = Date.now) {}
 
-  private async call(tool: string, args: unknown, reason: string): Promise<string> {
+  private async call(tool: string, args: unknown, reason: string, timeoutMs = CALL_TIMEOUT_MS): Promise<string> {
     this.calls++;
-    return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=linear:${tool}`, `--json_args=${JSON.stringify(args)}`, `--reason=Follow-up: ${reason}`, "--log-level=error", "-o", "json"], CALL_TIMEOUT_MS));
+    return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=linear:${tool}`, `--json_args=${JSON.stringify(args)}`, `--reason=Follow-up: ${reason}`, "--log-level=error", "-o", "json"], timeoutMs));
+  }
+
+  /**
+   * One page of the Morning brief's sweep: the developer's issues in one state type, with the brief's fields. `whole`
+   * false: the reply was cut off (mcpproxy truncates near 20 k characters), so the walk can't trust its end.
+   */
+  async queuePage(state: string, cursor: string | null, limit = PAGE_SIZE): Promise<ReturnType<typeof parseIssuePage>> {
+    const text = await this.call("list_issues", { assignee: "me", state, orderBy: "updatedAt", limit, fields: QUEUE_FIELDS, ...(cursor ? { cursor } : {}) }, "the Morning brief's sweep of your Linear queue", SWEEP_CALL_TIMEOUT_MS);
+    return parseIssuePage(text, true);
+  }
+  /** Why an issue left the queue: its state and assignee now. Null when Linear says it doesn't exist. */
+  async leftIssue(key: string): Promise<LinearIssue | null> {
+    return parseIssue(await this.call("get_issue", { id: key, fields: LEFT_FIELDS }, "why an issue left your Linear queue", SWEEP_CALL_TIMEOUT_MS));
   }
 
   /** The developer's open issues, newest update first. `fresh` skips the cache (Retry). */

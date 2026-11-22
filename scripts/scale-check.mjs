@@ -152,6 +152,16 @@ try {
     // send-load baseline for a main build that would otherwise block them).
     await exec("npx", ["tsx", "scripts/scale-seed.ts", join(home, "plugin-data/follow-up/state.json"), join(root, "created.json"), "3", process.argv.includes("--awake-fresh") ? String(AWAKE) : "0", ...(LIVE_SIZED ? [join(home, "plugin-data/follow-up/inbox.json"), "--live-sized"] : [])], { timeout: 120_000 });
   }
+  if (REALISTIC) {
+    // The Morning brief's Linear queue at a busy developer's size: ~200 issues in two complete sweeps and a 14-day log
+    // (fictional ACME keys). Idle, it must cost nothing but the 15 s loop's due check (the-brief-has-one-timer).
+    const issues = Object.fromEntries(Array.from({ length: 200 }, (_, n) => [`ACME-${n + 1}`, { key: `ACME-${n + 1}`, title: `Synthetic queue issue ${n + 1} about retrying failed charges and webhooks`, priority: n % 5,
+      state: n % 3 ? "Todo" : "Backlog", stateType: n % 3 ? "unstarted" : "backlog", due: n % 7 ? null : "2026-12-01", team: "ACME", project: n % 2 ? "Billing" : null, milestone: null,
+      url: `https://linear.app/acme/issue/ACME-${n + 1}`, updatedAt: now }]));
+    const day = 86_400_000; const at = k => new Date(Date.now() - k * day).toISOString();
+    const log = Array.from({ length: 60 }, (_, n) => ({ at: at(n % 13), key: `ACME-${n + 1}`, title: `Synthetic queue issue ${n + 1}`, url: null, before: { priority: 4, due: null, state: "Todo" }, after: { priority: 2, due: null, state: "Todo" }, left: null }));
+    await writeFile(join(home, "plugin-data/follow-up/linear-queue.json"), JSON.stringify({ version: 1, sweeps: [{ at: at(0), complete: true, pages: 8, issues }, { at: at(1), complete: true, pages: 8, issues }], log, last: null, seen: null, morningDay: null }));
+  }
   if (titleIndexCheck) {
     const url = "https://claude.ai/artifact/acme-title-probe";
     await writeFile(join(home, "plugin-data/follow-up/linked.json"), JSON.stringify({ version: 1, workspaces: { [created[0].workspaceId]: { items: [{ key: url, url, kind: "artifact", title: null, origin: "extracted", firstSeen: now, lastSeen: now }], excluded: [], candidates: [] } } }));

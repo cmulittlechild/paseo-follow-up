@@ -17,7 +17,7 @@ const T0 = Date.parse("2026-11-20T10:00:00.000Z");
 const issue: LinearIssue = {
   id: "u-142", key: "ACME-142", title: "Retry failed charges", state: "In Progress", stateType: "started", priority: { value: 2, name: "High" },
   updatedAt: "2026-11-20T09:00:00.000Z", team: "ACME", teamName: "Acme Web", url: "https://linear.app/acme/issue/ACME-142", assigneeIsMe: true,
-  branchName: "alice/acme-142-retry-failed-charges", description: "Charges that fail are never retried.",
+  branchName: "alice/acme-142-retry-failed-charges", description: "Charges that fail are never retried.", due: null, project: null, milestone: null, assignee: null,
 };
 const projects: DispatchProject[] = [
   { id: "web", name: "web", repo: "acme/web", worktree: true, path: "/work/web" },

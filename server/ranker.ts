@@ -10,12 +10,13 @@ import { atomic } from "./overseer";
 import { claudeArgs, claudeRunner, type AiJobs, type RunInput } from "./ai-jobs";
 import { mcpproxyText } from "./about";
 import {
-  damped, emptyReasons, fillReasons, workspaceInputs, healthLine, inRankWindow, jerusalem, RANK_STRICT, REASON_SYSTEM, reasonInputs, reasonReplySchema, stableInputs, rankPrompt, rankReplySchema, RANK_SYSTEM, rankWorkstream, toPriorities,
+  damped, emptyReasons, fillReasons, workspaceInputs, healthLine, inRankWindow, RANK_STRICT, REASON_SYSTEM, reasonInputs, reasonReplySchema, stableInputs, rankPrompt, rankReplySchema, RANK_SYSTEM, rankWorkstream, toPriorities,
   type NotStarted, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
 } from "../shared/ranker";
 import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
 import { truncated } from "../shared/scale";
+import { clockFor, BRIEF_SETTINGS_DEFAULT, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
 const exec = promisify(execFile);
@@ -51,45 +52,9 @@ export type RankSources = {
 
 const str = (v: unknown) => typeof v === "string" && v.trim() ? v.trim() : null;
 
-/**
- * The complete objects of a JSON array that was cut off (mcpproxy truncates replies near 20 k characters and appends
- * a note, which leaves invalid JSON): every whole `{…}` element after `"key":[`, up to the cut.
- */
-export function salvageArray(text: string, key: string): unknown[] {
-  const at = text.indexOf(`"${key}":[`);
-  if (at < 0) return [];
-  const out: unknown[] = [];
-  let depth = 0, start = -1, inString = false, escaped = false;
-  for (let i = at + key.length + 4; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') inString = false; continue; }
-    if (ch === '"') inString = true;
-    else if (ch === "{") { if (depth++ === 0) start = i; }
-    else if (ch === "}") { if (--depth === 0 && start >= 0) { try { out.push(JSON.parse(text.slice(start, i + 1))); } catch { /* skip */ } start = -1; } }
-    else if (ch === "]" && depth === 0) break;
-  }
-  return out;
-}
-
-/** `linear:list_issues` (JSON `{issues: […], hasNextPage, cursor}`), open ones only; a truncated reply keeps its whole issues. */
-export function parseLinearIssues(text: string): RankIssue[] { return parseLinearPage(text).issues; }
-export function parseLinearPage(text: string): { issues: RankIssue[]; next: string | null; readable: boolean } {
-  let j: { issues?: unknown[]; hasNextPage?: unknown; cursor?: unknown } | null = null;
-  try { j = JSON.parse(text); } catch { /* truncated: salvage below */ }
-  const issues = Array.isArray(j?.issues) ? j!.issues : salvageArray(text, "issues");
-  const readable = Array.isArray(j?.issues) || issues.length > 0;
-  const next = j && j.hasNextPage === true && typeof j.cursor === "string" ? j.cursor : null;
-  return { issues: toIssues(issues), next, readable };
-}
-function toIssues(issues: unknown[]): RankIssue[] {
-  return issues.flatMap(raw => {
-    const i = raw as Record<string, unknown>;
-    const key = str(i.id) ?? str(i.identifier); const title = str(i.title);
-    if (!key || !title || /^(completed|canceled)$/i.test(str(i.statusType) ?? "")) return [];
-    const named = (v: unknown) => typeof v === "object" && v ? str((v as { name?: unknown }).name) : str(v);
-    const priority = named(i.priority);
-    return [{ key, title, priority: priority === "No priority" ? null : priority, status: str(i.status) ?? named(i.state), due: str(i.dueDate), project: named(i.project), milestone: named(i.projectMilestone), url: str(i.url) }];
-  });
+/** The Morning brief's queue as the ranker reads it: an issue with its change since the last workday. */
+export function rankIssue(i: QueueIssue & { change: string | null }): RankIssue {
+  return { key: i.key, title: i.title, priority: i.priority ? priorityName(i.priority) : null, status: i.state, due: i.due, project: i.project, milestone: i.milestone, url: i.url, change: i.change };
 }
 
 /**
@@ -170,22 +135,17 @@ const runFile: Run = async (command, args, timeout, env) => (await exec(command,
 export { ghAccounts };
 
 /** The live sources: read-only mcpproxy calls, in-process GitHub reads, and one Artifact read for the plan. */
-export function liveRankSources(jobs: AiJobs, opts: { run?: Run; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null> } = {}): RankSources {
+export function liveRankSources(jobs: AiJobs, opts: { run?: Run; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null>; queue?: { forRanker(): Promise<(QueueIssue & { change: string | null })[]> } } = {}): RankSources {
   const run = opts.run ?? runFile;
   let slackUser: Promise<string | null> | null = opts.slackUser !== undefined ? Promise.resolve(opts.slackUser) : null;
   const me = () => slackUser ??= run("mcpproxy", ["tools", "list", "--server=slack-user", "-o", "json", "--log-level=error"], 30_000).then(slackUserFrom).catch(() => { slackUser = null; return null; });
   const call = async (tool: string, args: unknown) => mcpproxyText(await run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(args)}`, "--reason=Follow-up: rank today's workstreams", "--log-level=error", "-o", "json"], 60_000));
   return {
     async linear() {
-      // Pages of 25 stay under mcpproxy's ~20 k reply cap (60 at once came back cut off and parsed as none).
-      const out: RankIssue[] = []; let cursor: string | null = null;
-      for (let page = 0; page < 3; page++) {
-        const r = parseLinearPage(await call("linear:list_issues", { assignee: "me", limit: 25, orderBy: "updatedAt", ...(cursor ? { cursor } : {}), fields: ["id", "title", "priority", "dueDate", "status", "statusType", "project", "projectMilestone", "url"] }));
-        if (!r.readable && page === 0) throw new Error("Linear's reply couldn't be read.");
-        out.push(...r.issues); cursor = r.next;
-        if (!cursor) break;
-      }
-      return out;
+      // The Morning brief's snapshot (server/linear-queue.ts): the whole queue was swept this morning, so the ranker
+      // reads no Linear itself: its top issues by priority plus every changed one (the-queue-is-whole).
+      if (!opts.queue) throw new Error("The Linear queue isn't set up.");
+      return (await opts.queue.forRanker()).map(rankIssue);
     },
     async slack(since) {
       const after = new Date(since).toISOString().slice(0, 10);
@@ -272,6 +232,8 @@ export type RankerDeps = {
   /** The resource governor: background runs wait while this is true. Manual runs still go. */
   tight?: () => Promise<boolean>;
   planningUrl?: () => Promise<string | null>;
+  /** Where the developer's day is (the brief's clock). Default: the host's zone and its usual week. */
+  clock?: () => Promise<Clock>;
   now?: () => number;
   /** Why a source failed (one short line). Defaults to console.warn, the daemon log. */
   log?: (line: string) => void;
@@ -294,12 +256,13 @@ export class Ranker {
   onRunChange: () => void = () => {};
   constructor(private d: RankerDeps) {}
   private now() { return this.d.now?.() ?? Date.now(); }
+  private clock(): Promise<Clock> { return this.d.clock?.() ?? Promise.resolve(clockFor(BRIEF_SETTINGS_DEFAULT, null)); }
   private get path() { return join(this.d.directory, "ranker.json"); }
   async state(): Promise<RankerState> { try { return rankerStateSchema.parse(JSON.parse(await readFile(this.path, "utf8"))); } catch { return { ...EMPTY }; } }
 
   /** The scheduled run: in the window, at the role's cadence, only with room to spare. */
   async tick(): Promise<RankResult | null> {
-    if (this.running || !inRankWindow(this.now()) || !await this.d.enabled()) return null;
+    if (this.running || !inRankWindow(this.now(), await this.clock()) || !await this.d.enabled()) return null;
     const [s, role] = await Promise.all([this.state(), this.d.role()]);
     if (s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
     if (await this.d.tight?.()) return null;
@@ -320,7 +283,8 @@ export class Ranker {
     if (trigger === "schedule" && await this.d.tight?.()) return base({ skipped: "tight" });
     const s = await this.state();
     const role = await this.d.role();
-    const day = jerusalem(started).day;
+    const clock = await this.clock();
+    const day = zoned(started, clock.timeZone).day;
     const runsToday = s.day === day ? s.runsToday : 0;
 
     // Inputs, one source at a time. A failing source is reported, never fatal.
@@ -372,7 +336,7 @@ export class Ranker {
 
     const maxPromptChars = role.maxPromptChars ?? 60_000;
     const previous = Object.entries(s.prev).map(([id, p]) => ({ id, score: p.score }));
-    const prompt = rankPrompt(inputs, day, maxPromptChars, previous);
+    const prompt = rankPrompt(inputs, day, maxPromptChars, previous, clock.timeZone);
     const modelStart = this.now();
     // Claude follows the rules as written; other models get the reason rule restated at the end.
     const system = role.provider === "claude" ? RANK_SYSTEM : RANK_SYSTEM + RANK_STRICT;
@@ -385,7 +349,7 @@ export class Ranker {
     const missing = r.ok ? emptyReasons(r.value, inputs) : [];
     if (r.ok && missing.length) {
       retried = true;
-      const again = await this.d.jobs.run({ name: "rank-reasons", prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
+      const again = await this.d.jobs.run({ name: "rank-reasons", prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars, [], clock.timeZone), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
         schema: reasonReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, maxPromptChars, maxOutputChars: 20_000, timeoutMs: 120_000 });
       cost = add(cost, again.costUsd); inTok = add(inTok, again.inputTokens); outTok = add(outTok, again.outputTokens);
       if (again.ok) r = { ...r, value: fillReasons(r.value, again.value) };

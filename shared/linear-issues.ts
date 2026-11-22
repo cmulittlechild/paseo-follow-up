@@ -24,6 +24,12 @@ export const linearIssueSchema = z.object({
   branchName: z.string().max(200).nullable(),
   /** Only a single-issue read asks for the description (a list doesn't: mcpproxy caps a reply near 20 k characters). */
   description: z.string().nullable(),
+  /** The Morning brief's sweep asks for these too (QUEUE_FIELDS); New's list doesn't. */
+  due: z.string().max(40).nullable().default(null),
+  project: z.string().max(200).nullable().default(null),
+  milestone: z.string().max(200).nullable().default(null),
+  /** The assignee's display name, when the read asked for it (a lookup of an issue that left the queue). */
+  assignee: z.string().max(200).nullable().default(null),
 });
 export type LinearIssue = z.infer<typeof linearIssueSchema>;
 
@@ -31,12 +37,17 @@ export type LinearIssue = z.infer<typeof linearIssueSchema>;
 export const LIST_FIELDS = ["id", "uuid", "title", "url", "gitBranchName", "status", "statusType", "team", "updatedAt", "priority"] as const;
 /** Fields a single-issue read asks for. */
 export const ISSUE_FIELDS = [...LIST_FIELDS, "description", "assignee"] as const;
+/** Fields the Morning brief's sweep asks for: New's, plus what the brief and the ranker show (due, project, milestone). */
+export const QUEUE_FIELDS = ["id", "uuid", "title", "url", "status", "statusType", "team", "updatedAt", "priority", "dueDate", "project", "projectMilestone"] as const;
+/** Fields the sweep's lookup of an issue that left the queue asks for: enough to say why. */
+export const LEFT_FIELDS = ["id", "title", "url", "status", "statusType", "assignee"] as const;
 /** Issues per list_issues page (60 at once came back cut off; server/ranker.ts). Not a cap on how many are read. */
 export const PAGE_SIZE = 25;
 /** Open work: what New lists before anything is typed. */
 export const OPEN_STATE_TYPES = ["started", "unstarted"] as const;
 
 const str = (v: unknown): string | null => typeof v === "string" && v.trim() ? v.trim() : null;
+const clip = (v: string | null, n: number) => v === null ? null : v.slice(0, n);
 const named = (v: unknown): string | null => typeof v === "object" && v ? str((v as { name?: unknown }).name) : str(v);
 
 /** One issue object from a reply, or null when it has no key-shaped identifier or no title. */
@@ -48,14 +59,16 @@ export function toLinearIssue(raw: unknown, assigneeIsMe: boolean | null = null)
   if (!key || !title) return null;
   const p = i.priority as { value?: unknown; name?: unknown } | number | null | undefined;
   const value = typeof p === "number" ? p : typeof p?.value === "number" ? p.value : null;
-  const priority = value !== null && Number.isInteger(value) && value >= 0 && value <= 4 ? { value, name: (typeof p === "object" && p ? str(p.name) : null) ?? PRIORITY_NAMES[value] } : null;
+  const priority = value !== null && Number.isInteger(value) && value >= 0 && value <= 4 ? { value, name: clip((typeof p === "object" && p ? str(p.name) : null) ?? PRIORITY_NAMES[value], 40)! } : null;
   const uuid = str(i.uuid);
   return linearIssueSchema.parse({
     id: uuid ?? key, key, title: title.slice(0, 500),
-    state: named(i.status) ?? named(i.state), stateType: str(i.statusType),
-    priority, updatedAt: str(i.updatedAt), team: teamOf(key), teamName: named(i.team),
-    url: str(i.url), assigneeIsMe, branchName: str(i.gitBranchName),
+    state: clip(named(i.status) ?? named(i.state), 100), stateType: clip(str(i.statusType), 40),
+    priority, updatedAt: clip(str(i.updatedAt), 40), team: teamOf(key), teamName: clip(named(i.team), 200),
+    url: clip(str(i.url), 2000), assigneeIsMe, branchName: clip(str(i.gitBranchName), 200),
     description: typeof i.description === "string" ? i.description : null,
+    // Clipped, never refused: an issue a schema bound would drop is an issue missing from the queue (the-queue-is-whole).
+    due: str(i.dueDate)?.slice(0, 40) ?? null, project: clip(named(i.project), 200), milestone: clip(named(i.projectMilestone), 200), assignee: clip(named(i.assignee), 200),
   });
 }
 export const PRIORITY_NAMES = ["No priority", "Urgent", "High", "Medium", "Low"];
@@ -80,13 +93,16 @@ export function salvageArray(text: string, key: string): unknown[] {
   return out;
 }
 
-/** A `list_issues` page: `{issues, hasNextPage, cursor}`. A truncated reply keeps its whole issues and ends the walk. */
-export function parseIssuePage(text: string, assigneeIsMe: boolean | null = null): { issues: LinearIssue[]; next: string | null; readable: boolean } {
+/**
+ * A `list_issues` page: `{issues, hasNextPage, cursor}`. A truncated reply keeps its whole issues and ends the walk;
+ * `whole` is false then, so a reader that must see every page (the Morning brief's sweep) knows it didn't.
+ */
+export function parseIssuePage(text: string, assigneeIsMe: boolean | null = null): { issues: LinearIssue[]; next: string | null; readable: boolean; whole: boolean } {
   let j: { issues?: unknown[]; hasNextPage?: unknown; cursor?: unknown } | null = null;
   try { j = JSON.parse(text); } catch { /* truncated: salvage below */ }
   const raw = Array.isArray(j?.issues) ? j!.issues : salvageArray(text, "issues");
   const issues = raw.flatMap(r => { try { const x = toLinearIssue(r, assigneeIsMe); return x ? [x] : []; } catch { return []; } });
-  return { issues, next: j && j.hasNextPage === true && typeof j.cursor === "string" ? j.cursor : null, readable: Array.isArray(j?.issues) || raw.length > 0 };
+  return { issues, next: j && j.hasNextPage === true && typeof j.cursor === "string" ? j.cursor : null, readable: Array.isArray(j?.issues) || raw.length > 0, whole: Array.isArray(j?.issues) };
 }
 
 /** A `get_issue` reply: the issue, null when Linear says it doesn't exist; throws when the reply can't be read. */

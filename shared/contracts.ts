@@ -319,6 +319,17 @@ export const dispatchActionsRpc = defineRpc({ name: "follow.dispatch-actions", i
 export const setDispatchActionsRpc = defineRpc({ name: "follow.set-dispatch-actions", input: z.strictObject({ change: actionChangeSchema }), output: z.object({ actions: z.array(dispatchActionSchema) }) });
 export const dispatchSettingsRpc = defineRpc({ name: "follow.dispatch-settings", input: z.strictObject({}), output: z.unknown() });
 export const setDispatchSettingsRpc = defineRpc({ name: "follow.set-dispatch-settings", input: settingsChangeSchema, output: z.unknown() });
+// The Morning brief's Linear queue (shared/linear-queue.ts, server/linear-queue.ts, docs/morning-brief.md). `open` is the
+// developer opening the brief: it marks the read "since" stands on and sweeps when the snapshot is older than 6 h.
+// Agents read without `open` (linear_queue), so an agent never moves the developer's "since".
+export const linearQueueInputSchema = z.strictObject({
+  filter: z.enum(["all", "no-workspace", "changed"]).optional(),
+  since: z.string().datetime({ offset: true }).nullable().optional(),
+  limit: z.number().int().min(1).max(1000).optional(),
+  open: z.boolean().optional(),
+});
+export const linearQueueRpc = defineRpc({ name: "follow.linear-queue", input: linearQueueInputSchema, output: z.unknown() });
+export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({}), output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),
   output: z.object({
