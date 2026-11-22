@@ -1,2 +1,0 @@
-- The card for a new agent or workspace stays after it's created and opens it.
-- With Claude agents, the Done card and a question's number now show in the chat.

@@ -1,2 +1,0 @@
-- Dismiss anything in Needs you with the small x in its corner: an agent's ask, a merge or reviewers ask, repairs waiting on you, and the rest. The agent isn't messaged, and Undo brings it back.
-- A dismissed item comes back by itself when something about it changes, like a new push or a new failure. In Catch up, Shift+D dismisses any card.

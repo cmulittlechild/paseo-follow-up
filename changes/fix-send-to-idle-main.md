@@ -1,2 +1,0 @@
-- Repairs reach your main agent as soon as it's free, even while its subagents keep working.
-- A waiting repair says what it's waiting for, like the main agent's turn, a permission prompt or Session Guard, and Send now still sends it the moment the main agent is free.
