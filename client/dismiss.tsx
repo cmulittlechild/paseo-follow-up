@@ -207,11 +207,12 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
   };
   // Sizes. Phones: every button is a real 40 px tall box (react-native-web ignores hitSlop) pulled in by 6 px top and
   // bottom, so it lays out as 28 px; the x stays a small muted glyph in it, the pair's pills are 28 px, with 8 px
-  // between the two targets so a stray tap meant for Keep doesn't land on Remove. Desktop: 22 px, 4 px apart.
+  // between the two targets so a stray tap meant for Keep doesn't land on Remove. Desktop: 22 px, 6 px apart (room
+  // for Keep's focus ring).
   const box = touch ? 40 : 22;
   const pull = touch ? -6 : 0;
   const pillH = touch ? 28 : 22;
-  const keepW = touch ? 60 : 46, removeW = touch ? 76 : 62, gap = touch ? 8 : 4, inset = touch ? 6 : 3;
+  const keepW = touch ? 60 : 46, removeW = touch ? 76 : 62, gap = touch ? 8 : 6, inset = touch ? 6 : 3;
   // Armed: wider by the pair, and the extra width is taken back with a negative left margin, so it lays out exactly as
   // the x did: nothing beside it moves, the pair draws over it (solid, so what's under it doesn't show through).
   const wide = keepW + gap + removeW + inset;
@@ -235,12 +236,13 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
     : <Animated.View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap, opacity: fade }}>
       {/* One solid ground under both pills and the gap between them, so the age or title they cover never shows through. */}
       <View style={{ position: "absolute", left: 0, right: 0, top: (box - pillH) / 2, height: pillH, borderRadius: pillH / 2, backgroundColor: c.surface0 }} />
-      {/* Keep: the way back, quiet and neutral (the card's own ground, a hairline, body ink), first in reading order. */}
+      {/* Keep: the way back, quiet and neutral (the card's own ground, a foreground hairline that still reads as a button
+          in dark, body ink), first in reading order. */}
       <Pressable ref={keep} accessibilityRole="button" accessibilityLabel={keepLabel(label)} hitSlop={touch ? 0 : 2} onPress={back} onFocus={focusIn} onBlur={focusOut as () => void}
         style={(state: { pressed: boolean; focused?: boolean }) => ({ ...focusRing(state.focused, c), ...pill(keepW) })}>
         {state => {
           const hot = state.pressed || !!(state as { hovered?: boolean }).hovered;
-          return <View style={{ height: pillH, borderRadius: pillH / 2, borderWidth: 1, borderColor: c.border, backgroundColor: hot ? c.surface2 : c.surface0, alignItems: "center", justifyContent: "center" }}>
+          return <View style={{ height: pillH, borderRadius: pillH / 2, borderWidth: 1, borderColor: withAlpha(c.foreground, isLight(c) ? 0.18 : 0.28), backgroundColor: hot ? c.surface2 : c.surface0, alignItems: "center", justifyContent: "center" }}>
             <Text numberOfLines={1} style={{ color: c.foreground, fontSize, lineHeight: 14, fontWeight: "500" }}>Keep</Text>
           </View>;
         }}
