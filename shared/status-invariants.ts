@@ -4,7 +4,7 @@ import type { Actor } from "./actor";
 import { ANY_HOOK_TEXT_PREFIXES } from "./message-sender";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 import type { ListWorkspace as Workspace } from "./list";
-import { answerMessage, awaitingSend, duplicateOpenQuestions, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
+import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
 import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
@@ -434,6 +434,27 @@ export const INVARIANTS: Invariant[] = [
       }
       const stray = needsYou(w, now).find(i => i.kind === "decision" && !blockedOnDeveloper(w.obligations.find(o => o.id === i.obligationId) ?? { status: "" }));
       return stray ? `Needs you asks about task ${stray.title}, which isn't blocked on the developer` : null;
+    },
+  },
+  {
+    id: "one-decision-one-card",
+    why: "2026-11-22, the developer: \"a lot of the time, 2 questions are created for the same thing\". An agent asked Q1 with options and marked its task blocked with ask \"Q1: may I …?\"; Follow-up made Q2 from the task, the same decision with no options (live: 33 of 96 task-made questions). A blocked task covered by a question (it names it, it was asked with task set, or it reads the same) makes no card and no decision item (shared/questions.ts findTaskCover, server/questions.ts syncTaskQuestions).",
+    check(w, now) {
+      const questions = w.questions ?? [];
+      for (const o of w.obligations) {
+        if (!blockedOnDeveloper(o)) continue;
+        const own = questions.find(q => q.taskId === o.id && q.taskRevision !== null && isOpen(q));
+        if (o.coveredBy) {
+          if (!questions.some(q => q.id === o.coveredBy)) return `task ${o.title} is covered by ${o.coveredBy}, which isn't in this workspace`;
+          if (own) return `${own.id} repeats ${o.coveredBy} for task ${o.title}`;
+        }
+        if (!own) continue;
+        // Uncovered but asked: the same rule the sync uses (findTaskCover), so the check and the fix can't disagree.
+        const twin = findTaskCover(o, questions, w.mainAgentId);
+        if (twin && isOpen(twin)) return `${own.id} repeats ${twin.id} for task ${o.title}`;
+      }
+      const decision = needsYou(w, now).find(i => i.kind === "decision" && w.obligations.find(o => o.id === i.obligationId)?.coveredBy);
+      return decision && decision.kind === "decision" ? `Needs you asks task ${decision.title}'s decision beside the question that covers it` : null;
     },
   },
   {

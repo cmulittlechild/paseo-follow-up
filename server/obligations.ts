@@ -3,11 +3,14 @@ import type { Obligation, Workspace } from "../shared/model";
 import { lifecycleOnly } from "../shared/follow-up";
 import { communicationKey, communicationSchema, replyRecorded, type Communication } from "../shared/communication";
 import type { TaskTrigger } from "../shared/task-trigger";
+import { currentQuestion } from "../shared/questions";
 
 type Update = {
   id?: string; title: string; status: Obligation["status"]; afterPrs?: string[]; evidence?: string;
   /** While blocked: the developer's question. Kept across blocked updates that omit it; dropped when the task leaves blocked. */
   ask?: string;
+  /** While blocked: the question (Q7) the task waits on, instead of an ask. Its words become the ask, and it covers the task. */
+  question?: string;
   dependencyStage?: "merged" | "deployed"; enable_follow_up?: boolean; communication?: Pick<Communication, "threadUrl" | "recipient"> & Partial<Communication>;
   trigger?: TaskTrigger | null;
   /** The calling agent (from the daemon, never an argument). */
@@ -21,7 +24,17 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   if (id && !existing) throw new Error("Obligation does not exist. Omit id to add one.");
   const afterPrs = input.afterPrs ?? existing?.afterPrs ?? [];
   const evidence = input.evidence ?? existing?.evidence ?? "";
-  const ask = status === "blocked" ? (input.ask ?? (existing?.status === "blocked" ? existing.ask : undefined))?.trim() || undefined : undefined;
+  // question="Q7": blocked on an open (or answered) question; its words become the ask and it covers the task, so the
+  // task makes no second card (one-decision-one-card).
+  const pointed = input.question ? currentQuestion(w.questions, input.question) : null;
+  if (input.question) {
+    if (status !== "blocked") throw new Error("question goes with status=blocked: the task waits on that question.");
+    if (input.ask) throw new Error("Pass question or ask, not both: question points at a question you already asked.");
+    if (!pointed) throw new Error(`No question ${input.question} in this workspace that still asks something. Ask it with ask_question (task set to this task) first.`);
+    if (pointed.taskRevision !== null) throw new Error(`${pointed.id} is a blocked task's own card. Point at a question you asked with ask_question.`);
+  }
+  const asked = pointed ? `${pointed.id}: ${pointed.question}`.slice(0, 1000) : input.ask;
+  const ask = status === "blocked" ? (asked ?? (existing?.status === "blocked" ? existing.ask : undefined))?.trim() || undefined : undefined;
   if (["done", "waived"].includes(status) && !(existing?.status === status ? evidence.trim() : input.evidence?.trim())) throw new Error("Completed or waived work requires result evidence.");
   if (afterPrs.some(key => !w.prs.some(p => p.key === key))) throw new Error("Register dependency PRs before referencing them.");
   if (lifecycleOnly({ title, afterPrs })) throw new Error("PR approval, merging and deployment belong in Pull requests. Record a concrete follow-up action such as verifying behavior after deployment, with afterPrs and dependencyStage=deployed.");
@@ -40,10 +53,13 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   if (existing) {
     const reopened = ["done", "waived", "blocked"].includes(existing.status) && ["pending", "waiting"].includes(status);
     if (reopened || existing.title !== title || JSON.stringify(existing.afterPrs) !== JSON.stringify(afterPrs) || existing.dependencyStage !== stage || JSON.stringify(existing.communication) !== JSON.stringify(destination) || JSON.stringify(existing.trigger) !== JSON.stringify(trigger) || existing.enable_follow_up !== followUp || (existing.ask ?? "") !== (ask ?? "")) existing.revision++;
+    // A changed ask is a new decision: what covered the old one doesn't cover it (syncTaskQuestions looks again).
+    if ((existing.ask ?? "") !== (ask ?? "")) delete existing.coveredBy;
     Object.assign(existing, record);
     if (ask) existing.ask = ask; else delete existing.ask;
+    if (pointed && ask) existing.coveredBy = pointed.id;
     return existing;
   }
-  const added = { ...record, ...(ask ? { ask } : {}), id: randomUUID(), revision: 0 };
+  const added = { ...record, ...(ask ? { ask } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
   w.obligations.push(added); return added;
 }

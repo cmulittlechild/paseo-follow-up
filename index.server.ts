@@ -10,7 +10,7 @@ import { moveData, dataDirs, writeLegacyHeartbeat, type DataMove } from "./serve
 import { isRecovery, withRuntimePrelude, invokeSelf, PLUGIN_ID } from "./shared/legacy";
 import { displayPreferences } from "./shared/display";
 import { DEFAULT_QUESTION_MODE, QUESTION_DEDUPE_MIGRATION, awaitingSend, collapseDuplicateQuestions, questionPreferences, signedOffAnswers, type QuestionMode } from "./shared/questions";
-import { answerRecipients, askQuestion, needsYouQuestions, recordAnswer, syncTaskQuestions, withdrawQuestion } from "./server/questions";
+import { answerRecipients, askQuestion, coverNote, needsYouQuestions, recordAnswer, syncTaskQuestions, withdrawQuestion } from "./server/questions";
 import { dismissItem, dismissedNeeds, undoDismissItem } from "./server/dismiss";
 import { agentSetSpec, developerSetSpec } from "./server/spec";
 import type { PluginServerContext, PluginHandlerContext, PluginHookContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
@@ -732,7 +732,9 @@ export default function contribute(server: PluginServerContext) {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const obligation = updateObligation(w, { ...input, caller: agentId, workingAgentId });
       syncTaskQuestions(w, Date.now());
-      changed(w); return { ...w, updatedObligationId: obligation.id };
+      // one-decision-one-card: say so when the blocked task is already asked (or answered) as a question.
+      const note = coverNote(w, obligation.id);
+      changed(w); return { ...w, updatedObligationId: obligation.id, ...(note ? { note } : {}) };
     });
     void engine.nudge(result.id); return result;
   });
@@ -744,7 +746,8 @@ export default function contribute(server: PluginServerContext) {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const { supersedes, ...ask } = input;
       const { question, instruction, outcome, of } = askQuestion(w, agentId, ask, mode, Date.now(), { via: "ask", ...(supersedes ? { supersedes } : {}) });
-      if (outcome !== "duplicate") changed(w);
+      // A card a blocked task made for this decision closes now (one-decision-one-card), not on the next tick.
+      if (outcome !== "duplicate") { syncTaskQuestions(w, Date.now()); changed(w); }
       return { workspaceId: w.id, question, mode, instruction, outcome, of };
     });
   });
@@ -1458,6 +1461,7 @@ export default function contribute(server: PluginServerContext) {
       const linked = await store.mutate(state => {
         const w = findWorkspace(state, tracked.id);
         const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null);
+        if (result.createdIds.length) syncTaskQuestions(w, Date.now());
         if (result.questionIds.length || sameTurn) changed(w);
         return { ...result, ask: foldedAsk(call.ask, result.questionIds, w.questions) };
       });

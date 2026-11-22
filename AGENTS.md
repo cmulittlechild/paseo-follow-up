@@ -923,6 +923,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
    `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
    `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
+73. **One decision, one card** (`one-decision-one-card`). A task blocked on the developer makes a question card only
+   when no question already asks its decision: one its ask names ("Q1: may I …?", or `update_obligation`
+   `question: "Q1"`), one asked with `task` set to it, or an open one that reads the same (`findTaskCover`,
+   `shared/questions.ts`). The task records that question (`coveredBy`), shows as waiting on it in Tasks, and Needs you
+   shows it once; a card the task made before closes as "Already asked as Q1." An answered question keeps covering the
+   task until its ask changes, so a decision the developer made is never asked again: the agent has the answer and
+   moves the task (`update_obligation` says so in its `note`). Agents are told one way to ask: `ask_question` with
+   `task`, then `update_obligation` blocked with `question`. 2026-11-22, Tom: "a lot of the time, 2 questions are
+   created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
+   Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
 
 74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
    waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
