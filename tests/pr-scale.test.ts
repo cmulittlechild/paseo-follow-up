@@ -230,6 +230,8 @@ const FIXED_CAPS: Record<string, string> = {
   "shared/queue.ts:sentIds:50": "one message's resend ids; producer keeps the last 50",
   "shared/ranker.ts:sources:5": "one priority's sources (model output, .catch)",
   "shared/ranker.ts:notStarted:20": "model output, .catch([])",
+  "shared/linear-queue.ts:workdays:7": "days of the week",
+  "shared/linear-queue.ts:sweeps:2": "the last two complete sweeps; the issues in one are a record, bounded by QUEUE.pagesMax pages",
   "shared/rename.ts:entries:500": "producer keeps the last 500 (server/rename.ts)",
   "shared/rename.ts:keys:20": "one rename's keys",
   "server/agent-actions.ts:reviewers:15": "reviewers on one PR",

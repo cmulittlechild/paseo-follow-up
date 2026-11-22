@@ -80,6 +80,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `server/dispatch.ts`, `server/linear-issues.ts` | [dispatch](docs/dispatch.md) |
+| Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it) | `shared/linear-queue.ts`, `server/linear-queue.ts` | [morning-brief](docs/morning-brief.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -942,6 +943,29 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    earlier than its parent's first response, or its parent's merge when that came first without one; until then it is
    folded under the PR it waits behind ("+N above in its stack"), never listed as waiting. One function derives it
    (`derive`, `shared/pr-stats.ts`) for every metric. Guarded by `tests/pr-stats-metrics.test.ts`.
+76. **The queue is whole** (`the-queue-is-whole`). The Morning brief's sweep reads every page of the developer's Linear
+   queue in every queue state, or says it is partial: a page mcpproxy cut off (`parseIssuePage(...).whole` false) is
+   re-read smaller, then marks the sweep partial, and past `QUEUE.pagesMax` pages it is partial too. A partial sweep
+   never replaces a complete one and is diffed against nothing; a failed sweep keeps the last complete snapshot and
+   says which one shows. A missed read is never a change: the walk pages by `createdAt` (an update mid-walk can't move
+   an issue onto a page already read), and an issue missing from the walk that a lookup finds still assigned to the
+   developer (`assigneeId` = the cached viewer id) in a queue state goes back into the sweep, neither "left" nor, next
+   sweep, "new". The ranker reads Linear only from that snapshot (top 40 plus every changed issue), never 75
+   newest updates. 2026-11-22, Tom: "I want the follow-up daily brief to connect to all data sources it can"; the
+   ranker read at most 75 issues and kept no snapshot, so an untouched old issue past them dropped out. Guarded by
+   `tests/linear-queue.test.ts` ([docs/morning-brief.md](docs/morning-brief.md)).
+77. **A change is against what you last saw** (`a-change-is-against-what-you-last-saw`). "Since" in the brief is a
+   stored point: when the developer last read it before this viewing session (`seen.prior`, moved only by the
+   developer's own open, `markSeen`), else the last workday's sweep (`workdaySince`), never a rolling window, and an
+   agent's read never moves it. Changes fold per issue over every sweep since (`changesSince`), so a raise taken back
+   says nothing. Guarded by `tests/linear-queue.test.ts`.
+78. **The brief has one timer** (`the-brief-has-one-timer`). The sweep runs once each workday at the sweep time in the
+   developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
+   governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
+   fresh install; nothing else reads Linear on a schedule. The zone is the setting's, else the developer's device's,
+   else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
+   (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
+   `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
 
 ## Bugs
 
