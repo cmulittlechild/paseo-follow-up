@@ -75,12 +75,12 @@ function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme:
 function Segmented<V extends string>({ label, value, options, onChange, disabled, theme, compact }: { label: string; value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; disabled?: boolean; theme: Theme; compact: boolean }) {
   const c = theme.colors;
   return <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: "row", alignSelf: compact ? "stretch" : "flex-start", backgroundColor: c.surface2, borderRadius: 8, padding: 2, gap: 2 }}>
-    {options.map(o => {
-      const on = o.value === value;
-      return <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => onChange(o.value)}
+    {options.map(choice => {
+      const on = choice.value === value;
+      return <Pressable key={choice.value} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => onChange(choice.value)}
         style={state => ({ flexGrow: compact ? 1 : 0, flexBasis: compact ? 0 : "auto", minHeight: compact ? 44 : 30, paddingHorizontal: 12, borderRadius: 6, alignItems: "center", justifyContent: "center",
           backgroundColor: on ? c.surface0 : (state as { hovered?: boolean }).hovered ? tint(c.foreground, c) : "transparent", ...(on ? { boxShadow: "0px 0px 0px 1px rgba(127,127,127,0.18)" } : {}) })}>
-        <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{o.label}</Text>
+        <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{choice.label}</Text>
       </Pressable>;
     })}
   </View>;
@@ -232,15 +232,15 @@ function ChipGroup({ label, hint, options, value, onChange, disabled, theme, com
     <Text style={t.label}>{label}</Text>
     {hint && <Text style={t.meta}>{hint}</Text>}
     <View role="group" aria-label={label} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-      {options.map(o => {
-        const on = value.includes(o.value);
+      {options.map(choice => {
+        const on = value.includes(choice.value);
         const last = on && value.length === 1;
-        return <Pressable key={o.value} accessibilityRole="checkbox" accessibilityState={{ checked: on, disabled: disabled || last }} accessibilityLabel={o.label} disabled={disabled || last}
-          onPress={() => onChange(on ? value.filter(x => x !== o.value) : options.map(x => x.value).filter(x => x === o.value || value.includes(x)))}
+        return <Pressable key={choice.value} accessibilityRole="checkbox" accessibilityState={{ checked: on, disabled: disabled || last }} accessibilityLabel={choice.label} disabled={disabled || last}
+          onPress={() => onChange(on ? value.filter(x => x !== choice.value) : options.map(x => x.value).filter(x => x === choice.value || value.includes(x)))}
           style={state => ({ minWidth: compact ? 44 : 40, minHeight: compact ? 44 : 30, paddingHorizontal: 10, borderRadius: 6, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1,
             borderColor: on ? withAlpha(c.accent, 0.55) : c.border, backgroundColor: on ? withAlpha(c.accent, 0.1) : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
           {on && <Icon name="Check" size={12} color={c.foreground} />}
-          <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "500" }}>{o.label}</Text>
+          <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "500" }}>{choice.label}</Text>
         </Pressable>;
       })}
     </View>
