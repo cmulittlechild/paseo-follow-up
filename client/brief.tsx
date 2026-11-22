@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openExternalUrl, useRpc, type PluginClientContext, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { deliveryStatus } from "../shared/queue";
 import { Icon, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
-import { BRIEF_KIND, BRIEF_VERSION, askedDecisions, cardPicks, notedCount, pickedCount, briefSchema, collapsedLine, extrasFit, hasOriginal, nothingNeededLine, isTight, pastRows, pastTone, selectsFirst, sendBar, shownBrief, pastAsk, liveBrief, newAnswerId, type Brief, type BriefDecision, type BriefMove } from "../shared/brief";
+import { BRIEF_KIND, BRIEF_VERSION, askedDecisions, cardPicks, notedCount, pickedCount, briefSchema, collapsedLine, outcomeLabel, extrasFit, hasOriginal, nothingNeededLine, isTight, pastRows, pastTone, selectsFirst, sendBar, shownBrief, pastAsk, liveBrief, newAnswerId, type Brief, type BriefDecision, type BriefMove } from "../shared/brief";
 import { age } from "../shared/inbox";
 import { noReviewReposVersion, onNoReviewRepos } from "../shared/pr-workflow";
 import { briefKey, HEADLINE_WORD } from "../shared/headline";
@@ -316,7 +316,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
       {answered && b.outcome !== "Done"
         ? <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <RichText linkColor={c.foreground} numberOfLines={expanded ? undefined : 1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{ask}</RichText>
-            <Text style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: "600" }}>{b.outcome}</Text>
+            <Text style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: "600" }}>{outcomeLabel(b.outcome)}</Text>
           </View>
         : <Text numberOfLines={expanded ? undefined : 1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{collapsedLine(b)}</Text>}
       <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{right}</Text>
@@ -425,7 +425,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: an ask still in Needs you (or in Later) has the small x
   // beside its age. It signs the row off as dismissed: the agent is sent nothing, and a restated ask isn't flagged again.
   const x = flaggedAct && shown.actionable && agentId ? <View style={{ marginVertical: compact ? -8 : -5, marginRight: compact ? -8 : -6 }}>
-    <DismissX theme={theme} compact={compact} label="Dismiss the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
+    <DismissX theme={theme} compact={compact} label="Remove the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
   </View> : null;
   const border = acts ? withAlpha(attention, isLight(c) ? 0.5 : 0.45) : c.border;
   // Every send from the card (a pick, Something else, Send answers, the keyboard's Send) goes through runAction: the

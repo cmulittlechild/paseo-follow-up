@@ -163,7 +163,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       const button = act || link || more ? <>{pair ?? <>{act}{link}</>}{more}</> : null;
       const said = !!untitled?.has(item.key);
       // The small x, top right, on every kind (dismissing-anything-in-needs-you-sends-the-agent-nothing).
-      const x = <DismissX theme={theme} compact={compact} label={`Dismiss ${item.kind === "question" ? item.questionId : item.title}`}
+      const x = <DismissX theme={theme} compact={compact} label={`Remove ${item.kind === "question" ? item.questionId : item.title}`}
         onPress={() => dismiss({ workspaceId: w.id, key: item.key }, { onDismissed: actions.after })} />;
       // Phones: the action sits at the row's right edge so rows never grow a second line of controls. A send batch
       // (the primary, with its task list) and Retry's pair keep their buttons full width under the row.

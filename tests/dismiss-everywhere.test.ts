@@ -18,7 +18,7 @@ import { Store } from "../server/store";
 import { dismissItem, dismissedNeeds, undoDismissItem } from "../server/dismiss";
 import { activeNeeds, allNeeds, needsYou, reviewersAskStands, type NeedItem } from "../shared/attention";
 import { agentActor, DEVELOPER } from "../shared/actor";
-import { briefStep, type Brief } from "../shared/brief";
+import { briefStep, collapsedLine, outcomeLabel, type Brief } from "../shared/brief";
 import { DISMISSED_ASK_NOTE, newEntry, reduce, sameAsk } from "../shared/inbox";
 import { emptyReviewerConfig, setReviewerConfig } from "../shared/reviewers";
 import { RPC_TOOLS } from "../server/agent-parity";
@@ -138,13 +138,15 @@ test("nothing reaches any agent, and Dismiss changes nothing Follow-up does: the
 
 // The agent's turn-end brief: a sign-off that remembers the ask.
 const brief = (ask: string): Brief => ({ id: "brief:t1", kind: "action", source: "agent", state: "open", ask, at: iso(), flagged: true } as never);
-test("brief: Dismiss signs the row off as dismissed, remembers the ask, and the card says Dismissed", () => {
+test("brief: Dismiss signs the row off as dismissed, remembers the ask, and the card says Removed (stored as Dismissed)", () => {
   const flagged = reduce(newEntry("helper"), { type: "turn_end", outcome: "completed", detail: "Rotate the staging key" }, iso());
   const e = reduce({ ...flagged, brief: brief("Rotate the staging key in the vault") }, { type: "sign_off", dismissed: true }, iso());
   assert.equal(e.needs, null, "leaves Needs you");
   assert.deepEqual(e.dismissedAsk, { ask: "Rotate the staging key in the vault", kind: "action", at: iso() });
   const card = briefStep(brief("Rotate the staging key in the vault"), { type: "sign_off", dismissed: true }, iso()).brief!;
-  assert.equal(card.outcome, "Dismissed");
+  assert.equal(card.outcome, "Dismissed", "the stored word stays (agents and older records read it)");
+  assert.equal(outcomeLabel(card.outcome), "Removed", "the card says Removed, like the x and its toast");
+  assert.match(collapsedLine(card), /^Removed · Rotate the staging key/);
   assert.equal(reduce(e, { type: "undo" }, iso()).dismissedAsk, null, "Undo forgets it");
   assert.equal(reduce(e, { type: "message", from: "tom" }, iso()).dismissedAsk, null, "so does the developer's next message");
   assert.equal(reduce(flagged, { type: "sign_off" }, iso()).dismissedAsk ?? null, null, "a plain Sign off remembers nothing");
@@ -185,14 +187,16 @@ test("the row: every kind draws the x top right, and it sends only follow.dismis
     const orig = console.error; console.error = () => {};
     try { await act(() => { r = create(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(NeedsYouList, { workspace: w, theme, compact: true, now: clock, actions: { after: () => { moved++; } } }))); }); }
     finally { console.error = orig; }
-    const xs = r.root.findAll(n => typeof n.props.onPress === "function" && /^Dismiss .*: it no longer needs you, and the agent isn't messaged$/.test(String(n.props.accessibilityLabel ?? "")));
+    const xs = r.root.findAll(n => typeof n.props.onPress === "function" && /^Remove .*: it no longer needs you, and the agent isn't messaged$/.test(String(n.props.accessibilityLabel ?? "")));
     const labels = [...new Set(xs.map(n => n.props.accessibilityLabel))];
     assert.equal(labels.length, items.length, `${k.kind}: one x per row`);
     rpcCalls.length = 0;
     // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x and sends nothing.
+    const name = String(xs[0].props.accessibilityLabel).split(": ")[0];
     await act(async () => { xs[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
     assert.equal(rpcCalls.length, 0, `${k.kind}: one click sends nothing`);
-    const armed = r.root.findAll(n => typeof n.props.onPress === "function" && String(n.props.accessibilityLabel).endsWith(". Press again to dismiss"));
+    const armed = r.root.findAll(n => typeof n.props.onPress === "function" && n.props.accessibilityLabel === name);
+    assert.ok(armed.length > 0, `${k.kind}: armed, Remove is named for the item`);
     await act(async () => { armed[0].props.onPress(); await new Promise(res => setTimeout(res, 20)); });
     assert.deepEqual(rpcCalls.map(x => [x.name, x.input]), [["follow.dismiss", { workspaceId: "workspace", key: items[0].key }]], `${k.kind}: nothing but the dismiss`);
     assert.equal(moved, 1, `${k.kind}: the surface moves on (Catch up settles the card)`);

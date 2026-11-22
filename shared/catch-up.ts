@@ -238,7 +238,7 @@ export const CATCH_UP_KEYS: readonly { key: string; what: string; action: CatchU
   { key: "⌘↵", what: "Ask the agent", action: "ask", combos: ["Cmd+Enter", "Ctrl+Enter"], when: "more" },
   { key: "N", what: "Add a note", action: "note", combos: ["N"] },
   // D alone picks option D, so Dismiss takes Shift, as Skip workspace does beside J.
-  { key: "⇧D", what: "Dismiss the question (the agent isn't messaged)", action: "dismiss", combos: ["Shift+D"] },
+  { key: "⇧D", what: "Remove it (the agent isn't messaged)", action: "dismiss", combos: ["Shift+D"] },
   { key: "V", what: "Dictate your answer, and stop", action: "dictate", combos: ["V"], needs: "dictation" },
   { key: "L", what: "Later", action: "later", combos: ["L"] },
   { key: "O", what: "Open chat", action: "chat", combos: ["O"] },

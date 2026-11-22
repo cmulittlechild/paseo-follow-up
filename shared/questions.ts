@@ -107,10 +107,13 @@ export const isOpen = (q: Pick<Question, "answer" | "closed">) => !q.answer && !
 /** The developer dismissed it (dismissing-a-question-sends-the-agent-nothing): closed, no answer, nothing sent. */
 export const isDismissed = (q: Pick<Question, "answer" | "closed">) => !q.answer && !!q.closed?.dismissed;
 export const DISMISS_REASON = "Dismissed by the developer: it no longer matters.";
-/** A closed question's line on every surface: "Dismissed by you" (or "for you by an agent"), else why it was withdrawn. */
+/**
+ * A closed question's line on every surface: "Removed by you" (or "for you by an agent"), else why it was withdrawn.
+ * Display only: the record stays `closed.dismissed`, and agents still read it as dismissed.
+ */
 export function closedLine(q: Pick<Question, "answer" | "closed">): string {
   if (!q.closed) return "";
-  if (isDismissed(q)) return q.closed.by?.startsWith("agent:") ? "Dismissed for you by an agent" : "Dismissed by you";
+  if (isDismissed(q)) return q.closed.by?.startsWith("agent:") ? "Removed for you by an agent" : "Removed by you";
   return `Withdrawn: ${q.closed.reason}`;
 }
 

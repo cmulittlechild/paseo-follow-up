@@ -189,7 +189,8 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         }
         // The card's own Dismiss (QuestionBody), so the key does exactly what the click does.
         // The card's own x (client/dismiss.tsx), whatever the card is, so the key does exactly what the click does.
-        case "dismiss": { const d = inCard('[aria-label^="Dismiss"]'); if (!d) return; d.click?.(); break; }
+        // Its last button: the x itself, or Remove once armed (so ⇧D twice removes, as two clicks would).
+        case "dismiss": { const all = root()?.querySelectorAll('[data-catch-up-card] [data-testid="dismiss-x"] [role="button"]'); const d = all?.length ? all[all.length - 1] : null; if (!d) return; d.click?.(); break; }
         case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
         case "later": if (!click('[aria-label="Later (L)"]')) return; break;

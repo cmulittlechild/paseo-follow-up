@@ -783,9 +783,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    detail pane, the pill, the question dialog, Catch up, phones), has one Dismiss: a small muted x top right beside its
    age (`DismissX`, `client/dismiss.tsx`; ⇧D in Catch up), one request (`follow.dismiss`) and one toast with Undo.
    Dismissing takes two clicks in place (`dismiss-takes-two-clicks-in-place`): the first click, tap or key arms the x
-   into a small red "Dismiss" pill on the same spot (it grows leftward over its neighbours; the card never reflows) and
-   the second dismisses; a click elsewhere, Esc, focus leaving, the pointer leaving the card (600 ms grace) or 4 s
-   untouched disarms it, and only one x is armed app-wide. No pop-up. An
+   into two small buttons on the same spot (`armed-dismiss-shows-remove-and-keep`): a quiet neutral "Keep" first and a
+   red-tinted "Remove" (they grow leftward over their neighbours; the card never reflows). Remove removes; Keep, a
+   click elsewhere, Esc (focus back to the x), focus leaving the pair, the pointer leaving the card (600 ms grace) or
+   4 s untouched disarms, and only one x is armed app-wide. Arming moves focus to Keep, so Enter twice never removes,
+   and a double-click's second click (DOM `detail` 2) on Remove is ignored. Phones: the x and both buttons are 44 px tall targets, 8 px
+   apart. The words the developer sees and hears are "Remove", "Keep", "Remove, or Keep to cancel", "Removed
+   <what>", and afterwards "Removed" on the card and "Removed by you" in question history (`outcomeLabel`,
+   `closedLine`: display only, the stored "Dismissed" / `closed.dismissed` stay); internal names (`dismiss_item`, `follow.dismiss`, `DismissX`) stay. No pop-up. An
    agent dismisses for the developer with `dismiss_item` (planned, audited; never its own brief, question or
    workspace; `dismiss_question` is the question alias). It leaves Needs you and every count at once, and nothing is
    queued or sent, so no agent spends a turn on it; nothing Follow-up holds is dropped (a queued batch stays queued, a
@@ -797,8 +802,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-19, Tom: "sometimes a question is not relevant anymore ... I have no reason to waste tokens on telling him
    that again", then "Maybe the dismiss button should be on all "Needs you" actions? ... I want it to be really not
    intrusive". Then, on 2.3.0-beta.2: "This is a destructive action, so maybe we should have a confirmation pop-up?" and
-   Q113=B, "Two clicks, in place ... No pop-up, no accidental dismiss. Undo stays." Guarded by
-   `tests/dismiss-question.test.ts`, `tests/dismiss-everywhere.test.ts` and `tests/dismiss-two-click.test.ts`.
+   Q113=B, "Two clicks, in place ... No pop-up, no accidental dismiss. Undo stays." Then, 2026-11-22 on 2.3.0-beta.4:
+   "the word dismiss can also mean to 'dismiss' the operation, a user can click the x on accident, then the word
+   dismiss pops up and a clicks it to cancel it": the lone red pill was the only thing on screen, so it read as the
+   way out. Q123=A, a red "Remove" and a quiet "Keep". Guarded by `tests/dismiss-question.test.ts`,
+   `tests/dismiss-everywhere.test.ts`, `tests/dismiss-two-click.test.ts` and `tests/dismiss-remove-keep.test.ts`.
 
 60. **Follow-up's GitHub reads scale with what changed, not with how many PRs it tracks**
    (`github-reads-scale-with-change`). A due PR read in full before is probed first (one query per account for all due

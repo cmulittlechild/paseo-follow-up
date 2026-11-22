@@ -326,10 +326,17 @@ export function pastAsk(ask: string): string {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : ask;
 }
 
+/**
+ * A resolved card's outcome as the developer reads it. The stored word stays (a developer's Dismiss is recorded as
+ * "Dismissed", which agents and older records read); the screen says "Removed", the same word as the x's Remove and its
+ * toast (armed-dismiss-shows-remove-and-keep).
+ */
+export const outcomeLabel = (outcome: string | null): string | null => outcome === "Dismissed" ? "Removed" : outcome;
+
 export function collapsedLine(b: Pick<Brief, "state" | "source" | "outcome" | "ask">): string {
-  if (b.state === "superseded" && b.outcome && OWN_OUTCOMES.includes(b.outcome)) return b.outcome;
+  if (b.state === "superseded" && b.outcome && OWN_OUTCOMES.includes(b.outcome)) return outcomeLabel(b.outcome)!;
   if (b.state === "superseded") return b.source === "none" ? "No ask was stated · the agent kept going" : `Earlier ask, the agent kept going: ${pastAsk(b.ask)}`;
-  return `${b.outcome} · ${pastAsk(b.ask)}`;
+  return `${outcomeLabel(b.outcome)} · ${pastAsk(b.ask)}`;
 }
 
 // ---------- PR facts (S5) ----------
