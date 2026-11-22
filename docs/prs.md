@@ -202,7 +202,13 @@ task waits with "Deploy check not set up for owner/repo" without firing, errorin
 - **The integration surface.** The optional integration uses only:
   - `follow.pr-owner`: the recorded registering agent;
   - `follow.pr-workspaces`: the read-only browser view (titles, ids, main-agent status and the Home one-line state,
-    at most three, nothing for repositories outside the advertised scope);
+    at most three, nothing for repositories outside the advertised scope). Each row also carries `tone`
+    (`attention | danger | success | accent | muted`), the color Home paints that state with (its first badge's tone,
+    else its headline's; running and sending are `accent`), so the extension colors the GitHub button without parsing
+    the English. A claim whose main agent is closed stays as `agentStatus: "closed"`, group `needs`,
+    "Needs you · Agent closed" (`attention`), or "Done · ready to archive" when the work is done; a claim whose agent
+    couldn't be read at all is left out, since unknown isn't closed. Both fields are additive: older extensions
+    ignore them;
   - the scoped exchange `follow.browser-exchange`.
 
   No inventory, messages, paths or credentials cross these RPCs.
