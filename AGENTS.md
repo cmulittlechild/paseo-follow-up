@@ -84,7 +84,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
-| PR statistics (records, store, sync, the GitHub budget gate) | `shared/pr-stats-records.ts`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
+| PR statistics (records, store, sync, the GitHub budget gate, metrics) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
 | Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
@@ -936,6 +936,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
    Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
 
+74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
+   waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
+   from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
+   later" never count as waiting. A stacked PR (based on another PR's head; stack-aware is the default) starts no
+   earlier than its parent's first response, or its parent's merge when that came first without one; until then it is
+   folded under the PR it waits behind ("+N above in its stack"), never listed as waiting. One function derives it
+   (`derive`, `shared/pr-stats.ts`) for every metric. Guarded by `tests/pr-stats-metrics.test.ts`.
 76. **The queue is whole** (`the-queue-is-whole`). The Morning brief's sweep reads every page of the developer's Linear
    queue in every queue state, or says it is partial: a page mcpproxy cut off (`parseIssuePage(...).whole` false) is
    re-read smaller, then marks the sweep partial, and past `QUEUE.pagesMax` pages it is partial too. A partial sweep
