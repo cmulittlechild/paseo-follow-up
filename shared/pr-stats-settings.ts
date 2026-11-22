@@ -169,6 +169,7 @@ export function statsRepoLine(row: z.infer<typeof statsRepoRowSchema>, timeZone:
   if (row.state === "off" || !s) return "Off";
   if (row.state === "paused") return st?.lastSyncAt ? `Paused · data up to ${shortDate(st.lastSyncAt, timeZone)}` : "Paused";
   if (!st || st.lastSyncAt === null) return `On · ${s.windowDays} days · first read starting`;
+  if (st.error) return `On · stopped · ${count(st.records)} PR${st.records === 1 ? "" : "s"} kept`;
   const parts = ["On"];
   if (!st.backfillDone) parts.push(st.coveredTo ? `reading · back to ${shortDate(st.coveredTo, timeZone)}` : "reading");
   parts.push(`${count(st.records)} PR${st.records === 1 ? "" : "s"}`);
@@ -180,7 +181,7 @@ export function statsRepoLine(row: z.infer<typeof statsRepoRowSchema>, timeZone:
 export function statsRepoWait(row: z.infer<typeof statsRepoRowSchema>): string | null {
   const st = row.settings?.status;
   if (!st || row.state !== "on") return null;
-  if (st.error) return `Can't read ${row.repo}${st.error.status ? ` (HTTP ${st.error.status}: ${st.error.message})` : ` (${st.error.message})`}.`;
+  if (st.error) return st.error.status ? `GitHub returned ${st.error.status}: ${st.error.message}.` : `GitHub refused the read: ${st.error.message}.`;
   if (!st.waiting) return null;
   const at = st.waiting.until ? new Date(st.waiting.until * 1000).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : null;
   return st.waiting.reason === "budget" ? `GitHub limit low · updates again${at ? ` at ${at}` : " after GitHub's reset"}.`

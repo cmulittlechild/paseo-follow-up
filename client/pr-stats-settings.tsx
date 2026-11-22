@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { prStatsSettingsRpc, setPrStatsRpc } from "../shared/contracts";
 import { estimateLines, sizeWords, statsRepoLine, statsRepoWait, statsRepoWaitTone, type SetPrStatsInput, type StatsSettingsView, type StatsTeam } from "../shared/pr-stats-settings";
 import { Button, errorText, SubmitScope, text, type Theme } from "./kit";
-import { Disclosure } from "./settings-shell";
+import { Pressable } from "./text";
 
 export const prStatsSettingsKey = ["follow-up", "pr-stats-settings"];
 type Row = StatsSettingsView["repos"][number];
@@ -53,20 +53,21 @@ export function PrStatsSettings({ theme, compact }: { theme: Theme; compact: boo
             onDelete={() => { setConfirmOff(null); change.mutate({ repo: row.repo, enable: false, delete: true, toast: `${row.repo}: off, data deleted` }); }}
             onCancel={() => setConfirmOff(null)} />}
           <RepoWait row={row} theme={theme} compact={compact} />
-          {row.state === "on" && <Disclosure id={`pr-stats.repo.${row.repo}`} title="Options" summary={repoOptionsSummary(row)} defaultOpen={false} framed={false} theme={theme} compact={compact}>
+          {row.state === "on" && <OptionsFold row={row} theme={theme} compact={compact}>
             <RepoOptions row={row} theme={theme} compact={compact} busy={change.isPending} set={(input, label) => change.mutate({ repo: row.repo, ...input, toast: `${row.repo}: ${label}` })} />
-          </Disclosure>}
+          </OptionsFold>}
         </View>)}
         {/* A repository Follow-up hasn't seen yet. */}
         <SubmitScope enabled={addValid} onSubmit={() => setOptIn(adding.trim())} style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8, paddingHorizontal: compact ? 16 : 14, paddingVertical: 10, borderTopWidth: data.repos.length ? 1 : 0, borderTopColor: c.border }}>
           <TextInput accessibilityLabel="Another repository, owner/repo" value={adding} onChangeText={setAdding} placeholder="Another repository: owner/repo" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
             style={{ flex: compact ? undefined : 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: compact ? 15 : 13, backgroundColor: c.surface0 }} />
-          <Button theme={theme} compact={compact} grow={compact} icon="Plus" title="Add…" disabled={!addValid} onPress={() => setOptIn(adding.trim())} />
+          {!!adding.trim() && <Button theme={theme} compact={compact} grow={compact} icon="Plus" title="Add" disabled={!addValid} onPress={() => setOptIn(adding.trim())} />}
         </SubmitScope>
+        {!!adding.trim() && !alreadyOn && !REPO.test(adding.trim()) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>Use owner/repo, like example/app.</Text>}
         {alreadyOn && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>{`${alreadyOn.repo} is already ${alreadyOn.state === "on" ? "on" : "listed above (paused): turn its switch on"}.`}</Text>}
       </SettingsCard>
       {!data.repos.length && <Text style={t.meta}>Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote, or add one above.</Text>}
-      {withStats.length > 0 && <Text style={[t.meta, { marginTop: 4 }]}>All repositories</Text>}
+      {withStats.length > 0 && <Text style={[t.meta, { marginTop: 4, paddingHorizontal: compact ? 6 : 5 }]}>All repositories</Text>}
       {withStats.length > 0 && <SettingsCard>
         <SettingsSelect label="GitHub share for stats" hint="At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left." value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
           options={["1", "2", "5", "10"].map(v => ({ value: v, label: `${v}%` }))} onValueChange={v => change.mutate({ slice: Number(v) / 100, toast: `Stats may use ${v}% of GitHub's limit` })} />
@@ -94,6 +95,22 @@ function repoOptionsSummary(row: Row): string {
   return [`${s.windowDays} days`, teamWords(s.team), s.ignore.length ? `${s.ignore.length} hidden` : null].filter(Boolean).join(" · ");
 }
 
+/** A repository's options, folded under its own row at the row's left edge: "Options · 90 days · 4 people ›". */
+function OptionsFold({ row, theme, compact, children }: { row: Row; theme: Theme; compact: boolean; children: ReactNode }) {
+  const c = theme.colors; const t = text(c, compact);
+  const [open, setOpen] = useState(false);
+  const summary = repoOptionsSummary(row);
+  return <View>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} aria-expanded={open} accessibilityLabel={`${row.repo} options, ${summary}`} accessibilityHint={open ? "Collapses" : "Expands"} onPress={() => setOpen(!open)}
+      style={state => ({ flexDirection: "row", alignItems: "center", gap: 6, minHeight: compact ? 44 : 28, paddingHorizontal: compact ? 16 : 14, marginTop: -6, paddingBottom: compact ? 4 : 8,
+        backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
+      <Text numberOfLines={1} style={[t.meta, { flexShrink: 1 }]}>{`Options · ${summary}`}</Text>
+      <Icon name={open ? "ChevronDown" : "ChevronRight"} size={13} color={c.foregroundMuted} />
+    </Pressable>
+    {open && <View style={{ borderTopWidth: 1, borderTopColor: c.border }}>{children}</View>}
+  </View>;
+}
+
 /**
  * Why a repository on isn't reading, on its own line under its row: red with a next step when GitHub refused it,
  * amber while it waits for GitHub's limit or its share, muted while this machine is busy.
@@ -103,8 +120,8 @@ function RepoWait({ row, theme, compact }: { row: Row; theme: Theme; compact: bo
   const words = statsRepoWait(row); const tone = statsRepoWaitTone(row);
   if (!words || !tone) return null;
   const color = tone === "danger" ? c.statusDanger : tone === "warning" ? c.statusWarning : c.foregroundMuted;
-  const next = tone === "danger" ? " Check that this GitHub account can read it, or turn it off." : "";
-  return <View accessibilityRole={tone === "danger" ? "alert" : undefined} style={{ flexDirection: "row", gap: 6, paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }}>
+  const next = tone === "danger" ? " Check this GitHub account can read it, or turn it off." : "";
+  return <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }}>
     <View style={{ paddingTop: compact ? 3 : 2 }}><Icon name={tone === "danger" ? "CircleAlert" : "Clock"} size={13} color={color} /></View>
     <Text style={[t.meta, { flex: 1, color }]}>{`${words}${next}`}</Text>
   </View>;
@@ -179,7 +196,7 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
   const e = query.data?.estimate ?? null;
   const slice = query.data?.settings.slice ?? 0.05;
   const lines = e ? estimateLines(e, slice) : null;
-  const point = (icon: string, main: string, sub?: string) => <View style={{ flexDirection: "row", gap: 10 }}>
+  const point = (icon: string, main: ReactNode, sub?: string) => <View style={{ flexDirection: "row", gap: 10 }}>
     <View style={{ paddingTop: compact ? 2 : 1 }}><Icon name={icon} size={16} color={c.foregroundMuted} /></View>
     <View style={{ flex: 1, gap: 2 }}><Text style={t.body}>{main}</Text>{sub && <Text style={t.meta}>{sub}</Text>}</View>
   </View>;
@@ -190,10 +207,11 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
         {(query.error || e?.error) && <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{e?.error ?? errorText(query.error)}</Text>}
         {lines && e && <>
           <Text style={[t.body, { color: c.foregroundMuted }]}>About <Text style={[t.body, { fontWeight: "600" }]}>{`${e.prs!.toLocaleString("en-US")} PRs`}</Text> changed in the last 90 days.</Text>
-          {point("Gauge", `${lines.cost} ${lines.time}`, "Staying current: about 1–15 points an hour.")}
+          {point("Gauge", <>Reading them costs about <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.charAt(0).toLowerCase()}${lines.time.slice(1)}`}</>,
+            `Never more than ${Math.round(slice * 100)}% of your hourly limit (${e.slicePoints.toLocaleString("en-US")} points). Staying current: about 1–15 points an hour.`)}
           {point("CirclePause", "Stats pause whenever GitHub's limit drops under 40%, so your agents and PR checks always come first.")}
           {point("Lock", `Stored on this machine only, about ${sizeWords(e.bytes ?? 0)}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
-          <Text style={t.meta}>90 days · everyone · calendar time. Change these under the repository's options once it's on.</Text>
+          <Text style={t.meta}>90 days · everyone · calendar time. Change these in the repository's options.</Text>
         </>}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
           <Button theme={theme} compact={compact} grow={compact} kind="ghost" title="Cancel" onPress={onClose} />

@@ -145,9 +145,10 @@ test("pr stats: Settings' lines say why a repository isn't reading", () => {
   assert.equal(statsRepoLine(base, "UTC"), "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs · 397 KB");
   assert.equal(statsRepoWait(base), null);
   assert.equal(statsRepoWaitTone(base), null);
+  assert.equal(statsRepoLine({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "x", status: 404, at: 1 } } } }, "UTC"), "On · stopped · 1,240 PRs kept");
   assert.equal(statsRepoWaitTone({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "x", status: 404, at: 1 } } } }), "danger");
   assert.equal(statsRepoWaitTone({ ...base, settings: { ...base.settings, status: { ...base.settings.status, waiting: { reason: "slice", until: null } } } }), "warning");
   assert.match(statsRepoWait({ ...base, settings: { ...base.settings, status: { ...base.settings.status, waiting: { reason: "budget", until: 1_800_000_000 } } } })!, /^GitHub limit low · updates again at \d\d:\d\d\.$/);
-  assert.equal(statsRepoWait({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "not found or no access", status: 404, at: 1 } } } }), "Can't read example/app (HTTP 404: not found or no access).");
+  assert.equal(statsRepoWait({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "not found or no access", status: 404, at: 1 } } } }), "GitHub returned 404: not found or no access.");
   assert.equal(statsRepoLine({ repo: "x/y", state: "off", settings: null }, "UTC"), "Off");
 });

@@ -1926,8 +1926,11 @@ async function prStatsSettingsShots({ shoot }) {
     await shoot(`pss-section-${size}-${theme}`, vp, theme, async page => { await section(page, vp); });
     await shoot(`pss-options-${size}-${theme}`, vp, theme, async page => {
       await section(page, vp);
-      const fold = page.getByRole("button", { name: /^Options, 90 days · 4 people/ }).filter({ visible: true }).first();
+      const fold = page.getByRole("button", { name: /^example\/app options, 90 days · 4 people/ }).filter({ visible: true }).first();
       await fold.click(); await page.getByText("History", { exact: true }).filter({ visible: true }).first().waitFor();
+      // Nothing edited yet: both Saves are off (a Save that saves nothing is a dead invitation).
+      const live = await page.getByRole("button", { name: "Save", exact: true }).filter({ visible: true }).evaluateAll(els => els.filter(e => e.getAttribute("aria-disabled") !== "true" && !e.hasAttribute("disabled")).length);
+      if (live) throw new Error(`pr-stats-settings: ${live} Save button(s) enabled before any edit`);
       await fold.evaluate(el => el.scrollIntoView({ block: "start" }));
     });
     await shoot(`pss-optin-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
