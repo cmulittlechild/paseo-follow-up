@@ -88,7 +88,7 @@ export function useMergeButtons(w: Workspace | undefined): MergeButtons {
 }
 
 /**
- * "#143 approved · waits on #142 (checks failing)": an approved PR that Merge isn't offered on because a PR under it
+ * "#143 approved · waits on #142 (checks failed)": an approved PR that Merge isn't offered on because a PR under it
  * can't merge yet (heldMerges). Quiet, not an ask; both numbers open their PRs. The panel's Pull requests card and
  * Home's detail pane draw it, so an approved PR never goes invisible.
  */

@@ -862,16 +862,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tests/check-linear.test.ts`.
 64. **A PR summary says the worst** (`a-pr-summary-says-the-worst`). A chip or line that sums up a workspace's PRs
    says the worst of its open PRs, never the first one's: Home's PR chip names the first open PR in stack order with
-   the worst state and adds up the checks at that state ("#1058+125 ✗ 5"; an open PR with an unknown status keeps it
-   from saying ✓; `prChip`, `shared/home.ts`), and the panel's live line says failing checks before running ones
-   (`liveLine`). 2026-11-22 (the pr-scale stress render): a 126-PR workspace with four PRs failing read
+   the worst state and, at failing checks, counts the PRs failing ("#1058+125 ✗ 4", read aloud "Pull request #1058 and
+   125 more, 4 PRs with failed checks" on every surface that draws it, `prChipSpoken`), the same number as the panel's live line, which says failing checks before running ones ("Checks failed
+   on 4 PRs", `liveLine`); an open PR with an unknown status keeps it from saying ✓ (`prChip`, `shared/home.ts`). A
+   PR that holds a merge says it in the rows' words, "(checks failed)" (`holdReason`). 2026-11-22 (the pr-scale stress render): a 126-PR workspace with four PRs failing read
    "#1001+125 ✓" on Home and "Checks are running" in the panel. Guarded by `INVARIANTS`, `tests/big-stack.test.ts`
    and `tests/home.test.ts`.
 65. **The stack bar reads at any size** (`stack-bar-reads-at-any-size`). The panel's stack bar draws at most
    `STACK_BAR_BUDGET` marks (`barMarks`, `shared/attention.ts`): one per PR up to it; past it, runs of neighbouring PRs
    in the same state, as wide as their share; when even those are too many, equal slices of the stack, each painted
-   its loudest PR. Stack order is kept, a failing PR is never averaged away, every mark is at least 6 px, and a mark
-   opens its loudest PR and names its range. 2026-11-22: 126 PRs drew a dotted 1 px hairline. Guarded by
+   its loudest PR. Stack order is kept, a failing PR is never averaged away, every mark is at least 6 px, and on desktop a
+   mark opens its loudest PR and names its range; on a phone the bar is one progress bar with no per-mark press (its
+   marks are far under 44 pt, and the rows below open every PR). 2026-11-22: 126 PRs drew a dotted 1 px hairline. Guarded by
    `tests/big-stack.test.ts`.
 66. **A long stack shows its problems** (`a-long-stack-shows-its-problems`). In the Pull requests card a stack longer
    than `QUIET_FOLD_FROM` folds each run of at least `QUIET_FOLD_MIN` PRs that are only in review into one

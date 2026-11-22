@@ -382,12 +382,12 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   return items.filter(i => i.kind !== "merge" || !covered.has(i.prKey));
 }
 
-/** Why a downstack PR holds a merge, in a few words ("checks failing"). */
+/** Why a downstack PR holds a merge, in a few words, in the rows' words ("checks failed"). */
 function holdReason(p: Pr): string {
   const s = p.snapshot;
   if (!s?.complete || p.error) return "status unknown";
   if (s.conflict) return "conflicts";
-  if (s.failedChecks?.length) return "checks failing";
+  if (s.failedChecks?.length) return "checks failed";
   if (s.checksPending) return "checks running";
   if (s.draft) return "a draft";
   if (s.threads?.length) return "open threads";
@@ -397,7 +397,7 @@ function holdReason(p: Pr): string {
 /**
  * Approved PRs that Merge isn't offered on because a PR under them can't merge yet (a-click-on-merge-merges: a Merge
  * row merges its whole downstack). Needs you leaves them out (the PR below is the agent's repair), so the panel's
- * Pull requests card and Home's detail pane say it: "#143 approved · waits on #142 (checks failing)". An approved PR
+ * Pull requests card and Home's detail pane say it: "#143 approved · waits on #142 (checks failed)". An approved PR
  * never goes quiet.
  */
 export function heldMerges(w: Workspace, now = Date.now()): { pr: Pr; by: Pr; line: string }[] {

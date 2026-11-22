@@ -38,7 +38,7 @@ const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w
 export const INVARIANTS: Invariant[] = [
   {
     id: "a-pr-summary-says-the-worst",
-    why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs.",
+    why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs, and the chip counts failing PRs as the live line does.",
     check(w, now) {
       const open = w.prs.filter(p => p.snapshot?.state === "OPEN");
       const failing = open.filter(p => p.snapshot!.failedChecks?.length);
@@ -47,6 +47,8 @@ export const INVARIANTS: Invariant[] = [
       const problem = open.length > 1 && open.some(p => !p.snapshot!.complete || p.snapshot!.failedChecks?.length || p.snapshot!.threads?.length);
       const chip = problem ? prChip(w) : null;
       if (chip?.checks?.tone === "success") return `the PR chip reads ${chip.checks.text} while an open PR has failing checks, threads or an unknown status`;
+      // The chip and the live line count the same thing: PRs with failed checks, not checks.
+      if (chip && failing.length && chip.checks?.text !== `✗ ${failing.length}`) return `the PR chip reads ${chip.checks?.text ?? "nothing"} while ${failing.length} PR(s) fail checks`;
       if (failing.length && liveLine(w, now).text === "Checks are running") return `the live line says checks are running while ${failing.length} PR(s) fail checks`;
       return null;
     },

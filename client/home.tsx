@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { browserStatusRpc, controlRpc, inboxBriefRpc, sendRpc } from "../shared/contracts";
 import { needsYou, workspaceSnoozed } from "../shared/attention";
 import { briefAsks, briefCardShown, liveBrief } from "../shared/brief";
-import { briefPane, followUpLog, lastWorkdayEnd, nextNeeds, paneButtons, sameText, sinceLabel, tailSteps, type HomeGroupId, type HomeModel, type LogLine, type TailStep, type Workstream } from "../shared/home";
+import { briefPane, followUpLog, lastWorkdayEnd, nextNeeds, paneButtons, prChipSpoken, sameText, sinceLabel, tailSteps, type HomeGroupId, type HomeModel, type LogLine, type TailStep, type Workstream } from "../shared/home";
 import { age, backLabel, snoozeUntil, type InboxRow } from "../shared/inbox";
 import { errorText } from "../shared/errors";
 import { isLoaded, type LoadSignals } from "../shared/agent-load";
@@ -489,7 +489,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
     {!writing && s.workspaceId && w && <View style={{ marginTop: 6 }}><ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact /></View>}
     {!writing && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
       <Icon name={s.icon} size={14} color={color} />
-      <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0 }]}>
+      {/* Read as one line, with the PR summary in words: a nested Text can't carry its own label. */}
+      <Text numberOfLines={1} accessibilityLabel={[s.word, metaRest, s.pr && prChipSpoken(s.pr)].filter(Boolean).join(" · ")} style={[t.meta, { flex: 1, minWidth: 0 }]}>
         {!!s.word && <Text style={{ color, fontWeight: "600" }}>{s.word}</Text>}
         {metaRest ? (s.word ? ` · ${metaRest}` : metaRest) : ""}
         <PrSummaryText s={s} c={c} lead=" · " />
