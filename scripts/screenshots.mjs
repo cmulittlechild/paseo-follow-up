@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -147,6 +147,28 @@ function pulls() {
     // needs-you-states' person item: a stale CHANGES_REQUESTED, no open threads, nothing left in the code.
     262: { title: "Retry failed invoice webhooks", state: "OPEN", author: "dana", changes: ["ravi"], checks: [ok("test"), ok("lint")] },
   };
+}
+/**
+ * pr-scale only (pr-scale-lists-batch-not-throw): one 120-PR stack in example/app (#1001 at the bottom, #1120 on top),
+ * twice the 50-item cap that failed on 2026-11-22, plus three short stacks in example/web. Made-up titles; a few PRs
+ * carry failing checks, review threads or an approval so the rail isn't one colour.
+ */
+const PR_SCALE = { bottom: 1001, size: 120 };
+const PR_SCALE_TOP = PR_SCALE.bottom + PR_SCALE.size - 1;
+const PR_SCALE_WEB = [{ stack: "Settings redesign", numbers: [1201, 1202, 1203] }, { stack: "Search chips", numbers: [1211, 1212] }, { stack: "Footer links", numbers: [1221] }];
+function prScalePulls() {
+  const areas = ["ledger entries", "journal lines", "account balances", "currency rates", "posting rules", "period close", "audit trail", "reconciliation", "invoice links", "payout batches"];
+  const verbs = ["Move", "Index", "Validate", "Backfill", "Split", "Rename", "Cache", "Test", "Document", "Stream"];
+  const out = {};
+  for (let i = 0; i < PR_SCALE.size; i++) {
+    const n = PR_SCALE.bottom + i;
+    out[n] = { title: `${verbs[i % verbs.length]} ${areas[Math.floor(i / verbs.length) % areas.length]} (step ${i + 1} of ${PR_SCALE.size})`, state: "OPEN", author: "dana",
+      ...(i ? { base: `branch-${n - 1}` } : {}), ...(i < 3 ? { approved: true, reviewed: ["ravi"] } : { reviewers: ["ravi"] }),
+      ...(i % 37 === 36 ? { threads: 1 } : {}), checks: [i % 29 === 28 ? failed("test") : i === PR_SCALE.size - 1 ? running("test") : ok("test"), ok("lint")] };
+  }
+  const webTitles = { 1201: "Settings page layout grid", 1202: "Move notification toggles", 1203: "Settings search box", 1211: "Filter chips component", 1212: "Chips in the search bar", 1221: "Footer links to the status page" };
+  for (const { numbers } of PR_SCALE_WEB) numbers.forEach((n, i) => { out[n] = { repo: "example/web", title: webTitles[n], state: "OPEN", author: "dana", reviewers: ["ravi"], ...(i ? { base: `branch-${numbers[i - 1]}` } : {}), checks: [ok("test"), ok("lint")] }; });
+  return out;
 }
 /** A fake `gh`: GraphQL PR reads from the fixture file, `[]` for everything else (branch rules, auth). fakeGithub serves it over HTTP. */
 function fakeGh(file) {
@@ -389,6 +411,15 @@ const PICK_NOTES = [
         { question: "Where should the export land?", recommend: 0, options: [{ label: "The reports bucket" }, { label: "A download link in the email" }] }] })] },
 ];
 
+/** pr-scale's workspace: the agent registers all of them, each stack chained through parentNumber. */
+const PR_SCALE_STATES = [
+  { key: "ps-ledger", title: "Ledger rewrite", minute: 182, flag: false, prompt: "APP-300: rewrite the ledger as a stack of small PRs, one table at a time.",
+    steps: [rpc("follow.enroll", { goal: "APP-300 Ledger rewrite" }),
+      ...Array.from({ length: PR_SCALE.size }, (_, i) => rpc("follow.register-pr", { repo: "example/app", number: PR_SCALE.bottom + i, stack: "Ledger rewrite", ...(i ? { parentNumber: PR_SCALE.bottom + i - 1 } : {}) })),
+      ...PR_SCALE_WEB.flatMap(({ stack, numbers }) => numbers.map((n, i) => rpc("follow.register-pr", { repo: "example/web", number: n, stack, ...(i ? { parentNumber: numbers[i - 1] } : {}) }))),
+      msg(`Opened example/app#${PR_SCALE.bottom} through #${PR_SCALE_TOP} as one stack, and three small stacks in example/web.`)] },
+];
+
 /** review-mode only (a-no-review-repo-never-asks-for-review-or-merge): a PR with no reviewers in a reviewed repository. */
 const REVIEW_MODE_STATES = [
   { key: "rm-audit", title: "Audit log export", minute: 180, prompt: "APP-190: export the audit log as CSV from the admin page.", flag: false,
@@ -429,7 +460,7 @@ async function seed({ call, home }) {
   for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1746,6 +1777,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
+  if (only.includes("pr-scale")) await prScaleShots({ shoot });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1843,6 +1875,55 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
  * The list is narrowed by widening the right pane's element. A chip the rail clipped away has no visible box.
  * Writes rowchips.json.
  */
+/**
+ * pr-scale (pr-scale-lists-batch-not-throw): Ledger rewrite's 120-PR stack and three example/web stacks. The panel's
+ * Pull requests card at its top, scrolled to the middle of the stack and at its end; Home with the workspace selected
+ * (desktop and 390x844); the PR sheet of the top PR (#1120), desktop and phone (opened from the panel, then narrowed). Light and dark. Each shot fails on a
+ * schema error's text ("Too big", "expected array") or, on a phone, a page that scrolls sideways.
+ */
+async function prScaleShots({ shoot }) {
+  const spec = PR_SCALE_STATES[0];
+  const TALL = { width: DESKTOP.width, height: 1100 };
+  const healthy = async (page, vp) => {
+    const body = await page.evaluate(() => document.body.innerText);
+    const bad = body.match(/Too big|Too small|expected array|Invalid input|Something went wrong/i);
+    if (bad) throw new Error(`pr-scale: the page shows "${bad[0]}"`);
+    if (vp?.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-scale: the phone page scrolls sideways");
+  };
+  const row = (page, n) => page.getByRole("button", { name: new RegExp(`^Pull request ${n}: `) }).filter({ visible: true }).first();
+  const panel = async page => {
+    await page.setViewportSize(TALL); await openChat(page, spec.title, spec.prompt);
+    await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+    await row(page, PR_SCALE_TOP).waitFor({ timeout: 60_000 });
+  };
+  const home = async (page, vp) => { await openHome(page); if (vp) await page.setViewportSize(vp); await (await homeRow(page, spec.title)).click(); await page.getByText(spec.title).filter({ visible: true }).first().waitFor(); };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`ps-panel-top-${theme}`, TALL, theme, async page => { await panel(page); await healthy(page); });
+    await shoot(`ps-panel-middle-${theme}`, TALL, theme, async page => { await panel(page); const r = row(page, PR_SCALE.bottom + 60); await r.evaluate(el => el.scrollIntoView({ block: "center" })); await healthy(page); });
+    await shoot(`ps-panel-end-${theme}`, TALL, theme, async page => {
+      await panel(page);
+      const r = row(page, PR_SCALE.bottom); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+      const web = page.getByRole("button", { name: /^Pull request 1221: / }).filter({ visible: true }).first();
+      if (await web.isVisible().catch(() => false)) await web.evaluate(el => el.scrollIntoView({ block: "end" }));
+      await healthy(page);
+    });
+    await shoot(`ps-home-${theme}`, DESKTOP, theme, async page => { await home(page); await healthy(page); });
+    await shoot(`ps-home-phone-${theme}`, PHONE, theme, async page => { await home(page, PHONE); await healthy(page, PHONE); });
+    await shoot(`ps-sheet-${theme}`, TALL, theme, async page => {
+      await panel(page); await row(page, PR_SCALE_TOP).click();
+      await page.getByText(`Pull request #${PR_SCALE_TOP}`).first().waitFor();
+      await page.waitForTimeout(500); await healthy(page);
+    });
+    await shoot(`ps-sheet-phone-${theme}`, PHONE, theme, async page => {
+      // Home's phone pane lists no PRs: open the sheet from the panel, then narrow to the phone (as tasks-phone does).
+      await panel(page); await row(page, PR_SCALE_TOP).click();
+      await page.getByText(`Pull request #${PR_SCALE_TOP}`).first().waitFor();
+      await page.setViewportSize(PHONE); await page.getByText(`Pull request #${PR_SCALE_TOP}`).filter({ visible: true }).first().waitFor();
+      await page.waitForTimeout(500); await healthy(page, PHONE);
+    });
+  }
+}
+
 async function rowChipShots({ shoot, out }) {
   const checks = [];
   const check = (name, okay, detail) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`rowchips: ${name}`); log(`rowchips check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
@@ -3141,7 +3222,7 @@ try {
   await fs.writeFile(join(fixture, "paseo-plugin.json"), JSON.stringify({ id: "followup-fixture", requirements: { paseo: ">=0.11.0" } }));
   await fs.writeFile(join(fixture, "index.server.ts"), await fs.readFile("scripts/fixture-provider.ts", "utf8"));
   await fs.writeFile(join(root, "clock.cjs"), CLOCK_PRELOAD);
-  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify(pulls()));
+  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}) }));
   await fs.writeFile(join(bin, "gh"), fakeGh(join(home, "gh-fixture.json"))); await fs.chmod(join(bin, "gh"), 0o700);
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });

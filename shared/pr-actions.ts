@@ -11,9 +11,29 @@ export type PrActionKind = z.infer<typeof prActionKind>;
 
 export const browserPrSchema = z.object({ repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), number: z.number().int().positive(), head: z.string().min(1), state: z.enum(["OPEN", "MERGED", "CLOSED"]), mergeWhenReady: z.boolean(), merging: z.boolean() });
 export type BrowserPr = z.infer<typeof browserPrSchema>;
-export const browserCommandSchema = z.object({ id: idSchema, nonce: idSchema, expiresAt: z.string(), op: z.enum(["read", "enable_mwr", "disable_mwr"]), repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), prs: z.array(z.object({ number: z.number().int().positive(), head: z.string(), trunk: z.string() })).min(1).max(50) });
+/**
+ * The most PRs one browser exchange command (and its result) carries: a DoS bound on the untrusted browser side, which
+ * the Send to Paseo extension enforces too. A longer stack goes as several commands of at most this many
+ * (`browserBatches`), never as one that fails the schema (invariant pr-scale-lists-batch-not-throw).
+ */
+export const BROWSER_BATCH = 50;
+/** `items` in order, as consecutive slices of at most `size`. */
+export function browserBatches<T>(items: readonly T[], size = BROWSER_BATCH): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+/**
+ * PR numbers for a sentence: the first `shown`, then "+N more", so a long stack never grows a result past its text cap
+ * (invariant pr-scale-lists-batch-not-throw). `prRefs([1, 2, 3], 2)` is "#1, #2 +1 more".
+ */
+export function prRefs(numbers: readonly (number | string)[], shown = 8): string {
+  const head = numbers.slice(0, shown).map(n => `#${n}`).join(", ");
+  return numbers.length > shown ? `${head} +${numbers.length - shown} more` : head;
+}
+export const browserCommandSchema = z.object({ id: idSchema, nonce: idSchema, expiresAt: z.string(), op: z.enum(["read", "enable_mwr", "disable_mwr"]), repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), prs: z.array(z.object({ number: z.number().int().positive(), head: z.string(), trunk: z.string() })).min(1).max(BROWSER_BATCH) });
 export type BrowserCommand = z.infer<typeof browserCommandSchema>;
-export const browserResultSchema = z.object({ id: idSchema, nonce: idSchema, outcome: z.enum(["completed", "failed", "uncertain"]), prs: z.array(browserPrSchema).max(50).default([]), applied: z.array(z.number().int().positive()).max(50).default([]), error: z.string().max(500).default("") });
+export const browserResultSchema = z.object({ id: idSchema, nonce: idSchema, outcome: z.enum(["completed", "failed", "uncertain"]), prs: z.array(browserPrSchema).max(BROWSER_BATCH).default([]), applied: z.array(z.number().int().positive()).max(BROWSER_BATCH).default([]), error: z.string().max(500).default("") });
 export type BrowserResult = z.infer<typeof browserResultSchema>;
 export const browserExchangeSchema = z.object({ clientId: idSchema, ready: z.boolean(), acceptJobs: z.boolean().default(true), results: z.array(browserResultSchema).max(10).default([]), repositories: z.array(browserPrSchema.shape.repo).max(100).default([]) });
 export const browserStatusSchema = z.object({ ready: z.boolean(), reason: z.string().nullable() });
@@ -25,13 +45,51 @@ export const mergeStageSchema = z.enum(["merged", "queued", "requested"]);
 export type MergeStage = z.infer<typeof mergeStageSchema>;
 export const actionResultSchema = z.object({ state: z.enum(["submitted", "failed", "uncertain"]), result: textSchema, merge: mergeStageSchema.optional() });
 
+/**
+ * For every PR at once: the lowest unmerged PR under it (its downstack, the PRs one click would merge with it) that
+ * fails `ok`, null when all pass, or "unreadable" where `downstack` would throw (a cycle, a gap, another repository).
+ * One pass over the stack with memoised answers, so asking it of every PR stays linear in the workspace (invariant
+ * a-check-costs-linear-in-its-workspace), where calling `downstack` per PR was quadratic and a find per step cubic.
+ */
+export function downstackScan<P extends Pr>(prs: P[], ok: (p: P) => boolean): (key: string) => P | null | "unreadable" {
+  const byKey = new Map<string, P>(); for (const p of prs) if (!byKey.has(p.key)) byKey.set(p.key, p);
+  const memo = new Map<string, P | null | "unreadable">();
+  return (target: string) => {
+    if (memo.has(target)) return memo.get(target)!;
+    // Walk down to a known answer or the bottom, then fill the answers back up the chain.
+    const chain: P[] = []; const onChain = new Set<string>();
+    let key: string | null = target; let base: P | null | "unreadable" = null;
+    while (key !== null) {
+      if (onChain.has(key)) { base = "unreadable"; break; }
+      const pr = byKey.get(key);
+      if (!pr || chain.length && pr.repo !== chain.at(-1)!.repo) { base = "unreadable"; break; }
+      if (memo.has(key)) {
+        // A known PR below: its answer, plus the PR itself (the memo holds what is under it, not the PR).
+        const known = memo.get(key)!;
+        base = known !== null ? known : pr.snapshot?.state !== "MERGED" && !ok(pr) ? pr : null;
+        break;
+      }
+      chain.push(pr); onChain.add(key); key = pr.parent;
+    }
+    // A cycle poisons every PR on it, and so does a gap: downstack throws for each of them.
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const below = chain[i + 1];
+      if (base !== "unreadable" && below && base === null && below.snapshot?.state !== "MERGED" && !ok(below)) base = below;
+      memo.set(chain[i]!.key, base);
+    }
+    return memo.get(target) ?? base;
+  };
+}
 export function downstack<P extends Pr>(prs: P[], target: string): P[] {
   const selected: P[] = []; const seen = new Set<string>();
+  // One index per call, never a find per step: callers walk every PR's downstack, so a find made a 520-PR stack cubic
+  // (2.5 s of one Home build; invariant a-check-costs-linear-in-its-workspace).
+  const byKey = new Map<string, P>(); for (const p of prs) if (!byKey.has(p.key)) byKey.set(p.key, p);
   let key: string | null = target; let repo: string | null = null;
   while (key) {
     if (seen.has(key)) throw new Error("This stack has a parent cycle. Reconcile its tracking before merging.");
     seen.add(key);
-    const pr = prs.find(p => p.key === key);
+    const pr = byKey.get(key);
     if (!pr || repo && pr.repo !== repo) throw new Error("A downstack PR is outside this workspace's inventory. Reconcile ownership before merging.");
     repo = pr.repo;
     if (pr.snapshot?.state !== "MERGED") selected.push(pr);

@@ -1,3 +1,4 @@
+import { plainError } from "./shared/errors";
 import { TranscriptTitleLookup, TranscriptTitleStore, trackedTitleTranscripts } from "./server/transcript-titles";
 import { fillLinkedTitles, fillWorkspaceTitles, localTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
 import { stopWorker } from "./server/teardown";
@@ -162,7 +163,10 @@ export default function contribute(server: PluginServerContext) {
   const handle = <I extends ZodType, O extends ZodType>(contract: PluginRpcContract<I, O>, handler: (input: zOutput<I>, context: PluginHandlerContext) => unknown) => {
     // Main-agent work by a successor makes its handover stick (see handBackMainAgent): noted after the call succeeds.
     const run = MAIN_WORK.has(contract.name) ? (async (input: { agentId?: string }, context: PluginHandlerContext) => { const out = await (handler as (i: unknown, c: PluginHandlerContext) => unknown)(input, context); if (input?.agentId) await noteMainWork(input.agentId).catch(() => undefined); return out; }) as typeof handler : handler;
-    handlers.set(contract.name, { input: contract.input, run: run as never }); server.handle(contract, rpcTiming.timed(contract.name, run as (i: unknown, c: PluginHandlerContext) => unknown) as never);
+    // A schema error inside a handler (an internal cap, a stored record that no longer fits) reaches the caller as one
+    // plain sentence, its issues logged; never as the validator's JSON (invariant pr-scale-lists-batch-not-throw).
+    const plain = async (input: unknown, context: PluginHandlerContext) => { try { return await (run as (i: unknown, c: PluginHandlerContext) => unknown)(input, context); } catch (error) { throw plainError(error); } };
+    handlers.set(contract.name, { input: contract.input, run: plain as never }); server.handle(contract, rpcTiming.timed(contract.name, plain) as never);
   };
   // What each subscription feed is made of may have changed (wired to the feeds below, server/feeds.ts). Cheap: a feed
   // with no subscriber does nothing, and an unchanged value pushes nothing.

@@ -90,7 +90,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
 | UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
-| Shared copy and errors | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts` | [client](docs/client.md) |
+| Shared copy and errors, scale bounds | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts`, `shared/scale.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
 | Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `server/report-send.ts`, `shared/report-send.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
 | Releases | `changes/`, `CHANGELOG.md`, `scripts/release-notes.mjs`, `scripts/publish-npm.mjs`, `scripts/release-body.mjs`, `scripts/backfill-release-notes.mjs`, `scripts/check-release-note.mjs`, `.github/workflows/` | [releasing](docs/releasing.md) |
@@ -841,6 +841,22 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    settings passes its category to `openSettings`, which remembers it and opens the screen that shows it; nothing
    writes the category and then opens settings. Guarded by `tests/settings-screens.test.ts` (both hosts, every
    category, the host's refusal of an unknown screen id).
+63. **A list that grows with a workspace batches, never throws** (`pr-scale-lists-batch-not-throw`). No schema cap
+   fails because a workspace is big: lists that grow with its PRs, stacks, tasks, repositories or agents are bounded
+   by `SCALE` (`shared/scale.ts`, far above any real workspace), and where the far side is untrusted (the browser
+   exchange) the cap stays small and the sender batches to fit (`BROWSER_BATCH`, `BrowserBridge.request`). A list a
+   model writes keeps its first items past the cap (`truncated`), a list a surface shows says "+N more" (`prRefs`,
+   `browserWorkspaces`' `more`), and a producer that stores a capped list trims it before saving. A schema error that
+   still happens never reaches a person or an agent as the validator's JSON: every RPC handler (`handle`) and
+   `errorText` turn it into one plain sentence naming what didn't fit (`schemaErrorText`, `shared/errors.ts`) and log
+   the issues. Every literal array cap in `shared/` and `server/` is a named bound or listed with why it doesn't grow
+   (`FIXED_CAPS`). 2026-11-22, Tom: a workspace with one 65-PR stack showed `Too big: expected array to have <=50
+   items` under its PR status: the status read sent every open PR in the repository to the browser companion as one
+   command, whose schema allows 50. The same workspace showed Needs you's Merge check was cubic in a stack's length
+   (a `find` per step of each PR's downstack; 2.5 s of one Home build at 520 PRs), now one memoised pass
+   (`downstackScan`). Guarded by `tests/pr-scale.test.ts` (a 260-PR stack plus 12 repositories through status, Merge
+   when ready, GitHub auto-merge, the panel, Home, pr-workspaces, agent tool inputs and the model replies) and
+   `tests/check-linear.test.ts`.
 
 ## Bugs
 
