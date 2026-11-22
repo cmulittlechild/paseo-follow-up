@@ -13,6 +13,7 @@ import { DisplaySections, PermissionsSection } from "./display";
 import { ReviewerSettings, reviewerSettingsKey } from "./reviewers";
 import { AgentSettings, WaitSettings, agentSettingsKey } from "./agents";
 import { ShippingSettings } from "./shipping";
+import { PrStatsSettings } from "./pr-stats-settings";
 import { UpdatesSections, useUpdates } from "./updates";
 import { generalSummary } from "../shared/updates";
 import { BackHeader, CategoryList, CategoryTabs, Disclosure } from "./settings-shell";
@@ -83,6 +84,7 @@ function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean 
       </SettingsCard>}
     </SettingsSection>
     <ShippingSettings theme={theme} compact={compact} />
+    <PrStatsSettings theme={theme} compact={compact} />
     <PermissionsSection theme={theme} />
     <ProjectsFold theme={theme} compact={compact} />
     {data && (data.workspaces.length

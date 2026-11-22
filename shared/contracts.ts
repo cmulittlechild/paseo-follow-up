@@ -8,6 +8,7 @@ import { usageSchema } from "./usage";
 import { aboutViewSchema } from "./about";
 import { LINKED_KINDS, linkedItemSchema } from "./linked";
 import { AGENT_ROLES, agentSettingsViewSchema, savedRoleSchema } from "./agent-settings";
+import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema } from "./pr-stats-settings";
 import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
 import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
@@ -254,6 +255,10 @@ export const onboardingChecksRpc = defineRpc({ name: "follow.onboarding-checks",
  * Settings → Following → Shipping PRs, and onboarding's "How do you ship PRs?": the global default, each repository's
  * setting and what auto detected (filesystem checks only, cached; `refresh` re-checks). Never polled.
  */
+// PR statistics (docs/pr-stats.md): the model the page and pr_stats read, Settings → PR statistics, and its writes.
+export const prStatsRpc = defineRpc({ name: "follow.pr-stats", input: prStatsInputSchema, output: prStatsOutputSchema });
+export const prStatsSettingsRpc = defineRpc({ name: "follow.pr-stats-settings", input: z.object({ repo: statsRepoName.optional(), estimate: z.boolean().optional() }), output: statsSettingsViewSchema });
+export const setPrStatsRpc = defineRpc({ name: "follow.set-pr-stats", input: setPrStatsInputSchema, output: statsSettingsViewSchema });
 export const prWorkflowRpc = defineRpc({ name: "follow.pr-workflow", input: z.object({ refresh: z.boolean().optional() }), output: prWorkflowViewSchema });
 /** `{ repo, setting }` sets one repository (`setting: null` inherits the default); `default` sets the default. */
 export const setPrWorkflowRpc = defineRpc({ name: "follow.set-pr-workflow", input: setPrWorkflowInputSchema, output: prWorkflowViewSchema });

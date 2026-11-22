@@ -87,6 +87,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `follow_settings`, `set_follow_settings` | `follow.follow-settings`, `follow.set-follow-settings` | read / planned |
 | `project_settings`, `set_project_tracking` | `follow.project-settings`, `follow.set-project-tracking` | read / planned |
 | `pr_workflow`, `set_pr_workflow` | `follow.pr-workflow`, `follow.set-pr-workflow` | read / planned |
+| `pr_stats` | `follow.pr-stats` | read: one repository's PR statistics for a period (people, team numbers, PRs waiting for a first review now with their urls), a person's drill-down with `person`, and `fresh: true` for one sync first ([pr-stats.md](pr-stats.md)) |
+| `pr_stats_settings`, `set_pr_stats` | `follow.pr-stats-settings`, `follow.set-pr-stats` | read / planned: Settings → Following → PR statistics; turning a repository on shows the estimate (`estimate: true`) as the dry run's `before` |
 | `reviewer_settings`, `reviewer_suggestions`, `save_reviewers` | `follow.reviewer-settings`, `follow.reviewer-suggestions`, `follow.save-reviewers` | read / planned |
 | `onboarding_status`, `onboarding_checks`, `set_onboarding` | `follow.onboarding`, `follow.onboarding-checks`, `follow.set-onboarding` | read / planned |
 | `priorities`, `set_priorities` | `follow.priorities` | read / planned |

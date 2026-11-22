@@ -143,7 +143,7 @@ export const TOOL_PRESENTATION: Record<string, "routine" | "moment"> = {
   retry_batch: "routine", inbox_list: "routine", sign_off: "routine", set_finish_flags: "routine", set_priorities: "routine", agent_digest: "routine",
   route_candidates: "routine", send_to_agent: "routine", start_workspace: "routine", display_settings: "routine", set_display: "routine",
   follow_settings: "routine", set_follow_settings: "routine", project_settings: "routine", set_project_tracking: "routine", pr_workflow: "routine",
-  set_pr_workflow: "routine", reviewer_settings: "routine", reviewer_suggestions: "routine", save_reviewers: "routine", set_agent_setting: "routine",
+  set_pr_workflow: "routine", pr_stats: "routine", pr_stats_settings: "routine", set_pr_stats: "routine", reviewer_settings: "routine", reviewer_suggestions: "routine", save_reviewers: "routine", set_agent_setting: "routine",
   set_wait_for_jobs: "routine", onboarding_status: "routine", onboarding_checks: "routine", set_onboarding: "routine", rank_status: "routine",
   rerank_priorities: "routine", overseer_status: "routine", overseer_start: "routine", overseer_restart: "routine", overseer_ask: "routine", catch_up_deck: "routine", context_requests: "routine", ask_context: "routine", context_reply: "routine",
   inbox_brief: "routine", brief_action: "routine", queue_list: "routine", queue_action: "routine", inbox_act: "routine", answer_question: "routine", dismiss_question: "routine", dismiss_item: "routine", run_recovery: "routine",

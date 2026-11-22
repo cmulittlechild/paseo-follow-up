@@ -9,7 +9,11 @@
 // 81 unsorted agents and the 500-row brief-origin log.
 // freshFirst: the first N workspaces get no batch history (test:scale --awake-fresh: the awake ones send under any rule).
 // created.json: [{ workspaceId, agentId }] for the daemon's real workspaces and agents. Prints the bytes written.
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { statsSettingsSchema } from "../shared/pr-stats-settings";
+import { statsRecordSchema, type StatsRecord } from "../shared/pr-stats-records";
+import { freshMeta } from "../server/pr-stats-store";
 import { stateSchema, type State, type Workspace } from "../shared/model";
 import { inboxStateSchema, newEntry, type InboxState } from "../shared/inbox";
 import { BRIEF_KINDS, BRIEF_SOURCES } from "../shared/brief";
@@ -114,3 +118,25 @@ function inbox(): InboxState {
     briefOrigins: Array.from({ length: 500 }, (_, k) => ({ at: iso(k * 600_000), origin: (["tool", "structured", "extraction", "fallback"] as const)[k % 4]! })) });
 }
 if (inboxOut) { const text = JSON.stringify(inbox()); writeFileSync(inboxOut, text); console.error(`inbox ${text.length}`); }
+
+/**
+ * PR statistics (docs/pr-stats.md, invariant 68): one opted-in repository with a 50-person team's 90 days (STATS_SEED
+ * records), synced just now with its backfill done, so nothing is due during the run. With the page closed the worker
+ * must never load it: idle RSS and CPU stay inside today's budgets.
+ */
+export const STATS_SEED = 3250;
+{
+  const dir = dirname(out!);
+  const s = (ago: number) => Math.floor((now - ago) / 1000);
+  const people = Array.from({ length: 50 }, (_, k) => `dev${k}`);
+  const records: StatsRecord[] = Array.from({ length: STATS_SEED }, (_, k) => {
+    const c = s((k / STATS_SEED) * 90 * D + H), a = people[k % 50]!, rv = people[(k * 7 + 3) % 50]!;
+    return statsRecordSchema.parse({ n: 10_000 + k, a, t: sentence(k, 6).slice(0, 120), c, u: Math.min(s(0), c + 7200), r: c, k: c + 600, m: k % 5 ? c + 86_400 : null, x: k % 5 ? c + 86_400 : null, s: k % 5 ? "M" : "O", d: false,
+      add: (k * 37) % 400, del: (k * 11) % 120, f: 1 + k % 12, b: k % 9 === 1 ? `${people[(k - 1) % 50]}/feature-${k - 1}` : "main", h: `${a}/feature-${k}`, rq: [[rv, c + 600]], rv: [[rv, "A", c + 5400]], fc: [] });
+  });
+  const meta = { ...freshMeta("example/app"), defaultBranch: "main", highWater: s(0), backfill: { after: null, done: true, coveredTo: s(90 * D) }, lastSyncAt: s(0) };
+  mkdirSync(join(dir, "stats/example"), { recursive: true });
+  writeFileSync(join(dir, "stats/example/app.json"), JSON.stringify({ v: 1, meta, records }));
+  writeFileSync(join(dir, "stats.json"), JSON.stringify(statsSettingsSchema.parse({ repos: { "example/app": { enable_stats: true, enabledAt: s(D), status: { records: STATS_SEED, coveredTo: meta.backfill.coveredTo, backfillDone: true, lastSyncAt: s(0), lastCost: 1, waiting: null, error: null, cappedTo: null } } } })));
+  console.error(`stats ${STATS_SEED} records`);
+}

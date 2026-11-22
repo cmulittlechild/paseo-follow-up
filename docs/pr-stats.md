@@ -4,8 +4,8 @@ PR statistics answer "who opened the most PRs this week" and "whose PRs wait lon
 repositories the developer turns on, one at a time. The team, the bots and the numbers all come from the repository's
 own data: nothing is built in (invariant 24).
 
-Status: the data layer (records, store, sync and the GitHub budget gate) and the metrics. Nothing calls them yet;
-the settings, agent tools and the page build on them.
+Status: the data layer, the metrics, the settings (Settings → Following → PR statistics) and the agent tools
+(`pr_stats`, `pr_stats_settings`, `set_pr_stats`). The page builds on them.
 
 ## Files
 
@@ -13,10 +13,48 @@ the settings, agent tools and the page build on them.
 | --- | --- |
 | `shared/pr-stats-records.ts` | The compact record kept per PR, its schema, and `parseStatsRecord` from the page query's nodes (`readyAtOf`, bots, the review follow-up's `withAllReviews`). |
 | `shared/pr-stats.ts` | The metrics: pure functions of the records, a period, the settings and `now` (`statsModel`, `personDetail`, `periodRange`, `WorkingClock`). |
+| `shared/pr-stats-settings.ts` | `stats.json`'s schema, `set_pr_stats`'s input, the RPC outputs and Settings' words (`statsRepoLine`, `statsRepoWait`, `estimateLines`). |
+| `server/pr-stats.ts` | `PrStats`: the settings file, the opt-in estimate, the model reads, and when syncs run. |
+| `client/pr-stats-settings.tsx` | Settings → Following → PR statistics and the opt-in sheet. |
 | `server/pr-stats-gate.ts` | `StatsGate`: the one gate every stats request passes, and the rolling-hour ledger of what stats spent. |
 | `server/pr-stats-store.ts` | `StatsStore`: one file per repository, loaded only for a read (an LRU of two, dropped after five minutes), saved through `WriteBehind`. |
 | `server/pr-stats-sync.ts` | `StatsSync`: the incremental and backfill walks, page halving, review follow-ups and retention. |
 | `tests/support/fake-stats-github.ts` | A fake GitHub with a fictional `example/app` of 300 PRs (stacks, bots, drafts, deleted users, busy PRs). |
+
+## Turning it on (opt-in per repository)
+
+Nothing is on in a new install, and nothing is read until a repository is turned on.
+
+- **Settings → Following → PR statistics** (after Shipping PRs) lists every repository Follow-up knows (tracked PRs,
+  project remotes, Shipping PRs' list) with a switch, plus a field to add another `owner/repo`. Each row says where it
+  is: "On · 3,248 PRs · 90 days · 1.0 MB", "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs", "Paused · data up
+  to Nov 2", or "Off", and why it isn't reading (GitHub limit low, the machine busy, the hour's share used, or a read
+  error).
+- **The opt-in sheet** (the switch turns on only from its Turn on): about N PRs changed in the last 90 days (one
+  `search(issueCount)`, 1 point, through the gate), what reading them costs against the share of the hourly limit,
+  that stats pause under 40 %, and what is stored where. A repository the token can't read is refused there with the
+  reason, and Turn on stays off.
+- **Turning off** asks in place: "Turn off, keep data" is the bordered default (the repository shows "Paused · data up
+  to <date>", stays readable and isn't read); "Also delete the N PRs" is the quiet red extra and removes the file at
+  once.
+- **Options**: per repository, its history (30, 90 or 180 days), its team (everyone, picked people, or a GitHub team
+  `org/slug`) and who is hidden (logins, `*` wildcard; bots always are); host-wide, the GitHub share (1-10 %, 5 % by
+  default), the clock (calendar time or working hours on one schedule in the developer's zone) and whether stacked PRs
+  count fairly (on by default).
+
+Agents do the same (invariant 3): `pr_stats_settings` reads it (`estimate: true` with a `repo` for the sheet's
+numbers) and `set_pr_stats` changes it as a planned write whose dry run shows the estimate before `enable: true`.
+`pr_stats` reads the model: a period's people and team numbers, a person's drill-down, the PRs waiting for a first
+review now with their urls (invariant 23), and `fresh: true` for one incremental sync first. Read tools go to the
+Overseer and untracked root agents with the other action tools.
+
+## When it syncs
+
+`PrStats.tick()` rides the engine's loop: no timer of its own, never awaited by the loop. A repository that is on
+syncs every 5 minutes until its backfill is done, then hourly while nobody looks (~1-2 points an hour), and every 5
+minutes while its page is on screen (`watching`). One repository at a time; every request through the gate. A GitHub
+team filter's members are read once a day (1 point); a token that can't read the team leaves the filter showing
+everyone and says so in one line (invariant 71, `stats-learn-the-team-from-the-data`).
 
 ## The query
 
@@ -131,6 +169,10 @@ one keeps the stored object.
 - `tests/pr-stats-records.test.ts`: ready and asked times, bots, the author's own replies, deleted users, the store's
   file format and its LRU.
 - `tests/pr-stats-privacy.test.ts`: the queries ask for no text, and a stored record has only the schema's fields.
+- `tests/pr-stats-service.test.ts`: an empty install reads nothing; the estimate and its refusal; on, synced on the
+  loop's tick, hourly, every 5 minutes while viewed; off keeps the data, delete removes it; the team filter.
+- `npm run test:scale` seeds one repository that is on with 3,250 records (`scripts/scale-seed.ts`, `STATS_SEED`):
+  with the page closed the worker never loads it, and idle RSS and CPU stay inside the budgets.
 - `tests/pr-stats-metrics.test.ts`: a table per metric: drafts, ready and ask times, bots, the ignore list, deleted
   users, the team filter, stack-aware starts and folding, removed requests, working hours across a weekend and both
   DST changes, periods in a zone, nearest-rank, and 10,000 records.
