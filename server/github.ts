@@ -241,6 +241,17 @@ export class Github {
     this.budgets.set(owner, { remaining: rate.remaining, resetAt: Date.parse(rate.resetAt) || this.now() + 3_600_000, ...(typeof rate.limit === "number" ? { limit: rate.limit } : {}) });
     this.stats.points += Number(rate.cost) || 0;
   }
+  /**
+   * A rateLimit another reader saw for this owner's account (PR statistics, server/pr-stats-gate.ts): it moves the same
+   * budget this poller reads, so a burst either one sees throttles both (`stats-feed-the-shared-budget`). Its cost is
+   * not counted in `stats.points`, which measures the poller's own reads.
+   */
+  noteRateLimit(owner: string, rate: { remaining?: number; resetAt?: string; limit?: number }): void {
+    if (typeof rate.remaining !== "number") return;
+    this.budgets.set(owner, { remaining: rate.remaining, resetAt: Date.parse(rate.resetAt ?? "") || this.now() + 3_600_000, ...(typeof rate.limit === "number" ? { limit: rate.limit } : {}) });
+  }
+  /** GitHub refused another reader for the limit: nothing on this account is read until `resetAt`. */
+  noteLimited(owner: string, resetAt: number): void { this.outOfBudget(owner, { resetAt }); }
   private outOfBudget(owner: string, error: unknown): void {
     this.budgets.set(owner, { remaining: 0, resetAt: (error as { resetAt?: number }).resetAt ?? this.now() + 10 * 60_000 });
   }

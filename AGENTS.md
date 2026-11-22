@@ -82,6 +82,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
+| PR statistics (records, store, sync, the GitHub budget gate) | `shared/pr-stats-records.ts`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
 | Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
@@ -900,6 +901,29 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
    `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
    `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
+
+67. **PR statistics never spend below low** (`stats-never-spend-below-low`, `stats-stay-in-their-slice`,
+   `stats-wait-for-the-governor`, `stats-take-one-slot`, `stats-feed-the-shared-budget`). PR statistics are the least
+   important thing Follow-up reads from GitHub, so every stats request (page or follow-up) goes through one gate,
+   `StatsGate.run` (`server/pr-stats-gate.ts`), which sends nothing unless the governor allows background work, the
+   account's budget tier is `normal` (≥ 40 % of the limit left; stats stop at `low`, far above invariant 60's 20 %
+   reserve), the stats spending of the rolling hour plus the next page's expected cost stays inside the slice (5 % of
+   the limit by default), and no other stats request is in flight (worker-wide). Every answer's `rateLimit` moves the
+   same per-owner budget the PR poller reads (`Github.noteRateLimit`; a refusal, `Github.noteLimited`), so a burst
+   either one sees throttles both; the poller doesn't count stats' cost as its own. A refused run stores why and until
+   when. Guarded by `tests/pr-stats-gate.test.ts` (zero requests in each closed case) and
+   `tests/pr-stats-budget.test.ts` (six hours of syncs on a 3,250-PR repository: no rolling hour past the slice)
+   ([docs/pr-stats.md](docs/pr-stats.md)).
+68. **PR statistics are computed on read** (`stats-are-computed-on-read`). A repository's records are in memory only
+   while something reads or syncs them: `StatsStore.open` (`server/pr-stats-store.ts`) loads the file into an LRU of
+   `STATS_LOADED_MAX` repositories, each dropped `STATS_KEEP_MS` after its last use, and nothing loads them in case
+   they are read. A save goes through `WriteBehind` as parts, each record's bytes encoded once per record object, so a
+   page re-encodes only the PRs it changed; a record equal to the stored one keeps the stored object. Guarded by
+   `tests/pr-stats-records.test.ts`.
+69. **PR statistics hold no text** (`stats-records-hold-no-text`). A stats record (`statsRecordSchema`,
+   `shared/pr-stats-records.ts`) holds numbers, times, logins, branch names and a title capped at `TITLE_MAX`; the
+   queries never ask for a body, a comment's text, a diff or a file list, and the schema is strict, so nothing else
+   can be stored. Records stay on the host. Guarded by `tests/pr-stats-privacy.test.ts`.
 
 ## Bugs
 
