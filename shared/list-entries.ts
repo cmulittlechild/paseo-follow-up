@@ -22,10 +22,10 @@ export type Entry =
   | { type: "empty"; key: string }
   | { type: "slot"; key: string };
 
-/** A search hit on a workspace Follow-up has archived: a muted row with the Archive glyph, reading "Archived". */
 /** The line under an open Older header (briefs-from-closed-agents). */
 export const OLDER_NOTE = "Closed agents with nothing new for 3 days. A row comes back when its agent runs again.";
 
+/** A search hit on a workspace Follow-up has archived: a muted row with the Archive glyph, reading "Archived". */
 export function archivedRow(hit: SearchHit): Workstream {
   return { key: hit.key, agentId: null, workspaceId: hit.key.startsWith("ws:") ? hit.key.slice(3) : null, title: hit.title, agent: null, project: null, group: "quiet", tier: null,
     icon: "Archive", tone: "muted", line: "Archived", word: null, badges: [], pr: null, at: null, readyToArchive: false, sig: `archived:${hit.key}` } as unknown as Workstream;

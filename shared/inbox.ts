@@ -621,9 +621,13 @@ export function sectionRows(rows: InboxRow[], section: Section, now: number): In
   return picked.sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
 }
 
-/** "Sign off & next" opens the top of Needs you, never the row below, so it can't walk past a permission. */
-export function nextAfter(rows: InboxRow[], currentAgentId: string | null, now: number): InboxRow | null {
-  return sectionRows(rows, "needs", now).find(r => r.agentId !== currentAgentId) ?? null;
+/**
+ * "Sign off & next" opens the top of Needs you, never the row below, so it can't walk past a permission. Only a row
+ * Home shows is next (briefs-from-closed-agents): a row `flagFate` drops or folds into Older never is. `archived` holds
+ * the archived workspaces' ids, as Home reads them from tracked state.
+ */
+export function nextAfter(rows: InboxRow[], currentAgentId: string | null, now: number, archived: ReadonlySet<string> = new Set()): InboxRow | null {
+  return sectionRows(rows, "needs", now).find(r => r.agentId !== currentAgentId && flagFate(r, now, !!r.workspaceId && archived.has(r.workspaceId)) === "show") ?? null;
 }
 
 /** Title for a row: "Workspace › Agent" only when the workspace has more than one root agent. */

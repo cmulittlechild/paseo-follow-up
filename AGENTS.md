@@ -997,7 +997,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    only finished or PR-closed/merged flags). A closed agent's real ask with nothing new for 3 days folds into Home's
    Older group, out of the count, and comes back when the agent runs again or a new flag comes. Nothing is stored or
    deleted. Never hidden: a running or idle agent's ask, an ask under 3 days old, and a workspace's live item (an Older
-   row whose workspace has one stays in Needs you; a dropped row's workspace row carries it). 2026-11-22, live: 49
+   row whose workspace has one stays in Needs you; a dropped row's workspace row carries it). Every reader of Needs you
+   follows the same rule: "next" (`nextAfter`: Sign off & next, `/ok next`, the Command Center's Next needs-you) opens
+   only a row `flagFate` shows, never a dropped or Older one. 2026-11-22, live: 49
    flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
    old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
 

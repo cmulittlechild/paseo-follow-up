@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildHome, homeCounts } from "../shared/home";
-import { flagFate, OLDER_AFTER_MS, type InboxRow, type Reason } from "../shared/inbox";
+import { flagFate, nextAfter, OLDER_AFTER_MS, type InboxRow, type Reason } from "../shared/inbox";
 import { homeGroupOpen } from "../shared/settings-nav";
 import { listEntries, OLDER_NOTE } from "../shared/list-entries";
 import { syncTaskQuestions } from "../server/questions";
@@ -101,4 +101,21 @@ test("briefs-from-closed-agents: an old closed ask stays in Needs you while its 
   const dropped = buildHome({ rows: [row("main", { kind: "unknown", days: 5, workspaceId: "w-main" })], tracked: [w], paseo: [], now: NOW });
   assert.equal(groupOf(dropped, "main"), null);
   assert.equal(dropped.groups.find(g => g.id === "needs")?.items.some(i => i.key === "ws:w-main"), true);
+});
+
+test("briefs-from-closed-agents: next flagged (/ok next, Command Center) only opens a row Home shows", () => {
+  // Every reader of Needs you follows one rule. Before the fix, nextAfter read the raw needs section, so "/ok next"
+  // opened a closed agent that asked nothing, or an ask Home had folded into Older.
+  const rows = [
+    row("bare", { days: 0.01 }), // a closed agent's bare finish: dropped
+    row("gone", { status: "idle", kind: "action", days: 0.01, workspaceTitle: null }), // its workspace left Paseo's list
+    row("arch", { status: "idle", kind: "action", days: 0.01, workspaceId: "w-arch" }), // an archived workspace
+    row("old", { kind: "action", days: 5 }), // folded into Older
+    row("live", { status: "idle", kind: "action", days: 0.5 }),
+  ];
+  const archived = new Set(["w-arch"]);
+  assert.equal(nextAfter(rows, null, NOW, archived)?.agentId, "live");
+  assert.equal(nextAfter(rows, "live", NOW, archived), null, "nothing Home shows is left, so there is no next");
+  const shown = rows.filter(r => flagFate(r, NOW, archived.has(r.workspaceId ?? "")) === "show").map(r => r.agentId);
+  assert.deepEqual(shown, ["live"], "next and Home agree on the rows");
 });

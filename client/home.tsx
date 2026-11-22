@@ -114,7 +114,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     navigation.openWorkspace({ workspaceId });
     if (compact) deps.openPanel(workspaceId); else setTimeout(() => deps.openPanel(workspaceId), 900);
   } : undefined, [navigation, compact, deps]);
-  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay);
+  const archivedIds = useCallback(() => new Set(deps.sources.live.archived().map(w => w.id)), [deps.sources.live]);
+  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay, archivedIds);
   useEffect(() => { if (params.select) setSelected(`agent:${params.select}`); }, [params.select]);
   // An already-open Home asked to show an item (the sidebar view's Overseer row: Start and Restart live here). `at` makes
   // the same item twice a second request.

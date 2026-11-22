@@ -429,7 +429,7 @@ test("D9 ordering: urgency group first, then the longest wait", () => {
   assert.deepEqual(rows.sort(compareNeeds).map(r => r.agentId), ["perm-old", "perm-new", "err", "fin-old"]);
 });
 test("'Sign off & next' opens the top of Needs you, skipping the current agent", () => {
-  const base = { workspaceId: "w1", workspaceTitle: null, multiRoot: false, status: "idle", delegatedFrom: null, resumesAt: null, lastActivityAt: null, snooze: null, signedOffAt: null, undoable: false, seq: 1, muteTurn: false, enable_finish_flags: true };
+  const base = { workspaceId: "w1", workspaceTitle: "Web", multiRoot: false, status: "idle", delegatedFrom: null, resumesAt: null, lastActivityAt: null, snooze: null, signedOffAt: null, undoable: false, seq: 1, muteTurn: false, enable_finish_flags: true };
   const rows: InboxRow[] = [
     { ...base, agentId: "cur", title: "Current", needs: { reasons: [{ reason: "finished", at: at(0), detail: "", dedupeKey: "finished" }], since: at(0) } },
     { ...base, agentId: "perm", title: "Asks", needs: { reasons: [{ reason: "permission", at: at(9), detail: "", dedupeKey: "p" }], since: at(9) } },
