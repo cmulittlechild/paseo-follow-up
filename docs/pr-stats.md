@@ -4,14 +4,15 @@ PR statistics answer "who opened the most PRs this week" and "whose PRs wait lon
 repositories the developer turns on, one at a time. The team, the bots and the numbers all come from the repository's
 own data: nothing is built in (invariant 24).
 
-Status: the data layer (records, store, sync and the GitHub budget gate). Nothing calls it yet; the settings, agent
-tools and the page build on it.
+Status: the data layer (records, store, sync and the GitHub budget gate) and the metrics. Nothing calls them yet;
+the settings, agent tools and the page build on them.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
 | `shared/pr-stats-records.ts` | The compact record kept per PR, its schema, and `parseStatsRecord` from the page query's nodes (`readyAtOf`, bots, the review follow-up's `withAllReviews`). |
+| `shared/pr-stats.ts` | The metrics: pure functions of the records, a period, the settings and `now` (`statsModel`, `personDetail`, `periodRange`, `WorkingClock`). |
 | `server/pr-stats-gate.ts` | `StatsGate`: the one gate every stats request passes, and the rolling-hour ledger of what stats spent. |
 | `server/pr-stats-store.ts` | `StatsStore`: one file per repository, loaded only for a read (an LRU of two, dropped after five minutes), saved through `WriteBehind`. |
 | `server/pr-stats-sync.ts` | `StatsSync`: the incremental and backfill walks, page halving, review follow-ups and retention. |
@@ -62,6 +63,41 @@ The ledger and the one-in-flight rule are worker-wide, stricter than per account
 (`meta.waiting`: `governor`, `budget` with GitHub's reset, `slice` with the time the hour's oldest spending rolls off,
 or `busy`).
 
+## Metrics
+
+Every number is a pure function of the records, the period, the settings and `now` (`shared/pr-stats.ts`), computed
+when it is read. `statsModel` returns what the leaderboard, its header and `pr_stats` show for one period;
+`personDetail` one person's drill-down.
+
+- **People.** A person is a login. Bots were dropped at parse time; the repository's ignore list (case-insensitive,
+  `*` wildcard, `ignored`) drops service accounts everywhere. A deleted user's PRs count in team totals
+  (`deletedUsers`) and never make a row. With a team filter only its people count.
+- **Periods** (`periodRange`, D9): This week (from the week's first day, Monday by default, 00:00 in the time zone),
+  Last week, 30 days and 90 days. `previousRange` is the same length right before.
+- **Clocks** (invariant 74, `stats-measure-from-the-ask`). Every review clock starts at `reviewStart`: the ask, and
+  for a stacked PR (stack-aware, the default) no earlier than its parent's first response, or its parent's merge
+  without one. Calendar seconds by default; working seconds (`WorkingClock`: one weekly schedule in one zone,
+  Mon-Fri 9-18 by default, each local day's hours computed in the zone so DST is exact) as a setting. A working
+  clock is built once per read, so 10,000 records compute in about 50 ms either way.
+- **Stacks** (`stackParents`, `derive`): a PR whose base isn't the default branch and is another PR's head has that
+  PR as its parent (the newest created before it, when a branch name was reused). Parent chains created within 24 h
+  are one stack, so counts can say "9 PRs in 2 stacks" (`openedStacks`, `reviewStacks`; a lone PR is a stack of one).
+- **Aggregates**: nearest-rank median and p75 (the ⌈p·n⌉-th smallest) with n (`summarize`); a surface shows "-" with
+  n below `MIN_N` (3) and mutes below `FEW_N` (5). Never a mean.
+
+| Metric | What it counts |
+| --- | --- |
+| Opened (M1) | PRs created in the period, drafts included, per author; with stacks. |
+| Merged (M2) | PRs merged in the period, per author. |
+| Wait for first review (M3) | For PRs whose first response (the earliest review or comment by someone else, from ready on) is in the period: response minus `reviewStart`. Per author (they waited) and team. |
+| Waiting now (M4) | Open, not draft, clock started, no response: longest first, with who it waits on (requests minus removals). A stacked PR whose parent is still waiting is folded under it (`above`); one not updated in 30 days folds into `stale`. Independent of the period. |
+| Reviews given (M5) | Per reviewer, distinct PRs of others whose first review by them is in the period. |
+| Review turnaround (M6) | Per reviewer, from each request naming them (or ready, or the stacked start, if later) to their next review, for reviews in the period; a team request never counts for a person; a request removed before the review doesn't count. |
+| Time to merge (M7) | Merged in the period: merge minus the ask (stacked: minus the parent's merge, if later). |
+| First review to merge (M8) | Merged with a response: merge minus the first response. |
+| Merged without review (M10) | A count, never a ranking. |
+| Size (M9) | Lines added plus deleted, bucketed XS < 10, S < 50, M < 250, L < 1000, XL. |
+
 ## Records and privacy
 
 A record (`StatsRecord`) holds numbers, epoch-second times, logins, branch names and the title capped at 120
@@ -95,3 +131,6 @@ one keeps the stored object.
 - `tests/pr-stats-records.test.ts`: ready and asked times, bots, the author's own replies, deleted users, the store's
   file format and its LRU.
 - `tests/pr-stats-privacy.test.ts`: the queries ask for no text, and a stored record has only the schema's fields.
+- `tests/pr-stats-metrics.test.ts`: a table per metric: drafts, ready and ask times, bots, the ignore list, deleted
+  users, the team filter, stack-aware starts and folding, removed requests, working hours across a weekend and both
+  DST changes, periods in a zone, nearest-rank, and 10,000 records.
