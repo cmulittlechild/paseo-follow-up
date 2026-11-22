@@ -265,6 +265,19 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   An ask set while blocked is kept by blocked updates that leave it out. Invariant
   `a-question-always-asks-the-developer-something` (`tests/task-question-asks.test.ts`): 2026-11-12, Q48 put a task's
   evidence in the developer's Needs you as a question with no options while the task waited on a PR.
+- **One decision, one card** (`one-decision-one-card`). A blocked task makes a card only when no question already asks
+  its decision. `findTaskCover` (`shared/questions.ts`) looks for one the ask names ("Q1: may I …?", or
+  `update_obligation` `question: "Q1"`, which also writes the ask), one asked with `task` set to it, or an open one that
+  reads the same (`findOpenMatch`); a superseded question is followed to its replacement and a withdrawn one covers
+  nothing. `syncTaskQuestions` records it on the task (`coveredBy`), closes a card the task made before as "Already asked
+  as Q1." (or "Already answered as Q1."), and Needs you shows no decision item for it. An answered question keeps
+  covering the task while its ask is unchanged: the agent has the answer and moves the task, so the task reads "Q1 ·
+  answered, waiting on the agent" in Tasks and doesn't count as the developer's (`waitsOnDeveloper`, `shared/model.ts`).
+  A changed ask drops the cover and looks again. `update_obligation` says "Already asked as Q1" (or answered) in its
+  reply's `note`, and `ask_question` and `needs_you` run the sync at once, so a card the task made closes when the
+  richer question arrives. 2026-11-22, Tom: "a lot of the time, 2 questions are created for the same thing"; live data
+  had 33 of 96 task-made questions repeating an `ask_question` question, 19 while it was open and 13 after it was
+  answered. Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS`.
 - **The activity log.** `shared/activity.ts` builds it from stored state.
 
 ## Questions

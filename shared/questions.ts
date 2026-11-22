@@ -404,6 +404,73 @@ export function duplicateOpenQuestions<Q extends Matchable>(questions: readonly 
   return out;
 }
 
+// ---------- one decision, one card (one-decision-one-card) ----------
+//
+// 2026-11-22, the developer: "a lot of the time, 2 questions are created for the same thing". An agent asked Q1 with options
+// (ask_question, often with task set), then marked the task blocked with ask "Q1: may I …?", and Follow-up made a second
+// card from the task (syncTaskQuestions), with no options. Live data: 33 of 96 task-made questions repeated an
+// ask_question question, 19 while it was still open and 13 after the developer had answered it. A task blocked on the
+// developer is covered by the question it points at; it makes a card only when nothing covers it.
+
+/** The question ids a text names ("Q1: may I …", "see Q12"), in order. */
+export const questionRefs = (text: string): string[] => [...new Set([...text.matchAll(/\bQ(\d+)\b/g)].map(m => `Q${m[1]}`))];
+const SUPERSEDED = /^(?:Superseded by|Duplicate of|Already asked as|Already answered as) (Q\d+)\./;
+/**
+ * Where a decision lives now: the question itself, or the one that replaced it ("Superseded by Q7."). Null when it was
+ * withdrawn (it no longer asks anything) or isn't in this workspace. A dismissed question still stands for its decision.
+ */
+export function currentQuestion<Q extends Pick<Question, "id" | "answer" | "closed">>(questions: readonly Q[], id: string): Q | null {
+  const seen = new Set<string>();
+  let q = questions.find(x => x.id === id) ?? null;
+  while (q && q.closed && !q.answer && !q.closed.dismissed) {
+    const next = SUPERSEDED.exec(q.closed.reason)?.[1];
+    if (!next || seen.has(next)) return null;
+    seen.add(q.id);
+    q = questions.find(x => x.id === next) ?? null;
+  }
+  return q;
+}
+/** True when an ask restates `q` (its words, apart from the Q reference, are mostly the question's, title's or options'). */
+function askRepeats(ask: string, q: QuestionShape): boolean {
+  const words = tokensOf(wordsOf(ask.replace(/\bQ\d+\b/g, " ")), false);
+  if (!words.size) return true;
+  const f = featuresOf(q);
+  const theirs = new Set([...f.both, ...f.options.flatMap(o => [...o])]);
+  return contained(words, theirs) >= 0.5;
+}
+type Coverable = Matchable & Pick<Question, "taskId">;
+/**
+ * The question that already asks a blocked task's decision, if any, so the task makes no card of its own. In order:
+ * a question the ask names (`Q1: may I …`); one asked with `task` set to it; an open question that reads the same
+ * (`findOpenMatch`). Open wins over answered. An answered (or dismissed) one covers only when the ask restates it or
+ * leads with its id: the developer already decided, and the agent has the answer. Task-made questions never cover.
+ */
+export function findTaskCover<Q extends Coverable>(o: { id: string; title: string; ask?: string }, questions: readonly Q[], mainAgentId: string | null): Q | null {
+  const ask = o.ask?.trim();
+  if (!ask) return null;
+  const asked = (q: Q | null): q is Q => !!q && q.taskRevision === null;
+  let settled: Q | null = null;
+  const consider = (q: Q, restated: boolean): Q | null => {
+    if (isOpen(q)) return q;
+    if (!settled && restated) settled = q;
+    return null;
+  };
+  for (const id of questionRefs(ask)) {
+    const q = currentQuestion(questions, id);
+    if (!asked(q)) continue;
+    const hit = consider(q, ask.startsWith(id) || askRepeats(ask, q));
+    if (hit) return hit;
+  }
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const q = questions[i];
+    if (q.taskId !== o.id || !asked(q) || (q.closed && !q.answer && !q.closed.dismissed)) continue;
+    const hit = consider(q, askRepeats(ask, q) || !!compareQuestions({ title: o.title, question: ask, options: [] }, q));
+    if (hit) return hit;
+  }
+  const match = findOpenMatch(questions, { title: o.title, question: ask, options: [] }, mainAgentId);
+  return match?.question ?? settled;
+}
+
 export const QUESTION_DEDUPE_MIGRATION = "dedupe-open-questions-1";
 /**
  * One-time cleanup (1.4.0-beta.25): open questions that repeat an older open one close as "Duplicate of Qn.". The

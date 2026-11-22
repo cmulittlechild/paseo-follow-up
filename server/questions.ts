@@ -2,7 +2,7 @@ import { DEVELOPER, actorBy, type Actor } from "../shared/actor";
 import { randomUUID } from "node:crypto";
 import { blockedOnDeveloper, type Workspace } from "../shared/model";
 import { followUpObligations } from "../shared/follow-up";
-import { DISMISS_REASON, OTHER, OTHER_LABEL, QUESTION_MODE_RULES, choiceError, findDismissedMatch, findOpenMatch, isDismissed, isOpen, isOther, nextQuestionId, validChoice, type Question, type QuestionMode } from "../shared/questions";
+import { DISMISS_REASON, OTHER, currentQuestion, findTaskCover, OTHER_LABEL, QUESTION_MODE_RULES, choiceError, findDismissedMatch, findOpenMatch, isDismissed, isOpen, isOther, nextQuestionId, validChoice, type Question, type QuestionMode } from "../shared/questions";
 
 /** "other" and its label both mean Something else, so an agent recording "Something else" lands on the same answer. */
 const normalChoice = (choice: string) => [OTHER, OTHER_LABEL.toLowerCase()].includes(choice.trim().toLowerCase()) ? OTHER : choice.trim();
@@ -173,29 +173,56 @@ export const answerRecipients = (w: Workspace, q: Question): string[] => [...new
 
 /**
  * A task blocked on the developer (blocked with an `ask`) gets a question without options that links back to it and
- * asks exactly that. A task blocked on anything else (a PR, another agent) asks nothing: it shows as Blocked in Tasks.
- * When the task leaves blocked, stops asking, or asks something else, its open question closes (a new ask gets a new
- * question). Invariant a-question-always-asks-the-developer-something.
+ * asks exactly that, unless a question already asks it (one-decision-one-card): one it names ("Q1: may I …?", or
+ * update_obligation question="Q1"), one asked with `task` set to it, or an open one that reads the same
+ * (`findTaskCover`). The task then records that question (`coveredBy`) and shows as waiting on it, and an open card it
+ * made before closes as "Already asked as Q1." An answered question keeps covering it while the ask is unchanged: the
+ * agent has the answer and moves the task. A task blocked on anything else (a PR, another agent) asks nothing: it shows
+ * as Blocked in Tasks. When the task leaves blocked, stops asking, or asks something else, its open question closes (a
+ * new ask gets a new question). Invariant a-question-always-asks-the-developer-something.
  */
 export function syncTaskQuestions(w: Workspace, now: number): boolean {
   let changed = false;
   const at = new Date(now).toISOString();
   for (const o of followUpObligations(w)) {
+    const ask = blockedOnDeveloper(o) ? o.ask!.trim() : null;
+    const cover = ask ? taskCover(w, o) : null;
+    if ((cover?.id ?? undefined) !== o.coveredBy) {
+      if (cover) o.coveredBy = cover.id; else delete o.coveredBy;
+      changed = true;
+    }
     const linked = w.questions.filter(q => q.taskId === o.id && q.taskRevision !== null);
     let open = linked.find(isOpen);
-    const ask = blockedOnDeveloper(o) ? o.ask!.trim() : null;
-    if (open && open.question !== ask) {
-      open.closed = { at, by: null, reason: o.status === "done" || o.status === "waived" ? `The task was ${o.status === "done" ? "completed" : "waived"}.`
+    if (open && (cover || open.question !== ask)) {
+      open.closed = { at, by: null, reason: cover ? `Already ${cover.answer ? "answered" : "asked"} as ${cover.id}.`
+        : o.status === "done" || o.status === "waived" ? `The task was ${o.status === "done" ? "completed" : "waived"}.`
         : o.status !== "blocked" ? "The task is no longer blocked." : ask ? "The task asks something else now." : "The task waits on something other than you." };
       open = undefined; changed = true;
     }
-    if (ask && !open && !linked.some(q => q.taskRevision === o.revision && q.question === ask)) {
+    if (ask && !cover && !open && !linked.some(q => q.taskRevision === o.revision && q.question === ask)) {
       w.questions.push({ id: nextQuestionId(w.questions), title: o.title.slice(0, 120), question: ask, options: [], recommend: null, big: null,
         background: null, links: [], prKey: null, taskId: o.id, taskRevision: o.revision, askedBy: w.mainAgentId, askedAt: at, mode: "work-around", answer: null, closed: null, via: "task" });
       changed = true;
     }
   }
   return changed;
+}
+
+/** The question covering a task blocked on the developer: the one it recorded while that still stands, else a fresh look. */
+function taskCover(w: Workspace, o: Workspace["obligations"][number]): Question | null {
+  const kept = o.coveredBy ? currentQuestion(w.questions, o.coveredBy) : null;
+  if (kept && kept.taskRevision === null) return kept;
+  return findTaskCover(o, w.questions, w.mainAgentId);
+}
+
+/** What update_obligation tells the agent when its blocked task is covered by a question: no second card was made. */
+export function coverNote(w: Workspace, taskId: string): string | null {
+  const o = w.obligations.find(o => o.id === taskId);
+  const q = o?.coveredBy ? w.questions.find(q => q.id === o.coveredBy) : null;
+  if (!o || !q || !blockedOnDeveloper(o)) return null;
+  if (isDismissed(q)) return dismissedInstruction(q);
+  if (q.answer) return `Already answered as ${q.id}: the developer decided, and the answer is in this chat as "Follow-up answer ${q.id} …". No new card was made. Act on that answer and move this task (working, waiting or done) instead of keeping it blocked on it.`;
+  return `Already asked as ${q.id}: the task shows as waiting on it and no second card was made. Its answer arrives as "Follow-up answer ${q.id} …". At the turn's end point at it with needs_you questions=["${q.id}"], don't restate it.`;
 }
 
 type NeedsYouDecision = { question: string; options?: { label: string; consequence?: string }[]; recommend?: number };

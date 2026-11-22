@@ -905,6 +905,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `shared/pr-stats-records.ts`) holds numbers, times, logins, branch names and a title capped at `TITLE_MAX`; the
    queries never ask for a body, a comment's text, a diff or a file list, and the schema is strict, so nothing else
    can be stored. Records stay on the host. Guarded by `tests/pr-stats-privacy.test.ts`.
+70. **One decision, one card** (`one-decision-one-card`). A task blocked on the developer makes a question card only
+   when no question already asks its decision: one its ask names ("Q1: may I …?", or `update_obligation`
+   `question: "Q1"`), one asked with `task` set to it, or an open one that reads the same (`findTaskCover`,
+   `shared/questions.ts`). The task records that question (`coveredBy`), shows as waiting on it in Tasks, and Needs you
+   shows it once; a card the task made before closes as "Already asked as Q1." An answered question keeps covering the
+   task until its ask changes, so a decision the developer made is never asked again: the agent has the answer and
+   moves the task (`update_obligation` says so in its `note`). Agents are told one way to ask: `ask_question` with
+   `task`, then `update_obligation` blocked with `question`. 2026-11-22, Tom: "a lot of the time, 2 questions are
+   created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
+   Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
 
 ## Bugs
 
