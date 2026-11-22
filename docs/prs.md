@@ -103,7 +103,7 @@ freshness; the `poll-backoff-never-hides-a-moving-pr` invariant holds both. Open
 are read every 2 minutes instead of 30 s (invariant `long-running-checks-read-every-2-min`; 2026-11-12, 25 stacked
 PRs with checks running for hours cost ~3000 GraphQL points an hour).
 
-**Budget.** Each query asks for `rateLimit { cost remaining resetAt limit }`. Under 40 % of the limit (2000 of 5000),
+**Budget.** Each query asks for `rateLimit { cost remaining resetAt limit }`. PR statistics feed the same per-owner budget (`Github.noteRateLimit`, `Github.noteLimited`) and stop already under 40 % (invariant 67, [pr-stats.md](pr-stats.md)). Under 40 % of the limit (2000 of 5000),
 settled PRs wait 5 minutes and only in repositories with something moving. Under 20 % (the reserve, 1000), Follow-up's
 background reads stop until the reset, so agents, gt and other plugins keep the rest (2026-11-19 live: Follow-up read
 the account down to 100 left and agents' `gh` calls failed first); the developer's Refresh and foreground reads (agent
