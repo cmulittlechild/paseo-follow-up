@@ -285,9 +285,10 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   decides (it asks to be told when something is done, or opens with something to do and asks no question). A card from
   before that framed an action as a decision is reshaped in place and keeps its id. The agent's turn-end brief folds into
   the task's card instead of standing beside it: `needsYouQuestions` points an action or decision `needs_you` at every
-  open task card it names ("Q3"), every card made during that turn (`turn.at`: the agent blocked the task and is
-  reporting it) and every card it restates (`taskCardsFor`), as `questions: ["Q3"]` would, so `needsYouBlock` draws the
-  card once with the brief's context. The fold is the server's, so `update_obligation` says nothing about the task's own
+  open task card it names ("Q3") and every card it restates (`taskCardsFor`: half of the card's words; for a card made
+  during that turn, `turn.at`, where the agent blocked the task and is reporting it, two shared words and 0.3 of the
+  card's words), as `questions: ["Q3"]` would, so `needsYouBlock` draws the card once with the brief's context. A card
+  the brief doesn't name or restate never hides it, even one made in the same turn: both show. The fold is the server's, so `update_obligation` says nothing about the task's own
   card: the agent reads zero extra words. An action card is answered by one Done button (`isDoneOnly`) in the panel, on
   Home and in the chat brief, never an option to pick and then Send; a brief's Done on it answers the card (A).
   2026-11-22, the developer: an Action brief and its blocked task's card showed the same ask,

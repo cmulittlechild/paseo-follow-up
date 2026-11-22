@@ -516,9 +516,10 @@ export function taskNeed(ask: string, need?: "decision" | "action"): "decision" 
 
 /**
  * The open task cards an agent's turn-end needs_you is about, so its brief folds into them (needsYouBlock) and the ask
- * shows once: cards it names ("Q3" in its ask or context), cards made or asked again during this turn (the agent
- * blocked the task and is now reporting it), and cards its words restate (half of the card's words or more). Only the
- * main agent's action and decision briefs; a card from an earlier turn it doesn't name or restate stays its own item.
+ * shows once: cards it names ("Q3" in its ask or context), and cards its words restate (half of the card's words or
+ * more; for a card made or asked again during this turn, where the agent blocked the task and is now reporting it, two
+ * shared words and 0.3 of the card's words). Only the main agent's action and decision briefs. A brief's ask is never
+ * hidden by a card it doesn't name or restate: such a card stays its own item and so does the brief.
  */
 export function taskCardsFor<Q extends QuestionShape & Pick<Question, "id" | "answer" | "closed" | "via" | "askedAt">>(call: { kind: string; ask: string; context?: string | null }, questions: readonly Q[], turnStartedAt: number | null): Q[] {
   if (call.kind !== "action" && call.kind !== "decision") return [];
@@ -527,10 +528,14 @@ export function taskCardsFor<Q extends QuestionShape & Pick<Question, "id" | "an
   const words = tokensOf(wordsOf(text.replace(/\bQ\d+\b/g, " ")), false);
   return questions.filter(q => {
     if (q.via !== "task" || !isOpen(q)) return false;
-    if (named.has(q.id) || (turnStartedAt !== null && Date.parse(q.askedAt) >= turnStartedAt)) return true;
+    if (named.has(q.id)) return true;
     const theirs = featuresOf(q).q;
     let n = 0; for (const t of theirs) if (words.has(t)) n++;
-    return n > 0 && n >= Math.min(3, theirs.size) && n / theirs.size >= 0.5;
+    if (!n) return false;
+    // A card made or asked again this turn needs less to match (two shared words, and 0.3 of the card's words), never
+    // nothing: 2.4.0-beta.1 folded every same-turn card, so an unrelated "merge #5" brief vanished behind it.
+    if (turnStartedAt !== null && Date.parse(q.askedAt) >= turnStartedAt) return n >= Math.min(2, theirs.size) && n / theirs.size >= 0.3;
+    return n >= Math.min(3, theirs.size) && n / theirs.size >= 0.5;
   });
 }
 

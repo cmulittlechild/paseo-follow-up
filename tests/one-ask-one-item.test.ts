@@ -74,6 +74,23 @@ test("one-ask-one-item: the reported sequence: a brief reporting the task blocke
   holds(w);
 });
 
+test("one-ask-one-item: a brief is never hidden by a card it isn't about, even one made in the same turn", () => {
+  // Review of 2.4.0-beta.1's fix: every card made in the turn folded the brief in, so an unrelated ask vanished.
+  const w = empty();
+  blocked(w);
+  const q = card(w);
+  const unrelated = needsYouQuestions(w, MAIN, { kind: "action", ask: "Merge #5 when its checks pass" }, "work-around", clock, null, clock - 60_000);
+  assert.deepEqual(unrelated.questionIds, [], "the merge ask isn't about the layout card");
+  const shown = items(w, { questionIds: unrelated.questionIds, kind: "action" });
+  assert.equal(shown.asks, 2, "both show: the merge brief and the task's card");
+  assert.deepEqual(shown.cards, [{ kind: "brief" }, { kind: "question", questionId: q.id, brief: false, expanded: true }]);
+  // The same turn's brief that reports the card in other words still folds (the lower same-turn bar).
+  const x = empty();
+  blocked(x);
+  assert.deepEqual(needsYouQuestions(x, MAIN, { kind: "action", ask: "Waiting on alice's pick from the decision page" }, "work-around", clock, null, clock - 60_000).questionIds, [card(x).id]);
+  holds(w); holds(x);
+});
+
 test("one-ask-one-item: a card from an earlier turn joins the brief only when the brief names or restates it", () => {
   const earlier = clock + 3_600_000;
   const run = (ask: string, context?: string) => {
