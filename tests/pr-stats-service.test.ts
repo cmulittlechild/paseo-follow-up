@@ -13,8 +13,9 @@ import { rm, trackPersistence } from "./support/store-temp-dir";
 import { clock } from "./fixtures";
 
 /** The service over the fake repository: search and team queries answered beside the fake's pages. */
-async function service(o: { teamReadable?: boolean } = {}) {
-  let now = clock;
+async function service(o: { teamReadable?: boolean; zone?: string; at?: number } = {}) {
+  let now = o.at ?? clock;
+  let zone = o.zone ?? "Europe/Berlin";
   const directory = await mkdtemp(join(tmpdir(), "fu-stats-svc-"));
   const fake = new FakeStatsGithub(() => now);
   const calls: string[] = [];
@@ -25,10 +26,10 @@ async function service(o: { teamReadable?: boolean } = {}) {
     return fake.graphql(repo, query, vars);
   }, rest: fake.rest.bind(fake) };
   const budgets = new Map<string, Budget>();
-  const stats = trackPersistence(directory, new PrStats({ directory, api, clientTimeZone: () => "Europe/Berlin", now: () => now, log: () => undefined,
+  const stats = trackPersistence(directory, new PrStats({ directory, api, clientTimeZone: () => zone, now: () => now, log: () => undefined,
     gate: { budget: owner => budgets.get(owner), noteRateLimit: (owner, r) => budgets.set(owner, { remaining: r.remaining!, resetAt: Date.parse(r.resetAt!), limit: r.limit }), noteLimited: () => undefined, allowsBackground: () => true } }));
   const idle = async () => { stats.tick(); for (let i = 0; i < 200 && (stats as unknown as { running: unknown }).running; i++) await new Promise(r => setTimeout(r, 2)); };
-  return { directory, fake, stats, calls, idle, advance: (ms: number) => { now += ms; }, now: () => now };
+  return { directory, fake, stats, calls, idle, advance: (ms: number) => { now += ms; }, now: () => now, setZone: (z: string) => { zone = z; } };
 }
 
 test("pr stats: nothing is on, read or loaded in an empty install", async () => {
@@ -137,6 +138,41 @@ test("stats-learn-the-team-from-the-data: an unreadable GitHub team shows everyo
       assert.equal(s.calls.filter(c => c === "team").length, 1, "not again within a day");
     } finally { await rm(s.directory, { recursive: true, force: true }); }
   }
+});
+
+test("stats-learn-the-team-from-the-data: the week is the zone's usual one unless saved, and the default is never written", async () => {
+  // Sunday 2026-01-11 10:00 in Jerusalem (UTC+2).
+  const s = await service({ zone: "Asia/Jerusalem", at: Date.parse("2026-01-11T08:00:00Z") });
+  try {
+    let view = await s.stats.view([]);
+    assert.deepEqual(view.hours, { days: [0, 1, 2, 3, 4], from: 9 * 60, to: 18 * 60 }, "a Friday–Saturday weekend: Sun–Thu");
+    assert.equal(view.weekStart, 0);
+    let read = await s.stats.read({ period: "week" });
+    assert.equal(new Date(read.range.start * 1000).toISOString(), "2026-01-10T22:00:00.000Z", "This week starts this Sunday, not last Monday");
+    assert.deepEqual(read.hours.days, [0, 1, 2, 3, 4]);
+    // Another setting writes stats.json; the zone's week stays unsaved.
+    await s.stats.set({ slice: 0.02 });
+    await s.stats.flush();
+    const file = JSON.parse(await readFile(join(s.directory, "stats.json"), "utf8")) as { hours: unknown; weekStart: unknown };
+    assert.equal(file.hours, null);
+    assert.equal(file.weekStart, null);
+    // So a new zone moves it.
+    s.setZone("Europe/Berlin");
+    view = await s.stats.view([]);
+    assert.deepEqual(view.hours.days, [1, 2, 3, 4, 5]);
+    assert.equal(view.weekStart, 1);
+    // A saved schedule and week start win over the zone.
+    s.setZone("Asia/Jerusalem");
+    await s.stats.set({ hours: { days: [1, 2, 3, 4, 5], from: 8 * 60, to: 17 * 60 }, weekStart: 1 });
+    view = await s.stats.view([]);
+    assert.deepEqual(view.hours, { days: [1, 2, 3, 4, 5], from: 8 * 60, to: 17 * 60 });
+    assert.equal(view.weekStart, 1);
+    read = await s.stats.read({ period: "week" });
+    assert.equal(new Date(read.range.start * 1000).toISOString(), "2026-01-04T22:00:00.000Z", "the saved Monday start");
+    // null goes back to the zone's week.
+    await s.stats.set({ hours: null, weekStart: null });
+    assert.equal((await s.stats.view([])).weekStart, 0);
+  } finally { await rm(s.directory, { recursive: true, force: true }); }
 });
 
 test("pr stats: Settings' lines say why a repository isn't reading", () => {

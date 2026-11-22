@@ -71,7 +71,7 @@ export function PrStatsSettings({ theme, compact }: { theme: Theme; compact: boo
       {withStats.length > 0 && <SettingsCard>
         <SettingsSelect label="GitHub share for stats" hint="At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left." value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
           options={["1", "2", "5", "10"].map(v => ({ value: v, label: `${v}%` }))} onValueChange={v => change.mutate({ slice: Number(v) / 100, toast: `Stats may use ${v}% of GitHub's limit` })} />
-        <SettingsSelect<"calendar" | "working"> label="Clock" hint={`Working hours use one schedule for everyone: ${hoursWords(data.settings.hours)}, ${data.timeZone}.`} value={data.settings.clock} disabled={change.isPending}
+        <SettingsSelect<"calendar" | "working"> label="Clock" hint={`Working hours use one schedule for everyone: ${hoursWords(data.hours)}, ${data.timeZone}.`} value={data.settings.clock} disabled={change.isPending}
           options={[{ value: "calendar", label: "Calendar time" }, { value: "working", label: "Working hours" }]} onValueChange={v => change.mutate({ clock: v, toast: v === "working" ? "Stats count working hours" : "Stats count calendar time" })} />
         <SettingsSwitch label="Count stacks fairly" hint="A stacked PR's review clock starts when its parent got a first review or merged, not while it waits its turn." value={data.settings.enable_stack_aware} disabled={change.isPending}
           onValueChange={v => change.mutate({ enable_stack_aware: v, toast: v ? "Stacked PRs start their clocks when reached" : "Stacked PRs start their clocks when asked" })} />

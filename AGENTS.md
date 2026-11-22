@@ -943,6 +943,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    earlier than its parent's first response, or its parent's merge when that came first without one; until then it is
    folded under the PR it waits behind ("+N above in its stack"), never listed as waiting. One function derives it
    (`derive`, `shared/pr-stats.ts`) for every metric. Guarded by `tests/pr-stats-metrics.test.ts`.
+75. **PR statistics learn the team from the data** (`stats-learn-the-team-from-the-data`). Nothing is built in: the
+   team is every person who opened or reviewed a PR in the repository's window, minus bots (by GitHub's type or a
+   `[bot]` login) and the repository's ignore list (case-insensitive, `*` wildcard), never anywhere a metric counts.
+   An optional filter narrows it to picked people or a GitHub team (`org/slug`, read once a day through the stats
+   gate); a token that can't read the team leaves the filter showing everyone and says so in one line ("Can't read the
+   team @example/backend with this GitHub token, so this shows everyone."), never a silent empty list. An empty install
+   has no repository on and reads nothing. Nor is a working week: "This week" starts and working hours count on the
+   zone's usual week (`shared/workweek.ts`: Sun–Thu where the weekend is Friday–Saturday, else Mon–Fri) unless one is
+   saved, and the default is never written to `stats.json`, so a new zone moves it.
+   Guarded by `tests/pr-stats-service.test.ts` and `tests/pr-stats-metrics.test.ts` ([docs/pr-stats.md](docs/pr-stats.md)).
 76. **The queue is whole** (`the-queue-is-whole`). The Morning brief's sweep reads every page of the developer's Linear
    queue in every queue state, or says it is partial: a page mcpproxy cut off (`parseIssuePage(...).whole` false) is
    re-read smaller, then marks the sweep partial, and past `QUEUE.pagesMax` pages it is partial too. A partial sweep
@@ -966,15 +976,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
-
-75. **PR statistics learn the team from the data** (`stats-learn-the-team-from-the-data`). Nothing is built in: the
-   team is every person who opened or reviewed a PR in the repository's window, minus bots (by GitHub's type or a
-   `[bot]` login) and the repository's ignore list (case-insensitive, `*` wildcard), never anywhere a metric counts.
-   An optional filter narrows it to picked people or a GitHub team (`org/slug`, read once a day through the stats
-   gate); a token that can't read the team leaves the filter showing everyone and says so in one line ("Can't read the
-   team @example/backend with this GitHub token, so this shows everyone."), never a silent empty list. An empty install
-   has no repository on and reads nothing. Guarded by `tests/pr-stats-service.test.ts` and
-   `tests/pr-stats-metrics.test.ts` ([docs/pr-stats.md](docs/pr-stats.md)).
 
 ## Bugs
 

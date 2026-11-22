@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { DEFAULT_HOURS, PERIODS } from "./pr-stats";
+import { PERIODS } from "./pr-stats";
 
 /**
  * PR statistics' settings (`stats.json`, docs/pr-stats.md): which repositories are on, per repository its window,
  * team filter and ignore list, and the host-wide clock, slice and time zone. Agents read them with `pr_stats_settings`
- * and change them with `set_pr_stats` (invariant 3); the developer in Settings → Following → PR statistics.
+ * and change them with `set_pr_stats` (invariant 3, agent parity); the developer in Settings → Following → PR statistics.
  *
- * Nothing is built in (invariant 24): an empty install has no repository on, no team and no names.
+ * Nothing is built in (invariant 24, `public-code-carries-no-host-identifiers`): an empty install has no repository on, no team and no names.
  */
 export const STATS_TEAM_MAX = 200;
 export const STATS_IGNORE_MAX = 100;
@@ -60,10 +60,12 @@ export const statsSettingsSchema = z.object({
   slice: z.number().min(0.01).max(0.1).default(0.05),
   /** D4: calendar time by default; working hours on one weekly schedule in one zone. */
   clock: z.enum(["calendar", "working"]).default("calendar"),
-  hours: scheduleSchema.default(DEFAULT_HOURS),
+  /** null: the zone's usual workdays 9–18 (shared/workweek.ts). Never written as a default, so a new zone moves it. */
+  hours: scheduleSchema.nullable().default(null),
   /** null: the developer's device zone (`follow.client-time-zone`), else UTC. */
   timeZone: z.string().min(1).max(64).nullable().default(null),
-  weekStart: z.union([z.literal(0), z.literal(1)]).default(1),
+  /** null: the zone's usual week start (Sunday where the weekend is Friday–Saturday, else Monday). */
+  weekStart: z.union([z.literal(0), z.literal(1)]).nullable().default(null),
   /** D5: stacked PRs start their clocks when their parent was reached. */
   enable_stack_aware: z.boolean().default(true),
 }).strict();
@@ -80,9 +82,10 @@ export const setPrStatsInputSchema = z.object({
   ignore: z.array(pattern).max(STATS_IGNORE_MAX).optional(),
   slice: z.number().min(0.01).max(0.1).optional(),
   clock: z.enum(["calendar", "working"]).optional(),
-  hours: scheduleSchema.optional(),
+  /** null: back to the zone's usual week. */
+  hours: scheduleSchema.nullable().optional(),
   timeZone: z.string().min(1).max(64).nullable().optional(),
-  weekStart: z.union([z.literal(0), z.literal(1)]).optional(),
+  weekStart: z.union([z.literal(0), z.literal(1)]).nullable().optional(),
   enable_stack_aware: z.boolean().optional(),
 }).strict();
 export type SetPrStatsInput = z.infer<typeof setPrStatsInputSchema>;
@@ -113,6 +116,9 @@ export const statsSettingsViewSchema = z.object({
   repos: z.array(statsRepoRowSchema),
   /** The zone numbers are computed in. */
   timeZone: z.string(),
+  /** The schedule and week start in use: the saved ones, else the zone's usual week. */
+  hours: scheduleSchema,
+  weekStart: z.union([z.literal(0), z.literal(1)]),
   estimate: statsEstimateSchema.nullable(),
 });
 export type StatsSettingsView = z.infer<typeof statsSettingsViewSchema>;
@@ -140,7 +146,7 @@ export const prStatsOutputSchema = z.object({
   model: z.object({
     team: z.object({ opened: z.number().int(), openedStacks: z.number().int(), merged: z.number().int(), wait: summary, timeToMerge: summary, reviewToMerge: summary, waitingNow: z.number().int(), reviews: z.number().int(), mergedWithoutReview: z.number().int(), deletedUsers: z.number().int(), bots: z.number().int(), sizes: z.record(z.string(), z.number().int()) }),
     people: z.array(person),
-    /** Waiting for a first review now, longest first, each with its PR url (invariant 23). */
+    /** Waiting for a first review now, longest first, each with its PR url (invariant 23, `a-row-that-names-a-pr-opens-it-in-one-click`). */
     waiting: z.array(z.object({ number: z.number().int(), url: z.string(), author: z.string().nullable(), title: z.string(), since: z.number(), wait: z.number(), size: z.string(), lines: z.number().int(), requested: z.array(z.string()), above: z.number().int() })),
     stale: z.number().int(),
   }).nullable(),

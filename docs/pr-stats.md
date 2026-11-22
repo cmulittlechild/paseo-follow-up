@@ -2,7 +2,7 @@
 
 PR statistics answer "who opened the most PRs this week" and "whose PRs wait longest for a first review" for
 repositories the developer turns on, one at a time. The team, the bots and the numbers all come from the repository's
-own data: nothing is built in (invariant 24).
+own data: nothing is built in (invariant 24, `public-code-carries-no-host-identifiers`).
 
 Status: the data layer, the metrics, the settings (Settings → Following → PR statistics) and the agent tools
 (`pr_stats`, `pr_stats_settings`, `set_pr_stats`). The page builds on them.
@@ -41,13 +41,15 @@ Nothing is on in a new install, and nothing is read until a repository is turned
   once.
 - **Options**: per repository, its history (30, 90 or 180 days), its team (everyone, picked people, or a GitHub team
   `org/slug`) and who is hidden (logins, `*` wildcard; bots always are); host-wide, the GitHub share (1-10 %, 5 % by
-  default), the clock (calendar time or working hours on one schedule in the developer's zone) and whether stacked PRs
+  default), the clock (calendar time or working hours on one schedule in the developer's zone; unsaved, the schedule and the
+  week's first day follow the zone's usual week from `shared/workweek.ts`: Sun-Thu 9-18 and a Sunday start where the
+  weekend is Friday-Saturday, else Mon-Fri and Monday, invariant 75, `stats-learn-the-team-from-the-data`) and whether stacked PRs
   count fairly (on by default).
 
-Agents do the same (invariant 3): `pr_stats_settings` reads it (`estimate: true` with a `repo` for the sheet's
+Agents do the same (invariant 3, agent parity): `pr_stats_settings` reads it (`estimate: true` with a `repo` for the sheet's
 numbers) and `set_pr_stats` changes it as a planned write whose dry run shows the estimate before `enable: true`.
 `pr_stats` reads the model: a period's people and team numbers, a person's drill-down, the PRs waiting for a first
-review now with their urls (invariant 23), and `fresh: true` for one incremental sync first. Read tools go to the
+review now with their urls (invariant 23, `a-row-that-names-a-pr-opens-it-in-one-click`), and `fresh: true` for one incremental sync first. Read tools go to the
 Overseer and untracked root agents with the other action tools.
 
 ## When it syncs
@@ -112,12 +114,13 @@ when it is read. `statsModel` returns what the leaderboard, its header and `pr_s
 - **People.** A person is a login. Bots were dropped at parse time; the repository's ignore list (case-insensitive,
   `*` wildcard, `ignored`) drops service accounts everywhere. A deleted user's PRs count in team totals
   (`deletedUsers`) and never make a row. With a team filter only its people count.
-- **Periods** (`periodRange`, D9): This week (from the week's first day, Monday by default, 00:00 in the time zone),
-  Last week, 30 days and 90 days. `previousRange` is the same length right before.
+- **Periods** (`periodRange`, D9): This week (from 00:00 in the time zone on the week's first day: the saved one, else
+  the zone's usual one), Last week, 30 days and 90 days. `previousRange` is the same length right before.
 - **Clocks** (invariant 74, `stats-measure-from-the-ask`). Every review clock starts at `reviewStart`: the ask, and
   for a stacked PR (stack-aware, the default) no earlier than its parent's first response, or its parent's merge
   without one. Calendar seconds by default; working seconds (`WorkingClock`: one weekly schedule in one zone,
-  Mon-Fri 9-18 by default, each local day's hours computed in the zone so DST is exact) as a setting. A working
+  the zone's usual workdays 9-18 unless one is saved, each local day's hours computed in the zone so DST is exact) as
+  a setting. A working
   clock is built once per read, so 10,000 records compute in about 50 ms either way.
 - **Stacks** (`stackParents`, `derive`): a PR whose base isn't the default branch and is another PR's head has that
   PR as its parent (the newest created before it, when a branch name was reused). Parent chains created within 24 h

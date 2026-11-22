@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { graphitePrUrl } from "../shared/presentation";
-import { personDetail, periodRange, statsModel, type Period, type StatsOptions } from "../shared/pr-stats";
+import { defaultHours, personDetail, periodRange, statsModel, type Period, type Schedule, type StatsOptions } from "../shared/pr-stats";
+import { defaultWeekStart } from "../shared/workweek";
 import { emptyStatsSettings, statsSettingsSchema, type PrStatsOutput, type SetPrStatsInput, type StatsEstimate, type StatsRepoSettings, type StatsSettings, type StatsSettingsView, type StatsStatus } from "../shared/pr-stats-settings";
 import { STATS_PAGE_SIZE } from "../shared/pr-stats-records";
 import type { GithubApi } from "./github-api";
@@ -17,11 +18,11 @@ import { WriteBehind, type WriteHealth } from "./write-behind";
  * When it runs (D6): `tick()` rides the engine's existing loop and starts nothing on its own timer. A repository on
  * is synced when its last run is `SYNC_IDLE_MS` old (an hour: ~1-2 points while nobody looks), or `SYNC_VIEWING_MS`
  * while its page is on screen (`viewing`, set by the page's feed), one repository at a time, never awaited by the
- * engine, and every request still passes the gate (invariant 67). A refresh (the page's icon, `pr_stats fresh`) runs
+ * engine, and every request still passes the gate (invariant 67, `stats-never-spend-below-low`). A refresh (the page's icon, `pr_stats fresh`) runs
  * one incremental pass now, through the same gate.
  *
  * The team filter's GitHub team (`org/slug`) is read once a day through the gate; a token that can't read it leaves
- * the filter showing everyone with one plain line (invariant 71, `stats-learn-the-team-from-the-data`).
+ * the filter showing everyone with one plain line (invariant 75, `stats-learn-the-team-from-the-data`).
  */
 export const SYNC_IDLE_MS = 60 * 60_000;
 export const SYNC_VIEWING_MS = 5 * 60_000;
@@ -37,7 +38,7 @@ export type PrStatsDeps = {
   gate: Omit<GateDeps, "slice" | "now">;
   /** The developer's device zone (`follow.client-time-zone`), when known. */
   clientTimeZone: () => string | null;
-  /** Whether a repository ships through Graphite (its PR links open there, invariant 23). */
+  /** Whether a repository ships through Graphite (its PR links open there, invariant 23, `a-row-that-names-a-pr-opens-it-in-one-click`). */
   graphite?: (repo: string) => boolean;
   now?: () => number;
   log?: (line: string) => void;
@@ -88,6 +89,10 @@ export class PrStats {
     return next;
   }
   timeZone(settings: StatsSettings): string { return settings.timeZone ?? this.d.clientTimeZone() ?? "UTC"; }
+  /** The schedule and week start in use: a saved one wins, else the zone's usual week (shared/workweek.ts). */
+  week(settings: StatsSettings, timeZone: string): { hours: Schedule; weekStart: 0 | 1 } {
+    return { hours: settings.hours ?? defaultHours(timeZone), weekStart: settings.weekStart ?? defaultWeekStart(timeZone) };
+  }
 
   /** Settings → PR statistics and `pr_stats_settings`: every known repository and its state; `estimate` for the opt-in sheet. */
   async view(known: Iterable<string>, o: { repo?: string; estimate?: boolean } = {}): Promise<StatsSettingsView> {
@@ -97,7 +102,8 @@ export class PrStats {
       const own = settings.repos[repo] ?? null;
       return { repo, state: own ? (own.enable_stats ? "on" as const : "paused" as const) : "off" as const, settings: own };
     });
-    return { settings, repos, timeZone: this.timeZone(settings), estimate: o.repo && o.estimate ? await this.estimate(o.repo) : null };
+    const timeZone = this.timeZone(settings);
+    return { settings, repos, timeZone, ...this.week(settings, timeZone), estimate: o.repo && o.estimate ? await this.estimate(o.repo) : null };
   }
 
   /**
@@ -171,7 +177,7 @@ export class PrStats {
   // ── Reads ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
   private prUrl(repo: string, number: number): string { return this.d.graphite?.(repo) ? graphitePrUrl({ repo, number }) : `https://github.com/${repo}/pull/${number}`; }
-  /** The page's and `pr_stats`'s model for one repository and period (records load for this read only, invariant 68). */
+  /** The page's and `pr_stats`'s model for one repository and period (records load for this read only, invariant 68, `stats-are-computed-on-read`). */
   async read(input: { repo?: string; period?: string; person?: string; clock?: "calendar" | "working"; fresh?: boolean }): Promise<PrStatsOutput> {
     const settings = await this.settings();
     const withStats = Object.entries(settings.repos).map(([repo, s]) => ({ repo, state: s.enable_stats ? "on" as const : "paused" as const }));
@@ -179,16 +185,17 @@ export class PrStats {
     const period = (input.period ?? "week") as Period;
     const timeZone = this.timeZone(settings);
     const now = seconds(this.now());
-    const range = periodRange(period, now, timeZone, settings.weekStart);
+    const { hours, weekStart } = this.week(settings, timeZone);
+    const range = periodRange(period, now, timeZone, weekStart);
     const clock = input.clock ?? settings.clock;
-    const base: PrStatsOutput = { repo, repos: withStats, period, range, clock, timeZone, hours: settings.hours, model: null, person: null, sync: null, teamNotice: null, empty: null };
+    const base: PrStatsOutput = { repo, repos: withStats, period, range, clock, timeZone, hours, model: null, person: null, sync: null, teamNotice: null, empty: null };
     if (!repo) return { ...base, empty: "PR statistics aren't on for any repository. Turn them on per repository in Settings → Following → PR statistics (set_pr_stats)." };
     const own = settings.repos[repo];
     if (!own) return { ...base, empty: `PR statistics aren't on for ${repo}. Turn them on in Settings → Following → PR statistics (set_pr_stats).` };
     if (input.fresh && own.enable_stats) await this.runRepo(repo, { backfillPages: 0 });
     const stats = await this.store.open(repo);
     const { team, notice } = this.teamOf((await this.settings()).repos[repo] ?? own);
-    const options: StatsOptions = { timeZone, weekStart: settings.weekStart, clock, hours: settings.hours, ignore: own.ignore, team, stackAware: settings.enable_stack_aware, defaultBranch: stats.meta.defaultBranch };
+    const options: StatsOptions = { timeZone, weekStart, clock, hours, ignore: own.ignore, team, stackAware: settings.enable_stack_aware, defaultBranch: stats.meta.defaultBranch };
     const records = stats.records.values();
     const model = statsModel(records, range, now, options);
     const coveredTo = stats.meta.backfill.coveredTo;
@@ -199,7 +206,7 @@ export class PrStats {
       person: detail ? { login: detail.login, row: detail.row, prs: detail.prs.map(p => ({ ...p, url: url(p.number) })), reviewed: detail.reviewed.map(r => ({ ...r, url: url(r.number) })) } : null,
       sync, teamNotice: notice };
   }
-  /** The team filter's people, or everyone with the reason when a GitHub team can't be read (invariant 71). */
+  /** The team filter's people, or everyone with the reason when a GitHub team can't be read (invariant 75, `stats-learn-the-team-from-the-data`). */
   private teamOf(own: StatsRepoSettings): { team: string[] | null; notice: string | null } {
     if (own.team.kind === "everyone") return { team: null, notice: null };
     if (own.team.kind === "people") return { team: own.team.logins, notice: null };

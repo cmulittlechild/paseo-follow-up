@@ -1905,7 +1905,8 @@ async function seedPrStatsSettings(dir) {
       status: status({ records: 812, coveredTo: s(BASE - 90 * day), lastSyncAt: s(BASE - 12 * day) }) },
     "example/docs": { enable_stats: true, windowDays: 30, team: { kind: "github", team: "example/writers" }, ignore: [], enabledAt: s(BASE - 3 * day), estimate: { prs: 96, points: 5, at: s(BASE - 3 * day) },
       status: status({ records: 96, coveredTo: s(BASE - 30 * day), error: { message: "not found or no access", status: 404, at: s(BASE - 3600_000) }, teamMembers: { team: "example/writers", logins: null, error: "not visible to this token", at: s(BASE - 3600_000) } }) },
-  }, slice: 0.05, clock: "calendar", enable_stack_aware: true }));
+  }, slice: 0.05, clock: "calendar", enable_stack_aware: true, // A Friday–Saturday-weekend zone, no saved schedule: the Clock row says Sun–Thu.
+    timeZone: "Africa/Cairo", hours: null, weekStart: null }));
 }
 /** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
 async function prStatsSettingsShots({ shoot }) {
@@ -1920,6 +1921,8 @@ async function prStatsSettingsShots({ shoot }) {
     const body = await page.evaluate(() => document.body.innerText);
     const bad = body.match(/Something went wrong|Invalid input|Couldn't load PR statistics/i);
     if (bad) throw new Error(`pr-stats-settings: the page shows "${bad[0]}"`);
+    // No saved schedule in a Friday–Saturday-weekend zone: the Clock row names the zone's own week.
+    if (!body.includes("Sun–Thu 9–18, Africa/Cairo")) throw new Error("pr-stats-settings: the Clock row doesn't say the zone's week (Sun–Thu 9–18, Africa/Cairo)");
     if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats-settings: the phone page scrolls sideways");
   };
   for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", TALL], ["phone", PHONE_TALL]]) {
@@ -1932,6 +1935,11 @@ async function prStatsSettingsShots({ shoot }) {
       const live = await page.getByRole("button", { name: "Save", exact: true }).filter({ visible: true }).evaluateAll(els => els.filter(e => e.getAttribute("aria-disabled") !== "true" && !e.hasAttribute("disabled")).length);
       if (live) throw new Error(`pr-stats-settings: ${live} Save button(s) enabled before any edit`);
       await fold.evaluate(el => el.scrollIntoView({ block: "start" }));
+    });
+    await shoot(`pss-clock-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
+      await section(page, vp);
+      await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
+      await page.getByText("All repositories", { exact: true }).filter({ visible: true }).first().evaluate(el => el.scrollIntoView({ block: "center" }));
     });
     await shoot(`pss-optin-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
       await section(page, vp);

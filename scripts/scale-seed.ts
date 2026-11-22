@@ -120,7 +120,7 @@ function inbox(): InboxState {
 if (inboxOut) { const text = JSON.stringify(inbox()); writeFileSync(inboxOut, text); console.error(`inbox ${text.length}`); }
 
 /**
- * PR statistics (docs/pr-stats.md, invariant 68): one opted-in repository with a 50-person team's 90 days (STATS_SEED
+ * PR statistics (docs/pr-stats.md, invariant 68, `stats-are-computed-on-read`): one opted-in repository with a 50-person team's 90 days (STATS_SEED
  * records), synced just now with its backfill done, so nothing is due during the run. With the page closed the worker
  * must never load it: idle RSS and CPU stay inside today's budgets.
  */
