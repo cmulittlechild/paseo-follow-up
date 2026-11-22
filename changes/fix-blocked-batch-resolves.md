@@ -1,2 +1,0 @@
-- Needs you no longer shows a repair that stopped mattering: once its PR merges or the problem is gone, it clears on its own.
-- When the agent says only a person can move something, such as a stale review the reviewer must re-review, Needs you shows it as that PR waiting on its reviewer, with Ask for re-review, instead of "The tasks didn't finish".

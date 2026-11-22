@@ -1,2 +1,0 @@
-- On Home, Enter opens the selected workspace's chat however you picked it, including pressing Enter again right after a search. O does the same, as in Catch up.
-- Press S on Home (or the keyboard button by settings) to see every Home key.
