@@ -18,7 +18,7 @@ import type { InboxStore } from "./inbox-store";
  * count at once, the agent is sent nothing, and the toast's Undo brings it back. One control (DismissX), one request
  * (follow.dismiss), one toast.
  *
- * Where it shows: on a phone (no hover) always, muted, with a 40 px hit area (a real box, since react-native-web ignores hitSlop) rather than a bigger glyph.
+ * Where it shows: on a phone (no hover) always, muted, with a 44 px hit area (a real box, since react-native-web ignores hitSlop; DESIGN.md's compact target) rather than a bigger glyph.
  * On desktop it appears while the pointer is over its card or focus is inside it (RevealScope), and always on the card
  * that is selected (Catch up's card, Home's detail pane: `DismissReveal` "always"). Hidden is opacity 0, never
  * unmounted, so the card doesn't move when it appears and the keyboard and screen readers always reach it.
@@ -205,12 +205,12 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
     if (inside || (to != null && dom(root)?.contains?.(to))) return;
     disarm();
   };
-  // Sizes. Phones: every button is a real 40 px tall box (react-native-web ignores hitSlop) pulled in by 6 px top and
-  // bottom, so it lays out as 28 px; the x stays a small muted glyph in it, the pair's pills are 28 px, with 8 px
+  // Sizes. Phones: every button is a real 44 px tall box (DESIGN.md's compact target; react-native-web ignores hitSlop)
+  // pulled in by 8 px top and bottom, so it lays out as 28 px; the x stays a small muted glyph in it, the pair's pills are 28 px, with 8 px
   // between the two targets so a stray tap meant for Keep doesn't land on Remove. Desktop: 22 px, 6 px apart (room
   // for Keep's focus ring).
-  const box = touch ? 40 : 22;
-  const pull = touch ? -6 : 0;
+  const box = touch ? 44 : 22;
+  const pull = touch ? -8 : 0;
   const pillH = touch ? 28 : 22;
   const keepW = touch ? 60 : 46, removeW = touch ? 76 : 62, gap = touch ? 8 : 6, inset = touch ? 6 : 3;
   // Armed: wider by the pair, and the extra width is taken back with a negative left margin, so it lays out exactly as

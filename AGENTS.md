@@ -787,9 +787,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    red-tinted "Remove" (they grow leftward over their neighbours; the card never reflows). Remove removes; Keep, a
    click elsewhere, Esc (focus back to the x), focus leaving the pair, the pointer leaving the card (600 ms grace) or
    4 s untouched disarms, and only one x is armed app-wide. Arming moves focus to Keep, so Enter twice never removes,
-   and a double-click's second click (DOM `detail` 2) on Remove is ignored. Phones: both are 40 px tall targets, 8 px
-   apart. The words the developer sees and hears are "Remove", "Keep", "Remove, or Keep to cancel" and "Removed
-   <what>"; internal names (`dismiss_item`, `follow.dismiss`, `DismissX`) stay. No pop-up. An
+   and a double-click's second click (DOM `detail` 2) on Remove is ignored. Phones: the x and both buttons are 44 px tall targets, 8 px
+   apart. The words the developer sees and hears are "Remove", "Keep", "Remove, or Keep to cancel", "Removed
+   <what>", and afterwards "Removed" on the card and "Removed by you" in question history (`outcomeLabel`,
+   `closedLine`: display only, the stored "Dismissed" / `closed.dismissed` stay); internal names (`dismiss_item`, `follow.dismiss`, `DismissX`) stay. No pop-up. An
    agent dismisses for the developer with `dismiss_item` (planned, audited; never its own brief, question or
    workspace; `dismiss_question` is the question alias). It leaves Needs you and every count at once, and nothing is
    queued or sent, so no agent spends a turn on it; nothing Follow-up holds is dropped (a queued batch stays queued, a

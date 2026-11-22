@@ -43,7 +43,7 @@ export function mootNote(error: unknown, typed = false): string {
   const kept = typed ? "Your answer wasn't sent." : "Your pick wasn't sent.";
   switch (mootKind(error)) {
     case "withdrawn": return `The agent withdrew this question. ${kept}`;
-    case "dismissed": return `This question was dismissed. ${kept}`;
+    case "dismissed": return `This question was removed. ${kept}`;
     case "replaced": return `A newer card replaced this one. ${kept}`;
     default: return `Already answered elsewhere. ${kept}`;
   }

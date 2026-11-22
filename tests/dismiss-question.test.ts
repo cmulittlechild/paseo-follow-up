@@ -37,7 +37,7 @@ test("dismiss closes the question as dismissed by the developer, and it leaves N
   assert.equal(q.closed?.by, "developer");
   assert.equal(q.answer, null, "no answer is recorded, so nothing is waiting to be sent");
   assert.equal(needsYou(w, clock).filter(i => i.kind === "question").length, 0, "the count drops");
-  assert.equal(closedLine(q), "Dismissed by you", "distinct from an agent's Withdrawn");
+  assert.equal(closedLine(q), "Removed by you", "distinct from an agent's Withdrawn");
   assert.throws(() => dismissQuestion(w, "Q1", DEVELOPER, clock), /already dismissed/);
 });
 
@@ -56,7 +56,7 @@ test("an agent dismisses another agent's question for the developer, never its o
   assert.throws(() => dismissQuestion(w, "Q1", agentActor("main-agent"), clock), /your own question: use withdraw_question/);
   const q = dismissQuestion(w, "Q1", agentActor("helper", "Release captain"), clock);
   assert.equal(q.closed?.by, "agent:helper", "audited as the agent");
-  assert.equal(closedLine(q), "Dismissed for you by an agent");
+  assert.equal(closedLine(q), "Removed for you by an agent");
 });
 
 type Deliver = (recipients: string[], text: string) => Promise<string>;
@@ -176,14 +176,14 @@ test("the card: Dismiss is the card's x (no link in the quiet row), sends only t
   await act(() => { setContextSource(null); });
 });
 
-test("the card in Catch up has Dismiss too, and a dismissed card says Dismissed, not Withdrawn", async () => {
+test("the card in Catch up has Dismiss too, and a dismissed card says Removed, not Withdrawn", async () => {
   const inCatchUp = await card(question, { moreContext: false });
   assert.ok(inCatchUp.labelled(/^Remove Q1/).length > 0);
   inCatchUp.unmount();
   const w = workspace({ questions: [structuredClone(question)] });
   const closed = dismissQuestion(w, "Q1", DEVELOPER, clock);
   const done = await card(closed);
-  assert.match(done.texts(), /Dismissed by you .*The agent wasn't messaged\./);
+  assert.match(done.texts(), /Removed by you .*The agent wasn't messaged\./);
   assert.doesNotMatch(done.texts(), /Withdrawn/);
   assert.equal(done.labelled(/^Remove Q1/).length, 0, "nothing to dismiss on a closed card");
   done.unmount();

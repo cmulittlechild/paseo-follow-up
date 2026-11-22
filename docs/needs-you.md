@@ -412,7 +412,7 @@ Every Needs-you item has one Dismiss: a small muted x in its card's top-right co
 (`client/dismiss.tsx`, invariant `dismissing-anything-in-needs-you-sends-the-agent-nothing`). It means "this no longer
 needs me": the item leaves Needs you and every count at once, and no agent is sent anything (no message, no turn, no
 tokens). The toast says "Removed <what>. The agent wasn't messaged." with Undo for 6 s. On a phone the x is always
-there, muted, with a 40 px hit area (a real box: react-native-web ignores hitSlop); on desktop it shows while the pointer is over the card or focus is
+there, muted, with a 44 px hit area (a real box: react-native-web ignores hitSlop); on desktop it shows while the pointer is over the card or focus is
 inside it (`RevealScope`), and always on the selected card (Catch up's card, Home's detail pane: `DismissReveal`).
 It takes two clicks in place (`dismiss-takes-two-clicks-in-place`, `armed-dismiss-shows-remove-and-keep`): the first
 click, tap, Enter or Space arms the x into two small buttons on the same spot, a quiet "Keep" (the card's ground, a
@@ -421,7 +421,7 @@ hairline, body ink; first in reading order) and "Remove" (a danger tint at rest,
 where react-native-web's `announceForAccessibility` does nothing). Focus moves to Keep, so a second Enter keeps; Tab
 reaches Remove. Remove removes; the second click of a double-click on the x lands on Remove and is ignored (DOM
 `detail` 2). The pair grows leftward over what sits beside it and takes back its extra width with a negative margin,
-so the card never reflows; on phones both are 40 px tall targets with 8 px between them. Keep, a click or tap anywhere
+so the card never reflows; on phones the x and both buttons are 44 px tall targets with 8 px between them. Keep, a click or tap anywhere
 else, Esc (taken, so it doesn't also interrupt the agent; focus goes back to the x), focus leaving the pair, the
 pointer leaving its card for 600 ms, or 4 s untouched (paused while the pointer is on the pair or keyboard focus is on it)
 disarms it quietly. Only one x is armed at a time, app-wide. Catch up's ⇧D presses the card's x, whatever the card is,
@@ -438,7 +438,7 @@ Follow-up holds:
 
 | Kind | What Dismiss does | What brings it back | What the agent sees |
 | --- | --- | --- | --- |
-| Agent's turn-end brief (decision, action, review, error) | Signs the row off as dismissed: the card reads "Dismissed", the ask is remembered (`dismissedAsk`) | Undo; a new, different ask; the developer's next message to the agent clears the memory | Nothing is sent. `workspace_status` shows `dismissedAsk`; a `needs_you` restating it (`sameAsk`) ends the turn quiet and its `note` says it was dismissed |
+| Agent's turn-end brief (decision, action, review, error) | Signs the row off as dismissed: the card reads "Removed" (stored as "Dismissed"), the ask is remembered (`dismissedAsk`) | Undo; a new, different ask; the developer's next message to the agent clears the memory | Nothing is sent. `workspace_status` shows `dismissedAsk`; a `needs_you` restating it (`sameAsk`) ends the turn quiet and its `note` says it was dismissed |
 | `question` | Closes it as dismissed (invariant 59's rule) | Undo; `supersedes="Qn"` asks again on purpose | `dismissedQuestions`; re-asking returns it as dismissed, pointing at it is refused with why |
 | `merge` (approved, ready) | Hides the Merge ask; the PR sheet still offers Merge | A new head commit on the PR | `dismissedItems` |
 | `reviewers` | Hides the ask and withdraws the agent row's "Add reviewers" flag (`reviewersAskStands`) | A new head commit | `dismissedItems` |
