@@ -152,9 +152,11 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
     Low → High"). The ranker makes no Linear call of its own; with no snapshot yet it asks for one sweep first.
   - Slack DMs and mentions from the last 48 h, through `mcpproxy call tool-read`.
   - `gh search prs --review-requested=@me`.
-  - The weekly planning artifact, read through one Claude turn with only the Artifact tool.
+  - The weekly planning artifact, read through one Claude turn with only the Artifact tool, at most once a day. Its link
+    is Settings → Morning brief's ([morning-brief.md](morning-brief.md#settings)): `FOLLOW_UP_PLAN_URL`, else a pasted
+    link, else the one Find it for me found (or last week's).
 - **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on the
-  developer's workdays, 08:00–20:00 in their zone (the brief's clock: the device's zone, else the host's; the workdays
+  developer's workdays, 08:00–20:00 in their zone (the brief's clock: Settings → Morning brief's zone, else the device's, else the host's; the workdays
   are the zone's usual week), within the daily cap, while the governor allows background work.
 - **Not started** (`notStartedFrom`): issues that are Urgent, or were raised to High or Urgent since the last workday,
   with no workstream naming their key. Read from the queue, never asked of the model.

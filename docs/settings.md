@@ -11,6 +11,7 @@
 | Shipping PRs | `pr-workflow.json` | [prs.md](prs.md) |
 | PR statistics (which repositories are on, window, team filter, hidden people, clock, GitHub share) | `stats.json` | [pr-stats.md](pr-stats.md), `client/pr-stats-settings.tsx` |
 | Reviewers | `reviewers.json` | [prs.md](prs.md) |
+| Morning brief: this week's plan link and the Linear queue (states, sweep time, since, time zone, workdays) | `morning-brief.json` | [morning-brief.md](morning-brief.md#settings) |
 | View state: settings category, settings folds, Home group folds, What's new "seen" | Paseo 0.16 device settings document `follow-up-view`, with localStorage as the first-paint cache; on 0.15, localStorage (memory on the phone) | `client/view-store.ts`, `shared/settings-nav.ts` |
 
 - **Booleans** use positive `enable_` names. Fields only ever gain defaults, so documents saved by older versions

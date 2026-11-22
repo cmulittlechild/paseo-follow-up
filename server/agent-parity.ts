@@ -9,6 +9,7 @@ import { UPDATE_MODES } from "../shared/updates";
 import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
 import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
+import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -163,6 +164,13 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   // The Morning brief's Linear queue (docs/morning-brief.md). An agent reads without `open`, so it never moves the
   // developer's "since" (a-change-is-against-what-you-last-saw).
   { name: "linear_queue", rpc: "follow.linear-queue", kind: "read", input: linearQueueInputSchema.omit({ open: true }) },
+  // Settings → Morning brief: the queue's settings and this week's plan. set_brief_plan's dry run reads the new link's
+  // title first (brief_plan with link).
+  { name: "brief_settings", rpc: "follow.brief-settings", kind: "read", input: none },
+  { name: "set_brief_settings", rpc: "follow.set-brief-settings", kind: "planned", before: { rpc: "follow.brief-settings", input: () => ({}) }, input: queueChangeSchema.extend(confirm) },
+  { name: "brief_plan", rpc: "follow.brief-plan", kind: "read", input: briefPlanInputSchema },
+  { name: "set_brief_plan", rpc: "follow.set-brief-plan", kind: "planned", before: { rpc: "follow.brief-plan", input: a => (typeof a.link === "string" && a.link ? { link: a.link } : {}) }, input: planChangeSchema.extend(confirm) },
+  { name: "brief_chat_search", rpc: "follow.brief-chat-search", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
   { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
 
@@ -205,6 +213,10 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-onboarding": { tools: ["set_onboarding"] },
   "follow.priorities": { tools: ["priorities", "set_priorities"] },
   "follow.rank-status": { tools: ["rank_status"] },
+  "follow.brief-settings": { tools: ["brief_settings"] },
+  "follow.set-brief-settings": { tools: ["set_brief_settings"] },
+  "follow.set-brief-plan": { tools: ["set_brief_plan"] },
+  "follow.brief-chat-search": { tools: ["brief_chat_search"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },
