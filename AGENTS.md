@@ -378,7 +378,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 21. **A brief without an ask never sits beside Needs you** (`a-brief-without-an-ask-never-sits-beside-needs-you`).
    "No ask stated" or a done brief's "Nothing needed" is drawn only while nothing in Needs you speaks for the row;
    beside a question or an answer waiting to be sent it would say there's nothing to do. One predicate decides it,
-   `briefCardShown` in `shared/brief.ts`. Guarded by `tests/brief-card.test.ts`.
+   `briefCardShown` in `shared/brief.ts`, and what a card says comes from `briefCardAsk` on every surface, the chat's
+   card included: an open brief without an ask points at what Needs you holds ("Needs you: 7 tasks ready, and 1 more",
+   "Waiting on your answer to Q1"). 2026-11-22: the chat's card read "Finished · No ask stated" beside Send 7 tasks
+   and Merge 3 PRs; it had its own check, for open questions only. Guarded by `tests/brief-card.test.ts`.
 22. **View state is per device; settings are per host** (`view-state-is-per-device-settings-are-per-host`). The
    settings category, settings folds, Home group folds and What's new "seen" live in the device settings document
    `follow-up-view` on Paseo 0.16 (`client/view-store.ts`), with localStorage kept as the first-paint cache for one
@@ -857,6 +860,25 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`downstackScan`). Guarded by `tests/pr-scale.test.ts` (a 260-PR stack plus 12 repositories through status, Merge
    when ready, GitHub auto-merge, the panel, Home, pr-workspaces, agent tool inputs and the model replies) and
    `tests/check-linear.test.ts`.
+64. **A PR summary says the worst** (`a-pr-summary-says-the-worst`). A chip or line that sums up a workspace's PRs
+   says the worst of its open PRs, never the first one's: Home's PR chip names the first open PR in stack order with
+   the worst state and adds up the checks at that state ("#1058+125 ✗ 5"; an open PR with an unknown status keeps it
+   from saying ✓; `prChip`, `shared/home.ts`), and the panel's live line says failing checks before running ones
+   (`liveLine`). 2026-11-22 (the pr-scale stress render): a 126-PR workspace with four PRs failing read
+   "#1001+125 ✓" on Home and "Checks are running" in the panel. Guarded by `INVARIANTS`, `tests/big-stack.test.ts`
+   and `tests/home.test.ts`.
+65. **The stack bar reads at any size** (`stack-bar-reads-at-any-size`). The panel's stack bar draws at most
+   `STACK_BAR_BUDGET` marks (`barMarks`, `shared/attention.ts`): one per PR up to it; past it, runs of neighbouring PRs
+   in the same state, as wide as their share; when even those are too many, equal slices of the stack, each painted
+   its loudest PR. Stack order is kept, a failing PR is never averaged away, every mark is at least 6 px, and a mark
+   opens its loudest PR and names its range. 2026-11-22: 126 PRs drew a dotted 1 px hairline. Guarded by
+   `tests/big-stack.test.ts`.
+66. **A long stack shows its problems** (`a-long-stack-shows-its-problems`). In the Pull requests card a stack longer
+   than `QUIET_FOLD_FROM` folds each run of at least `QUIET_FOLD_MIN` PRs that are only in review into one
+   "+N in review" row that expands in place (`quietFold`, `shared/attention.ts`); failures, threads, approvals, drafts
+   and unknown statuses keep their own rows in stack order. A section search shows its hits unfolded. 2026-11-22: a
+   120-PR stack drew about 8000 px of rows with its seven PRs to fix spread through it. Guarded by
+   `tests/big-stack.test.ts`.
 
 ## Bugs
 

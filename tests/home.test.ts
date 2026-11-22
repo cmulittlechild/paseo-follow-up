@@ -89,8 +89,9 @@ test("rows carry at most two badges and a PR chip with its checks", () => {
   const s = model.byKey.get("ws:m")!;
   assert.ok(s.badges.length <= 2);
   assert.equal(s.badges[0].text, "Merge ready");
-  assert.equal(s.pr!.label, "#1+1");
-  assert.equal(s.pr!.checks!.text, "✓");
+  // a-pr-summary-says-the-worst: #2 fails two checks, so the chip names it and says so (it read "#1+1 ✓" before).
+  assert.equal(s.pr!.label, "#2+1");
+  assert.equal(s.pr!.checks!.text, "✗ 2");
 });
 
 test("an unchanged row keeps its signature, so the memoised list row doesn't redraw", () => {

@@ -98,7 +98,7 @@ export default function contribute(host: PluginClientContext) {
   const briefDeps: BriefDeps = {
     signOff: agentId => void inbox.signOff([agentId]), openNext,
     openAgent: agentId => client.openScreen({ screenId: OVERVIEW, params: { next: String(++nextToken), open: agentId } }),
-    workspace: id => store.get(id), openPanel,
+    workspace: id => store.get(id), openPanel, row: agentId => inbox.rows().find(r => r.agentId === agentId) ?? null,
     noteDone: (agentId, cancel) => inbox.noteDone(agentId, cancel), endDone: agentId => inbox.endDone(agentId),
   };
   const openItem = (key: string, extra: { question?: string } = {}) => client.openScreen({ screenId: OVERVIEW, params: { item: key, ...(extra.question ? { question: extra.question } : {}) } });

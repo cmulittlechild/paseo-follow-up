@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import type { Workspace } from "../shared/model";
-import { ago, headline, headerLine, stackBar, type LiveIcon } from "../shared/attention";
+import { ago, barMarks, headline, headerLine, stackBar, type LiveIcon } from "../shared/attention";
 import { Button, IconButton, Switch, text, type Theme } from "./kit";
 import { VersionMark } from "./updates";
 import { IconSwap, Spinner } from "./motion";
@@ -15,21 +15,24 @@ import { SummaryLine } from "./about";
 /** PR status older than this means the poll has stopped working; say so instead of looking current. */
 export const STALE_MS = 10 * 60_000;
 
-/** One segment per PR in stack order, coloured by state. The signature of the panel; a segment opens its PR. */
+/**
+ * One mark per PR in stack order, coloured by state; past STACK_BAR_BUDGET PRs, runs or slices of the stack as wide as
+ * their share (`barMarks`, stack-bar-reads-at-any-size). The signature of the panel; a mark opens its loudest PR.
+ */
 export function StackBar({ workspace, theme, height = 6, onOpen }: { workspace: Pick<Workspace, "prs">; theme: Theme; height?: number; onOpen?: (key: string) => void }) {
   const bar = stackBar(workspace);
   if (!bar.total) return null;
   return <View accessibilityRole="progressbar" accessibilityLabel={`${bar.merged} of ${bar.total} PRs merged`} accessibilityValue={{ min: 0, max: bar.total, now: bar.merged }}
     style={{ flexDirection: "row", gap: 2, height, borderRadius: height / 2, overflow: onOpen ? "visible" : "hidden" }}>
-    {bar.segments.map((s, i) => {
+    {barMarks(bar.segments).map((s, i, marks) => {
       const paint = segmentPaint(theme.colors, s.tone);
-      const r = height / 2, first = i === 0, last = i === bar.segments.length - 1;
-      const fill = { flex: 1, justifyContent: "center" as const, alignItems: "center" as const, overflow: "hidden" as const, backgroundColor: paint.fill, borderTopLeftRadius: first ? r : 0, borderBottomLeftRadius: first ? r : 0, borderTopRightRadius: last ? r : 0, borderBottomRightRadius: last ? r : 0 };
+      const r = height / 2, first = i === 0, last = i === marks.length - 1;
+      const fill = { flex: s.count, minWidth: 6, justifyContent: "center" as const, alignItems: "center" as const, overflow: "hidden" as const, backgroundColor: paint.fill, borderTopLeftRadius: first ? r : 0, borderBottomLeftRadius: first ? r : 0, borderTopRightRadius: last ? r : 0, borderBottomRightRadius: last ? r : 0 };
       // A short centred dash marks the state without filling the slot, so unmerged work never reads as done.
       const mark = Math.max(2, Math.round(height / 3));
       const line = paint.line ? <View style={{ width: "36%", minWidth: 6, height: mark, borderRadius: mark / 2, backgroundColor: paint.line }} /> : null;
       return onOpen
-        ? <Pressable key={s.key} accessibilityRole="button" accessibilityLabel={`Open pull request ${s.number}`} hitSlop={{ top: 8, bottom: 8 }} onPress={() => onOpen(s.key)} style={state => [fill, (state as { hovered?: boolean }).hovered ? { opacity: 0.75 } : null]}>{line}</Pressable>
+        ? <Pressable key={s.key} accessibilityRole="button" accessibilityLabel={s.count === 1 ? `Open pull request ${s.number}` : `${s.count} pull requests, #${s.from} to #${s.to}: open #${s.number}`} hitSlop={{ top: 8, bottom: 8 }} onPress={() => onOpen(s.key)} style={state => [fill, (state as { hovered?: boolean }).hovered ? { opacity: 0.75 } : null]}>{line}</Pressable>
         : <View key={s.key} style={fill}>{line}</View>;
     })}
   </View>;
@@ -42,6 +45,7 @@ function LiveGlyph({ icon, colors }: { icon: LiveIcon; colors: Colors }) {
     case "done": return <Icon name="CircleCheck" size={12} color={colors.statusSuccess} />;
     case "paused": return <Icon name="CirclePause" size={12} color={colors.statusWarning} />;
     case "alert": return <Icon name="TriangleAlert" size={12} color={colors.statusWarning} />;
+    case "failing": return <Icon name="CircleX" size={12} color={colors.statusDanger} />;
     case "waiting": return <Icon name="Clock" size={12} color={colors.foregroundMuted} />;
     default: return <Icon name="Circle" size={12} color={colors.foregroundMuted} />;
   }
