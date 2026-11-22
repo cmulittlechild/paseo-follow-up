@@ -41,7 +41,7 @@ export function PrStatsSettings({ theme, compact }: { theme: Theme; compact: boo
     {data && <>
       <SettingsCard>
         {data.repos.map(row => <View key={row.repo}>
-          <SettingsSwitch label={row.repo} hint={[statsRepoLine(row, data.timeZone), statsRepoWait(row)].filter(Boolean).join(" ")} value={row.state === "on"} disabled={change.isPending}
+          <SettingsSwitch label={row.repo} hint={[statsRepoLine(row, data.timeZone), statsRepoWait(row)].filter(Boolean).join("\n")} value={row.state === "on"} disabled={change.isPending}
             onValueChange={on => {
               if (on && row.state === "paused") change.mutate({ repo: row.repo, enable: true, toast: `${row.repo}: PR statistics on` });
               else if (on) setOptIn(row.repo);

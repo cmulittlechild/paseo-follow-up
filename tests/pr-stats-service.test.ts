@@ -25,9 +25,8 @@ async function service(o: { teamReadable?: boolean } = {}) {
     return fake.graphql(repo, query, vars);
   }, rest: fake.rest.bind(fake) };
   const budgets = new Map<string, Budget>();
-  const stats = new PrStats({ directory, api, clientTimeZone: () => "Europe/Berlin", now: () => now, log: () => undefined,
-    gate: { budget: owner => budgets.get(owner), noteRateLimit: (owner, r) => budgets.set(owner, { remaining: r.remaining!, resetAt: Date.parse(r.resetAt!), limit: r.limit }), noteLimited: () => undefined, allowsBackground: () => true } });
-  trackPersistence(directory, stats);
+  const stats = trackPersistence(directory, new PrStats({ directory, api, clientTimeZone: () => "Europe/Berlin", now: () => now, log: () => undefined,
+    gate: { budget: owner => budgets.get(owner), noteRateLimit: (owner, r) => budgets.set(owner, { remaining: r.remaining!, resetAt: Date.parse(r.resetAt!), limit: r.limit }), noteLimited: () => undefined, allowsBackground: () => true } }));
   const idle = async () => { stats.tick(); for (let i = 0; i < 200 && (stats as unknown as { running: unknown }).running; i++) await new Promise(r => setTimeout(r, 2)); };
   return { directory, fake, stats, calls, idle, advance: (ms: number) => { now += ms; }, now: () => now };
 }
