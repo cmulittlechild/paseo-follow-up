@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { JsonFileStore } from "./json-file-store";
-import { mcpproxyText } from "./about";
+import { NoSourceError, liveRun, sourceDirectory, type SourceDirectory } from "./source-tools";
 import { clockFor, isWorkday, zoned, type BriefSettings, type Clock } from "../shared/linear-queue";
 import {
   PLAN_FIND_DAYS, applyPlanChange, applyQueueChange, canonicalArtifactUrl, effectivePlan, emptyMorningBrief, findArtifactLink, findReady, importFromRegistry, morningBriefFileSchema,
@@ -29,35 +27,36 @@ export class MorningBriefStore extends JsonFileStore<MorningBriefFile> {
 /** Where the morning-brief skill keeps its registry: read once, at run time, on this host only. */
 export const SKILL_REGISTRY = join(homedir(), ".codex/skills/morning-brief/references/sources.json");
 
-const exec = promisify(execFile);
 type Run = (command: string, args: string[], timeoutMs: number) => Promise<string>;
-const runFile: Run = async (command, args, timeout) => (await exec(command, args, { timeout, maxBuffer: 4 * 1024 * 1024 })).stdout;
+const runFile: Run = liveRun;
 
 /**
- * The chat search Find it for me and the pickers use: read-only `mcpproxy call tool-read` calls, 20 s each. The tool
- * names are the chat server the ranker already reads; discovering the chat source by its tools' shape (any server
- * with a message search that takes filters) is the next phase's (docs/morning-brief.md).
+ * The chat search Find it for me and the pickers use: read-only `mcpproxy call tool-read` calls, 20 s each, to whichever
+ * server has the chat recipe's tools (found by their shape, never by a server name: shared/brief-sources.ts). Each
+ * call carries only the inputs that tool's schema takes. `allowed`: the brief's switches (a chat source turned off
+ * isn't searched).
  */
 export type ChatSearch = {
   messages(args: { filters: string; limit: number }): Promise<string>;
   people(query: string): Promise<string>;
   channels(query: string): Promise<string>;
 };
-export const CHAT_TOOLS = { messages: "slack-user:slack_search_public_and_private", people: "slack-user:slack_search_users", channels: "slack-user:slack_search_channels" } as const;
-export function mcpproxyChat(run: Run = runFile): ChatSearch {
-  const call = async (tool: string, args: unknown, reason: string) => mcpproxyText(await run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(args)}`, `--reason=Follow-up: ${reason}`, "--log-level=error", "-o", "json"], 20_000));
+export function mcpproxyChat(run: Run = runFile, opts: { tools?: SourceDirectory; allowed?: () => Promise<((server: string) => boolean) | undefined> } = {}): ChatSearch {
+  const tools = opts.tools ?? sourceDirectory(run);
+  const call = async (role: string, args: Record<string, unknown>, reason: string) => tools.call("chat", role, args, { reason, timeoutMs: 20_000, allowed: await opts.allowed?.() });
   const words = (q: string) => q.trim().split(/\s+/).filter(Boolean).slice(0, 4);
   return {
-    messages: ({ filters, limit }) => call(CHAT_TOOLS.messages, { keywords: [], filters, natural_language_query: "", sort: "timestamp", sort_dir: "desc", limit, include_context: false, response_format: "detailed" }, "find this week's plan link"),
-    people: q => call(CHAT_TOOLS.people, { keywords: words(q), natural_language_query: "", limit: 10, response_format: "detailed" }, "pick who posts the weekly plan"),
-    channels: q => call(CHAT_TOOLS.channels, { keywords: words(q), natural_language_query: "", limit: 10, channel_types: "public_channel,private_channel", response_format: "detailed" }, "pick where the weekly plan is posted"),
+    messages: ({ filters, limit }) => call("messages", { keywords: [], filters, natural_language_query: "", sort: "timestamp", sort_dir: "desc", limit, include_context: false, response_format: "detailed" }, "find this week's plan link"),
+    people: q => call("people", { keywords: words(q), query: q.trim(), natural_language_query: "", limit: 10, response_format: "detailed" }, "pick who posts the weekly plan"),
+    channels: q => call("channels", { keywords: words(q), query: q.trim(), natural_language_query: "", limit: 10, channel_types: "public_channel,private_channel", response_format: "detailed" }, "pick where the weekly plan is posted"),
   };
 }
-
 
 export type MorningBriefDeps = {
   store: MorningBriefStore;
   chat: ChatSearch | null;
+  /** Whether a chat source is on and has a message search (Find it for me needs one). Default: `chat` is set. */
+  chatReady?: () => Promise<boolean>;
   /** FOLLOW_UP_PLAN_URL: wins over every mode, shown read-only. */
   env: () => string | null | undefined;
   /** The developer's device zone (follow.client-time-zone). */
@@ -128,7 +127,7 @@ export class MorningBrief {
       ...file.plan, url: eff.url, source: eff.source, env: canonicalArtifactUrl(this.d.env()),
       found: file.found, previous: file.previous, check: file.check,
       read: read && read.url === eff.url ? read : null,
-      canFind: !!this.d.chat, findDays: PLAN_FIND_DAYS, importedAt: file.importedAt,
+      canFind: this.d.chatReady ? await this.d.chatReady().catch(() => false) : !!this.d.chat, findDays: PLAN_FIND_DAYS, importedAt: file.importedAt,
     };
   }
 
@@ -203,6 +202,8 @@ export class MorningBrief {
       if (!hit) return done({ at, status: "not-found", error: null });
       return done({ at, status: "found", error: null }, { url: hit.url, postedAt: hit.postedAt, where: hit.where, foundAt: at });
     } catch (e) {
+      // No server has a chat search (or it's off in the brief): nothing to ask, not a failed search.
+      if (e instanceof NoSourceError) return done({ at, status: "unavailable", error: "No chat search is connected." });
       const error = readError(e);
       this.d.log?.(`[follow-up] morning brief: plan search failed: ${error}`);
       return done({ at, status: "error", error });
@@ -228,6 +229,6 @@ export class MorningBrief {
   async searchChat(kind: "people" | "channels", query: string): Promise<{ results: ChatRef[]; error: string | null }> {
     if (!this.d.chat) return { results: [], error: "No chat search is connected." };
     try { return { results: parseChatRefs(await (kind === "people" ? this.d.chat.people(query) : this.d.chat.channels(query)), kind), error: null }; }
-    catch (e) { return { results: [], error: readError(e) }; }
+    catch (e) { return { results: [], error: e instanceof NoSourceError ? "No chat search is connected." : readError(e) }; }
   }
 }

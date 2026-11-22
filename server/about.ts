@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { JsonFileStore } from "./json-file-store";
-import { promisify } from "node:util";
+import { liveRun, mcpproxyText, sourceDirectory } from "./source-tools";
 import { z } from "zod";
 import {
   ABOUT_RETRY_MS, ABOUT_TTL_MS, aboutRecordSchema, currentSummary, dailyBudget, extractLinks, keysFromBranch, needsOverview, summaryOutputSchema, stableJson, usageAllows, SUMMARY_MAX_CHARS,
@@ -15,7 +14,6 @@ import type { AiJobs } from "./ai-jobs";
 import { githubApi, type GithubApi } from "./github-api";
 import { isLoaded, type LoadSignals } from "../shared/agent-load";
 
-const exec = promisify(execFile);
 
 /** Bounds on what goes into one overview prompt. */
 export const LIMITS = { tailItems: 30, itemChars: 600, tailChars: 12_000, firstChars: 1200, prBodyChars: 1500, prs: 30, prBodies: 6, issues: 5, issueChars: 1200, threads: 4, subagents: 12, promptChars: 40_000 };
@@ -34,18 +32,9 @@ export type AboutSources = {
 };
 
 /** mcpproxy prints a banner, then `{"content":[{"text":"[map[text:<json> type:text]]"}]}`. Returns the inner text. */
-export function mcpproxyText(stdout: string): string {
-  const at = stdout.search(/\{\s*"content"\s*:/);
-  if (at < 0) throw new Error("mcpproxy returned no result");
-  const data = JSON.parse(stdout.slice(at)) as { content?: { text?: string }[]; isError?: boolean };
-  const text = (data.content ?? []).map(b => b.text ?? "").join("\n");
-  if (data.isError) throw new Error(text.slice(0, 200) || "mcpproxy tool error");
-  const wrapped = /^\[map\[text:([\s\S]*) type:text\]\]$/.exec(text.trim());
-  return wrapped ? wrapped[1] : text;
-}
+export { mcpproxyText };
 
 type Run = (command: string, args: string[], timeoutMs: number) => Promise<string>;
-const runFile: Run = async (command, args, timeout) => (await exec(command, args, { timeout, maxBuffer: 4 * 1024 * 1024 })).stdout;
 
 export function parseLinearIssue(text: string): LinearIssue | null {
   let j: { title?: unknown; status?: unknown; priority?: { name?: unknown } | null; dueDate?: unknown; url?: unknown; description?: unknown };
@@ -76,11 +65,13 @@ export function parseSlackThread(text: string): SlackThread | null {
 }
 
 /** mcpproxy for Linear and Slack; the PR read goes through `api`, in process (worker-reads-github-in-process). */
-export function liveSources(run: Run = runFile, api: Pick<GithubApi, "rest"> = githubApi()): AboutSources {
-  const call = async (tool: string, args: unknown) => mcpproxyText(await run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(args)}`, "--reason=Follow-up: what a workspace is about", "--log-level=error", "-o", "json"], 45_000));
+export function liveSources(run: Run = liveRun, api: Pick<GithubApi, "rest"> = githubApi()): AboutSources {
+  // Whichever servers have Linear's and the chat source's tools (found by shape: nothing-built-in-about-a-workplace).
+  const tools = sourceDirectory(run);
+  const opts = { reason: "what a workspace is about", timeoutMs: 45_000, fit: false };
   return {
-    async linear(key) { return parseLinearIssue(await call("linear:get_issue", { id: key })); },
-    async slack(channel, ts) { return parseSlackThread(await call("slack-user:slack_read_thread", { channel_id: channel, message_ts: ts, limit: 1 })); },
+    async linear(key) { return parseLinearIssue(await tools.call("linear", "get_issue", { id: key }, opts)); },
+    async slack(channel, ts) { return parseSlackThread(await tools.call("chat", "thread", { channel_id: channel, message_ts: ts, limit: 1 }, opts)); },
     async pr(repo, number) {
       const j = await api.rest(repo, `repos/${repo}/pulls/${number}`) as { title?: string; state?: string; merged_at?: string | null; body?: string | null } | null;
       // REST says open/closed plus merged_at; the prompt keeps gh's OPEN/CLOSED/MERGED.

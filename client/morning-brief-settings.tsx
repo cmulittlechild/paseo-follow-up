@@ -1,23 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
-import { Button, errorText, text, type Theme } from "./kit";
+import { Button, Switch, errorText, text, type Theme } from "./kit";
 import { tint, withAlpha } from "./theme";
-import { briefChatSearchRpc, briefSettingsRpc, setBriefPlanRpc, setBriefSettingsRpc } from "../shared/contracts";
+import { briefChatSearchRpc, briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
+import type { BriefSource, SourcesChange, SourcesView } from "../shared/brief-sources";
 import { QUEUE_STATE_TYPES, WEEKDAYS, defaultWorkdays, isZone, type Weekday } from "../shared/linear-queue";
 import {
   PLAN_MODES, planCard, queueStateLabel, type BriefSettingsView, type ChatRef, type PlanChange, type PlanMode, type PlanView, type QueueChange,
 } from "../shared/morning-brief";
 
 export const briefSettingsKey = ["follow-up", "brief-settings"];
+export const briefSourcesKey = ["follow-up", "brief-sources"];
 const MODE_LABEL: Record<PlanMode, string> = { auto: "Find it for me", link: "Use a link", off: "Off" };
 
 /**
- * Settings → Morning brief (docs/morning-brief.md#settings): this week's plan link and the Linear queue's settings.
- * Every change goes through the same RPCs the agent tools run (set_brief_plan, set_brief_settings).
+ * Settings → Morning brief (docs/morning-brief.md#settings): the brief's sources, this week's plan link and the Linear
+ * queue's settings. Every change goes through the same RPCs the agent tools run (set_brief_sources, set_brief_plan,
+ * set_brief_settings).
  */
 export function MorningBriefCategory({ theme, compact }: { theme: Theme; compact: boolean }) {
   const c = theme.colors;
@@ -26,9 +29,84 @@ export function MorningBriefCategory({ theme, compact }: { theme: Theme; compact
   if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading Morning brief settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
   if (query.error || !query.data) return <SettingsCard><SettingsAction label="Couldn't load Morning brief settings" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
   return <>
+    <SourcesSection view={query.data} theme={theme} compact={compact} />
     <PlanSection view={query.data} theme={theme} compact={compact} />
     <QueueSection view={query.data} theme={theme} compact={compact} />
   </>;
+}
+
+/**
+ * Sources: every server mcpproxy has, matched by its tools (never its name), plus GitHub and Paseo. Opening Settings
+ * asks mcpproxy again (once per visit); after that the card only re-reads Follow-up's own state.
+ */
+function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const read = useRpc(briefSourcesRpc); const write = useRpc(setBriefSourcesRpc); const writeQueue = useRpc(setBriefSettingsRpc);
+  const cache = useQueryClient(); const toast = useToast();
+  const checked = useRef(false);
+  // While mcpproxy is being asked or a source read again, look again soon; otherwise every 15 s.
+  const query = useQuery({ queryKey: briefSourcesKey, refetchInterval: q => q.state.data?.checking || q.state.data?.retrying.length ? 1_500 : 15_000,
+    queryFn: async () => { const check = !checked.current; checked.current = true; return await read({ check }) as SourcesView; } });
+  const change = useMutation({
+    mutationFn: async (input: SourcesChange) => await write(input) as SourcesView,
+    onSuccess: value => cache.setQueryData(briefSourcesKey, value),
+    onError: error => toast.error(errorText(error)),
+  });
+  const windows = useMutation({
+    mutationFn: async (input: QueueChange) => await writeQueue(input) as BriefSettingsView,
+    onSuccess: value => cache.setQueryData(briefSettingsKey, value),
+    onError: error => toast.error(errorText(error)),
+  });
+  const data = query.data;
+  const used = (data?.sources ?? []).filter(r => r.kind === "recipe" || r.kind === "builtin");
+  const notRead = (data?.sources ?? []).filter(r => r.kind === "unknown" || r.kind === "skipped");
+  const pending = change.isPending ? change.variables : null;
+  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. Agents can turn sources on and off too.">
+    {query.isPending && <ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+    {query.error && <SettingsCard><SettingsAction label="Couldn't read the sources" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
+    {data?.error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning }]}>{data.error}</Text>}
+    {data && <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface1, overflow: "hidden" }}>
+      {used.map((row, i) => <SourceRow key={row.id} row={row} first={i === 0} theme={theme} compact={compact}
+        busy={data.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
+        onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} />)}
+    </View>}
+    {notRead.length > 0 && <View style={{ gap: 4 }}>
+      <Text style={t.label}>Not read</Text>
+      {notRead.map(row => <Text key={row.id} style={t.meta}>{`${row.label}: ${row.detail ?? row.adds}`}</Text>)}
+    </View>}
+    {data && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <Button title="Check sources again" icon="RotateCcw" theme={theme} compact={compact} loading={data.checking || !!pending?.check} onPress={() => change.mutate({ check: true })} />
+      {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${new Date(data.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</Text>}
+    </View>}
+    <SettingsCard>
+      <SettingsSelect label="Chat window" hint="DMs and mentions the brief reads." value={String(view.queue.chatHours)} disabled={windows.isPending}
+        options={[24, 48, 72].map(h => ({ value: String(h), label: `Last ${h} h` }))} onValueChange={v => windows.mutate({ chatHours: Number(v) as 24 | 48 | 72 })} />
+      <SettingsSelect label="Calendar" hint="Meetings the brief reads." value={String(view.queue.calendarDays)} disabled={windows.isPending}
+        options={[{ value: "1", label: "Today" }, { value: "2", label: "Today and tomorrow" }]} onValueChange={v => windows.mutate({ calendarDays: Number(v) as 1 | 2 })} />
+    </SettingsCard>
+  </SettingsSection>;
+}
+
+/** One source: healthy ones show no colour; one that failed or needs a sign-in says why, in amber, with Retry. */
+function SourceRow({ row, first, busy, onToggle, onRetry, theme, compact }: { row: BriefSource; first: boolean; busy: boolean; onToggle: (on: boolean) => void; onRetry: () => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const bad = row.on && (row.health === "failed" || row.health === "sign-in");
+  return <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: compact ? 14 : 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
+    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
+        <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }]}>{row.label}</Text>
+        {row.server && <Text style={[t.meta, { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11 }]}>{row.server}</Text>}
+      </View>
+      <Text style={t.meta}>{row.cost ? `${row.adds} · ${row.cost}` : row.adds}</Text>
+      {bad && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+        <Icon name="TriangleAlert" size={12} color={c.statusWarning} />
+        <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, flexShrink: 1 }]}>{row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")}</Text>
+        {row.health === "failed" && <Button title="Retry" kind="ghost" icon="RotateCcw" theme={theme} compact={compact} loading={busy} onPress={onRetry} />}
+      </View>}
+      {!row.on && row.detail && <Text style={t.meta}>{row.detail}</Text>}
+    </View>
+    {row.canToggle && <Switch theme={theme} compact={compact} label={row.on ? "On" : "Off"} accessibilityLabel={`Read ${row.label} in the brief`} value={row.on} disabled={busy} onChange={onToggle} />}
+  </View>;
 }
 
 function usePlanChange() {

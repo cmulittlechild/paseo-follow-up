@@ -1,5 +1,6 @@
 import { queueViewSchema } from "./queue";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
+import { sourcesChangeSchema } from "./brief-sources";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -342,6 +343,10 @@ export const briefSettingsRpc = defineRpc({ name: "follow.brief-settings", input
 export const setBriefSettingsRpc = defineRpc({ name: "follow.set-brief-settings", input: queueChangeSchema, output: z.unknown() });
 export const briefPlanRpc = defineRpc({ name: "follow.brief-plan", input: briefPlanInputSchema, output: z.unknown() });
 export const setBriefPlanRpc = defineRpc({ name: "follow.set-brief-plan", input: planChangeSchema, output: z.unknown() });
+// The brief's sources (shared/brief-sources.ts, server/brief-sources.ts): `check` asks mcpproxy what it has now (Settings
+// sends it on open).
+export const briefSourcesRpc = defineRpc({ name: "follow.brief-sources", input: z.strictObject({ check: z.boolean().optional() }), output: z.unknown() });
+export const setBriefSourcesRpc = defineRpc({ name: "follow.set-brief-sources", input: sourcesChangeSchema, output: z.unknown() });
 export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),

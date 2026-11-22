@@ -1,0 +1,4 @@
+- Settings → Morning brief now lists every source the brief reads: your issue tracker, chat, calendar, GitHub and Paseo, each with what it adds and whether it's working. Mail is there too, off until you turn it on.
+- Follow-up finds each source by the tools mcpproxy offers, so a renamed server still works. It only ever calls read-only tools.
+- A source that failed says why and offers Retry. One that needs a sign-in tells you where to sign in.
+- The brief now reads today's meetings, and you can pick how far back it reads chat (24, 48 or 72 hours). Agents can turn sources on and off too.
