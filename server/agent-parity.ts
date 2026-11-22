@@ -7,6 +7,7 @@ import { reviewerListSchema } from "../shared/reviewers";
 import { taskTriggerSchema } from "../shared/task-trigger";
 import { UPDATE_MODES } from "../shared/updates";
 import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
+import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -148,6 +149,16 @@ export const RPC_TOOLS: readonly RpcTool[] = [
     } },
   // Settings → Permissions: trust bypass agents' approvals
   { name: "trust_bypass_status", rpc: "follow.trust-bypass", kind: "read", input: none },
+  // New (docs/dispatch.md): what it lists, its recent starts and Undo, its actions and where work goes. `dispatch` itself
+  // is AgentActions' own plan (a dry run that freezes what it would send).
+  { name: "dispatch_sources", rpc: "follow.dispatch-sources", kind: "read", input: z.strictObject({ fresh: z.boolean().optional(), query: z.string().trim().min(1).max(200).optional() }) },
+  { name: "dispatch_records", rpc: "follow.dispatch-records", kind: "read", input: none },
+  { name: "dispatch_undo", rpc: "follow.dispatch-undo", kind: "planned", before: { rpc: "follow.dispatch-records", input: () => ({}) }, input: z.strictObject({ dispatchId: id.optional(), ...confirm }) },
+  { name: "dispatch_actions", rpc: "follow.dispatch-actions", kind: "read", input: none },
+  { name: "set_dispatch_actions", rpc: "follow.set-dispatch-actions", kind: "planned", before: { rpc: "follow.dispatch-actions", input: () => ({}) }, input: z.strictObject({ change: actionChangeSchema.optional(), ...confirm }) },
+  { name: "dispatch_settings", rpc: "follow.dispatch-settings", kind: "read", input: none },
+  { name: "set_dispatch_settings", rpc: "follow.set-dispatch-settings", kind: "planned", before: { rpc: "follow.dispatch-settings", input: () => ({}) }, input: settingsChangeSchema.extend(confirm),
+    toRpc: a => ({ rules: a.rules, bases: a.bases, noTeam: a.noTeam }) },
 ];
 
 /** Settings → Display (host-scoped preferences, trust bypass among them): read and planned write, served by the host. */

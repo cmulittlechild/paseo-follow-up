@@ -140,6 +140,7 @@ export const TOOL_PRESENTATION: Record<string, "routine" | "moment"> = {
   update_obligation: "routine", acknowledge_batch: "routine", record_answer: "routine", withdraw_question: "routine", set_spec: "routine",
   workspace_about: "routine", agent_settings: "routine", needs_you: "routine", list_prs: "routine", add_reviewers: "routine",
   enable_merge_when_ready: "routine", disable_merge_when_ready: "routine", send_repairs: "routine", set_auto_send: "routine", clear_hold: "routine", snooze_workspace: "routine", ai_rename: "routine",
+  dispatch_sources: "routine", dispatch_records: "routine", dispatch_undo: "routine", dispatch_actions: "routine", set_dispatch_actions: "routine", dispatch_settings: "routine", set_dispatch_settings: "routine",
   retry_batch: "routine", inbox_list: "routine", sign_off: "routine", set_finish_flags: "routine", set_priorities: "routine", agent_digest: "routine",
   route_candidates: "routine", send_to_agent: "routine", start_workspace: "routine", display_settings: "routine", set_display: "routine",
   follow_settings: "routine", set_follow_settings: "routine", project_settings: "routine", set_project_tracking: "routine", pr_workflow: "routine",

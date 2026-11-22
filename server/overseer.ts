@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { agentActor, type Actor } from "../shared/actor";
 import type { InboxRow } from "../shared/inbox";
 import type { State } from "../shared/model";
 import type { Priority } from "../shared/priorities";
@@ -40,6 +41,15 @@ export type OverseerPaseo = {
 
 /** The backstop: while an Overseer exists, its digest is built at least this often, so the hook's fallback is bounded. */
 export const DIGEST_BACKSTOP_MS = 10 * 60_000;
+
+/** New's dispatch (server/dispatch.ts), which start_workspace runs through as an alias of `dispatch` with Create PR. */
+export type OverseerDispatch = {
+  preview(input: Record<string, unknown>, actor: Actor): Promise<{ blockers: string[]; hash: string; title: string; branch: string | null; base: { name: string } | null; where: { projectName: string | null; projectId: string | null }; instructions: string }>;
+  dispatch(input: Record<string, unknown>, actor: Actor): Promise<{ dispatchId: string; record: { title: string; branch: string | null; projectName: string } }>;
+  projects(): Promise<{ id: string; name: string }[]>;
+};
+
+const NOT_APPROVED = "The developer hasn't asked for or approved a new workspace. Ask them first (needs_you kind=decision with \"New workspace\" as an option).";
 
 export type OverseerDeps = {
   directory: string;
@@ -289,7 +299,7 @@ export class Overseer {
         return { confident, candidates: top, next: confident ? `Send it with send_to_agent to ${top[0].agentId} (${top[0].title}), then tell the developer in one line.` : "Not sure: ask the developer with needs_you kind=decision, these candidates plus \"New workspace\"." };
       }
       case "send_to_agent": return this.send(paseo, s, args as { agentId: string; text: string; reply_to_ask?: boolean });
-      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.planWorkspace(paseo, s, args);
+      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.dispatcher ? this.planDispatch(this.dispatcher, s, args) : this.planWorkspace(paseo, s, args);
       case "rerank": { if (!this.d.rerank) throw new Error("Re-ranking isn't available on this host."); return this.d.rerank(); }
     }
   }
@@ -365,6 +375,40 @@ export class Overseer {
     return last?.kind === "you" ? last.text : null;
   }
 
+  /** Set by the worker once New's dispatch exists: start_workspace then runs as `dispatch` with Create PR. */
+  dispatcher: OverseerDispatch | null = null;
+
+  /** The new-workspace gate for the Overseer's own dispatch: a blocker, or null when the developer asked or approved. */
+  async newWorkspaceGate(paseo: OverseerPaseo): Promise<string | null> {
+    const s = await this.state();
+    if (!s.agentId) return null;
+    return approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId)) ? null : NOT_APPROVED;
+  }
+
+  /**
+   * start_workspace as an alias of New's `dispatch` (action Create PR) for one release: the same dry run and confirm,
+   * and the same records, Undo and failure handling as New. The developer's words go as the source, or as the note
+   * when a Linear key is given.
+   */
+  private async planDispatch(dispatcher: OverseerDispatch, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
+    if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
+    const wanted = args.project?.toLowerCase();
+    const project = wanted ? (await dispatcher.projects().catch(() => [])).find(p => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted) : undefined;
+    const key = args.linear_key?.toUpperCase() ?? linearKeys(args.task)[0] ?? null;
+    const input = { source: key ?? args.task, ...(key && args.task.trim().toUpperCase() !== key ? { note: args.task } : {}), actionId: "pr", ...(project ? { projectId: project.id } : {}), ...(args.base ? { base: args.base } : {}), ...(args.title ? { title: args.title } : {}) };
+    const actor = agentActor(s.agentId!, OVERSEER_TITLE);
+    const p = await dispatcher.preview(input, actor);
+    const blockers = [...p.blockers];
+    if (wanted && !project) blockers.unshift(`No project "${args.project}".`);
+    const plan = { title: p.title, branch: p.branch, base: p.base?.name ?? null, project: p.where.projectName, firstMessage: p.instructions };
+    const planId = blockers.length ? null : randomUUID();
+    if (planId) this.plans.set(planId, { expiresAt: this.now() + 10 * 60_000, run: async () => {
+      const out = await dispatcher.dispatch({ ...input, expectHash: p.hash }, actor);
+      return { started: true, dispatchId: out.dispatchId, title: out.record.title, branch: out.record.branch, project: out.record.projectName, note: "Starting in the background; the developer sees it in New's recent list and can Undo for 10 minutes." };
+    } });
+    return { dryRun: true, planId, plan, blockers, next: planId ? `Call start_workspace with confirm=true and planId=${planId}. Then tell the developer in one line.` : "Blocked; resolve the blockers first." };
+  }
+
   /** Dry run: the workspace Follow-up would start. Runs only after the developer asked for or approved it. */
   private async planWorkspace(paseo: OverseerPaseo, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
     if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
@@ -381,7 +425,7 @@ export class Overseer {
     const base = args.base ?? "main";
     const blockers: string[] = [];
     if (!project) blockers.push(projects.length ? `Pick a project: ${projects.slice(0, 8).map(p => p.name).join(", ")}.` : "No Paseo project is available.");
-    if (!approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId!))) blockers.push("The developer hasn't asked for or approved a new workspace. Ask them first (needs_you kind=decision with \"New workspace\" as an option).");
+    if (!approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId!))) blockers.push(NOT_APPROVED);
     const plan = { title, branch, base, project: project?.name ?? null, firstMessage: forwardText(args.task) };
     const planId = blockers.length ? null : randomUUID();
     if (planId) this.plans.set(planId, { expiresAt: this.now() + 10 * 60_000, run: async () => {
