@@ -986,8 +986,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Reply instead stay quiet), and a brief's Done on it answers the card, never a second "Done: …" message.
    2026-11-22, the developer: an Action brief and its task's card asked the same thing, the card as "Write the
    decision"; live, 7 of 9 open task cards sat beside an open brief from the same agent, none pointed at, and Done
-   took two clicks. Review of beta.1's fix: any card made in the turn folded the brief in, so an unrelated "merge #5"
-   ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
+   took two clicks. In review, a first draft folded the brief into any card made in the turn, so an unrelated
+   "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
    ([docs/workspaces.md](docs/workspaces.md)).
 
 ## Bugs

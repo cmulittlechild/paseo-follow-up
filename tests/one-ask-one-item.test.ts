@@ -75,7 +75,7 @@ test("one-ask-one-item: the reported sequence: a brief reporting the task blocke
 });
 
 test("one-ask-one-item: a brief is never hidden by a card it isn't about, even one made in the same turn", () => {
-  // Review of 2.4.0-beta.1's fix: every card made in the turn folded the brief in, so an unrelated ask vanished.
+  // A first draft of the fix (in review): every card made in the turn folded the brief in, so an unrelated ask vanished.
   const w = empty();
   blocked(w);
   const q = card(w);
