@@ -628,10 +628,13 @@ export default function contribute(server: PluginServerContext) {
     const state = await store.snapshot();
     if (!browserRepositories(state).includes(repo.toLowerCase())) return { tracked: false, workspaces: [], more: 0 };
     const entries = await Promise.all(prClaims(state, repo, number).map(async workspace => {
-      const agent = (await paseo.agents.ref(workspace.mainAgentId).refresh().catch(() => null))?.agent;
+      // A read that fails says nothing about the agent: leave that claim out rather than call its agent closed.
+      const read = await paseo.agents.ref(workspace.mainAgentId).refresh().then(r => ({ agent: r?.agent }), () => null);
+      if (!read) return null;
+      const agent = read.agent;
       return { workspace, agent: agent && !agent.archivedAt && agent.workspaceId === workspace.id ? agent : null };
     }));
-    const view = browserWorkspaces(entries);
+    const view = browserWorkspaces(entries.filter(e => e !== null));
     return { tracked: true, ...view, workspaces: view.workspaces.map(w => ({ ...w, title: w.title.slice(0, 200), agentStatus: w.agentStatus.slice(0, 40), state: w.state.slice(0, 200) })) };
   });
   handle(rpc.listRpc, async ({ since }) => { if (waiting) return { workspaces: [], full: false, removed: [], error: waiting }; await ready; return { ...listCache.answer(await store.snapshot(), since), error: loadError ?? hookError ?? writeHealth.message() ?? engine.error }; });

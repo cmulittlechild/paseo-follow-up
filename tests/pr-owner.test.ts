@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { browserRepositories, browserWorkspaces, browserWorkspaceState, prClaims, prOwner } from "../server/pr-owner";
+import { BROWSER_TONES, browserRepositories, browserWorkspaces, browserWorkspaceState, prClaims, prOwner } from "../server/pr-owner";
+import { prWorkspacesRpc } from "../shared/contracts";
 import { stateSchema, type Workspace } from "../shared/model";
 import { clock, pr, snapshot, workspace } from "./fixtures";
 
@@ -40,16 +41,42 @@ test("PR workspaces list every active claim, most urgent first, capped at three 
   ] });
   assert.deepEqual(prClaims(state, "Example/App", 1).map(w => w.id), ["quiet", "needs"]);
   const view = browserWorkspaces(prClaims(state, "example/app", 1).map(w => ({ workspace: w, agent: idle })), clock);
-  assert.deepEqual(view.workspaces.map(w => [w.workspaceId, w.agentId, w.group, w.state]), [
-    ["needs", "a-needs", "needs", "Needs you · Merge ready"],
-    ["quiet", "a-quiet", "waiting", "Waiting on others · Waiting on review and merges"],
+  assert.deepEqual(view.workspaces.map(w => [w.workspaceId, w.agentId, w.group, w.state, w.tone]), [
+    ["needs", "a-needs", "needs", "Needs you · Merge ready", "success"],
+    ["quiet", "a-quiet", "waiting", "Waiting on others · Waiting on review and merges", "muted"],
   ]);
   const many = Array.from({ length: 5 }, (_, i) => ({ workspace: workspace({ id: `w${i}` }), agent: idle }));
   assert.deepEqual([browserWorkspaces(many, clock).workspaces.length, browserWorkspaces(many, clock).more], [3, 2]);
 });
 
-test("PR workspaces drop claims whose main agent is gone", () => {
-  assert.deepEqual(browserWorkspaces([{ workspace: workspace(), agent: null }], clock), { workspaces: [], more: 0 });
+test("a claim whose main agent is closed stays, as needs-you Agent closed, ahead of a quiet one", () => {
+  const view = browserWorkspaces([{ workspace: workspace({ id: "open" }), agent: idle }, { workspace: workspace({ id: "closed", mainAgentId: "gone" }), agent: null }], clock);
+  assert.deepEqual(view.workspaces.map(w => [w.workspaceId, w.agentId, w.agentStatus, w.group, w.state, w.tone]), [
+    ["closed", "gone", "closed", "needs", "Needs you · Agent closed", "attention"],
+    ["open", "main-agent", "idle", "waiting", "Waiting on others · Waiting on review and merges", "muted"],
+  ]);
+  // Done work with its agent closed has nothing left to do.
+  const done = workspace({ prs: [pr({ snapshot: snapshot({ state: "MERGED" }) })], completion: { summary: "Shipped", declaredAt: new Date(clock).toISOString() } as never });
+  assert.deepEqual(browserWorkspaceState(done, null, clock), { group: "quiet", state: "Done · ready to archive", tone: "success" });
+  // The contract carries the closed row and its tone.
+  assert.doesNotThrow(() => prWorkspacesRpc.output.parse({ tracked: true, more: 0, workspaces: view.workspaces }));
+});
+
+test("every row carries the tone Home paints it with, so the browser never parses the English", () => {
+  const w = workspace();
+  const view = (patch: Partial<Workspace>, agent: object = idle) => { const v = browserWorkspaceState({ ...w, ...patch }, { ...idle, ...agent }, clock); return [v.state, v.tone]; };
+  assert.deepEqual(view({}), ["Waiting on others · Waiting on review and merges", "muted"]);
+  assert.deepEqual(view({}, { status: "running" }), ["Running", "accent"]);
+  assert.deepEqual(view({}, { pendingPermissions: [{}] }), ["Needs you · Permission", "attention"]);
+  assert.deepEqual(view({}, { status: "error" }), ["Needs you · Error", "danger"]);
+  assert.deepEqual(view({}, { requiresAttention: true, attentionReason: "finished" }), ["Needs you · Finished", "accent"]);
+  assert.deepEqual(view({ prs: [pr({ snapshot: snapshot({ reviewDecision: "APPROVED", graphiteMergeStatus: "READY_TO_MERGE" }) })] }), ["Needs you · Merge ready", "success"]);
+  const threads = pr({ snapshot: snapshot({ threads: [{ id: "t1", updatedAt: "x" }] }) });
+  const batch = { id: "b1", state: "sent", tasks: [{ id: "t", title: "Fix threads" }], attempts: 1, createdAt: new Date(clock).toISOString(), sentAt: new Date(clock).toISOString() };
+  assert.deepEqual(view({ prs: [threads], batches: [batch as never] }), ["Sending · 1 thread", "accent"]);
+  assert.deepEqual(view({ prs: [pr({ snapshot: snapshot({ state: "MERGED" }) })], completion: { summary: "Shipped", declaredAt: new Date(clock).toISOString() } as never }), ["Done · ready to archive", "success"]);
+  // The contract's enum is the server's list; an older extension ignores the field.
+  assert.deepEqual(prWorkspacesRpc.output.shape.workspaces.element.shape.tone.options, [...BROWSER_TONES]);
 });
 
 test("the one-line state follows Follow-up's groups and the main agent's live attention", () => {
