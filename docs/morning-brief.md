@@ -10,9 +10,9 @@ Files: `shared/linear-queue.ts` (pure: the snapshot's schema, the clock, the dif
 (`LinearQueue`: the sweep, the store, the views), on top of New's Linear reader (`server/linear-issues.ts`,
 `shared/linear-issues.ts`; one reader, never a second one). Data: `linear-queue.json` ([data-files.md](data-files.md)).
 
-This is phase 1 of the brief's upgrade. The brief's "Since" block, the queue screen and the Needs-you item for an issue
-raised with no workspace come next (they build on New's dialog and actions), then Settings → Morning brief with the
-weekly plan's link, then every source the proxy can reach, then Ask for sources Follow-up doesn't know.
+Phases 1 and 2 of the brief's upgrade are here: the queue, and [Settings → Morning brief](#settings) with the weekly
+plan's link. The brief's "Since" block, the queue screen and the Needs-you item for an issue raised with no workspace
+build on New's dialog and actions; every source the proxy can reach and Ask for sources Follow-up doesn't know follow.
 
 ## The sweep
 
@@ -80,10 +80,9 @@ Nothing reads Linear while the brief is closed except the morning sweep.
 
 ## The clock
 
-"07:00", "today" and "a workday" are in the developer's zone: Settings → Morning brief's zone when set (next phase),
-else the zone the developer's device reports (`follow.client-time-zone`), else the host's own. The workdays are the
+"07:00", "today" and "a workday" are in the developer's zone: Settings → Morning brief's zone when set, else the zone the developer's device reports (`follow.client-time-zone`), else the host's own. The workdays are the
 zone's usual week (Sunday to Thursday where the weekend is Friday and Saturday, from CLDR's week data; Monday to Friday
-elsewhere) until the setting says otherwise. The ranker's automatic runs use the same clock. Nothing names a fixed zone.
+elsewhere) unless Settings picks the days. The ranker's automatic runs use the same clock. Nothing names a fixed zone.
 
 ## Who reads it
 
@@ -95,11 +94,55 @@ elsewhere) until the setting says otherwise. The ranker's automatic runs use the
   root agents and main agents get them; contributors, recovery agents and subagents don't (invariant 4).
 - An issue "has a workspace" when an unarchived workspace has its key linked (New's rule).
 
+## Settings
+
+Settings → Morning brief (`client/morning-brief-settings.tsx`, `shared/morning-brief.ts`, `server/morning-brief.ts`),
+stored host-scoped in `morning-brief.json` ([data-files.md](data-files.md); not `brief.json`, the hooks' file).
+
+**This week's plan** has three modes:
+
+- **Find it for me:** posted by a person in one to five channels, each picked from the chat source's own people and
+  channel search (`brief_chat_search`), or typed as a name. Follow-up makes one search, `from:<person> in:<channel>…
+  has:link after:<14 days ago>`, newest first, and takes the newest message that links a claude.ai artifact. The link
+  is kept without its share key (`canonicalArtifactUrl`). The card says where and when it was found and that it was
+  read (title, item count), with Open and Use another link.
+- **Use a link:** paste it; it stays until changed. With Find it for me set up too, "Replace when a newer one is found"
+  lets a link found after the paste take over.
+- **Off:** the brief and AI priority read no plan.
+
+**Not found** keeps the plan it has (last week's) and says so in amber, with a paste field right there. A failed
+search says why and offers Look again. Changing who or where clears what was found for the old ones and searches at
+once.
+
+**The link in use** (`effectivePlan`): `FOLLOW_UP_PLAN_URL` when set (Settings shows it read-only and changes nothing),
+else Off reads nothing, else the pasted link (or a newer find, with replace-when-newer), else this week's find, else
+last week's. The ranker reads that link once a day (one Claude turn with the Artifact tool, [ai-roles.md](ai-roles.md));
+a new link is read right away so Settings can show its title, and that read is the ranker's for the day.
+
+**When it searches** (`the-brief-has-one-timer`): once a workday after the sweep time, from the same 15 s loop as the
+sweep (`MorningBrief.tick`); on Look again; and when the developer or an agent changes who or where. Never while
+Settings is closed otherwise.
+
+**The one-time import** (decision Q6): the first time the file is read with nothing set, the morning-brief skill's
+registry (`~/.codex/skills/morning-brief/references/sources.json`) is read at run time. Its `claude_artifact`
+source's discovery block (author and channels) becomes Find it for me and its verified link the first find; with no
+discovery block, its link becomes Use a link. It runs once, found or not, never replaces a choice already made, and
+never copies, logs or edits the file. The chat search is the chat server the ranker already reads; finding the chat
+source by its tools' shape is the next phase's.
+
+**Linear queue:** which states count (Triage, Backlog, Todo, In Progress; at least one), the sweep time, "changes
+since" (your last read, or always your last workday: both stored points, invariant 77, so there is no "last 24 h"),
+the time zone (blank: automatic) and the workdays (the zone's usual week until changed).
+
+**Agents** read and change all of it through `brief_settings` / `set_brief_settings` and `brief_plan` /
+`set_brief_plan` (planned; the dry run reads the new link's title first through `brief_plan {link}`).
+
 ## Cost
 
 | | Reads | Model calls |
 | --- | --- | --- |
 | A morning sweep of 150 issues | about 7, plus up to 20 for issues that left (and one `get_user`, once ever) | 0 |
 | The ranker | none of its own (it reads the snapshot) | unchanged |
+| Find it for me | one chat search a workday (and on Look again or a change) | 0; a new link's title is the ranker's daily plan read |
 
-Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`.
+Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`, `tests/morning-brief.test.ts`.

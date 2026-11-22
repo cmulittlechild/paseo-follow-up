@@ -17,15 +17,22 @@ export type QueueStateType = typeof QUEUE_STATE_TYPES[number];
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export type Weekday = typeof WEEKDAYS[number];
 
+/** What "since" falls back to: the last time the developer read the brief (default), or always the last workday's sweep. */
+export const SINCE_MODES = ["read", "workday"] as const;
+export type SinceMode = typeof SINCE_MODES[number];
+
 /**
- * The brief's settings (Settings → Morning brief arrives in the next phase; until then these are the defaults).
+ * The brief's queue settings (Settings → Morning brief → Linear queue; stored in morning-brief.json, shared/morning-brief.ts).
  * `timeZone` null: the developer's device's zone, else the host's. `workdays` null: the zone's usual working week.
+ * `since`: "read" is the last read before this viewing session, falling back to the last workday's sweep; "workday" is
+ * always the last workday's sweep. Both are stored points (a-change-is-against-what-you-last-saw), never a rolling 24 h.
  */
 export const briefSettingsSchema = z.object({
   states: z.array(z.enum(QUEUE_STATE_TYPES)).min(1).default([...QUEUE_STATE_TYPES]),
   sweepAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default("07:00"),
   timeZone: z.string().min(1).max(64).nullable().default(null),
   workdays: z.array(z.enum(WEEKDAYS)).min(1).max(7).nullable().default(null),
+  since: z.enum(SINCE_MODES).default("read"),
 });
 export type BriefSettings = z.infer<typeof briefSettingsSchema>;
 export const BRIEF_SETTINGS_DEFAULT: BriefSettings = briefSettingsSchema.parse({});
@@ -262,8 +269,8 @@ export function workdaySince(file: Pick<QueueFile, "log" | "sweeps">, now: numbe
 }
 
 /** a-change-is-against-what-you-last-saw: the brief's "since", a stored point (the read before this session), else the workday's. */
-export function briefSince(file: Pick<QueueFile, "log" | "sweeps" | "seen">, now: number, clock: Clock): string | null {
-  return file.seen?.prior ?? workdaySince(file, now, clock);
+export function briefSince(file: Pick<QueueFile, "log" | "sweeps" | "seen">, now: number, clock: Clock, mode: SinceMode = "read"): string | null {
+  return (mode === "read" ? file.seen?.prior : null) ?? workdaySince(file, now, clock);
 }
 
 /** The seen marks after the developer opens the brief at `now`: a new session moves `prior` up to the last open. */

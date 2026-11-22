@@ -13,6 +13,8 @@ import { DisplaySections, PermissionsSection } from "./display";
 import { ReviewerSettings, reviewerSettingsKey } from "./reviewers";
 import { AgentSettings, WaitSettings, agentSettingsKey } from "./agents";
 import { ShippingSettings } from "./shipping";
+import { MorningBriefCategory, briefSettingsKey } from "./morning-brief-settings";
+import { briefSummary, type BriefSettingsView } from "../shared/morning-brief";
 import { UpdatesSections, useUpdates } from "./updates";
 import { generalSummary } from "../shared/updates";
 import { BackHeader, CategoryList, CategoryTabs, Disclosure } from "./settings-shell";
@@ -213,11 +215,13 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
   const changed = agents?.roles.filter(r => !r.isDefault).length ?? 0;
   // General's line reads the updates view (local files, no npm request), so the phone list shows it before a drill-in.
   const updates = useUpdates().data;
+  const brief = useQuery({ queryKey: briefSettingsKey, queryFn: skipToken }).data as BriefSettingsView | undefined;
   return {
     general: updates ? generalSummary(updates) : null,
     following: follow ? followingSummary(follow) : null,
     reviewers: reviewers ? reviewersSummary(reviewers.config) : null,
     agents: agents ? agentsSummary(agents, changed) : null,
+    brief: brief ? briefSummary(brief) : null,
   };
 }
 
@@ -261,6 +265,7 @@ export function FollowSettings({ theme, layout, openSetup, openReport, category:
       <ReviewerSettings theme={theme} compact={compact} />
     </View>
     : category === "agents" ? <AgentsCategory theme={theme} compact={compact} />
+    : category === "brief" ? <MorningBriefCategory theme={theme} compact={compact} />
     : <DisplaySections theme={theme} />;
   // Phones: the shared gutter and the bottom inset (the gesture bar), like every other Follow-up surface.
   const page = { padding: compact ? space(true).gutter : 24, gap: 18, maxWidth: 720, width: "100%" as const, alignSelf: "center" as const, paddingBottom: 40 };

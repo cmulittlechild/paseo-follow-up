@@ -16,6 +16,7 @@ import {
 import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
 import { truncated } from "../shared/scale";
+import { canonicalArtifactUrl } from "../shared/morning-brief";
 import { clockFor, BRIEF_SETTINGS_DEFAULT, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
@@ -110,21 +111,8 @@ export const planArgs = (input: RunInput) => {
 /** The Artifact tool needs CLAUDE_CODE_ARTIFACT=1, and Claude Code drops it when nonessential traffic is off. */
 export const PLAN_ENV = { CLAUDE_CODE_ARTIFACT: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "" };
 
-/** A claude.ai artifact link without a query string or fragment, so no share key travels. */
-export function canonicalArtifactUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try { const u = new URL(url); if (u.hostname !== "claude.ai" || !/^\/(code\/)?artifact\/[\w-]+$/.test(u.pathname)) return null; return `https://claude.ai${u.pathname}`; } catch { return null; }
-}
-
-/** The plan's link: Follow-up's own setting, else the one the morning-brief skill already verified (link only, read-only). */
-export async function planningUrl(setting: string | null | undefined, registry = join(homedir(), ".codex/skills/morning-brief/references/sources.json")): Promise<string | null> {
-  const own = canonicalArtifactUrl(setting);
-  if (own) return own;
-  try {
-    const j = JSON.parse(await readFile(registry, "utf8")) as { sources?: { reader?: string; url?: string }[] };
-    return canonicalArtifactUrl(j.sources?.find(s => s.reader === "claude_artifact")?.url);
-  } catch { return null; }
-}
+/** Moved to shared/morning-brief.ts (Settings → Morning brief owns the plan link); kept here for older imports. */
+export { canonicalArtifactUrl };
 
 type Run = (command: string, args: string[], timeoutMs: number, env?: Record<string, string>) => Promise<string>;
 /** The developer's Slack user id, as the Slack tool describes it ("Current logged in user's user_id is U…"). */
@@ -258,6 +246,18 @@ export class Ranker {
   private now() { return this.d.now?.() ?? Date.now(); }
   private clock(): Promise<Clock> { return this.d.clock?.() ?? Promise.resolve(clockFor(BRIEF_SETTINGS_DEFAULT, null)); }
   private get path() { return join(this.d.directory, "ranker.json"); }
+  /**
+   * Read a plan now (Settings → Morning brief, `set_brief_plan`'s dry run): one artifact read, kept as the ranker's
+   * plan for the day, so the next ranking doesn't read it again.
+   */
+  async readPlan(url: string): Promise<RankPlanning> {
+    const value = await this.d.sources.planning(url);
+    if (!value) throw new Error("The plan couldn't be read.");
+    const s = await this.state();
+    await mkdir(this.d.directory, { recursive: true, mode: 0o700 });
+    await atomic(this.path, { ...s, planning: { url, at: new Date(this.now()).toISOString(), value } });
+    return value;
+  }
   async state(): Promise<RankerState> { try { return rankerStateSchema.parse(JSON.parse(await readFile(this.path, "utf8"))); } catch { return { ...EMPTY }; } }
 
   /** The scheduled run: in the window, at the role's cadence, only with room to spare. */
