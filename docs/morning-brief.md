@@ -110,8 +110,10 @@ stored host-scoped in `morning-brief.json` ([data-files.md](data-files.md); not 
   lets a link found after the paste take over.
 - **Off:** the brief and AI priority read no plan.
 
-**Not found** keeps the plan it has (last week's) and says so in amber, with a paste field right there. A failed
-search says why and offers Look again. Changing who or where clears what was found for the old ones and searches at
+**Not found** keeps the plan it has (last week's) and says so in amber, naming the plan in use (with Open) and a paste
+field right there. A failed search says why, which plan the brief reads meanwhile, and offers Look again plus the same
+paste field. The line under the tab is built from the same card (`briefSummary` from `planCard`), so it never says
+"found" while the card says otherwise. Changing who or where clears what was found for the old ones and searches at
 once.
 
 **The link in use** (`effectivePlan`): `FOLLOW_UP_PLAN_URL` when set (Settings shows it read-only and changes nothing),

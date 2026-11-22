@@ -119,7 +119,7 @@ test("Find it for me: one search for the person in the channels over 14 days; th
   assert.equal(plan.url, ART2, "not found keeps the plan it has");
   answer = new Error("Command failed: mcpproxy call tool-read");
   const failed = await brief.find();
-  assert.equal(failed?.status, "error"); assert.match(failed?.error ?? "", /couldn't be read/);
+  assert.equal(failed?.status, "error"); assert.equal(failed?.error, "mcpproxy couldn't run the chat search.");
   // A name with no id searches by name.
   await brief.setPlan({ person: { name: "@bob" }, channels: [{ name: "#roadmap" }] });
   assert.match(chat.calls.at(-1)!, /^from:bob in:#roadmap has:link after:/, "changing who or where searches right away");
@@ -206,11 +206,22 @@ test("the plan card: found, pasted, not found (amber, keeps last week's, a paste
   assert.equal(ok.line, "Found in #planning, Mon 09:12 · claude.ai artifact · read Mon 09:15, 18 items");
   const missing = planCard({ ...base, found: null, previous: base.found, check: { at: "x", status: "not-found", error: null } }, TUE, "Asia/Jerusalem")!;
   assert.equal(missing.tone, "warn"); assert.equal(missing.title, "No plan this week yet");
-  assert.equal(missing.line, "Nothing from alice in #planning since Nov 10 links an artifact. The brief uses last week's until one shows up.");
+  assert.equal(missing.line, "Nothing from @alice in #planning since Nov 10 links an artifact. The brief uses last week's until one shows up.");
+  assert.deepEqual(missing.tone === "warn" && missing.inUse, { line: "In use: last week's, posted Mon 09:12", url: ART }, "names the plan the brief reads now, with its link");
   assert.ok(missing.tone === "warn" && missing.paste);
   const pasted = planCard({ ...base, mode: "link", link: ART, linkAt: "2026-11-24T07:20:00.000Z", source: "link" }, TUE, "Asia/Jerusalem")!;
-  assert.match(pasted.line, /^Pasted Tue 09:20 · read Mon 09:15, 18 items\. It stays until you change it\.$/);
+  assert.equal(pasted.line, "Pasted Tue 09:20 · read Mon 09:15, 18 items");
+  assert.equal(planCard({ ...base, mode: "link", link: ART, linkAt: "2026-11-24T07:20:00.000Z", source: "link", replaceWhenNewer: true }, TUE, "Asia/Jerusalem")!.line, "Pasted Tue 09:20 · read Mon 09:15, 18 items · replaced if a newer one is found in #planning");
+  const failed = planCard({ ...base, found: null, previous: base.found, check: { at: "x", status: "error", error: "mcpproxy couldn't run the chat search." } }, TUE, "Asia/Jerusalem")!;
+  assert.ok(failed.tone === "error" && failed.paste && failed.retry, "a failed search still offers the paste field");
+  assert.equal(failed.line, "mcpproxy couldn't run the chat search. The brief uses last week's until this works.");
   assert.equal(planCard({ ...base, mode: "off", source: "off", url: null }, TUE, "Asia/Jerusalem")?.tone, "quiet");
   assert.match(planCard({ ...base, source: "env" }, TUE, "Asia/Jerusalem")!.line, /^Set by the environment/);
-  assert.equal(briefSummary({ queue: { states: ["triage"], sweepAt: "07:00", timeZone: null, workdays: null, since: "read" }, clock: { timeZone: "UTC", workdays: ["Mon"], zoneFrom: "host" }, plan: base }), "Sweeps 07:00 on workdays · plan found automatically");
+  // The line under the tab is built from the same card, so it never says "found" while the card says otherwise.
+  const summary = (plan: PlanView) => briefSummary({ queue: { states: ["triage"], sweepAt: "07:00", timeZone: null, workdays: null, since: "read" }, clock: { timeZone: "Asia/Jerusalem", workdays: ["Mon"], zoneFrom: "host" }, plan }, TUE);
+  assert.equal(summary(base), "Sweeps 07:00 on workdays · this week's plan found");
+  assert.equal(summary({ ...base, found: null, previous: base.found, check: { at: "x", status: "not-found", error: null } }), "Sweeps 07:00 on workdays · using last week's plan");
+  assert.equal(summary({ ...base, found: null, previous: base.found, check: { at: "x", status: "error", error: "x" } }), "Sweeps 07:00 on workdays · plan search failed, using last week's");
+  assert.equal(summary({ ...base, found: null, url: null, check: null }), "Sweeps 07:00 on workdays · looking for the plan");
+  assert.equal(summary({ ...base, canFind: false }), "Sweeps 07:00 on workdays · no chat search connected");
 });

@@ -242,9 +242,9 @@ export function parseChatRefs(text: string, kind: "people" | "channels"): ChatRe
   return out;
 }
 
-/** "alice in #planning, #roadmap" */
+/** "@alice in #planning, #roadmap": the same handles the pickers' chips show. */
 export function findWhere(p: Pick<PlanSettings, "person" | "channels">): string {
-  return `${p.person?.name ?? "someone"} in ${p.channels.map(c => `#${c.name}`).join(", ") || "a channel"}`;
+  return `${p.person ? `@${p.person.name}` : "someone"} in ${p.channels.map(c => `#${c.name}`).join(", ") || "a channel"}`;
 }
 
 // ---------- what Settings and the agent tools read ----------
@@ -295,8 +295,8 @@ export function shortWhen(iso: string | null, now: number, timeZone: string): st
 
 export type PlanCard =
   | { tone: "ok"; title: string; line: string; url: string; actions: ("open" | "another")[] }
-  | { tone: "warn"; title: string; line: string; paste: boolean }
-  | { tone: "error"; title: string; line: string; retry: boolean }
+  | { tone: "warn"; title: string; line: string; paste: boolean; inUse: { line: string; url: string } | null }
+  | { tone: "error"; title: string; line: string; retry: boolean; paste: boolean; inUse: { line: string; url: string } | null }
   | { tone: "quiet"; title: string; line: string };
 
 /**
@@ -312,25 +312,35 @@ export function planCard(v: Pick<PlanView, "mode" | "url" | "source" | "found" |
   if (v.mode === "link") {
     if (!v.url) return null;
     if (v.source === "found") return { tone: "ok", title, line: `A newer one, found in ${v.found?.where ? `#${v.found.where}` : findWhere(v)}${when(v.found?.postedAt ?? null) ? `, ${when(v.found!.postedAt)}` : ""} · ${readLine}`, url: v.url, actions: ["open", "another"] };
-    const rest = v.replaceWhenNewer && findReady(v as PlanSettings) ? `It stays until you change it, or until a newer one is found.` : "It stays until you change it.";
-    return { tone: "ok", title, line: `Pasted ${when(v.linkAt) ?? ""} · ${readLine}. ${rest}`.replace("Pasted  ·", "Pasted ·"), url: v.url, actions: ["open"] };
+    const rest = v.replaceWhenNewer && findReady(v as PlanSettings) ? ` · replaced if a newer one is found in ${v.channels.map(c => `#${c.name}`).join(", ")}` : "";
+    return { tone: "ok", title, line: `Pasted ${when(v.linkAt) ?? ""} · ${readLine}${rest}`.replace("Pasted  ·", "Pasted ·"), url: v.url, actions: ["open"] };
   }
   // Find it for me.
   if (!v.person || !v.channels.length) return { tone: "quiet", title: "Pick who posts it and where", line: `Follow-up looks for the newest message from them that links a claude.ai artifact, over ${v.findDays} days.` };
-  if (!v.canFind) return { tone: "error", title: "No chat search connected", line: "Find it for me searches your chat through mcpproxy. Paste the link instead.", retry: false };
-  if (v.check?.status === "error") return { tone: "error", title: "Couldn't search", line: v.check.error ?? "The chat search failed.", retry: true };
+  // What the brief reads while this week's isn't found: last week's link, or nothing.
+  const kept = v.found ?? v.previous;
+  const inUse = kept ? { line: `In use: last week's, posted ${when(kept.postedAt) ?? "earlier"}`, url: kept.url } : null;
+  const fallback = kept ? "The brief uses last week's until this works." : "The brief reads no plan until this works.";
+  if (!v.canFind) return { tone: "error", title: "No chat search connected", line: "Find it for me searches your chat through mcpproxy. Paste the link instead.", retry: false, paste: true, inUse };
+  if (v.check?.status === "error") return { tone: "error", title: "Couldn't search", line: `${v.check.error ?? "The chat search failed."} ${fallback}`, retry: true, paste: true, inUse };
   if (v.check?.status === "not-found" || (!v.found && v.previous)) {
     const since = new Date(now - v.findDays * 86_400_000).toISOString();
-    const kept = v.previous || v.found ? " The brief uses last week's until one shows up." : "";
-    return { tone: "warn", title: v.found || v.previous ? "No plan this week yet" : "No plan found", line: `Nothing from ${findWhere(v)} since ${when(since)} links an artifact.${kept}`, paste: true };
+    return { tone: "warn", title: kept ? "No plan this week yet" : "No plan found", line: `Nothing from ${findWhere(v)} since ${when(since)} links an artifact.${kept ? " The brief uses last week's until one shows up." : ""}`, paste: true, inUse };
   }
   if (!v.found || !v.url) return { tone: "quiet", title: "Looking…", line: `Searching ${findWhere(v)} for the newest artifact link.` };
   const where = v.found.where ? `#${v.found.where}` : v.channels.map(c => `#${c.name}`).join(", ");
   return { tone: "ok", title, line: `Found in ${where}${when(v.found.postedAt) ? `, ${when(v.found.postedAt)}` : ""} · claude.ai artifact · ${readLine}`, url: v.url, actions: ["open", "another"] };
 }
 
-/** Settings → Morning brief's line under the tab: the plan and the sweep, from what's loaded. */
-export function briefSummary(v: BriefSettingsView): string {
-  const plan = v.plan.source === "env" ? "plan set by the environment" : v.plan.mode === "off" ? "no plan" : v.plan.mode === "auto" ? (v.plan.url ? "plan found automatically" : "looking for the plan") : "plan from a link";
+/**
+ * Settings → Morning brief's line under the tab: the plan and the sweep. Built from the same card the screen shows, so
+ * the line never says "found" while the card says not found or failed.
+ */
+export function briefSummary(v: BriefSettingsView, now = Date.now()): string {
+  const card = planCard(v.plan, now, v.clock.timeZone);
+  const plan = v.plan.source === "env" ? "plan set by the environment" : v.plan.mode === "off" ? "no plan"
+    : v.plan.mode === "link" ? (v.plan.source === "found" ? "a newer plan found" : "plan from a link")
+    : !card || card.tone === "quiet" ? (card?.title.startsWith("Pick") ? "pick where the plan is posted" : "looking for the plan")
+    : card.tone === "ok" ? "this week's plan found" : card.tone === "warn" ? (card.inUse ? "using last week's plan" : "no plan found") : !card.retry ? "no chat search connected" : card.inUse ? "plan search failed, using last week's" : "plan search failed";
   return `Sweeps ${v.queue.sweepAt} on workdays · ${plan}`;
 }

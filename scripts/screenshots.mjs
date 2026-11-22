@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "morning-brief"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -248,6 +248,14 @@ if (tool === "linear:get_issue") {
   const i = issues[args.id];
   reply(i ? JSON.stringify({ identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
 }
+// Settings → Morning brief's chat search (fictional): the reply chat-fixture.json says, the pickers' fixed results.
+if (/search_public_and_private$/.test(tool)) {
+  let chat = {}; try { chat = JSON.parse(require("fs").readFileSync(require("path").join(require("path").dirname(${JSON.stringify(file)}), "chat-fixture.json"), "utf8")); } catch {}
+  if (chat.error) { console.error("Command failed: chat search timed out"); process.exit(1); }
+  reply(JSON.stringify({ results: chat.messages || "No results found.", pagination_info: "" }));
+}
+if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
+if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
 reply("not available in the screenshot fixture", true);
 `;
 }
@@ -921,8 +929,8 @@ const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 /** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
 const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
-const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", display: "display" };
-const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", display: "Inbox & display" };
+const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", display: "display", brief: "brief" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", display: "Inbox & display", brief: "Morning brief" };
 /** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
 async function openSettingsAt(page, category, vp = page.viewportSize()) {
   if (nativeSettingsTabs) {
@@ -1774,6 +1782,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
+  if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -2805,6 +2814,62 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * "Follow-up: settings" reopens the category last shown). Run on each host: HARNESS_PASEO=0.15.4, 0.16, and 0.17 via
  * PATH. Writes settings-tabs.json; any failed check fails the run.
  */
+/**
+ * Settings → Morning brief (docs/morning-brief.md#settings), every plan state, desktop and phone, light and dark:
+ * found, the channel picker open, not found (amber, keeps last week's), a failed search, a pasted link, and the Linear
+ * queue section. Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
+ * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
+ * last run in the future so no scheduled ranking calls a model.
+ */
+async function morningBriefShots({ shoot, call, home }) {
+  const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
+  const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
+  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null,
+    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
+  const states = async (name, drive) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      await shoot(`mb-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        await page.getByText("This week's plan", { exact: true }).first().waitFor();
+        await drive?.(page);
+        await page.waitForTimeout(300);
+        // Desktop: only Follow-up's pane, from "Back to plugins" (the host's settings sidebar beside it isn't ours).
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  await setChat({ messages: `1. **#planning** alice: This week's plan ${A1} 2026-03-02 09:12:00` });
+  await seedRead(A1, "Week of Mar 2", 18);
+  await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
+  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
+  await states("picker", async page => {
+    await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
+    await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");
+    await page.getByText("#plans-archive").first().waitFor();
+  });
+  await setChat({ messages: "" });
+  await call("follow.set-brief-plan", { find: true });
+  await states("plan-missing", page => page.getByText("No plan this week yet").first().waitFor());
+  await setChat({ error: true });
+  await call("follow.set-brief-plan", { find: true });
+  await states("plan-error", page => page.getByText("Couldn't search").first().waitFor());
+  await setChat({ messages: "" });
+  await call("follow.set-brief-plan", { link: A2, mode: "link" });
+  // Read a minute after it was pasted (the daemon's clock is BASE + VIEW).
+  await seedRead(A2, "Week 10 plan", 14, -60_000);
+  await states("plan-pasted", page => page.getByText("Week 10 plan").first().waitFor());
+  await call("follow.set-brief-plan", { mode: "off" });
+  await states("plan-off", page => page.getByText("No plan", { exact: true }).first().waitFor());
+  await call("follow.set-brief-plan", { mode: "auto", person: null, channels: [] });
+  await states("plan-pick-first", page => page.getByText("Pick who posts it and where").first().waitFor());
+  await states("queue", async page => { const h = page.getByText("Linear queue", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 200); });
+  await states("queue-bottom", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
+}
+
 async function settingsTabsShots({ shoot, out }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`settings-tabs: ${name}`); log(`settings-tabs check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };

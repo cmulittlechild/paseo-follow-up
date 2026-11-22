@@ -16,7 +16,8 @@ function readError(error: unknown, what = "The chat search"): string {
   const e = error as { killed?: unknown; signal?: unknown; message?: unknown };
   if (e?.killed || e?.signal === "SIGTERM") return `${what} didn't answer in time.`;
   const message = typeof e?.message === "string" ? e.message.split("\n")[0] : String(error);
-  return /^Command failed/i.test(message) ? `${what} couldn't be read.` : message.slice(0, 200);
+  if (!/^Command failed/i.test(message)) return message.slice(0, 200);
+  return what === "The chat search" ? "mcpproxy couldn't run the chat search." : `${what} couldn't be read.`;
 }
 
 export class MorningBriefStore extends JsonFileStore<MorningBriefFile> {
