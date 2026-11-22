@@ -39,6 +39,7 @@ Everything lives in `$PASEO_HOME/plugin-data/follow-up/`.
 | `updates.json`, `registry.json`, `updates.jsonl`, `heartbeat.json`, `update-watchdog.mjs`, `update-watchdog.lock` | `server/updater.ts`, `server/updates.ts`, `server/update-watchdog.mjs` | Self-update settings (mode, channel, the What's new switch) and caches, the last npm answer, the install log, the new worker's readiness, and the detached installer and its lock ([updates.md](updates.md)). |
 | `move.json`, `migrated-from.json` | `server/plugin-move.ts`, `server/data-move.ts` | 2.0's move from 1.x: when the plugin-id move became ready and the last busy time, and where the data was copied from and when ([updates.md](updates.md#moving-from-1x)). |
 | `trust-bypass.jsonl` | `server/trust-bypass.ts` | Permission prompts trust bypass approved, with a redacted summary. |
+| `stats/<owner>/<repo>.json` | `server/pr-stats-store.ts` | PR statistics for a repository the developer turned on: one compact record per PR updated in the window (numbers, times, logins, branch names, a title; no text, invariant 69) and the sync's cursors, coverage, last cost and why it last waited ([pr-stats.md](pr-stats.md)). Loaded only for a read. |
 | `wait/` | `server/wait-jobs.ts` | `run-job.sh`, plus `jobs/<agentId>/<jobId>/` with `job.json`, the `started` marker, and `result.json` (the exit receipt, written by the runner in the agent's shell). |
 
 Outside this folder, Follow-up reads (never writes):
