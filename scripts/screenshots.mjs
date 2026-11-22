@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "older-briefs"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -1816,6 +1816,27 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       if (s.homeToo === false) continue;
       await shoot(`ny-${s.state}-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await (await homeRow(page, s.title)).click(); await settleOn(page); });
       await shoot(`ny-${s.state}-home-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, s.title)).click(); await settleOn(page); });
+    }
+  }
+  if (only.includes("older-briefs")) {
+    // briefs-from-closed-agents: four days on, after a daemon restart closed every agent (Paseo reads unloaded agents as
+    // closed). A closed agent's flag that asks nothing leaves Needs you; its real ask folds into Older, out of the
+    // count; one whose workspace still has a live item (an open question) stays. Home desktop and phone, light and
+    // dark, Older folded and opened.
+    daemon.kill("SIGTERM");
+    for (let i = 0; i < 100 && daemon.exitCode === null; i++) await new Promise(r => setTimeout(r, 100));
+    if (daemon.exitCode === null) daemon.kill("SIGKILL");
+    await respawnDaemon();
+    for (let i = 0; ; i++) { try { await call("follow.inbox-list", {}); break; } catch { if (i > 240) throw new Error("the worker did not come back"); await new Promise(r => setTimeout(r, 250)); } }
+    const LATER = BASE + VIEW + 4 * 24 * 3600_000;
+    await setDaemonClock(LATER);
+    // Home's model runs in the page, on the page's clock: four days on there too.
+    const home = async page => { await page.clock.setFixedTime(LATER); await openHome(page); };
+    const older = page => page.getByRole("button", { name: /^Older, \d+\. (Expand|Collapse)$/ }).first();
+    for (const theme of ["light", "dark"]) {
+      await shoot(`older-briefs-home-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).waitFor({ timeout: 60_000 }); });
+      await shoot(`older-briefs-home-open-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).click(); await page.getByRole("button", { name: /^Older, \d+\. Collapse$/ }).first().waitFor(); });
+      await shoot(`older-briefs-home-phone-${theme}`, PHONE, theme, async page => { await home(page); await page.setViewportSize(PHONE); await older(page).waitFor(); await page.waitForTimeout(500); await older(page).click(); await page.getByText("Closed agents with nothing new").first().scrollIntoViewIfNeeded(); });
     }
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });

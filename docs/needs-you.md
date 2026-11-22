@@ -40,7 +40,7 @@
   count, the sidebar badge and the brief's headline. It comes back the moment the agent runs or idles again, or a new
   flag comes. A running or idle agent's ask always shows, and an Older row whose workspace has a live item (an open
   question, a blocked task) stays in Needs you; a dropped row never hides a workspace item, which the workspace's own
-  row then carries. Live on 2026-11-22: 49 flagged rows; 19 drop (17 closed agents that asked nothing, 2 in archived
+  row then carries. Live on 2026-11-22: 49 flagged rows; 19 drop (16 closed agents that asked nothing, 3 in archived
   or gone workspaces), 13 fold into Older, 17 stay.
 - **Pure logic** is in `shared/inbox.ts`: the reducer, `REASONS` in urgency order (permission, error, paused, ci,
   review, reviewers, finished, pr_closed, pr_merged), snoozes (`next-event`, an ISO time, or `pr:<repo#n>`), finish flags, and

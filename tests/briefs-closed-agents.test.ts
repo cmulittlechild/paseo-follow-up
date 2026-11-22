@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildHome, homeCounts } from "../shared/home";
 import { flagFate, OLDER_AFTER_MS, type InboxRow, type Reason } from "../shared/inbox";
 import { homeGroupOpen } from "../shared/settings-nav";
+import { listEntries, OLDER_NOTE } from "../shared/list-entries";
 import { syncTaskQuestions } from "../server/questions";
 import { updateObligation } from "../server/obligations";
 import { closedFlagViolations } from "../shared/status-invariants";
@@ -81,6 +82,10 @@ test("briefs-from-closed-agents: Home drops what nobody can act on and folds old
   wrong.set("agent:idle-action", { ...wrong.get("agent:idle-action")!, group: "older" });
   wrong.set("agent:bare", { ...wrong.get("agent:old-action")!, key: "agent:bare", agentId: "bare" });
   assert.deepEqual(closedFlagViolations({ byKey: wrong }, rows, tracked, NOW).map(v => v.detail), ["bare asks nothing anyone can act on but shows in older", "idle-action is in Older but is idle with a flag from the last 3 days"]);
+  // Open, Older says why its rows are there (their ages alone can't); folded, it's one header.
+  const entries = (closed: Set<string>) => listEntries({ model, closed, openProjects: new Set(), pages: {}, results: null, hits: null, filter: null, overseer: false, touch: false, afterNeeds: false } as never);
+  assert.deepEqual(entries(new Set()).filter(e => e.key === "l:older").map(e => (e as { text: string }).text), [OLDER_NOTE]);
+  assert.equal(entries(new Set(["older"])).some(e => e.key === "l:older" || (e.type === "row" && e.s.group === "older")), false);
   // It comes back the moment the agent runs again.
   const back = buildHome({ rows: rows.map(r => r.agentId === "old-action" ? { ...r, status: "idle" } : r), tracked: [], paseo: [], now: NOW });
   assert.equal(groupOf(back, "old-action"), "needs");

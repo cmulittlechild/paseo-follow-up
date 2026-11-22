@@ -136,7 +136,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
       case "ask": return <AskRow ask={item.ask} theme={theme} active={item.index === activeResult} dense={dense} touch={touch} sending={!!asking} onPress={() => onResult?.({ provider: "overseer", key: ASK_KEY, ask: item.ask })} />;
       case "brief": return <BriefRow theme={theme} line={briefLine ?? ""} selected={!touch && (selectedKey === null || selectedKey === BRIEF_KEY)} touch={touch} onSelect={onSelect} />;
       case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} stacked={stackOverseer} onSelect={onSelect} selectedBg={selectedBg} /> : null;
-      case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} onPress={() => toggle(item.group)} />;
+      case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} folds={item.group === "older" || item.group === "quiet"} onPress={() => toggle(item.group)} />;
       case "fold": return <Pressable accessibilityRole="button" aria-expanded={item.open} accessibilityState={{ expanded: item.open }} accessibilityLabel={`${item.project}, ${item.count}. ${item.open ? "Collapse" : "Expand"}`} onPress={() => toggleProject(item.project)}
         style={state => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: dense ? 8 : 16, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
         <Icon name={item.open ? "ChevronDown" : "ChevronRight"} size={13} color={c.foregroundMuted} />
@@ -188,7 +188,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
   return <View ref={rootRef} style={{ flex: 1, minHeight: 0 }}>{top}{list}{overlay}</View>;
 }
 
-function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }: { theme: Theme; title: string; count: number; open: boolean; tone?: string; dense: boolean; touch: boolean; onPress: () => void }) {
+function GroupHeader({ theme, title, count, open, tone, dense, touch, folds = false, onPress }: { theme: Theme; title: string; count: number; open: boolean; tone?: string; dense: boolean; touch: boolean; folds?: boolean; onPress: () => void }) {
   const c = theme.colors;
   return <Pressable accessibilityRole="button" aria-expanded={open} accessibilityState={{ expanded: open }} accessibilityLabel={`${title}, ${count}. ${open ? "Collapse" : "Expand"}`} onPress={onPress}
     style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: touch ? 16 : dense ? 8 : 16, paddingTop: touch ? 8 : dense ? 4 : 8 }}>
@@ -196,7 +196,8 @@ function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }:
     {/* Phones: sentence case at 13, the section role; desktop keeps the small caps. */}
     <Text accessibilityRole="header" style={touch ? { color: tone ?? c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "600" } : { color: tone ?? c.foregroundMuted, fontSize: 11, lineHeight: 14, fontWeight: "600", letterSpacing: 0.6, textTransform: "uppercase" }}>{touch ? title.charAt(0) + title.slice(1).toLowerCase() : title}</Text>
     <Text style={{ color: tone ?? c.foregroundMuted, fontSize: touch ? 13 : 11, lineHeight: touch ? 18 : 14, fontVariant: ["tabular-nums"] }}>{count}</Text>
-    {!dense && !open && <Icon name="ChevronRight" size={12} color={c.foregroundMuted} />}
+    {/* A group that starts folded keeps its fold control when open, so it can be folded again. */}
+    {!dense && (!open || folds) && <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={c.foregroundMuted} />}
   </Pressable>;
 }
 
