@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -199,8 +199,11 @@ for (const m of query.matchAll(/(p\\d+):pullRequest\\(number:(\\d+)\\)/g)) {
     reviewThreads: { pageInfo: { hasNextPage: false }, nodes: Array.from({ length: p.threads ?? 0 }, (_, i) => ({ id: "thread-" + n + "-" + i, isResolved: false, comments: { nodes: [{ updatedAt: "2026-03-04T08:30:00Z" }] } })) },
     commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: p.checks ?? [] } } } }] } };
 }
+// pr-stats-settings: the opt-in sheet's estimate (search issueCount + repository id, with GitHub's rateLimit).
+const stats = query.includes("search(") ? { search: { issueCount: d._statsSearch ?? 0 }, rateLimit: d._rate ?? { cost: 1, remaining: 4800, resetAt: new Date(Date.now() + 3600000).toISOString(), limit: 5000 } } : {};
+if (stats.search) repository.id = "R_kgDOexample";
 // --github-wait-review: the fixture's _rate is GitHub's rateLimit answer (a budget under Follow-up's reserve).
-console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}), repository } }));
+console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}), repository, ...stats } }));
 }
 `;
 }
@@ -1778,6 +1781,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
+  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1884,6 +1888,69 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
  * surfaces, with no fold. Light and dark. Each shot fails on a schema error's text ("Too big", "expected array") or, on
  * a phone, a page that scrolls sideways.
  */
+/**
+ * pr-stats-settings only: stats.json before the daemon starts, one repository in each state Settings words differently.
+ * Every repository that's on synced "tomorrow" on the shots' clock, so none is due and no sync touches the fixture.
+ */
+async function seedPrStatsSettings(dir) {
+  const s = ms => Math.floor(ms / 1000), day = 86_400_000, later = s(BASE + day);
+  const status = o => ({ records: 0, coveredTo: null, backfillDone: true, lastSyncAt: later, lastCost: 1, waiting: null, error: null, cappedTo: null, ...o });
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(join(dir, "stats.json"), JSON.stringify({ repos: {
+    "example/app": { enable_stats: true, windowDays: 90, team: { kind: "people", logins: ["dana", "ravi", "mei", "tomas"] }, ignore: ["deploy-robot", "release-*"], enabledAt: s(BASE - 20 * day), estimate: { prs: 3250, points: 143, at: s(BASE - 20 * day) },
+      status: status({ records: 3250, coveredTo: s(BASE - 90 * day) }) },
+    "example/web": { enable_stats: true, windowDays: 180, team: { kind: "everyone" }, ignore: [], enabledAt: s(BASE - day), estimate: { prs: 4100, points: 181, at: s(BASE - day) },
+      status: status({ records: 1240, coveredTo: s(BASE - 40 * day), backfillDone: false, waiting: { reason: "budget", until: s(BASE + 3600_000) } }) },
+    "example/api": { enable_stats: false, windowDays: 90, team: { kind: "everyone" }, ignore: [], enabledAt: s(BASE - 60 * day), estimate: null,
+      status: status({ records: 812, coveredTo: s(BASE - 90 * day), lastSyncAt: s(BASE - 12 * day) }) },
+    "example/docs": { enable_stats: true, windowDays: 30, team: { kind: "github", team: "example/writers" }, ignore: [], enabledAt: s(BASE - 3 * day), estimate: { prs: 96, points: 5, at: s(BASE - 3 * day) },
+      status: status({ records: 96, coveredTo: s(BASE - 30 * day), error: { message: "not found or no access", status: 404, at: s(BASE - 3600_000) }, teamMembers: { team: "example/writers", logins: null, error: "not visible to this token", at: s(BASE - 3600_000) } }) },
+  }, slice: 0.05, clock: "calendar", enable_stack_aware: true, // A Friday–Saturday-weekend zone, no saved schedule: the Clock row says Sun–Thu.
+    timeZone: "Africa/Cairo", hours: null, weekStart: null }));
+}
+/** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
+async function prStatsSettingsShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1400 }, PHONE_TALL = { width: PHONE.width, height: 1800 };
+  const section = async (page, vp) => {
+    await page.setViewportSize(vp);
+    await openSettingsAt(page, "following", vp);
+    const heading = page.getByText("PR statistics", { exact: true }).filter({ visible: true }).first();
+    await heading.waitFor({ timeout: 30_000 });
+    await page.getByText("example/docs", { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    await heading.evaluate(el => el.scrollIntoView({ block: "start" }));
+    const body = await page.evaluate(() => document.body.innerText);
+    const bad = body.match(/Something went wrong|Invalid input|Couldn't load PR statistics/i);
+    if (bad) throw new Error(`pr-stats-settings: the page shows "${bad[0]}"`);
+    // No saved schedule in a Friday–Saturday-weekend zone: the Clock row names the zone's own week.
+    if (!body.includes("Sun–Thu 9–18, Africa/Cairo")) throw new Error("pr-stats-settings: the Clock row doesn't say the zone's week (Sun–Thu 9–18, Africa/Cairo)");
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats-settings: the phone page scrolls sideways");
+  };
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", TALL], ["phone", PHONE_TALL]]) {
+    await shoot(`pss-section-${size}-${theme}`, vp, theme, async page => { await section(page, vp); });
+    await shoot(`pss-options-${size}-${theme}`, vp, theme, async page => {
+      await section(page, vp);
+      const fold = page.getByRole("button", { name: /^example\/app options, 90 days · 4 people/ }).filter({ visible: true }).first();
+      await fold.click(); await page.getByText("History", { exact: true }).filter({ visible: true }).first().waitFor();
+      // Nothing edited yet: both Saves are off (a Save that saves nothing is a dead invitation).
+      const live = await page.getByRole("button", { name: "Save", exact: true }).filter({ visible: true }).evaluateAll(els => els.filter(e => e.getAttribute("aria-disabled") !== "true" && !e.hasAttribute("disabled")).length);
+      if (live) throw new Error(`pr-stats-settings: ${live} Save button(s) enabled before any edit`);
+      await fold.evaluate(el => el.scrollIntoView({ block: "start" }));
+    });
+    await shoot(`pss-clock-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
+      await section(page, vp);
+      await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
+      await page.getByText("All repositories", { exact: true }).filter({ visible: true }).first().evaluate(el => el.scrollIntoView({ block: "center" }));
+    });
+    await shoot(`pss-optin-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
+      await section(page, vp);
+      await page.getByLabel("Another repository, owner/repo").filter({ visible: true }).first().fill("example/mobile");
+      await page.getByRole("button", { name: /^Add/ }).filter({ visible: true }).first().click();
+      await page.getByText("Turn on PR stats for example/mobile?").filter({ visible: true }).first().waitFor();
+      await page.getByText(/1,840/).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+      await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
+    });
+  }
+}
 async function prScaleShots({ shoot }) {
   const spec = PR_SCALE_STATES[0];
   const TALL = { width: DESKTOP.width, height: 1100 };
@@ -3279,7 +3346,8 @@ try {
   await fs.writeFile(join(fixture, "paseo-plugin.json"), JSON.stringify({ id: "followup-fixture", requirements: { paseo: ">=0.11.0" } }));
   await fs.writeFile(join(fixture, "index.server.ts"), await fs.readFile("scripts/fixture-provider.ts", "utf8"));
   await fs.writeFile(join(root, "clock.cjs"), CLOCK_PRELOAD);
-  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}) }));
+  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}), ...(only.includes("pr-stats-settings") ? { _statsSearch: 1840 } : {}) }));
+  if (only.includes("pr-stats-settings")) await seedPrStatsSettings(join(home, "plugin-data", "follow-up"));
   await fs.writeFile(join(bin, "gh"), fakeGh(join(home, "gh-fixture.json"))); await fs.chmod(join(bin, "gh"), 0o700);
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });

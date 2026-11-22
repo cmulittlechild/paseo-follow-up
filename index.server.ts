@@ -46,6 +46,7 @@ import { TurnTimeline } from "./server/turn-timeline";
 import { nextMessageInfo } from "./shared/task-rows";
 import { sendingOf } from "./shared/sending";
 import { Github } from "./server/github";
+import { PrStats } from "./server/pr-stats";
 import { ReviewerConfigStore, ReviewerSuggestions } from "./server/reviewer-config";
 import { repoKey } from "./shared/reviewers";
 import { Graphite } from "./server/graphite";
@@ -264,6 +265,9 @@ export default function contribute(server: PluginServerContext) {
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();
   engine.paused = () => !governor.allowsBackground();
+  // PR statistics (docs/pr-stats.md): every request through the stats gate, which reads and feeds the PR poller's budget.
+  const prStats = new PrStats({ directory, api: githubApi(), clientTimeZone: () => clientTimeZone, graphite: repo => prWorkflow.cachedWorkflow(repo) === "graphite",
+    gate: { budget: owner => github.budget(owner), noteRateLimit: (owner, rate) => github.noteRateLimit(owner, rate), noteLimited: (owner, at) => github.noteLimited(owner, at), allowsBackground: () => governor.allowsBackground() } });
   engine.autoSendsHeld = () => onboarding.holdsAutoSends();
   const archive = batchArchive(directory);
   engine.archive = archive;
@@ -566,6 +570,8 @@ export default function contribute(server: PluginServerContext) {
     if (stopped || loadError) return;
     await engine.tick({ background: true });
     feeds.workspaces();
+    // Due PR-stats syncs ride this loop (no timer of their own) and are never awaited here.
+    prStats.tick();
     // Startup is done once the first tick is: release what it grew, then return what each later burst grows
     // (memory-returns-after-a-burst, server/memory.ts) and report the worker's memory in heartbeat.json.
     if (!compacted) { compacted = true; compactHeap(); if (!stopped) memoryWatch = watchMemory({ heartbeatFile: join(directory, "heartbeat.json") }); }
@@ -956,6 +962,23 @@ export default function contribute(server: PluginServerContext) {
     // A changed workflow changes readiness and merge: check the PRs again now rather than on the next poll.
     void engine.nudge();
     return prWorkflowView();
+  });
+  // PR statistics: reads load a repository's records for that read only; writes save stats.json behind the reply.
+  handle(rpc.prStatsRpc, async input => { await requireReady(); return prStats.read(input); });
+  // The repositories Follow-up knows from what it already holds (tracked PRs, workspaces, Shipping PRs), never a Paseo read:
+  // Settings answers while Paseo or GitHub hang (an-ack-never-waits-on-the-disk's sibling, tests/rpc-ack.test.ts).
+  const statsRepos = async () => new Set([...knownRepos(await store.snapshot()), ...Object.keys(prWorkflow.current().repos)]);
+  handle(rpc.prStatsSettingsRpc, async ({ repo, estimate }) => { await requireReady(); return prStats.view(await statsRepos(), { repo, estimate }); });
+  handle(rpc.setPrStatsRpc, async input => {
+    await requireReady();
+    const before = input.repo ? (await prStats.settings()).repos[input.repo] : undefined;
+    await prStats.set(input);
+    if (input.repo && input.enable === true && !before?.enable_stats) {
+      // The first sync starts on this tick's hook; the estimate (1 point) is kept for the page's "≈ N of M PRs".
+      const repo = input.repo;
+      void prStats.estimate(repo).then(e => prStats.noteEstimate(repo, e)).catch(() => undefined).finally(() => prStats.tick());
+    }
+    return prStats.view(await statsRepos());
   });
   handle(rpc.reviewerSettingsRpc, async () => { await requireReady(); return reviewerSettings(); });
   handle(rpc.saveReviewersRpc, async ({ repo, reviewers }) => { await requireReady(); await reviewerStore.save(repo, reviewers); return reviewerSettings(); });
@@ -1830,7 +1853,7 @@ export default function contribute(server: PluginServerContext) {
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ files: [contextRequests, checkWatches, reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [contextRequests, checkWatches, reviewerStore, agentSettings, prWorkflow, queue, prStats], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   })();
   return stop;
 }
