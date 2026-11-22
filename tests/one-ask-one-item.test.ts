@@ -75,7 +75,7 @@ test("one-ask-one-item: the reported sequence: a brief reporting the task blocke
 });
 
 test("one-ask-one-item: a brief is never hidden by a card it isn't about, even one made in the same turn", () => {
-  // Review of 2.4.0-beta.1's fix: every card made in the turn folded the brief in, so an unrelated ask vanished.
+  // A first draft of the fix (in review): every card made in the turn folded the brief in, so an unrelated ask vanished.
   const w = empty();
   blocked(w);
   const q = card(w);
@@ -144,8 +144,10 @@ test("one-done-button: the panel and the chat card draw one Done, and a brief's 
   assert.match(panel, /const doneOnly = open && isDoneOnly\(q\) && !other;/);
   assert.match(panel, /!!q\.options\.length && !doneOnly && <View accessibilityRole="radiogroup"/, "no option to pick on an action card");
   assert.match(panel, /open && !doneOnly && <Button shortcut[^\n]*title="Send to agent"/, "no Send beside Done");
-  assert.match(panel, /doneOnly && <Button shortcut[^\n]*title="Done"/);
+  assert.match(panel, /doneOnly && <Button shortcut=\{rowWidth >= DONE_HINT_MIN_WIDTH\}[^\n]*title="Done"/, "Done keeps its Ctrl ⏎ hint only where the row fits it beside Add note and Reply instead");
   assert.match(chat, /!done && d\.options\.map\(o => <OptionRow/, "the chat card draws no 'A Done' row beside its Done button");
+  assert.match(chat, /doneMove \? \(\) => press\(doneMove\) : null/, "Ctrl+Enter sends Done on the chat card too");
+  assert.match(chat, /shortcut=\{m === doneMove\}/, "the chat card's Done carries the Ctrl ⏎ hint");
   assert.match(chat, /doneQ && workspace \? answerQuestion\(\{ workspaceId: workspace\.id, questionId: doneQ\.id, choice: TASK_DONE\.letter/, "Done answers the card, never a second message");
 });
 

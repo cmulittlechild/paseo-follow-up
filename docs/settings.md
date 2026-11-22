@@ -50,7 +50,7 @@
     marks it `migrated: true`; a migrated document is never overwritten. Writes still go to localStorage too, as a
     cache and a downgrade path, for one release.
   - **Home group folds** persist per device, except Needs you: it opens on every mount, and closing it holds only for
-    that mount. Quiet starts closed until the developer opens it.
+    that mount. Quiet and Older start closed until the developer opens them.
   - **0.15.** `useSettings` is missing there, so nothing syncs and view state stays in localStorage, else memory.
   - **Manual check (the harness can't drive the phone):** on the phone app, pick a settings category and fold a
     section, close the app fully, reopen it: the same category and folds come back.

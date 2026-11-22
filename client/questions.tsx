@@ -95,6 +95,8 @@ export function OptionCard({ theme, letter, label, consequence, recommended, sel
 }
 
 const inputStyle = (c: Colors, compact: boolean, lines: number) => ({ minHeight: compact ? 44 : 18 * lines + 16, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface1, fontSize: 13, lineHeight: 18, textAlignVertical: "top" as const });
+/** The actions row width (px) from which Done shows its ⌘↵ hint (one-done-button). */
+const DONE_HINT_MIN_WIDTH = 400;
 
 /** A sendable answer, handed to a surface that also offers Send outside the form (Catch up's move bar). */
 export type SendReady = { send: () => void; busy: boolean };
@@ -161,6 +163,9 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const sentWords = draft.words;
   // one-done-button: an action card is answered by Done itself; the options and Send appear only for Reply instead.
   const doneOnly = open && isDoneOnly(q) && !other;
+  // Done keeps its ⌘↵ hint where the row fits Done, the hint, Add note and Reply instead on one line (Home's pane);
+  // the narrow panel drops the hint so Reply instead doesn't wrap. Ctrl+Enter sends Done either way.
+  const [rowWidth, setRowWidth] = useState(0);
   const done = () => quick("send", { choice: TASK_DONE.letter, words: choice === TASK_DONE.letter ? sentWords : undefined });
   const run = useMutation({
     mutationFn: async (action: "send" | "copy" | "resend") => {
@@ -331,8 +336,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       onPress={() => { if (draft.canAddNote) setNoteOpen(true); else { setWords(""); setNoteOpen(false); } }} />}
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
-    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      {doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending} onPress={done} />}
+    <View onLayout={doneOnly ? e => setRowWidth(e.nativeEvent.layout.width) : undefined} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      {doneOnly && <Button shortcut={rowWidth >= DONE_HINT_MIN_WIDTH} theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending} onPress={done} />}
       {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label="Add note" a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
         onPress={() => { setChoice(TASK_DONE.letter); setNoteOpen(true); }} />}
       {doneOnly && <NoteLink icon="Reply" label="Reply instead" a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}

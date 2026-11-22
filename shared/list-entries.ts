@@ -22,6 +22,9 @@ export type Entry =
   | { type: "empty"; key: string }
   | { type: "slot"; key: string };
 
+/** The line under an open Older header (briefs-from-closed-agents). */
+export const OLDER_NOTE = "Closed agents with nothing new for 3 days. A row comes back when its agent runs again.";
+
 /** A search hit on a workspace Follow-up has archived: a muted row with the Archive glyph, reading "Archived". */
 export function archivedRow(hit: SearchHit): Workstream {
   return { key: hit.key, agentId: null, workspaceId: hit.key.startsWith("ws:") ? hit.key.slice(3) : null, title: hit.title, agent: null, project: null, group: "quiet", tier: null,
@@ -62,6 +65,8 @@ export function listEntries({ model, closed, openProjects, pages, briefLine, res
     if (!open) { if (g.id === "needs" && afterNeeds && !filter) out.push({ type: "slot", key: "s:afterNeeds" }); continue; }
     // One hold line per machine, once, at the top of Sending (the model has it only while Sending has rows).
     if (g.id === "sending" && model.hold) out.push({ type: "hold", key: "l:hold", text: model.hold });
+    // briefs-from-closed-agents: Older says why its rows are there, since their ages alone can't.
+    if (g.id === "older") out.push({ type: "label", key: "l:older", text: OLDER_NOTE });
     const hitOf = (s: Workstream) => { const h = hits?.get(s.key); return h ? rowHit(h, s) : null; };
     if (g.id !== "quiet") { for (const s of g.items) out.push({ type: "row", key: s.key, s, hit: hitOf(s) }); if (g.id === "needs" && afterNeeds && !filter) out.push({ type: "slot", key: "s:afterNeeds" }); continue; }
     for (const f of quietFolds(g.items)) {
