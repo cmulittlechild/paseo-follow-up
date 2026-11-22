@@ -2905,26 +2905,26 @@ async function dismissShots({ shoot, call }) {
   const panel = async (page, w, text) => { await page.setViewportSize(TALL); await openChat(page, w.title, w.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await visible(page.getByText(text)).waitFor(); };
   const x = (page, name) => visible(page.getByRole("button", { name }));
   const away = async page => { await page.mouse.move(2, 2); await page.waitForTimeout(400); };
-  const BRIEF_X = /^Dismiss the agent's ask/, Q_X = /^Dismiss Q1/, MERGE_X = /^Dismiss #255/;
+  const BRIEF_X = /^Remove the agent's ask/, Q_X = /^Remove Q1/, MERGE_X = /^Remove #255/;
   for (const theme of ["light", "dark"]) {
     await shoot(`dx-brief-rest-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await away(page); });
     await shoot(`dx-brief-hover-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket");
       // The panel's copy (the chat has the same card): point at its header, left of its x, so the x shows unhovered. The
       // x draws once the live check says the ask is still open, so wait for it.
-      const box = await (await page.waitForFunction(min => { for (const e of document.querySelectorAll('[aria-label^="Dismiss the agent\'s ask"]')) { const r = e.getBoundingClientRect(); if (r.x > min) return { x: r.x, y: r.y, height: r.height }; } return null; }, TALL.width - 320)).jsonValue();
+      const box = await (await page.waitForFunction(min => { for (const e of document.querySelectorAll('[aria-label^="Remove the agent\'s ask"]')) { const r = e.getBoundingClientRect(); if (r.x > min) return { x: r.x, y: r.y, height: r.height }; } return null; }, TALL.width - 320)).jsonValue();
       await page.mouse.move(box.x - 150, box.y + box.height / 2); page.keepPointer = true; await page.waitForTimeout(400); });
     await shoot(`dx-question-${theme}`, TALL, theme, async page => { await panel(page, lone, "Missing keys"); await visible(page.getByText(/When a key is missing in both/)).hover(); await (await x(page, Q_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
     await shoot(`dx-merge-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await (await x(page, MERGE_X)).waitFor(); page.keepPointer = true; await page.waitForTimeout(300); });
     // Two clicks in place (dismiss-takes-two-clicks-in-place): the first arms the x into the red pill, the second
     // dismisses. The run fails if one click dismissed anything.
-    const arm = async (page, name) => { await (await x(page, name)).click(); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepPointer = true; page.keepFocus = true; await page.waitForTimeout(300); };
+    const arm = async (page, name) => { await (await x(page, name)).click(); await visible(page.getByRole("button", { name: /^Keep / })).waitFor(); page.keepPointer = true; page.keepFocus = true; await page.waitForTimeout(300); };
     await shoot(`dx-merge-armed-${theme}`, TALL, theme, async page => { await panel(page, merge, "#255 is approved"); await visible(page.getByText("#255 is approved")).hover(); await arm(page, MERGE_X); });
     await shoot(`dx-brief-armed-${theme}`, TALL, theme, async page => { await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover(); await arm(page, BRIEF_X); });
     await shoot(`dx-undo-${theme}`, TALL, theme, async page => {
       await panel(page, brief, "Approve the staging export bucket"); await visible(page.getByText("Approve the staging export bucket")).hover();
       await arm(page, BRIEF_X);
-      if (await page.getByText(/^Dismissed the agent's ask\./).count()) throw new Error("dismiss: one click dismissed");
-      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
+      if (await page.getByText(/^Removed the agent's ask\./).count()) throw new Error("dismiss: one click dismissed");
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Removed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300);
     });
     await restore();
     await shoot(`dx-catch-up-${theme}`, DESKTOP, theme, async page => {
@@ -2944,11 +2944,11 @@ async function dismissShots({ shoot, call }) {
         await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click(); await page.waitForTimeout(250);
       }
       // ⇧D presses the card's x: once arms it.
-      await page.keyboard.press("Shift+D"); await visible(page.getByRole("button", { name: /\. Press again to dismiss$/ })).waitFor(); page.keepFocus = true; await page.waitForTimeout(300);
+      await page.keyboard.press("Shift+D"); await visible(page.getByRole("button", { name: /^Keep / })).waitFor(); page.keepFocus = true; await page.waitForTimeout(300);
     });
     await shoot(`dx-phone-armed-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X); });
     await shoot(`dx-phone-undo-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await arm(page, BRIEF_X);
-      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Dismissed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
+      await (await x(page, BRIEF_X)).click(); await visible(page.getByText(/^Removed the agent's ask\. The agent wasn't messaged\.$/)).waitFor(); await page.waitForTimeout(300); });
     await restore();
     await shoot(`dx-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, brief.title)).click(); await (await x(page, BRIEF_X)).scrollIntoViewIfNeeded(); await page.waitForTimeout(500); });
     await restore();

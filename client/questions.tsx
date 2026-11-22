@@ -381,7 +381,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
 
 /** A question's x: closes it as dismissed (follow.dismiss with "question:Qn"), sends the agent nothing, Undo in the toast. */
 export function QuestionDismissX({ workspaceId, questionId, theme, compact, disabled, onDismissed, dismiss }: { workspaceId: string; questionId: string; theme: Theme; compact: boolean; disabled?: boolean; onDismissed?: () => void; dismiss: ReturnType<typeof useDismiss> }) {
-  return <DismissX theme={theme} compact={compact} label={`Dismiss ${questionId}`} disabled={disabled} onPress={() => dismiss({ workspaceId, key: `question:${questionId}` }, { onDismissed })} />;
+  return <DismissX theme={theme} compact={compact} label={`Remove ${questionId}`} disabled={disabled} onPress={() => dismiss({ workspaceId, key: `question:${questionId}` }, { onDismissed })} />;
 }
 
 function hostOf(url: string): string {

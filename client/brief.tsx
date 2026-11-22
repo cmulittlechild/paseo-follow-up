@@ -425,7 +425,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: an ask still in Needs you (or in Later) has the small x
   // beside its age. It signs the row off as dismissed: the agent is sent nothing, and a restated ask isn't flagged again.
   const x = flaggedAct && shown.actionable && agentId ? <View style={{ marginVertical: compact ? -8 : -5, marginRight: compact ? -8 : -6 }}>
-    <DismissX theme={theme} compact={compact} label="Dismiss the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
+    <DismissX theme={theme} compact={compact} label="Remove the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
   </View> : null;
   const border = acts ? withAlpha(attention, isLight(c) ? 0.5 : 0.45) : c.border;
   // Every send from the card (a pick, Something else, Send answers, the keyboard's Send) goes through runAction: the
