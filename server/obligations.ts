@@ -11,6 +11,8 @@ type Update = {
   ask?: string;
   /** While blocked: the question (Q7) the task waits on, instead of an ask. Its words become the ask, and it covers the task. */
   question?: string;
+  /** While blocked: what the ask wants of the developer, a decision or an action they take and report back. */
+  need?: "decision" | "action";
   dependencyStage?: "merged" | "deployed"; enable_follow_up?: boolean; communication?: Pick<Communication, "threadUrl" | "recipient"> & Partial<Communication>;
   trigger?: TaskTrigger | null;
   /** The calling agent (from the daemon, never an argument). */
@@ -35,6 +37,9 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   }
   const asked = pointed ? `${pointed.id}: ${pointed.question}`.slice(0, 1000) : input.ask;
   const ask = status === "blocked" ? (asked ?? (existing?.status === "blocked" ? existing.ask : undefined))?.trim() || undefined : undefined;
+  // Kept like the ask across blocked updates that leave it out; a new ask without need is read afresh.
+  const need = ask ? input.need ?? (existing?.status === "blocked" && !input.ask && !input.question ? existing.need : undefined) : undefined;
+  if (input.need && !ask) throw new Error("need goes with a blocked task's ask (or question).");
   if (["done", "waived"].includes(status) && !(existing?.status === status ? evidence.trim() : input.evidence?.trim())) throw new Error("Completed or waived work requires result evidence.");
   if (afterPrs.some(key => !w.prs.some(p => p.key === key))) throw new Error("Register dependency PRs before referencing them.");
   if (lifecycleOnly({ title, afterPrs })) throw new Error("PR approval, merging and deployment belong in Pull requests. Record a concrete follow-up action such as verifying behavior after deployment, with afterPrs and dependencyStage=deployed.");
@@ -52,14 +57,15 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   if (worker) Object.assign(record, { workingAgentId: worker });
   if (existing) {
     const reopened = ["done", "waived", "blocked"].includes(existing.status) && ["pending", "waiting"].includes(status);
-    if (reopened || existing.title !== title || JSON.stringify(existing.afterPrs) !== JSON.stringify(afterPrs) || existing.dependencyStage !== stage || JSON.stringify(existing.communication) !== JSON.stringify(destination) || JSON.stringify(existing.trigger) !== JSON.stringify(trigger) || existing.enable_follow_up !== followUp || (existing.ask ?? "") !== (ask ?? "")) existing.revision++;
+    if (reopened || existing.title !== title || JSON.stringify(existing.afterPrs) !== JSON.stringify(afterPrs) || existing.dependencyStage !== stage || JSON.stringify(existing.communication) !== JSON.stringify(destination) || JSON.stringify(existing.trigger) !== JSON.stringify(trigger) || existing.enable_follow_up !== followUp || (existing.ask ?? "") !== (ask ?? "") || existing.need !== need) existing.revision++;
     // A changed ask is a new decision: what covered the old one doesn't cover it (syncTaskQuestions looks again).
     if ((existing.ask ?? "") !== (ask ?? "")) delete existing.coveredBy;
     Object.assign(existing, record);
     if (ask) existing.ask = ask; else delete existing.ask;
+    if (need) existing.need = need; else delete existing.need;
     if (pointed && ask) existing.coveredBy = pointed.id;
     return existing;
   }
-  const added = { ...record, ...(ask ? { ask } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
+  const added = { ...record, ...(ask ? { ask } : {}), ...(need ? { need } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
   w.obligations.push(added); return added;
 }

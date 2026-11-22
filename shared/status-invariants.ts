@@ -4,7 +4,7 @@ import type { Actor } from "./actor";
 import { ANY_HOOK_TEXT_PREFIXES } from "./message-sender";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 import type { ListWorkspace as Workspace } from "./list";
-import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
+import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, TASK_DONE, taskCardsFor, taskNeed, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
 import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
@@ -434,6 +434,27 @@ export const INVARIANTS: Invariant[] = [
       }
       const stray = needsYou(w, now).find(i => i.kind === "decision" && !blockedOnDeveloper(w.obligations.find(o => o.id === i.obligationId) ?? { status: "" }));
       return stray ? `Needs you asks about task ${stray.title}, which isn't blocked on the developer` : null;
+    },
+  },
+  {
+    id: "one-ask-one-item",
+    why: "2026-11-22, the developer, on 2.4.0-beta.0: one ask showed twice in Needs you, the agent's Action brief and its blocked task's card, and the card framed an action (\"share the page and tell me when they've picked\") as \"Write the decision\". A task card is shaped by what it asks (taskNeed: an action gets Done), and a brief that restates or reports a task card points at it, so it folds into that one card (taskCardsFor, needsYouBlock).",
+    check(w, now) {
+      const items = needsYou(w, now);
+      for (const q of w.questions ?? []) {
+        if (q.via !== "task" || !isOpen(q)) continue;
+        const o = w.obligations.find(o => o.id === q.taskId);
+        if (!o?.ask) continue;
+        const need = taskNeed(o.ask, o.need);
+        if ((q.need ?? "decision") !== need) return `${q.id} is shaped as a ${q.need ?? "decision"} but its task asks for a${need === "action" ? "n action" : " decision"}`;
+        if (need === "action" && !(q.options.length === 1 && q.options[0].label === TASK_DONE.label)) return `${q.id} asks for an action without its Done`;
+        // A brief restating the card points at it and folds into it: one item.
+        const brief = { kind: "action", ask: q.question };
+        if (!taskCardsFor(brief, w.questions ?? [], null).includes(q)) return `a brief restating ${q.id} wouldn't point at it`;
+        const block = needsYouBlock(items, { questionIds: [q.id], kind: "action" }, w.questions);
+        if (block.cards.some(c => c.kind === "brief")) return `a brief pointing at ${q.id} still draws its own card`;
+      }
+      return null;
     },
   },
   {

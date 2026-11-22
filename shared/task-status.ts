@@ -81,7 +81,7 @@ export function workingLine(o: Obligation, agents: TaskAgents): TaskStatus {
 export function taskStatus(o: Obligation, w: Workspace, agents: TaskAgents = w.taskAgents ?? {}, now = Date.now()): TaskStatus {
   if (finishedTask(o)) return { text: o.status === "done" ? "Done" : "Waived", tone: o.status === "done" ? "done" : "waived", agentId: null };
   const q = linkedQuestion(o, w);
-  if (q) return { text: q.answer ? `${q.id} · answered, waiting on the agent` : `${q.id} · waiting on your answer`, tone: "question", agentId: null };
+  if (q) return { text: q.answer ? `${q.id} · answered, waiting on the agent` : `${q.id} · ${q.need === "action" ? "waiting on you to do it" : "waiting on your answer"}`, tone: "question", agentId: null };
   if (o.status === "blocked") return blockedOnDeveloper(o) ? { text: "Needs a decision", tone: "blocked", agentId: null } : { text: blockedLine(o, w), tone: "blocked", agentId: null };
   if (o.status === "working") return workingLine(o, agents);
   // An Auto task riding the next message reads like every task in it: just Queued or Sent (the strip says when and why).

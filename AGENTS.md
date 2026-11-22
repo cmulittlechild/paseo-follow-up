@@ -935,7 +935,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `task`, then `update_obligation` blocked with `question`. 2026-11-22, Tom: "a lot of the time, 2 questions are
    created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
    Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
-
 74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
    waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
    from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
@@ -976,6 +975,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
+79. **One ask, one item** (`one-ask-one-item`). Whatever makes an ask (`ask_question`, a `needs_you` decision or
+   action, a blocked task), Needs you shows it once. A blocked task's card is shaped by what it asks (`taskNeed`): an
+   action the developer takes and reports back gets a Done option (`TASK_DONE`), never "Write the decision". An action
+   or decision `needs_you` points at the task cards it reports (named, or restated, with a lower bar for a card made during its turn:
+   `taskCardsFor`), so the brief folds into the card (`needsYouBlock`) instead of standing beside it. A brief's ask is
+   never hidden by a card it doesn't name or restate: an unrelated brief and a card made in the same turn are two items. The fold is the
+   server's: `update_obligation` says nothing about the task's own card, so the agent reads zero extra words. An action
+   card is answered by one Done button on every surface (`isDoneOnly`: no option to pick and then Send; Add note and
+   Reply instead stay quiet), and a brief's Done on it answers the card, never a second "Done: …" message.
+   2026-11-22, the developer: an Action brief and its task's card asked the same thing, the card as "Write the
+   decision"; live, 7 of 9 open task cards sat beside an open brief from the same agent, none pointed at, and Done
+   took two clicks. Review of beta.1's fix: any card made in the turn folded the brief in, so an unrelated "merge #5"
+   ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
+   ([docs/workspaces.md](docs/workspaces.md)).
 
 ## Bugs
 
