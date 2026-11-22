@@ -668,6 +668,20 @@ export function briefCardShown<B extends Pick<Brief, "state" | "kind" | "source"
   return !!b && (briefAsks(b, row) || drawnNeeds === 0);
 }
 
+/**
+ * What a brief card says, on every surface that draws one (the chat's card included): the brief's ask when
+ * `briefCardShown` lets it draw, else what Needs you holds, so "No ask stated" or "Nothing needed" never sits beside
+ * an ask (a-brief-without-an-ask-never-sits-beside-needs-you). Only an open brief points away; an answered or
+ * closed one keeps its own words as history. 2026-11-22: the chat's card read "Finished · No ask stated" beside a
+ * Needs you of "Send 7 tasks" and "Merge 3 PRs"; it checked only for open questions, on its own.
+ */
+export function briefCardAsk<B extends Pick<Brief, "state" | "kind" | "source" | "ask">>(brief: B, row: { needs?: unknown } | null | undefined, drawn: readonly { kind: string; title: string; questionId?: string }[]): string {
+  if (!liveBrief(brief) || briefCardShown(brief, row, drawn.length)) return brief.ask;
+  const questions = drawn.flatMap(i => i.kind === "question" && i.questionId ? [i.questionId] : []);
+  if (questions.length === drawn.length) return `Waiting on your answer to ${questions.join(", ")}`;
+  return `Needs you: ${drawn[0]!.title}${drawn.length > 1 ? ` +${drawn.length - 1} more` : ""}`;
+}
+
 /** The PR an add-reviewers brief asks about: its Add reviewers move's PR. Null for every other kind. */
 export function reviewersBriefPr(b: { kind: string; moves?: readonly { kind: string; prKey?: string | null }[]; prKey?: string }): string | null {
   if (b.kind !== "reviewers") return null;

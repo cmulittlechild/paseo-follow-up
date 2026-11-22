@@ -37,6 +37,21 @@ const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w
 
 export const INVARIANTS: Invariant[] = [
   {
+    id: "a-pr-summary-says-the-worst",
+    why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs.",
+    check(w, now) {
+      const open = w.prs.filter(p => p.snapshot?.state === "OPEN");
+      const failing = open.filter(p => p.snapshot!.failedChecks?.length);
+      // Only a workspace with a problem can read wrong, so only then is the chip built (it orders the stack:
+      // a-check-costs-linear-in-its-workspace).
+      const problem = open.length > 1 && open.some(p => !p.snapshot!.complete || p.snapshot!.failedChecks?.length || p.snapshot!.threads?.length);
+      const chip = problem ? prChip(w) : null;
+      if (chip?.checks?.tone === "success") return `the PR chip reads ${chip.checks.text} while an open PR has failing checks, threads or an unknown status`;
+      if (failing.length && liveLine(w, now).text === "Checks are running") return `the live line says checks are running while ${failing.length} PR(s) fail checks`;
+      return null;
+    },
+  },
+  {
     id: "a-linked-item-uses-every-known-local-title",
     why: "Artifact receipt titles must reach the spec and linked views; explicit names stay chosen. Cross-workspace and linked-store coverage lives in tests/local-titles.test.ts.",
     check(w) {

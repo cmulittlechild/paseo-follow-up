@@ -3,7 +3,7 @@ import { Pressable, Text } from "./text";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import type { Pr, Workspace } from "../shared/model";
 import { compactPrStatus, githubWaitLine, orderedStacks, settledForDisplay } from "../shared/presentation";
-import { mergeQueued, prTone, stackOrder } from "../shared/attention";
+import { mergeQueued, prTone, quietFold, stackOrder, type StackItem } from "../shared/attention";
 import { reviewersMissing } from "../shared/pr-workflow";
 import { isGithubFlow } from "../shared/pr-actions";
 import { Card, FoldRow, text, type Theme } from "./kit";
@@ -93,6 +93,8 @@ function StackRows({ name, prs, theme, open, toggle, onOpen, compact, showRepo, 
   const showDone = settled || open(foldKey);
   const rows = hits ? ordered.filter(p => hits.has(p)) : settled ? ordered : [...active, ...(showDone ? done : [])];
   const fold = !hits && !settled && done.length > 0;
+  // A long stack folds its quiet runs (a-long-stack-shows-its-problems); a search shows its hits as they are.
+  const items: StackItem<Pr>[] = hits || settled ? rows.map(pr => ({ kind: "pr", pr })) : [...quietFold(active, open), ...(showDone ? done : []).map(pr => ({ kind: "pr" as const, pr }))];
   if (!rows.length) return null;
   const merged = prs.filter(p => p.snapshot?.state === "MERGED").length;
   return <View style={{ borderTopWidth: 1, borderTopColor: c.border }}>
@@ -100,7 +102,23 @@ function StackRows({ name, prs, theme, open, toggle, onOpen, compact, showRepo, 
       <Text numberOfLines={1} style={[t.label, { flex: 1, fontSize: 12, lineHeight: 17 }]}>{name}</Text>
       <Text style={[t.small, { fontVariant: ["tabular-nums"] }]}>{settled ? `${prs.length} PR${prs.length === 1 ? "" : "s"}` : `${merged} of ${prs.length} merged`}</Text>
     </View>
-    {rows.map((pr, i) => <PrRow key={pr.key} pr={pr} theme={theme} first={i === 0} last={i === rows.length - 1 && !fold} showRepo={showRepo} onOpen={onOpen} compact={compact} wide={wide} hit={hits?.get(pr)} />)}
+    {items.map((item, i) => {
+      const first = i === 0, last = i === items.length - 1 && !fold;
+      if (item.kind === "pr") return <PrRow key={item.pr.key} pr={item.pr} theme={theme} first={first} last={last} showRepo={showRepo} onOpen={onOpen} compact={compact} wide={wide} hit={hits?.get(item.pr)} />;
+      const expanded = open(item.key), n = item.prs.length;
+      const range = `#${item.prs[0]!.number} to #${item.prs.at(-1)!.number}`;
+      return <Pressable key={item.key} accessibilityRole="button" aria-expanded={expanded} accessibilityState={{ expanded }} accessibilityLabel={`${expanded ? "Hide" : "Show"} ${n} PRs in review, ${range}, in ${name}`} onPress={() => toggle(item.key)}
+        style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, minHeight: compact ? 44 : 32, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+        <View style={{ width: NODE, alignItems: "center" }}>
+          <View style={{ width: 2, height: 8, backgroundColor: first ? "transparent" : c.border }} />
+          <View style={{ width: NODE, height: NODE, borderRadius: NODE / 2, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border, backgroundColor: c.surface0 }}>
+            <Icon name={expanded ? "ChevronUp" : "ChevronsUpDown"} size={10} color={c.foregroundMuted} />
+          </View>
+          <View style={{ width: 2, flex: 1, minHeight: 4, backgroundColor: last ? "transparent" : c.border }} />
+        </View>
+        <Text style={[t.meta, { paddingTop: 8, fontVariant: ["tabular-nums"] }]}>{expanded ? `Hide ${n} in review` : `+${n} in review`}<Text style={{ color: c.foregroundMuted }}>{` · #${item.prs[0]!.number}–#${item.prs.at(-1)!.number}`}</Text></Text>
+      </Pressable>;
+    })}
     {fold && <Pressable accessibilityRole="button" aria-expanded={showDone} accessibilityState={{ expanded: showDone }} accessibilityLabel={`${showDone ? "Hide" : "Show"} ${done.length} merged PR${done.length === 1 ? "" : "s"} in ${name}`} onPress={() => toggle(foldKey)}
       style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, minHeight: compact ? 44 : 30, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
       <View style={{ width: NODE, alignItems: "center" }}>

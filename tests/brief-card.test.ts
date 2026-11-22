@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { needsYou } from "../shared/attention";
-import { BRIEF_KINDS, briefCardShown, type BriefKind } from "../shared/brief";
+import { BRIEF_KINDS, briefCardAsk, briefCardShown, FALLBACK_ASK, type BriefKind } from "../shared/brief";
 import { developerAnswer } from "../server/questions";
 import { questionSchema } from "../shared/questions";
 import { clock, workspace } from "./fixtures";
@@ -41,4 +41,25 @@ test("a-brief-without-an-ask-never-sits-beside-needs-you holds for every kind an
 test("Home's detail pane draws its brief card through briefCardShown", async () => {
   const home = await readFile(join(import.meta.dirname, "..", "client", "home.tsx"), "utf8");
   assert.match(home, /const showBrief = [^\n]*briefCardShown\(b, row, asks\.length\)/);
+});
+
+// 2026-11-22 (the pr-scale stress render, synthetic): a workspace with a 120-PR stack and auto-send off. Its main agent's
+// turn ended with no ask (source none), and Needs you held two items, Send 7 tasks and Merge 3 PRs, but no question. The
+// chat's brief card checked only for open questions on its own, so it read "Finished · No ask stated" beside them.
+test("the stress case: the chat's card points at Needs you instead of No ask stated, through briefCardShown", () => {
+  const none = { kind: "unknown" as const, source: "none" as const, state: "open" as const, ask: FALLBACK_ASK };
+  const drawn = [{ kind: "send", title: "7 tasks ready · auto-send is off here" }, { kind: "merge", title: "#1003 is approved" }];
+  assert.equal(briefCardShown(none, null, drawn.length), false);
+  assert.equal(briefCardAsk(none, null, drawn), "Needs you: 7 tasks ready · auto-send is off here +1 more");
+  assert.equal(briefCardAsk(none, null, [{ kind: "question", title: "Q1 · Pick", questionId: "Q1" }, { kind: "question", title: "Q2 · Pick", questionId: "Q2" }]), "Waiting on your answer to Q1, Q2");
+  assert.equal(briefCardAsk(none, null, []), FALLBACK_ASK, "nothing in Needs you: the card says what it says");
+  assert.equal(briefCardAsk({ ...none, state: "answered" as never }, null, drawn), FALLBACK_ASK, "history keeps its words");
+  const real = { kind: "decision" as const, source: "agent" as const, state: "open" as const, ask: "Pick a cache" };
+  assert.equal(briefCardAsk(real, flagged, drawn), "Pick a cache", "a real ask always draws");
+});
+
+test("the chat's brief card takes its words from briefCardAsk, never its own check", async () => {
+  const card = await readFile(join(import.meta.dirname, "..", "client", "brief.tsx"), "utf8");
+  assert.match(card, /const askText = briefCardAsk\(b, /);
+  assert.doesNotMatch(card, /Waiting on your answer to/, "the question fallback lives in briefCardAsk");
 });

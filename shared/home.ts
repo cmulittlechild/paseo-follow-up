@@ -104,23 +104,49 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** In flight: the send glyph. Queued to go out on its own: the clock family, never Running's spinner (Q51). */
 const sendingIcon = (s: Sending) => s.state === "sent" ? "Send" : "ClockArrowUp";
 
-/** The PR chip: the first PR that hasn't settled (else the last one), "+n" for the rest, and its checks. */
+type ChipChecks = NonNullable<PrChip["checks"]>;
+/** One PR's checks as the chip says them. Null: its status isn't known (unknown is not ✓). */
+function prChecks(s: Pr["snapshot"]): ChipChecks | null {
+  return !s?.complete ? null
+    : s.state === "MERGED" ? { text: "merged", tone: "merged" }
+    : s.state === "CLOSED" ? { text: "closed", tone: "muted" }
+    : s.failedChecks?.length ? { text: `✗ ${s.failedChecks.length}`, tone: "danger" }
+    : s.checksPending ? { text: "running", tone: "muted" }
+    : s.draft ? { text: "draft", tone: "muted" }
+    : s.threads?.length ? { text: plural(s.threads.length, "thread"), tone: "warning" }
+    : { text: "✓", tone: "success" };
+}
+/** How bad an open PR's checks are, worst first: failing, open threads, unknown, running, draft, clear. */
+function chipRank(s: Pr["snapshot"]): number {
+  if (!s?.complete) return 2;
+  return s.failedChecks?.length ? 0 : s.threads?.length ? 1 : s.checksPending ? 3 : s.draft ? 4 : 5;
+}
+/**
+ * The PR chip (`a-pr-summary-says-the-worst`): the workspace's PRs in one chip, so it says the worst of its open PRs,
+ * never the first one's. It names the first open PR in stack order with the worst state ("#1058+125"), else the first
+ * that hasn't settled, else the last; "+n" counts the rest. Its checks add up across the open PRs at that worst
+ * state ("✗ 7": seven failing checks), and an open PR whose status isn't known keeps it from saying ✓. 2026-11-22: a
+ * 126-PR workspace with four PRs failing checks read "#1001+125 ✓", the first PR's state.
+ */
 export function prChip(w: Workspace | undefined): PrChip | null {
   if (!w?.prs.length) return null;
   const ordered = stackOrder(w.prs);
   const open = ordered.filter(p => !settled(p));
-  const pr: Pr = open[0] ?? ordered.at(-1)!;
   const more = (open.length || ordered.length) - 1;
-  const s = pr.snapshot;
-  const checks = !s?.complete ? null
-    : s.state === "MERGED" ? { text: "merged", tone: "merged" as const }
-    : s.state === "CLOSED" ? { text: "closed", tone: "muted" as const }
-    : s.failedChecks?.length ? { text: `✗ ${s.failedChecks?.length}`, tone: "danger" as const }
-    : s.checksPending ? { text: "running", tone: "muted" as const }
-    : s.draft ? { text: "draft", tone: "muted" as const }
-    : s.threads?.length ? { text: plural(s.threads?.length, "thread"), tone: "warning" as const }
-    : { text: "✓", tone: "success" as const };
-  return { label: `#${pr.number}${more > 0 ? `+${more}` : ""}`, tone: prTone(pr), checks, url: s?.url ?? null };
+  if (open.length <= 1) {
+    const pr: Pr = open[0] ?? ordered.at(-1)!;
+    return { label: `#${pr.number}${more > 0 ? `+${more}` : ""}`, tone: prTone(pr), checks: prChecks(pr.snapshot), url: pr.snapshot?.url ?? null };
+  }
+  const ranks = open.map(p => chipRank(p.snapshot));
+  const worst = Math.min(...ranks);
+  const at = open.filter((_, i) => ranks[i] === worst);
+  const pr = worst < 5 ? at[0]! : open[0]!;
+  const sum = (f: (s: NonNullable<Pr["snapshot"]>) => number) => at.reduce((n, p) => n + f(p.snapshot!), 0);
+  const checks: ChipChecks | null = worst === 0 ? { text: `✗ ${sum(s => s.failedChecks?.length ?? 0)}`, tone: "danger" }
+    : worst === 1 ? { text: plural(sum(s => s.threads?.length ?? 0), "thread"), tone: "warning" }
+    : worst === 2 ? null
+    : prChecks(pr.snapshot);
+  return { label: `#${pr.number}${more > 0 ? `+${more}` : ""}`, tone: prTone(pr), checks, url: pr.snapshot?.url ?? null };
 }
 
 /** One trailing chip on a desktop row: a semantic badge or the PR chip. */

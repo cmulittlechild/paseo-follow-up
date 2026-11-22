@@ -76,6 +76,61 @@ export function stackBar(w: Pick<Workspace, "prs">): { segments: Segment[]; merg
   };
 }
 
+/** The most marks the stack bar draws: at the panel's ~370 px that is about 7 px each, still readable and clickable. */
+export const STACK_BAR_BUDGET = 40;
+/** How loud a tone is in the stack bar: what needs fixing first, settled work last. */
+const BAR_RANK: Record<PrTone, number> = { danger: 0, warning: 1, unknown: 2, draft: 3, pending: 4, approved: 5, closed: 6, merged: 7 };
+/** One mark on the stack bar: `count` PRs in stack order from #`from` to #`to`, painted `tone`; it opens `key`. */
+export type BarMark = { key: string; number: number; tone: PrTone; count: number; from: number; to: number };
+/**
+ * The stack bar's marks (`stack-bar-reads-at-any-size`): one per PR up to STACK_BAR_BUDGET; past it, runs of
+ * neighbouring PRs in the same state, each as wide as its share of the stack; and when even the runs are too many, the
+ * stack in equal slices, each painted its loudest PR's tone. The order is kept, a failing PR is never averaged away,
+ * and a mark opens its loudest PR. 2026-11-22: a 126-PR workspace drew 126 segments about 1 px wide, a dotted hairline.
+ */
+export function barMarks(segments: readonly Segment[], budget = STACK_BAR_BUDGET): BarMark[] {
+  const one = (s: Segment): BarMark => ({ key: s.key, number: s.number, tone: s.tone, count: 1, from: s.number, to: s.number });
+  if (segments.length <= budget) return segments.map(one);
+  const merge = (group: readonly Segment[]): BarMark => {
+    const loud = group.reduce((a, b) => BAR_RANK[b.tone] < BAR_RANK[a.tone] ? b : a);
+    return { key: loud.key, number: loud.number, tone: loud.tone, count: group.length, from: group[0]!.number, to: group.at(-1)!.number };
+  };
+  const runs: Segment[][] = [];
+  for (const s of segments) { const last = runs.at(-1); if (last && last[0]!.tone === s.tone) last.push(s); else runs.push([s]); }
+  if (runs.length <= budget) return runs.map(merge);
+  const size = Math.ceil(segments.length / budget);
+  const slices: Segment[][] = [];
+  for (let i = 0; i < segments.length; i += size) slices.push(segments.slice(i, i + size));
+  return slices.map(merge);
+}
+
+/** A stack longer than this folds its quiet runs in the Pull requests card. */
+export const QUIET_FOLD_FROM = 20;
+/** The shortest run of quiet PRs worth a fold: shorter ones show as they are. */
+export const QUIET_FOLD_MIN = 4;
+export type StackItem<P> = { kind: "pr"; pr: P } | { kind: "quiet"; key: string; prs: P[] };
+/**
+ * The Pull requests card's rows for one stack (`a-long-stack-shows-its-problems`): past QUIET_FOLD_FROM PRs, each run
+ * of at least QUIET_FOLD_MIN neighbouring PRs that are only in review (pending: nothing failing, no threads, not
+ * approved, not a draft) folds into one "+N in review" row that `isOpen(key)` expands in place. Everything else (a
+ * failure, a thread, an approval, a draft, an unknown status) keeps its own row, in stack order, so problems are on
+ * screen without scrolling past the quiet ones. 2026-11-22: a 120-PR stack drew every row, about 8000 px, and its
+ * seven PRs to fix were scattered through it.
+ */
+export function quietFold<P extends Pr>(prs: readonly P[], isOpen: (key: string) => boolean, from = QUIET_FOLD_FROM, min = QUIET_FOLD_MIN): StackItem<P>[] {
+  if (prs.length <= from) return prs.map(pr => ({ kind: "pr", pr }));
+  const out: StackItem<P>[] = [];
+  let run: P[] = [];
+  const flush = () => {
+    if (run.length >= min) { const key = `quiet:${run[0]!.key}`; out.push({ kind: "quiet", key, prs: run }); if (isOpen(key)) out.push(...run.map(pr => ({ kind: "pr" as const, pr }))); }
+    else out.push(...run.map(pr => ({ kind: "pr" as const, pr })));
+    run = [];
+  };
+  for (const pr of prs) { if (prTone(pr) === "pending") run.push(pr); else { flush(); out.push({ kind: "pr", pr }); } }
+  flush();
+  return out;
+}
+
 const pendingSends = (w: Workspace) => w.batches.filter(b => !recoveryBatch(b) && b.state === "pending");
 const openBatches = (w: Workspace) => w.batches.filter(b => !recoveryBatch(b) && ["sending", "sent", "blocked", "uncertain"].includes(b.state));
 const QUEUED = ["QUEUED_TO_MERGE", "WAITING_TO_MERGE", "REBASING", "HANDED_OFF_TO_EXTERNAL_MERGE_QUEUE"];
@@ -424,6 +479,9 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   const waiting = followUpObligations(w).find(o => o.status === "waiting");
   if (waiting) return { icon: "waiting", text: waiting.title, since: null };
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
+  // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
+  const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);
+  if (failing.length) return { icon: "alert", text: failing.length === 1 ? `Checks failing on #${failing[0]!.number}` : `Checks failing on ${failing.length} PRs`, since: null };
   if (w.prs.some(p => p.snapshot?.state === "OPEN" && p.snapshot.checksPending)) return { icon: "waiting", text: "Checks are running", since: null };
   if (w.prs.some(p => p.snapshot?.state === "OPEN")) return { icon: "waiting", text: "Waiting on review and merges", since: null };
   return { icon: "idle", text: "Waiting for the main agent to declare Done", since: null };

@@ -1,0 +1,3 @@
+- Home's PR chip and the panel's status line now show the worst PR in a workspace, so a failing PR further up a stack is never hidden behind a green check.
+- Long stacks are easier to scan: the stack bar groups PRs instead of drawing a thin line, and the Pull requests list folds runs of PRs that are just in review, so the ones that need fixing stay in view.
+- The chat's "No ask stated" card now points at what Needs you is waiting on instead.
