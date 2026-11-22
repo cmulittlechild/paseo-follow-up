@@ -80,7 +80,7 @@ if (a[0] !== "api" || a[1] !== "graphql") { console.log("[]"); process.exit(0); 
 const c = JSON.parse(fs.readFileSync(${JSON.stringify(fixture)}, "utf8"));
 const q = a.find(x => x.startsWith("query=")) || "";
 const pr = n => ({ number: n, title: "Tidy the vendor settings copy", url: "https://github.com/example/app/pull/" + n, state: "OPEN", headRefName: "tidy-copy", headRefOid: "head-7", baseRefName: "main", isDraft: false, mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED", reviewDecision: "REVIEW_REQUIRED", autoMergeRequest: null, isInMergeQueue: false, author: { login: "alice" }, reviewRequests: { pageInfo: { hasNextPage: false }, nodes: [] }, latestReviews: { pageInfo: { hasNextPage: false }, nodes: [] }, baseRef: null, reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
-  commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ __typename: "CheckRun", name: "test", status: c.status, conclusion: c.conclusion }] } } } }] } });
+  commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: [{ __typename: "CheckRun", name: "test", status: c.status, conclusion: c.conclusion }] } } } }] } });
 const r = { defaultBranchRef: { name: "main", branchProtectionRule: null }, squashMergeAllowed: true, mergeCommitAllowed: false, rebaseMergeAllowed: true, autoMergeAllowed: true, viewerDefaultMergeMethod: "SQUASH", mergeQueue: null };
 for (const m of q.matchAll(/(p\\d+):\\s*pullRequest\\(number:\\s*(\\d+)\\)/g)) r[m[1]] = pr(Number(m[2]));
 console.log(JSON.stringify({ data: { repository: r } }));
