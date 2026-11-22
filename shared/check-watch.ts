@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SCALE } from "./scale";
 
 /**
  * Wait for checks (docs/wait-for-checks.md): an agent asks Follow-up to tell it when a PR's checks finish, ends its
@@ -15,8 +16,8 @@ export const WATCH_MAX_MS = 12 * 60 * 60_000;
  * can list a head with no check suites yet, which reads as "nothing running" for a few seconds.
  */
 export const WATCH_SETTLE_MS = 60_000;
-/** At most this many open watches per agent (a watch per PR of a big stack is fine; this only stops a runaway loop). */
-export const WATCHES_PER_AGENT = 60;
+/** At most this many open watches per agent: a watch per PR of the biggest stack fits (pr-scale-lists-batch-not-throw); this only stops a runaway loop. */
+export const WATCHES_PER_AGENT = SCALE.perWorkspace;
 
 export const checkWatchSchema = z.object({
   id: z.string().min(1).max(200),

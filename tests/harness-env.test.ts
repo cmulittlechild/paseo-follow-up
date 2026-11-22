@@ -95,13 +95,13 @@ test("harnessEnv resolves no external tool to a real binary outside the harness 
     const faked = harnessEnv(root, { base: process.env, set: { PATH: `${bin}:${process.env.PATH}` } });
     assert.equal(await which("gh", faked.PATH), join(bin, "gh"));
     assert.equal(await which("paseo", faked.PATH), await which("paseo", process.env.PATH ?? ""), "the Paseo CLI stays the host's");
-    // Only the live-model check opts out, and only of claude.
+    // Only the live-model checks opt out, and only of claude.
     const live = harnessEnv(root, { base: process.env, real: ["claude"] });
     assert.ok(!(await which("claude", live.PATH))?.startsWith(root), "real: claude stays the host's");
     assert.ok((await which("mcpproxy", live.PATH))?.startsWith(root), "everything else stays stubbed");
     const optOuts: string[] = [];
     for (const name of (await readdir("scripts")).filter(n => n.endsWith(".mjs") && n !== "harness-env.mjs")) if (/\breal:\s*(\[|REAL\b)/.test(await readFile(join("scripts", name), "utf8"))) optOuts.push(name);
-    assert.deepEqual(optOuts, ["check-wait.mjs"], "only the opt-in live-model check keeps a real tool");
+    assert.deepEqual(optOuts, ["check-wait-for-checks.mjs", "check-wait.mjs"], "only the opt-in live-model checks keep a real tool");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
