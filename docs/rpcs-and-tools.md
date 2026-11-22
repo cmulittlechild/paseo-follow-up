@@ -112,6 +112,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `dispatch_undo` | `follow.dispatch-undo` | planned. Cancels a start still waiting for Paseo, or archives what it created within 10 minutes. |
 | `dispatch_actions`, `set_dispatch_actions` | `follow.dispatch-actions`, `follow.set-dispatch-actions` (upsert, move, hide, reset, delete, reset-all) | read / planned |
 | `dispatch_settings`, `set_dispatch_settings` | `follow.dispatch-settings`, `follow.set-dispatch-settings` (team rules, bases, the no-team rule) | read / planned |
+| `linear_queue` | `follow.linear-queue` | read: the Morning brief's queue by priority (`filter` all, no-workspace, changed; `limit`), each issue's workspace or none and its change, the changes since the developer last read the brief (or `since`), and the sweep's time and health. The brief's own read (`open: true`, not on the tool) marks the read "since" stands on ([morning-brief.md](morning-brief.md)). |
+| `sweep_queue` | `follow.sweep-queue` | planned: sweeps every page now (Sweep now) and returns the summary, or `running` past 45 s. |
 | `link_items`, `set_linked_items` | `follow.linked-items`, `follow.set-linked-items` (add, remove, undo) | read / planned. The Linked sheet calls both; `link_item` and `unlink_item` also count for `follow.set-linked-items`. |
 | `link_items` (per workspace) | `follow.linked-index` | read. Home's search over every workspace's linked keys and titles, fetched only while the search field has text. |
 | `pr_controls`, `browser_status` | `follow.pr-control-status`, `follow.browser-status` | read |

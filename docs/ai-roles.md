@@ -147,12 +147,17 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   and `liveRankSources`.
 - **Inputs:**
   - Follow-up's own state.
-  - Linear issues assigned to the developer.
+  - The developer's Linear queue, from the Morning brief's snapshot ([morning-brief.md](morning-brief.md)): its top
+    40 issues by priority plus every issue that changed since the last workday's sweep, each with its change ("raised
+    Low → High"). The ranker makes no Linear call of its own; with no snapshot yet it asks for one sweep first.
   - Slack DMs and mentions from the last 48 h, through `mcpproxy call tool-read`.
   - `gh search prs --review-requested=@me`.
   - The weekly planning artifact, read through one Claude turn with only the Artifact tool.
-- **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on workdays,
-  within the daily cap, while the governor allows background work.
+- **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on the
+  developer's workdays, 08:00–20:00 in their zone (the brief's clock: the device's zone, else the host's; the workdays
+  are the zone's usual week), within the daily cap, while the governor allows background work.
+- **Not started** (`notStartedFrom`): issues that are Urgent, or were raised to High or Urgent since the last workday,
+  with no workstream naming their key. Read from the queue, never asked of the model.
 - **Output:** `priorities.json` (`server/priorities.ts`, `shared/priorities.ts`) and `ranker.json`.
 - **One row shows the reason.** A priority is stored per workspace, and its score orders every row of that
   workspace. A workspace can have several Home rows, one per flagged root agent, and the reason was written about

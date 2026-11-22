@@ -8,6 +8,7 @@ import { taskTriggerSchema } from "../shared/task-trigger";
 import { UPDATE_MODES } from "../shared/updates";
 import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
 import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
+import { linearQueueInputSchema } from "../shared/contracts";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -159,6 +160,10 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "dispatch_settings", rpc: "follow.dispatch-settings", kind: "read", input: none },
   { name: "set_dispatch_settings", rpc: "follow.set-dispatch-settings", kind: "planned", before: { rpc: "follow.dispatch-settings", input: () => ({}) }, input: settingsChangeSchema.extend(confirm),
     toRpc: a => ({ rules: a.rules, bases: a.bases, noTeam: a.noTeam }) },
+  // The Morning brief's Linear queue (docs/morning-brief.md). An agent reads without `open`, so it never moves the
+  // developer's "since" (a-change-is-against-what-you-last-saw).
+  { name: "linear_queue", rpc: "follow.linear-queue", kind: "read", input: linearQueueInputSchema.omit({ open: true }) },
+  { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
 
 /** Settings → Display (host-scoped preferences, trust bypass among them): read and planned write, served by the host. */
