@@ -1,0 +1,1 @@
+- Archive a workspace from its row menu. It asks first and says what archiving does to that workspace, such as uncommitted changes in its worktree being lost.

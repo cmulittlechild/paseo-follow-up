@@ -125,8 +125,20 @@ row) for quick moves without opening it. `rowMenu()` in `shared/row-menu.ts` lis
 2. Answer Q<n> for up to two open questions.
 3. Resume follow-up, Send N repairs and Retry repairs, each shown only when it applies.
 4. Open chat, and Ask the Overseer about this (it pre-fills the omnibox and doesn't send).
-5. Copy branch name, Copy PR link(s), Rename title with AI…, Rewrite summary, Make <agent> the main agent, and Stop
-   following… (which asks first).
+5. Copy branch name, Copy PR link(s), Rename title with AI…, Rewrite summary, Make <agent> the main agent, Stop
+   following… (which asks first), and Archive workspace….
+
+Archive workspace… is on any row whose workspace Paseo lists (tracked or not) when the host's Paseo API has
+`workspaces.archive`; a row Follow-up calls ready to archive (Home's "N to archive") leads with it, first in triage,
+instead. It sends Paseo's own archive request (`archive_workspace_request`, what Paseo's Archive sends), so it does
+what Paseo's archive does: every agent in the workspace is archived (a running one stops), its terminals close, it
+leaves the list (and shows under Archived in search), and for a worktree Paseo created Paseo runs the teardown and
+deletes the folder with `git worktree remove --force`, so uncommitted changes there are lost; the branch and its
+commits stay and Paseo can restore it. The confirm step says so for this workspace (`archiveConfirm`), from what
+Paseo's workspace list already streams (`ArchiveFacts`: kind, `isPaseoOwnedWorktree`, `isDirty`, `diffStat`,
+`aheadOfOrigin`, a running status), never a new git read. A refusal shows the error toast with Paseo's reason and the
+row stays. Agents archive with Paseo's own `archive_workspace` tool (the `ROW_ACTIONS` exemption). Follow-up never
+archives by itself (invariant 6, `tests/archive-on-click.test.ts`).
 
 The same menu opens from the workspace panel header's More button (`client/panel-menu.tsx`, the workspace's own
 `ws:<id>` row) and from the rows of Follow-up's sidebar view (`client/sidebar-view.tsx`), so there is one menu

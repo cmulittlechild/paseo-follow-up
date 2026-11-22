@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useRpc } from "@getpaseo/plugin/client";
+import { usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { controlRpc, sendRpc, setFollowSettingsRpc, workspaceAboutRpc } from "../shared/contracts";
@@ -31,10 +31,13 @@ export function useRowMenu(host: RowMenuHost) {
   const toast = useToast();
   useEffect(() => { bindToast(toast); }, [toast]);
   const cache = useQueryClient();
+  // Archive is Paseo's own request (archive_workspace_request, what Paseo's Archive sends), on the host's API when it has it.
+  const paseoApi = usePaseo() as { workspaces?: { archive?: (id: string) => Promise<{ error: string | null }> } } | null;
   const send = useRpc(sendRpc); const control = useRpc(controlRpc); const about = useRpc(workspaceAboutRpc); const setFollow = useRpc(setFollowSettingsRpc);
   // Read through a ref so build and pick stay one stable pair: the list's memoised rows compare them by identity.
-  const current = useRef({ host, send, control, about, setFollow, cache });
-  current.current = { host, send, control, about, setFollow, cache };
+  const archiveWorkspace = typeof paseoApi?.workspaces?.archive === "function" ? (id: string) => paseoApi.workspaces!.archive!(id) : null;
+  const current = useRef({ host, send, control, about, setFollow, cache, archiveWorkspace });
+  current.current = { host, send, control, about, setFollow, cache, archiveWorkspace };
   return useMemo(() => {
     const deps = () => current.current;
     const build = (s: Workstream) => {
@@ -46,10 +49,12 @@ export function useRowMenu(host: RowMenuHost) {
       const wsOnly = !!w && s.key === `ws:${w.id}` && needs.length > 0 && !row?.needs;
       const wsSnooze = wsOnly && w!.snooze && workspaceSnoozed(w!, needs, Date.now()) ? w!.snooze : null;
       const workspaceLater = wsOnly ? { snoozedUntil: wsSnooze ? wakeLabel({ until: wsSnooze.until, at: wsSnooze.at }, Date.now()) || null : null } : null;
-      return rowMenu({ s, workspaceLater, flagged: !!row?.needs, snoozedUntil: row?.needs && row.snooze ? wakeLabel(row.snooze, Date.now()) || null : null, w, needs, branch: s.workspaceId ? paseo.get(s.workspaceId)?.branch ?? null : null, canAsk: !!prefillAsk && overseerOn });
+      const listed = s.workspaceId ? paseo.get(s.workspaceId) : undefined;
+      return rowMenu({ s, workspaceLater, flagged: !!row?.needs, snoozedUntil: row?.needs && row.snooze ? wakeLabel(row.snooze, Date.now()) || null : null, w, needs, branch: listed?.branch ?? null, canAsk: !!prefillAsk && overseerOn,
+        archive: deps().archiveWorkspace ? listed?.archive ?? null : null });
     };
     const pick = (s: Workstream, item: RowMenuItem): Promise<boolean> => {
-      const { host: { sources: { inbox, live }, openFull, openQuestion, prefillAsk }, send, control, about, setFollow, cache } = deps();
+      const { host: { sources: { inbox, live }, openFull, openQuestion, prefillAsk }, send, control, about, setFollow, cache, archiveWorkspace } = deps();
       const after = () => { live.refresh(); inbox.refresh(); };
       const w0 = (id: string) => id ? live.get(id) ?? null : null;
       const workspaceId = s.workspaceId ?? "";
@@ -88,6 +93,13 @@ export function useRowMenu(host: RowMenuHost) {
         case "rename_ai": return runAction({ label: "Rename title with AI", run: async () => openRename({ workspaceId, title: s.title }), success: null });
         case "make_main": return runAction({ label: "Make main agent", run: async () => { await control({ workspaceId, mainAgentId: arg }); after(); }, success: `${s.agent ?? "That agent"} is now the main agent` }, `main:${workspaceId}`);
         case "stop_following": return runAction({ label: "Stop following", run: async () => { await setFollow({ workspace: { workspaceId, follow: false } }); after(); }, success: `Stopped following ${s.title}` }, `follow:${workspaceId}`);
+        // Only from the confirm step's button (RowMenu's choose). Paseo's reply carries its reason when it refuses.
+        case "archive": return runAction({ label: "Archive", failure: `Couldn't archive ${s.title}`, run: async () => {
+          if (!archiveWorkspace) throw new Error("This Paseo can't archive from a plugin.");
+          const r = await archiveWorkspace(workspaceId);
+          if (r.error) throw new Error(r.error);
+          after();
+        }, success: `Archived ${s.title}` }, `archive:${workspaceId}`);
       }
     };
     return { build, pick: (s: Workstream, item: RowMenuItem) => { void pick(s, item); } };

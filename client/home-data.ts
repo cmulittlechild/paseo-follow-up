@@ -2,16 +2,20 @@ import { autoSendHold } from "../shared/sending";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { buildHome, type HomeModel, type PaseoWorkspaceLite } from "../shared/home";
+import type { ArchiveFacts } from "../shared/row-menu";
 import type { InboxStore } from "./inbox-store";
 import type { LiveStore } from "./live";
 import type { HomeExtras } from "./home-view";
 
 type Descriptor = { id: string; name?: string | null; title?: string | null; projectDisplayName?: string | null; projectCustomName?: string | null; activityAt?: string | null; archivingAt?: string | null;
-  gitRuntime?: { currentBranch?: string | null } | null; githubRuntime?: { pullRequest?: { number?: number; title?: string } | null } | null };
+  workspaceKind?: ArchiveFacts["kind"]; status?: string | null; diffStat?: { additions: number; deletions: number } | null;
+  gitRuntime?: { currentBranch?: string | null; isPaseoOwnedWorktree?: boolean; isDirty?: boolean | null; aheadOfOrigin?: number | null } | null; githubRuntime?: { pullRequest?: { number?: number; title?: string } | null } | null };
 const lite = (w: Descriptor): PaseoWorkspaceLite => {
   const pr = w.githubRuntime?.pullRequest;
   return { id: w.id, name: w.title || w.name || "Workspace", project: w.projectCustomName || w.projectDisplayName || null, activityAt: w.activityAt ?? null,
-    branch: w.gitRuntime?.currentBranch ?? null, pr: pr?.title ? { number: pr.number ?? null, title: pr.title } : null };
+    branch: w.gitRuntime?.currentBranch ?? null, pr: pr?.title ? { number: pr.number ?? null, title: pr.title } : null,
+    archive: { kind: w.workspaceKind ?? null, ownedWorktree: w.gitRuntime?.isPaseoOwnedWorktree ?? null, dirty: w.gitRuntime?.isDirty ?? null, diff: w.diffStat ?? null,
+      ahead: w.gitRuntime?.aheadOfOrigin ?? null, running: w.status === "running" } };
 };
 
 /**

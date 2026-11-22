@@ -263,8 +263,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - Writes return a dry-run plan first and run with `confirm: true` and the plan id.
    - Agent writes go into the inbox ledger as `agent:<id>`.
    - `tests/agent-parity.test.ts` reads the client's RPC imports and fails on a new RPC without an entry.
-   - There are no human-only actions. Follow-up also has no button for archiving, untracking a workspace or
-     putting one on hold, so there's no tool for those either.
+   - There are no human-only actions. Follow-up has no button for untracking a workspace or putting one on hold, so
+     there's no tool for those either. The row menu's Archive workspace… sends Paseo's own archive request, which
+     agents already make with Paseo's `archive_workspace` tool, so its `ROW_ACTIONS` entry is an exemption naming it.
 4. **Agents act on others, not themselves.** An agent can't sign itself off, answer its own question through
    `answer_question`, or act on its own brief. Goal, tasks, questions and Done belong to the main agent.
    Contributors get `workspace_status`, `register_pr`, `sync_workspace` and `make_main_agent` (under its claim
@@ -273,7 +274,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
 6. **Nothing irreversible on its own.**
-   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself. The developer's
+   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself. It archives a
+     workspace only from the row menu's Archive workspace…, after its confirm step names what Paseo's archive does
+     (`follow-up-archives-only-on-the-developer-s-click`, `tests/archive-on-click.test.ts`: every archive call in the
+     plugin is allowed by name). No automation archives merged or done work. The developer's
      Merge is one click that names its whole scope first and merges exactly that at the heads it showed
      (`a-click-on-merge-merges`, `shared/merge-click.ts`); agent tools still dry-run, then run with `confirm: true`.
    - Completion checks never auto-send.

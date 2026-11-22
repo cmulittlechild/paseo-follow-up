@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { flatItems, isMenuKey, laterChoices, RELEASE_TAIL_MS, sheetArmed, LATER_CHOICES, moveFocus, placeMenu, ROW_ACTIONS, rowMenu, type RowMenuInput } from "../shared/row-menu";
+import { archiveConfirm, flatItems, isMenuKey, laterChoices, RELEASE_TAIL_MS, sheetArmed, LATER_CHOICES, moveFocus, placeMenu, ROW_ACTIONS, rowMenu, type RowMenuInput } from "../shared/row-menu";
 import { snoozeUntil } from "../shared/inbox";
 import type { NeedItem } from "../shared/attention";
+import type { ArchiveFacts } from "../shared/row-menu";
 import { AGENT_TOOLS } from "../server/agent-actions";
 import { pr, snapshot, workspace } from "./fixtures";
 
@@ -71,10 +72,47 @@ test("copy, Summary, main agent and Stop following", () => {
   assert.ok(!flatItems(rowMenu({ ...base, canAsk: false })).some(i => i.action === "ask_overseer"));
 });
 
-test("nothing destructive without a confirm; no archive or merge in the menu", () => {
-  const items = flatItems(rowMenu({ ...base, flagged: true, needs: [hold, send(null), question("Q1")] }), "later");
-  for (const i of items) assert.ok(!/archive|merge/i.test(i.label), i.label);
-  for (const i of items.filter(i => i.action === "stop_following")) assert.ok(i.confirm);
+test("nothing destructive without a confirm; no merge in the menu", () => {
+  const items = flatItems(rowMenu({ ...base, flagged: true, needs: [hold, send(null), question("Q1")], archive: facts() }), "later");
+  for (const i of items) assert.ok(!/merge/i.test(i.label), i.label);
+  for (const i of items.filter(i => ["stop_following", "archive", "make_main"].includes(i.action))) assert.ok(i.confirm, `${i.action} asks first`);
+});
+
+/**
+ * Tom (2026-11-22): "Can we add an option to archive a workspace from the follow-up context menu?" Archive sends
+ * Paseo's own archive request, only after the confirm step, and the confirm says what Paseo's archive really does.
+ */
+const facts = (over: Partial<ArchiveFacts> = {}): ArchiveFacts => ({ kind: "worktree", ownedWorktree: true, dirty: false, diff: null, ahead: 0, running: false, ...over });
+
+test("Archive workspace… is last in tidy for any row Paseo lists, tracked or not", () => {
+  const tidy = rowMenu({ ...base, archive: facts() }).find(x => x.key === "tidy")!.items;
+  assert.equal(tidy.at(-1)!.key, "archive");
+  assert.deepEqual([tidy.at(-1)!.label, tidy.at(-1)!.icon, tidy.at(-1)!.action], ["Archive workspace…", "Archive", "archive"]);
+  const untracked = rowMenu({ ...base, w: null, archive: facts() }).find(x => x.key === "tidy")!.items;
+  assert.ok(untracked.some(i => i.action === "archive"), "an untracked workspace can be archived too");
+  assert.ok(!flatItems(rowMenu({ ...base, archive: null })).some(i => i.action === "archive"), "no host archive, or Paseo doesn't list it: no item");
+  assert.ok(!flatItems(rowMenu({ ...base, s: { ...s, workspaceId: null }, archive: facts() })).some(i => i.action === "archive"), "no workspace, nothing to archive");
+});
+
+test("a row ready to archive leads with Archive, first in triage, and not again in tidy", () => {
+  const menu = rowMenu({ ...base, s: { ...s, readyToArchive: true }, archive: facts() });
+  assert.equal(menu[0].key, "triage");
+  assert.equal(menu[0].items[0].key, "archive");
+  assert.equal(flatItems(menu).filter(i => i.action === "archive").length, 1);
+  const flagged = rowMenu({ ...base, s: { ...s, readyToArchive: true }, flagged: true, archive: facts() })[0].items;
+  assert.deepEqual(flagged.map(i => i.action), ["archive", "later", "sign_off"], "Archive first, then the flag's own triage");
+});
+
+test("Archive's confirm says what Paseo's archive does to this workspace", () => {
+  const item = flatItems(rowMenu({ ...base, archive: facts() })).find(i => i.action === "archive")!;
+  assert.equal(item.confirm, "Archive Migration rollout? Its agents stop, its terminals close and it leaves your list. Paseo deletes its worktree folder; the branch and its commits stay. Paseo can restore it later.");
+  assert.equal(archiveConfirm("example-app", facts({ dirty: true, diff: { additions: 12, deletions: 1 }, ahead: 2 })),
+    "Archive example-app? Its agents stop, its terminals close and it leaves your list. Paseo deletes its worktree, and the uncommitted changes in it (12 added lines, 1 deleted line) are lost. 2 unpushed commits stay only on the local branch. Paseo can restore it later.");
+  assert.match(archiveConfirm("x", facts({ dirty: null, diff: { additions: 0, deletions: 4 } })), /uncommitted changes in it \(4 deleted lines\) are lost/, "unknown dirty with a diff counts as dirty, as Paseo's warning does");
+  assert.match(archiveConfirm("x", facts({ running: true })), /^Archive x\? An agent is working in it right now: archiving stops it/);
+  for (const kind of ["directory", "checkout", "local_checkout"] as const)
+    assert.doesNotMatch(archiveConfirm("x", facts({ kind, dirty: true, ahead: 3 })), /worktree|uncommitted|unpushed/, `${kind}: Paseo deletes no folder`);
+  assert.doesNotMatch(archiveConfirm("x", facts({ ownedWorktree: false, dirty: true })), /deletes/, "a worktree Paseo can't prove it owns is left in place");
 });
 
 test("parity: every row action names an agent tool, or why it needs none", () => {
