@@ -3,7 +3,7 @@ import { JsonFileStore } from "./json-file-store";
 import { readError, linearMissing } from "./linear-issues";
 import type { LinearIssue } from "../shared/linear-issues";
 import {
-  BRIEF_SETTINGS_DEFAULT, QUEUE, briefSince, byUrgency, changeLine, changesSince, current, diffSweeps, emptyQueueFile, leftCause, leftKeys, markSeen, morningDue,
+  BRIEF_SETTINGS_DEFAULT, QUEUE, briefSince, byUrgency, changeLine, changesSince, current, diffSweeps, emptyQueueFile, leftCause, leftKeys, markSeen, missedRead, morningDue,
   priorityName, pruneLog, queueFileSchema, queueIssues, toQueueIssue, workdaySince, zoned,
   type BriefSettings, type Clock, type LogEntry, type QueueChange, type QueueFile, type QueueIssue, type Sweep, type SweepTrigger,
 } from "../shared/linear-queue";
@@ -18,6 +18,8 @@ export class LinearQueueStore extends JsonFileStore<QueueFile> {
 export type QueueReader = {
   queuePage(state: string, cursor: string | null, limit?: number): Promise<{ issues: LinearIssue[]; next: string | null; readable: boolean; whole: boolean }>;
   leftIssue(key: string): Promise<LinearIssue | null>;
+  /** The developer's Linear user id; read once, cached in the store. */
+  viewerId(): Promise<string | null>;
 };
 
 export type LinearQueueDeps = {
@@ -138,11 +140,22 @@ export class LinearQueue {
     const file = await this.read();
     const prev = file.sweeps.find(s => s.complete) ?? null;
     // Issues that left: one lookup each (the most urgent LOOKUPS_MAX), to say done, canceled or reassigned.
+    // A lookup that finds the issue still the developer's, in a queue state, is a missed read: it goes back into this
+    // sweep from the lookup and logs nothing (the-queue-is-whole).
     const left: Record<string, LogEntry["left"]> = {};
     if (prev && complete) {
-      for (const key of leftKeys(prev, next)) {
-        try { left[key] = leftCause(await this.d.linear.leftIssue(key), settings.states); }
-        catch { left[key] = { cause: "unknown", state: null, to: null }; }
+      const keys = leftKeys(prev, next);
+      let viewer = file.viewer;
+      if (keys.length && !viewer) {
+        try { viewer = await this.d.linear.viewerId(); reads++; } catch { viewer = null; }
+        if (viewer) { const id = viewer; await this.d.store.mutate(f => { f.viewer = id; }); }
+      }
+      for (const key of keys) {
+        try {
+          const found = await this.d.linear.leftIssue(key);
+          if (found && missedRead(found, viewer, settings.states)) issues[key] = toQueueIssue(found);
+          else left[key] = leftCause(found, settings.states);
+        } catch { left[key] = { cause: "unknown", state: null, to: null }; }
         reads++;
       }
     }

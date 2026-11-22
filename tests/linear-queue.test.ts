@@ -9,7 +9,7 @@ import { LinearQueue, LinearQueueStore, type QueueReader } from "../server/linea
 import { RPC_TOOLS } from "../server/agent-parity";
 import { toLinearIssue, type LinearIssue } from "../shared/linear-issues";
 import {
-  QUEUE, changeLine, changesSince, clockFor, defaultWorkdays, diffSweeps, leftCause, markSeen, morningDue, workdaySince, zoned,
+  QUEUE, changeLine, changesSince, clockFor, defaultWorkdays, diffSweeps, leftCause, markSeen, missedRead, morningDue, workdaySince, zoned,
   type Clock, type QueueIssue, type Sweep,
 } from "../shared/linear-queue";
 
@@ -22,9 +22,9 @@ const MON_FRI: Clock = { timeZone: "America/New_York", workdays: defaultWorkdays
 const TUE = Date.parse("2026-11-10T07:30:00.000Z");
 const H = 3_600_000;
 
-type Raw = { key: string; title?: string; priority?: number; state?: string; stateType?: string; due?: string | null; assignee?: string | null };
+type Raw = { key: string; title?: string; priority?: number; state?: string; stateType?: string; due?: string | null; assignee?: string | null; assigneeId?: string | null };
 const raw = (r: Raw) => ({ id: r.key, title: r.title ?? `Issue ${r.key}`, priority: { value: r.priority ?? 4, name: "x" }, status: r.state ?? "Todo", statusType: r.stateType ?? "unstarted",
-  dueDate: r.due ?? null, team: { name: "Acme" }, url: `https://linear.app/acme/issue/${r.key}`, updatedAt: "2026-11-09T10:00:00.000Z", ...(r.assignee !== undefined ? { assignee: r.assignee ? { name: r.assignee } : null } : {}) });
+  dueDate: r.due ?? null, team: { name: "Acme" }, url: `https://linear.app/acme/issue/${r.key}`, updatedAt: "2026-11-09T10:00:00.000Z", ...(r.assignee !== undefined ? { assignee: r.assignee ? { name: r.assignee } : null } : {}), ...(r.assigneeId !== undefined ? { assigneeId: r.assigneeId } : {}) });
 const issue = (r: Raw): LinearIssue => toLinearIssue(raw(r), true)!;
 
 /** A fake reader: the developer's issues per state type, paged; `left` answers get_issue for issues that left. */
@@ -49,6 +49,7 @@ function fakeReader(o: { issues: Raw[]; pageSize?: number; failWith?: () => Erro
       const r = o.left?.[key];
       return r === undefined ? null : r === null ? null : issue(r);
     },
+    async viewerId() { calls.push("viewer"); return "user-alice"; },
   };
   return reader;
 }
@@ -141,6 +142,64 @@ test("the-queue-is-whole: a failed sweep keeps the last complete snapshot and sa
 
 const sweep = (at: number, issues: Raw[], complete = true): Sweep => ({ at: new Date(at).toISOString(), complete, pages: 1,
   issues: Object.fromEntries(issues.map(r => { const i = issue(r); const q: QueueIssue = { key: i.key, title: i.title, priority: i.priority!.value, state: i.state, stateType: i.stateType, due: i.due, team: i.team, project: null, milestone: null, url: i.url, updatedAt: i.updatedAt }; return [q.key, q]; })) });
+
+test("the-queue-is-whole: an issue raised while the sweep walks the pages is neither left nor new, through the real reader", async t => {
+  // Linear as list_issues orders it: 30 of the developer's issues, newest update (or creation) first. Midway through
+  // the second sweep's walk, ACME-3 (on page 2: newest first) is raised Low → High, which bumps its updatedAt.
+  const created = (n: number) => new Date(TUE - (100 - n) * H).toISOString();
+  const live = Array.from({ length: 30 }, (_, n) => ({ ...raw({ key: `ACME-${n + 1}`, priority: 4 }), assigneeId: "user-alice", createdAt: created(n), updatedAt: created(n) }));
+  let raiseAfterFirstPage = false;
+  const wrap = (text: string) => `banner\n${JSON.stringify({ content: [{ text }], isError: false })}`;
+  const run = async (_c: string, args: string[]) => {
+    const tool = args.find(x => x.startsWith("--tool-name="))!.slice(12);
+    const a = JSON.parse(args.find(x => x.startsWith("--json_args="))!.slice(12));
+    assert.equal(args.includes("tool-read"), true, "only read-only calls");
+    if (tool === "linear:get_user") return wrap(JSON.stringify({ id: "user-alice", name: "alice" }));
+    if (tool === "linear:get_issue") return wrap(JSON.stringify(live.find(i => i.id === a.id)));
+    const mine = live.filter(i => i.statusType === a.state).sort((x, y) => (y[a.orderBy as "updatedAt"] as string).localeCompare(x[a.orderBy as "updatedAt"] as string));
+    const start = a.cursor ? Number(a.cursor) : 0;
+    const page = mine.slice(start, start + a.limit);
+    if (raiseAfterFirstPage && start === 0 && mine.length) {
+      raiseAfterFirstPage = false;
+      Object.assign(live[2], { priority: { value: 2, name: "High" }, updatedAt: new Date(TUE + 2 * H).toISOString() });
+    }
+    return wrap(JSON.stringify({ issues: page, hasNextPage: start + a.limit < mine.length, cursor: String(start + a.limit) }));
+  };
+  const { queue, time } = await setup(t, new LinearIssues(run, () => TUE));
+  assert.equal((await queue.sweep("morning")).total, 30);
+  time.now += 3 * H; raiseAfterFirstPage = true;
+  const r = await queue.sweep("manual");
+  assert.equal(r.complete, true); assert.equal(r.total, 30, "the raised issue is still in the queue");
+  time.now += 3 * H;
+  await queue.sweep("manual");
+  const lines = changesSince((await queue.read()).log, null).map(c => `${c.key} ${changeLine(c)}`);
+  assert.deepEqual(lines, ["ACME-3 raised Low → High"], "a missed read is never a change: no 'left', no 'new', just the raise");
+});
+
+test("the-queue-is-whole: a lookup that finds the issue still the developer's puts it back with no log; someone else's reads as reassigned", async t => {
+  const issues: Raw[] = [{ key: "ACME-1" }, { key: "ACME-2" }, { key: "ACME-3" }];
+  const reader = fakeReader({ issues, left: {
+    "ACME-2": { key: "ACME-2", priority: 2, assigneeId: "user-alice" },
+    "ACME-3": { key: "ACME-3", assignee: "bob", assigneeId: "user-bob" },
+  } });
+  const { queue, time } = await setup(t, reader);
+  await queue.sweep("morning");
+  // The walk misses ACME-2 and ACME-3 (as a page that moved would).
+  reader.set([{ key: "ACME-1" }]);
+  time.now += H;
+  const r = await queue.sweep("manual");
+  assert.equal(r.total, 2, "ACME-2 is back in the snapshot from its lookup");
+  const file = await queue.read();
+  assert.equal(file.sweeps[0].issues["ACME-2"].priority, 2, "with the lookup's facts");
+  assert.equal(file.viewer, "user-alice", "the viewer's id is cached");
+  const lines = changesSince(file.log, null).map(c => `${c.key} ${changeLine(c)}`);
+  assert.deepEqual(lines, ["ACME-2 raised Low → High", "ACME-3 left: reassigned to bob"]);
+  time.now += H;
+  await queue.sweep("manual");
+  assert.equal(reader.calls.filter(c => c === "viewer").length, 1, "get_user is read once, then cached");
+  assert.equal(missedRead(issue({ key: "ACME-9", assigneeId: "user-alice" }), null, ["unstarted"]), false, "an unknown viewer is never 'mine'");
+  assert.equal(missedRead(issue({ key: "ACME-9", assigneeId: "user-alice", stateType: "completed" }), "user-alice", ["unstarted"]), false, "done is a leave");
+});
 
 test("the diff grid: raised, lowered, new, due moved, state, and moved out by each cause; most urgent first across kinds", () => {
   const prev = sweep(TUE - 24 * H, [

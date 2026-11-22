@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mcpproxyText } from "./about";
-import { ISSUE_FIELDS, LEFT_FIELDS, LIST_FIELDS, PAGE_SIZE, QUEUE_FIELDS, openIssues, parseIssue, parseIssuePage, type LinearIssue } from "../shared/linear-issues";
+import { ISSUE_FIELDS, LEFT_FIELDS, LIST_FIELDS, PAGE_SIZE, QUEUE_FIELDS, openIssues, parseIssue, parseIssuePage, parseViewerId, type LinearIssue } from "../shared/linear-issues";
 
 const exec = promisify(execFile);
 export type Run = (command: string, args: string[], timeoutMs: number) => Promise<string>;
@@ -50,12 +50,19 @@ export class LinearIssues {
    * false: the reply was cut off (mcpproxy truncates near 20 k characters), so the walk can't trust its end.
    */
   async queuePage(state: string, cursor: string | null, limit = PAGE_SIZE): Promise<ReturnType<typeof parseIssuePage>> {
-    const text = await this.call("list_issues", { assignee: "me", state, orderBy: "updatedAt", limit, fields: QUEUE_FIELDS, ...(cursor ? { cursor } : {}) }, "the Morning brief's sweep of your Linear queue", SWEEP_CALL_TIMEOUT_MS);
+    // By creation time, never update time: an issue updated mid-walk (raised, the very event the brief is for) would
+    // jump to a page already read and be missed. Creation order doesn't move.
+    const text = await this.call("list_issues", { assignee: "me", state, orderBy: "createdAt", limit, fields: QUEUE_FIELDS, ...(cursor ? { cursor } : {}) }, "the Morning brief's sweep of your Linear queue", SWEEP_CALL_TIMEOUT_MS);
     return parseIssuePage(text, true);
   }
   /** Why an issue left the queue: its state and assignee now. Null when Linear says it doesn't exist. */
   async leftIssue(key: string): Promise<LinearIssue | null> {
     return parseIssue(await this.call("get_issue", { id: key, fields: LEFT_FIELDS }, "why an issue left your Linear queue", SWEEP_CALL_TIMEOUT_MS));
+  }
+
+  /** The developer's Linear user id (`get_user {query: "me"}`, read-only); the sweep caches it in linear-queue.json. */
+  async viewerId(): Promise<string | null> {
+    return parseViewerId(await this.call("get_user", { query: "me" }, "who you are in Linear, to tell your issues from others'", SWEEP_CALL_TIMEOUT_MS));
   }
 
   /** The developer's open issues, newest update first. `fresh` skips the cache (Retry). */

@@ -17,15 +17,23 @@ weekly plan's link, then every source the proxy can reach, then Ask for sources 
 ## The sweep
 
 - **What it reads:** for each state type that counts as the queue (Triage, Backlog, Todo, In Progress by default),
-  `linear:list_issues {assignee: "me", state, orderBy: "updatedAt", limit: 25, fields: QUEUE_FIELDS}`, following the
+  `linear:list_issues {assignee: "me", state, orderBy: "createdAt", limit: 25, fields: QUEUE_FIELDS}`, following the
   cursor until Linear says there is no next page. Pages stay at 25 because mcpproxy cuts replies near 20 k characters.
-  A queue of 150 costs about 7 reads.
+  A queue of 150 costs about 7 reads. **By creation time, never update time:** an issue updated while the sweep walks
+  (raised mid-sweep, the very event the brief is for) would jump to a page already read and be missed. Creation order
+  doesn't move. (New's list keeps `updatedAt`: it reads one page, not a walk.)
 - **A cut-off page** (`parseIssuePage(...).whole` false: the JSON didn't parse and only whole issues were salvaged) is
   read again with 10, then 5 issues. Still cut off, the sweep is partial: its end can't be trusted.
 - **Bounded:** at most `QUEUE.pagesMax` (40) pages across every state. Past that the sweep is partial ("1000+ issues").
 - **Issues that left:** an issue in the last complete sweep that is missing now gets one `get_issue` (the most urgent
   `QUEUE.lookupsMax`, 20, a sweep) to say why: done, canceled, reassigned (to whom), moved to a state that isn't the
   queue, or gone. The rest read "left your queue".
+- **A missed read is not a leave:** a lookup that finds the issue still in a queue state and assigned to the developer
+  means the walk missed it (a page that moved under it). It goes back into this sweep with the lookup's facts, and
+  nothing is logged for it beyond what really changed. "Assigned to the developer" is exact, not a name match: the
+  lookup asks for `assigneeId`, compared with the developer's Linear user id from `linear:get_user {query: "me"}`
+  (read-only; one call, only in a sweep that has issues to look up, then cached in `linear-queue.json` as `viewer`).
+  With no viewer id (the read failed) the issue reads as left, as before.
 - **Who raised it** isn't read: Linear's `get_issue` history (`stateHistory`) records workflow states, not priority
   changes, so the brief says "raised Low → High" without a name.
 - One sweep at a time; a second caller joins the one in flight. Every call is a short `mcpproxy call tool-read`
@@ -39,7 +47,8 @@ it left. The log is what answers "since Friday" on a Monday.
 
 **`the-queue-is-whole`** (invariant 76): the sweep reads every page or says it is partial, and a partial sweep never
 replaces a complete one (it is kept only while there is no complete sweep at all). A failed sweep keeps the last
-complete snapshot; the status says which one is showing (`stale`).
+complete snapshot; the status says which one is showing (`stale`). A missed read is never a change: an issue the walk
+missed but a lookup finds still the developer's, in a queue state, is neither "left" nor, next sweep, "new".
 
 ## What changed, and since when
 
@@ -90,7 +99,7 @@ elsewhere) until the setting says otherwise. The ranker's automatic runs use the
 
 | | Reads | Model calls |
 | --- | --- | --- |
-| A morning sweep of 150 issues | about 7, plus up to 20 for issues that left | 0 |
+| A morning sweep of 150 issues | about 7, plus up to 20 for issues that left (and one `get_user`, once ever) | 0 |
 | The ranker | none of its own (it reads the snapshot) | unchanged |
 
 Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`.

@@ -30,6 +30,8 @@ export const linearIssueSchema = z.object({
   milestone: z.string().max(200).nullable().default(null),
   /** The assignee's display name, when the read asked for it (a lookup of an issue that left the queue). */
   assignee: z.string().max(200).nullable().default(null),
+  /** The assignee's Linear user id, when the read asked for it: compared with the viewer's to tell "still mine". */
+  assigneeId: z.string().max(100).nullable().default(null),
 });
 export type LinearIssue = z.infer<typeof linearIssueSchema>;
 
@@ -39,8 +41,11 @@ export const LIST_FIELDS = ["id", "uuid", "title", "url", "gitBranchName", "stat
 export const ISSUE_FIELDS = [...LIST_FIELDS, "description", "assignee"] as const;
 /** Fields the Morning brief's sweep asks for: New's, plus what the brief and the ranker show (due, project, milestone). */
 export const QUEUE_FIELDS = ["id", "uuid", "title", "url", "status", "statusType", "team", "updatedAt", "priority", "dueDate", "project", "projectMilestone"] as const;
-/** Fields the sweep's lookup of an issue that left the queue asks for: enough to say why. */
-export const LEFT_FIELDS = ["id", "title", "url", "status", "statusType", "assignee"] as const;
+/**
+ * Fields the sweep's lookup of an issue that left the queue asks for: enough to say why, and (the queue's fields plus
+ * `assigneeId`) to put it back when it never left: still the developer's, in a queue state, missed by the walk.
+ */
+export const LEFT_FIELDS = [...QUEUE_FIELDS, "assignee", "assigneeId"] as const;
 /** Issues per list_issues page (60 at once came back cut off; server/ranker.ts). Not a cap on how many are read. */
 export const PAGE_SIZE = 25;
 /** Open work: what New lists before anything is typed. */
@@ -69,6 +74,7 @@ export function toLinearIssue(raw: unknown, assigneeIsMe: boolean | null = null)
     description: typeof i.description === "string" ? i.description : null,
     // Clipped, never refused: an issue a schema bound would drop is an issue missing from the queue (the-queue-is-whole).
     due: str(i.dueDate)?.slice(0, 40) ?? null, project: clip(named(i.project), 200), milestone: clip(named(i.projectMilestone), 200), assignee: clip(named(i.assignee), 200),
+    assigneeId: clip(str(i.assigneeId) ?? (typeof i.assignee === "object" && i.assignee ? str((i.assignee as { id?: unknown }).id) : null), 100),
   });
 }
 export const PRIORITY_NAMES = ["No priority", "Urgent", "High", "Medium", "Low"];
@@ -114,6 +120,14 @@ export function parseIssue(text: string): LinearIssue | null {
   }
   const raw = (j && typeof j === "object" && "issue" in (j as object)) ? (j as { issue: unknown }).issue : j;
   return toLinearIssue(raw);
+}
+
+/** The viewer's Linear user id from `get_user {query: "me"}` (its top-level `id`), or null when the reply has none. */
+export function parseViewerId(text: string): string | null {
+  try {
+    const j = JSON.parse(text) as { id?: unknown; user?: { id?: unknown } };
+    return clip(str(j?.id) ?? str(j?.user?.id), 100);
+  } catch { return null; }
 }
 
 /** Open (started or unstarted) issues first, then by update time, newest first. */

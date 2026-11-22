@@ -139,9 +139,11 @@ export const queueFileSchema = z.object({
   seen: z.object({ at: z.string(), prior: z.string().nullable() }).nullable(),
   /** The workday whose morning sweep already ran (or was tried), in the brief's zone. */
   morningDay: z.string().nullable(),
+  /** The developer's Linear user id (`get_user me`), read once when a sweep first has issues to look up. */
+  viewer: z.string().nullable().default(null),
 });
 export type QueueFile = z.infer<typeof queueFileSchema>;
-export const emptyQueueFile = (): QueueFile => ({ version: 1, sweeps: [], log: [], last: null, seen: null, morningDay: null });
+export const emptyQueueFile = (): QueueFile => ({ version: 1, sweeps: [], log: [], last: null, seen: null, morningDay: null, viewer: null });
 
 /** Bounds. PAGES_MAX × PAGE_SIZE issues is the most a sweep reads before it says "partial". */
 export const QUEUE = {
@@ -299,6 +301,15 @@ export function changeLine(c: QueueChange): string {
 }
 
 /** The cause of an issue leaving, from its get_issue read. `stateTypes`: what counts as the queue. */
+/**
+ * the-queue-is-whole: a lookup that finds the issue still assigned to the developer (its `assigneeId` is the viewer's
+ * id) and in a queue state means the walk missed it, not that it left. Its lookup puts it back in the sweep, with no
+ * log entry. An unknown viewer or assignee id is never "mine": the issue reads as left, as before.
+ */
+export function missedRead(issue: Pick<LinearIssue, "stateType" | "assigneeId"> | null, viewer: string | null, stateTypes: readonly string[]): boolean {
+  return !!issue && !!viewer && issue.assigneeId === viewer && !!issue.stateType && stateTypes.includes(issue.stateType);
+}
+
 export function leftCause(issue: (Pick<LinearIssue, "stateType" | "state"> & { assignee?: string | null; assigneeIsMe?: boolean | null }) | null, stateTypes: readonly string[]): NonNullable<LogEntry["left"]> {
   if (!issue) return { cause: "gone", state: null, to: null };
   if (issue.stateType === "completed") return { cause: "done", state: issue.state, to: null };

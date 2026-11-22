@@ -940,7 +940,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    queue in every queue state, or says it is partial: a page mcpproxy cut off (`parseIssuePage(...).whole` false) is
    re-read smaller, then marks the sweep partial, and past `QUEUE.pagesMax` pages it is partial too. A partial sweep
    never replaces a complete one and is diffed against nothing; a failed sweep keeps the last complete snapshot and
-   says which one shows. The ranker reads Linear only from that snapshot (top 40 plus every changed issue), never 75
+   says which one shows. A missed read is never a change: the walk pages by `createdAt` (an update mid-walk can't move
+   an issue onto a page already read), and an issue missing from the walk that a lookup finds still assigned to the
+   developer (`assigneeId` = the cached viewer id) in a queue state goes back into the sweep, neither "left" nor, next
+   sweep, "new". The ranker reads Linear only from that snapshot (top 40 plus every changed issue), never 75
    newest updates. 2026-11-22, Tom: "I want the follow-up daily brief to connect to all data sources it can"; the
    ranker read at most 75 issues and kept no snapshot, so an untouched old issue past them dropped out. Guarded by
    `tests/linear-queue.test.ts` ([docs/morning-brief.md](docs/morning-brief.md)).
