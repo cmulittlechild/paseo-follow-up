@@ -992,21 +992,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    took two clicks. In review, a first draft folded the brief into any card made in the turn, so an unrelated
    "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
    ([docs/workspaces.md](docs/workspaces.md)).
-80. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
-   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
-   through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
-   `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
-   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
-   when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
-   the morning run (the-brief-has-one-timer); never on its own timer. Guarded by `tests/brief-sources.test.ts`.
-81. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
-   channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
-   shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
-   channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
-   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
-   Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
-   for any `mcpproxy` run outside the source directory).
-
 80. **Briefs from closed agents** (`briefs-from-closed-agents`). Needs you lists what someone can still act on. At
    render, from facts Follow-up already holds (`flagFate`), a flag whose workspace is archived or gone from Paseo's
    list (agent not running) drops, and so does a closed agent's flag that asks nothing (no asking brief, no question,
@@ -1018,6 +1003,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    only a row `flagFate` shows, never a dropped or Older one. 2026-11-22, live: 49
    flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
    old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
+81. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
+   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
+   through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
+   `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
+   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
+   when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
+   the morning run (the-brief-has-one-timer); never on its own timer. Guarded by `tests/brief-sources.test.ts`.
+82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
+   channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
+   shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
+   channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
+   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
+   Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
+   for any `mcpproxy` run outside the source directory).
 
 ## Bugs
 
