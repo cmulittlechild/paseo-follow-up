@@ -163,7 +163,7 @@ export type PrStatsOutput = z.infer<typeof prStatsOutputSchema>;
 const shortDate = (s: number, timeZone: string) => { try { return new Date(s * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone }); } catch { return new Date(s * 1000).toISOString().slice(0, 10); } };
 const count = (n: number) => n.toLocaleString("en-US");
 export const sizeWords = (bytes: number) => bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
-/** One repository's line in Settings: "On · 3,248 PRs · 90 days · 1.0 MB", "On · reading · back to Oct 3", "Paused · data up to Nov 2", "Off". */
+/** One repository's line in Settings (its window is in its options' summary): "On · 3,248 PRs · 1.0 MB", "On · reading · back to Oct 3", "Paused · data up to Nov 2", "Off". */
 export function statsRepoLine(row: z.infer<typeof statsRepoRowSchema>, timeZone: string): string {
   const s = row.settings, st = s?.status ?? null;
   if (row.state === "off" || !s) return "Off";
@@ -173,7 +173,7 @@ export function statsRepoLine(row: z.infer<typeof statsRepoRowSchema>, timeZone:
   if (!st.backfillDone) parts.push(st.coveredTo ? `reading · back to ${shortDate(st.coveredTo, timeZone)}` : "reading");
   parts.push(`${count(st.records)} PR${st.records === 1 ? "" : "s"}`);
   if (s.estimate && !st.backfillDone) parts[parts.length - 1] = `≈ ${count(st.records)} of ${count(s.estimate.prs)} PRs`;
-  parts.push(`${s.windowDays} days`, sizeWords(st.records * 320));
+  parts.push(sizeWords(st.records * 320));
   return parts.join(" · ");
 }
 /** Why a repository's stats aren't reading right now, in the page's words; null when nothing holds them. */
@@ -187,6 +187,14 @@ export function statsRepoWait(row: z.infer<typeof statsRepoRowSchema>): string |
     : st.waiting.reason === "governor" ? "Paused while this machine is busy."
     : st.waiting.reason === "slice" ? `Paused · stats used their share of GitHub's limit this hour${at ? ` · next read ${at}` : ""}.`
     : null;
+}
+/** How loud a repository's wait line is: a GitHub refusal is red, a wait on GitHub's limit or the share amber. */
+export function statsRepoWaitTone(row: z.infer<typeof statsRepoRowSchema>): "danger" | "warning" | "muted" | null {
+  const st = row.settings?.status;
+  if (!st || row.state !== "on") return null;
+  if (st.error) return "danger";
+  if (!st.waiting) return null;
+  return st.waiting.reason === "budget" || st.waiting.reason === "slice" ? "warning" : st.waiting.reason === "governor" ? "muted" : null;
 }
 /** The opt-in sheet's cost line. */
 export function estimateLines(e: StatsEstimate, slice: number): { cost: string; time: string } | null {

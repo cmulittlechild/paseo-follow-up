@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrStats, SYNC_IDLE_MS, SYNC_VIEWING_MS } from "../server/pr-stats";
 import { statsPath } from "../server/pr-stats-store";
-import { statsRepoLine, statsRepoWait } from "../shared/pr-stats-settings";
+import { statsRepoLine, statsRepoWait, statsRepoWaitTone } from "../shared/pr-stats-settings";
 import type { Budget } from "../shared/poll";
 import { FakeStatsGithub } from "./support/fake-stats-github";
 import { rm, trackPersistence } from "./support/store-temp-dir";
@@ -72,7 +72,7 @@ test("pr stats: turning a repository on syncs it on the loop's tick, hourly afte
     assert.equal(row.state, "on");
     assert.equal(row.settings!.status!.records, s.fake.inWindow(90).length);
     assert.equal(row.settings!.status!.backfillDone, true);
-    assert.match(statsRepoLine(row, "UTC"), /^On · \d[\d,]* PRs · 90 days · \d+ KB$/);
+    assert.match(statsRepoLine(row, "UTC"), /^On · \d[\d,]* PRs · \d+ KB$/);
     s.calls.length = 0;
     s.advance(SYNC_VIEWING_MS);
     await s.idle();
@@ -142,8 +142,11 @@ test("stats-learn-the-team-from-the-data: an unreadable GitHub team shows everyo
 test("pr stats: Settings' lines say why a repository isn't reading", () => {
   const base = { repo: "example/app", state: "on" as const, settings: { enable_stats: true, windowDays: 90 as const, team: { kind: "everyone" as const }, ignore: [], enabledAt: 1, estimate: { prs: 3250, points: 143, at: 1 },
     status: { records: 1240, coveredTo: Date.parse("2026-10-03T12:00:00Z") / 1000, backfillDone: false, lastSyncAt: 2, lastCost: 20, waiting: null, error: null, cappedTo: null } } };
-  assert.equal(statsRepoLine(base, "UTC"), "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs · 90 days · 397 KB");
+  assert.equal(statsRepoLine(base, "UTC"), "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs · 397 KB");
   assert.equal(statsRepoWait(base), null);
+  assert.equal(statsRepoWaitTone(base), null);
+  assert.equal(statsRepoWaitTone({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "x", status: 404, at: 1 } } } }), "danger");
+  assert.equal(statsRepoWaitTone({ ...base, settings: { ...base.settings, status: { ...base.settings.status, waiting: { reason: "slice", until: null } } } }), "warning");
   assert.match(statsRepoWait({ ...base, settings: { ...base.settings, status: { ...base.settings.status, waiting: { reason: "budget", until: 1_800_000_000 } } } })!, /^GitHub limit low · updates again at \d\d:\d\d\.$/);
   assert.equal(statsRepoWait({ ...base, settings: { ...base.settings, status: { ...base.settings.status, error: { message: "not found or no access", status: 404, at: 1 } } } }), "Can't read example/app (HTTP 404: not found or no access).");
   assert.equal(statsRepoLine({ repo: "x/y", state: "off", settings: null }, "UTC"), "Off");

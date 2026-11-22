@@ -27,9 +27,11 @@ Nothing is on in a new install, and nothing is read until a repository is turned
 
 - **Settings → Following → PR statistics** (after Shipping PRs) lists every repository Follow-up knows (tracked PRs,
   project remotes, Shipping PRs' list) with a switch, plus a field to add another `owner/repo`. Each row says where it
-  is: "On · 3,248 PRs · 90 days · 1.0 MB", "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs", "Paused · data up
-  to Nov 2", or "Off", and why it isn't reading (GitHub limit low, the machine busy, the hour's share used, or a read
-  error).
+  is: "On · 3,248 PRs · 1.0 MB", "On · reading · back to Oct 3 · ≈ 1,240 of 3,250 PRs", "Paused · data up
+  to Nov 2", or "Off". Why it isn't reading goes on its own line under the row: red with a next step for a read
+  error, amber for GitHub's limit or the hour's share, muted while the machine is busy. A repository that's on has its
+  Options (window, team, hidden people) folded under its own row; the clock and the GitHub share sit below the list as
+  "All repositories". Adding a repository that's already listed says so instead of a dead Add.
 - **The opt-in sheet** (the switch turns on only from its Turn on): about N PRs changed in the last 90 days (one
   `search(issueCount)`, 1 point, through the gate), what reading them costs against the share of the hourly limit,
   that stats pause under 40 %, and what is stored where. A repository the token can't read is refused there with the
