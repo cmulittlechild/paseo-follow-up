@@ -1,1 +1,0 @@
-- Dismissing asks for a second click on the same spot, so a stray click doesn't dismiss anything. The first click turns the x into a small red Dismiss button; clicking elsewhere, Esc, or waiting a few seconds puts the x back.

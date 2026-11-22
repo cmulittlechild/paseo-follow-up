@@ -2,6 +2,61 @@
 
 What changed in each version of Follow-up, newest first. Follow-up shows "What's new" after an update that brings new release notes: the curated part of each stable release since you last looked (betas install quietly; Settings → General can turn it off), and every version's notes from Home's version line.
 
+## 2.3.0 (2026-11-22)
+
+Clear what doesn't need you, find the workspace you meant, and spend far less of GitHub's limit.
+
+- **Dismiss anything in Needs you**, questions included, with the small × in its corner. Remove and Keep sit side by side, the agent isn't messaged, and Undo brings it back. A removed item returns by itself when something about it changes.
+- **Search finds what you meant**, even typed on the wrong keyboard layout, in any language. Search from anywhere is now ⌘⇧K (Ctrl+Shift+K), since Paseo 0.17 uses ⌘/.
+- **Ask for More context anywhere:** the panel, Home, the question dialog, the chat pill or your phone.
+- **Repairs reach your main agent as soon as it's free**, even while its subagents keep working, and a waiting repair says what it's waiting for.
+- **Far less of GitHub's limit:** Follow-up reads a PR in full only when something on it changed, and pauses its checks if the limit runs low.
+- **Settings are tabs** on Follow-up's own settings page on Paseo 0.16 and later, and Home lists its keys when you press S. Plus many smaller fixes.
+
+<details><summary>Full changelog since 2.2.0</summary>
+
+### Home and Needs you
+
+- Dismiss anything in Needs you with the small x in its corner: an agent's ask, a merge or reviewers ask, repairs waiting on you, and the rest. The agent isn't messaged, and Undo brings it back.
+- On Home, Enter opens the selected workspace's chat however you picked it, including pressing Enter again right after a search. O does the same, as in Catch up.
+- Press S on Home (or the keyboard button by settings) to see every Home key.
+- Ask for more context on a question from the panel, Home, the question dialog, the chat pill or your phone, not only in Catch up. The answer shows on the question wherever you look at it.
+- Search finds workspaces typed on the wrong keyboard layout, with a quiet hint and your text kept intact. Desktop uses physical keys; Hebrew and Russian also work on phones and pasted text.
+- On Paseo 0.16 and later, Follow-up's settings categories (General, Following, Reviewers, Agents, Inbox & display) are Paseo's own tabs on the Follow-up settings page, and every Settings link opens the right one.
+- When the agent says only a person can move something, such as a stale review the reviewer must re-review, Needs you shows it as that PR waiting on its reviewer, with Ask for re-review, instead of "The tasks didn't finish".
+- Search from anywhere is now ⌘⇧K (Ctrl+Shift+K): Paseo 0.17 uses ⌘/ for its model picker. If you picked ⌘/, you’re moved to ⌘⇧K; change it in Settings → Display.
+
+### Questions and answers
+
+- A dismissed item comes back by itself when something about it changes, like a new push or a new failure. In Catch up, Shift+D dismisses any card.
+- The card for a new agent or workspace stays after it's created and opens it.
+- With Claude agents, the Done card and a question's number now show in the chat.
+- When the limit runs low, Follow-up pauses its checks and leaves the rest to your agents. The Pull requests card says when it updates again.
+
+### Repairs and PRs
+
+- Repairs reach your main agent as soon as it's free, even while its subagents keep working.
+- A waiting repair says what it's waiting for, like the main agent's turn, a permission prompt or Session Guard, and Send now still sends it the moment the main agent is free.
+- Follow-up checks your PRs with a small fraction of GitHub's hourly limit, even with lots of PRs: it reads a PR in full only when something on it changed.
+
+### Setup, Settings and updates
+
+- The panel's Project settings button now opens Following.
+
+### More
+
+- Keep is where the keyboard lands, so pressing Enter twice never removes anything, and neither does a double-click on the x.
+- Dismissing asks for a second click on the same spot, so a stray click doesn't dismiss anything. The first click turns the x into a small red Dismiss button; clicking elsewhere, Esc, or waiting a few seconds puts the x back.
+
+### Fixes
+
+- Dismiss a question that no longer matters. The agent isn't messaged, and Undo brings it back. In Catch up, Shift+D does it.
+- Removing an item from Needs you now shows Remove and Keep side by side, so backing out is one obvious click.
+- A removed item now says Removed everywhere you see it, on its card and in question history, matching the toast.
+- Needs you no longer shows a repair that stopped mattering: once its PR merges or the problem is gone, it clears on its own.
+
+</details>
+
 ## 2.2.0 (2026-11-18)
 
 Catch up walks you through everything that needs you, one card at a time.
