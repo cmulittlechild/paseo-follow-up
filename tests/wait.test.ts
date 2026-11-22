@@ -199,6 +199,6 @@ test("the agent hook gives Wait's guidance once at SessionStart to any Claude se
   assert.equal(await fire("sub", { hook_event_name: "SessionStart" }, {}), "", "no Wait, no text");
   // A tracked main agent: Wait's text joins its session context, unprefixed (Wait's names aren't follow_ tools).
   const main = text(await fire("main", { hook_event_name: "SessionStart" }, { FOLLOW_UP_WAIT: "1", FOLLOW_UP_TOOLS: "native", FOLLOW_UP_PROVIDER: "claude", FOLLOW_UP_ROOT: "1" }));
-  assert.ok(main.includes(waitInstruction)); assert.match(main, /follow_workspace_status/); assert.doesNotMatch(main, /follow_wait_/);
+  assert.ok(main.includes(waitInstruction)); assert.match(main, /follow_workspace_status/); assert.doesNotMatch(main, /follow_wait_(?!for_checks)/);
   assert.match(waitInstruction, /wait_prepare_job/); assert.match(waitInstruction, /instead of ending your turn/);
 });

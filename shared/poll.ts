@@ -59,6 +59,9 @@ export function cadence(s: Snapshot | null | undefined, error: string | null | u
   return reasons.length ? "checks" : "idle";
 }
 
+/** A watched PR (an agent waits for its checks) is read at least at the running-checks cadence. */
+export const watchedCadence = (c: Cadence, watched: boolean): Cadence => watched && c === "idle" ? "checks" : c;
+
 /** A merged PR is final: nothing on it feeds repairs, and its deploy state is probed separately every tick. */
 export const MERGED_POLL_MS = 30 * 60_000;
 /**
@@ -112,9 +115,13 @@ export function budgetTier(b: Budget | null | undefined, now: number): Tier {
  * only checks are running (unless the budget is critical).
  * Settled open PRs: every POLL_IDLE_MS. Merged (and closed): every MERGED_POLL_MS; server/github.ts skips final ones.
  */
-export function dueForRead(i: { snapshot: Snapshot | null | undefined; error: string | null | undefined; changedAt: number | null; readAt: number; now: number; tier: Tier; repoUrgent: boolean; since?: number | null }): boolean {
+export function dueForRead(i: { snapshot: Snapshot | null | undefined; error: string | null | undefined; changedAt: number | null; readAt: number; now: number; tier: Tier; repoUrgent: boolean; since?: number | null; watchedSince?: number | null }): boolean {
   if (i.tier === "critical" || i.tier === "reserve") return false;
-  const c = cadence(i.snapshot, i.error, i.changedAt, i.now);
+  const open = i.snapshot?.state !== "MERGED" && i.snapshot?.state !== "CLOSED";
+  // An agent waits for this PR's checks (shared/check-watch.ts): one read after the wait began, then the running-checks
+  // cadence, even when it looks settled. Never past the reserve (above), and a long run still slows to 2 minutes.
+  if (i.watchedSince != null && open && i.readAt < i.watchedSince) return true;
+  const c = watchedCadence(cadence(i.snapshot, i.error, i.changedAt, i.now), i.watchedSince != null && open);
   if (c === "tick") return true;
   const age = i.now - i.readAt;
   // Half a tick of slack: ticks drift a little, and 29.9 s must not wait for the next tick.

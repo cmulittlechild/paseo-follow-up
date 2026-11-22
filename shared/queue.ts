@@ -9,7 +9,7 @@ import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
  * runs the prompt (agent-manager recordSubmittedPrompt). So a send that left without a confirmation is never resent
  * blind: the agent's chat is read for it first.
  */
-export const QUEUE_KINDS = ["answer", "brief", "repair", "recovery", "message"] as const;
+export const QUEUE_KINDS = ["answer", "brief", "repair", "recovery", "message", "checks"] as const;
 export type QueueKind = typeof QUEUE_KINDS[number];
 
 /**
