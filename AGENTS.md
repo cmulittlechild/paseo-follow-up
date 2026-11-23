@@ -80,7 +80,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
-| Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it) | `shared/linear-queue.ts`, `server/linear-queue.ts` | [morning-brief](docs/morning-brief.md) |
+| Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
@@ -1052,6 +1052,20 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    No scans, no pairwise passes, no model; renames keep the id and are never checked; Follow-up's own writes (no caller)
    aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
    duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
+
+86. **A raised issue is a Needs-you item** (`raised-is-needs-you`). A Linear issue raised to Urgent or High that is still
+   in the queue and has no workspace (`raisedNeeds`, decision Q8) is a row of Home's Needs you group, first, shaped like
+   its rows, and counted wherever Needs you is counted (the group header, the strip, the brief line and the sidebar
+   badge) from one server-side count, live on the home feed: the worker computes it (`LinearQueue.needs`) and pushes it
+   on `follow.home-feed` when a sweep or a dismissal changes it (on 0.15 it rides the priorities poll), and every surface
+   reads it through `useHomeModel` (`HomeModel.raised`), never a read of its own. It
+   has the two-click Remove of every Needs-you item (invariant 59: `follow.dismiss {issue}`, agents `dismiss_item
+   {issue}`), and a later raise brings it back. One issue offers one set of actions on screen: while it's in Needs you
+   (Start…), its line in the brief's Since block keeps the news without New's buttons. 2026-11-23, two critiques: it was
+   a card above the strip that Needs you didn't count, with a second action set in the brief; then Home read it once per
+   mount, so the sidebar badge said 5 beside Home's 6 and a morning raise never reached an open Home. Guarded by
+   `tests/brief-since.test.ts`, `tests/feed-recovery.test.ts` and `tests/idle-rpc.test.ts`.
+
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
