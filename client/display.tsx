@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { displayFeed, inboxListRpc, trustBypassRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
 import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
-import { isMac, searchShortcutOf, searchShortcutOptions, type SearchShortcut } from "../shared/search-key";
+import { isMac, searchShortcutOf, searchShortcutOptions, type SearchShortcut , isDesktopApp, newShortcutHint, newShortcutOptions, newShortcutPreset, type NewShortcut} from "../shared/search-key";
 import { useEffect } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { Text } from "./text";
@@ -103,6 +103,9 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
         <SettingsSelect label="Search from anywhere" hint="Jumps to Home's search from any screen, even mid-message. On Home, / works too."
           value={searchShortcutOf(settings.values.search_shortcut)} options={searchShortcutOptions(isMac())} disabled={settings.saving}
           onValueChange={(search_shortcut: SearchShortcut) => save({ search_shortcut })} />
+        <SettingsSelect label="New from anywhere" hint={newShortcutHint(isDesktopApp(), isMac())}
+          value={newShortcutPreset(settings.values.new_shortcut, isDesktopApp())} options={newShortcutOptions(isMac())} disabled={settings.saving}
+          onValueChange={(new_shortcut: NewShortcut) => save({ new_shortcut })} />
       </SettingsCard>
     </SettingsSection>}
     <SettingsSection title="Needs-you inbox" trailing={<BetaChip theme={theme} />} info="Agents stay in Needs you until you sign them off or write to them. Opening an agent doesn't clear it.">

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { classifyLink, linearKey, teamOf } from "./linked";
-import type { LinearIssue } from "./linear-issues";
+import type { LinearIssue, LinearList } from "./linear-issues";
 
 /**
  * New (internally "dispatch"): start a workspace from a Linear issue, a link or a sentence (docs/dispatch.md).
@@ -264,7 +264,7 @@ export function freeBranch(name: string, taken: Iterable<string>): string {
 // ---------- where it goes ----------
 
 export type WhereProject = { id: string; name: string; repo: string | null; worktree: boolean };
-export const WHERE_HOW = ["picked", "link", "rule", "learned", "last", "only", "ambiguous"] as const;
+export const WHERE_HOW = ["picked", "link", "workspace", "rule", "learned", "last", "only", "ambiguous"] as const;
 export type WhereHow = typeof WHERE_HOW[number];
 export type Where = {
   projectId: string | null;
@@ -287,13 +287,15 @@ export type WhereInput = {
   /** Team key → project id → workspaces with that team's issue linked. */
   learned: Readonly<Record<string, Readonly<Record<string, number>>>>;
   lastProjectId: string | null;
+  /** The project the source's live workspace is in: a source already being worked on goes where that work is. */
+  workspaceProjectId?: string | null;
   /** A source with no team: "last" uses the last project (as a guess), "ask" always asks. */
   noTeam: "last" | "ask";
 };
 
 /**
  * The project a source goes to, and why, in this order: the developer's pick; the repository a GitHub link names; the
- * team's rule; what the team's past workspaces learned (LEARN_MIN and LEARN_SHARE); for a source with no team, the
+ * project its live workspace is in; the team's rule; what the team's past workspaces learned (LEARN_MIN and LEARN_SHARE); for a source with no team, the
  * last used project as a guess; the only project; otherwise ambiguous, with the candidates. A rule or pick naming a
  * project that is gone makes it ambiguous and says so; nothing ever switches silently.
  */
@@ -313,6 +315,10 @@ export function resolveWhere(input: WhereInput): Where {
   if (source.repo) {
     const p = input.projects.find(x => x.repo?.toLowerCase() === source.repo!.toLowerCase());
     if (p) return at(p, "link", "From the link");
+  }
+  if (input.workspaceProjectId) {
+    const p = byId.get(input.workspaceProjectId);
+    if (p) return at(p, "workspace", "Where its workspace is");
   }
   const team = source.team;
   if (team) {
@@ -359,6 +365,8 @@ export const dispatchRecordSchema = z.object({
   prNumber: z.number().int().positive().nullable(),
   title: z.string().max(200),
   agentLabel: z.string().max(200),
+  /** The dispatch's own agent pick (the Agent chip), kept so a queued retry starts the same agent. */
+  agent: actionAgentSchema.nullable().default(null),
   promptHash: z.string().max(16),
   /** The agent's first message, kept only until it is sent (a queued dispatch resends it after a restart). */
   prompt: z.string().max(INSTRUCTIONS_MAX + BODY_MAX_BYTES * 2 + 4096).nullable(),
@@ -401,6 +409,33 @@ export const recentRecords = (records: Readonly<Record<string, DispatchRecord>>,
 /** The waits before each retry of a dispatch Paseo couldn't take; then every last one. */
 export const retryDelay = (attempts: number) => RETRY_MS[Math.min(Math.max(attempts - 1, 0), RETRY_MS.length - 1)];
 
+// ---------- what New's dialog reads ----------
+
+export type ExistingWorkspace = { workspaceId: string; title: string; state: string; projectId?: string | null };
+/** Where a listed issue would go and whether a workspace already has it (New's list rows). */
+export type SourceRoute = { project: string | null; guess: boolean; existing: ExistingWorkspace | null };
+/** The preview: everything a dispatch would do (the dialog's right pane, an agent's dry run). */
+export type DispatchPlan = {
+  source: DispatchSource;
+  action: { id: string; name: string } | null;
+  /** The actions this source offers, in order: the first is ↵, the second ⌥↵. */
+  actions: { id: string; name: string; icon: string; description: string }[];
+  where: Where;
+  base: { name: string; reason: string } | null;
+  branch: string | null;
+  title: string;
+  workspace: "worktree" | "local";
+  agent: string;
+  /** The agent as resolved (provider, model, mode, thinking) and whether it is the default, for the Agent chip. */
+  agentPick: { picked: ActionAgent | null; isDefault: boolean };
+  instructions: string;
+  hash: string;
+  existing: ExistingWorkspace | null;
+  blockers: string[];
+};
+/** What New lists when it opens (follow.dispatch-sources). */
+export type DispatchSources = { linear: LinearList; routes: Record<string, SourceRoute>; recent: DispatchRecord[] };
+
 // ---------- RPC inputs (shared/contracts.ts, the agent tools) ----------
 
 /** One dispatch's inputs: a source and what the developer changed in the dialog (everything else is resolved). */
@@ -413,6 +448,8 @@ export const dispatchInputSchema = z.strictObject({
   title: z.string().trim().min(1).max(200).optional(),
   workspace: z.enum(["worktree", "local"]).optional(),
   note: z.string().max(4000).optional(),
+  /** This dispatch's agent, over the action's own and New's default (the dialog's Agent chip). */
+  agent: actionAgentSchema.optional(),
 });
 export const actionChangeSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("upsert"), action: dispatchActionSchema.omit({ by: true, builtin: true }) }),

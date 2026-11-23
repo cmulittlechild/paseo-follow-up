@@ -372,6 +372,8 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   usageLive: z.boolean(),
   /** Catch up's More context asks (pushed when one is asked or answered); absent from an older worker. */
   context: z.array(contextRequestSchema).optional(),
+  /** New's recent dispatches (Home's row: in progress, failed, Undo); absent from an older worker. */
+  dispatches: z.array(dispatchRecordSchema).optional(),
   /** Whether any repository has PR statistics (on or paused): Home's PR stats icon shows only then. Absent from an older worker. */
   prStats: z.boolean().optional(),
 }));

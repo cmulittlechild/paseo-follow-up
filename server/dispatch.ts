@@ -7,9 +7,10 @@ import {
   ACTIONS_MAX, KIND_WORD, LIST_SHOWN, RECORDS_MAX, UNDO_WINDOW_MS, actionsFor, baseReason, branchFor, dispatchFileSchema, dispatchRecordSchema,
   effectiveActions, emptyDispatchFile, linearSource, parseSource, recentRecords, renderAction, resolveWhere, retryDelay, textHash, titleFor,
   undoable, validateAction, builtinAction, BUILTIN_IDS,
-  type BuiltinId, type DispatchAction, type DispatchFile, type DispatchRecord, type DispatchSource, type Where, type WhereProject,
+  type ActionAgent, type BuiltinId, type DispatchPlan, type ExistingWorkspace, type SourceRoute, type DispatchAction, type DispatchFile, type DispatchRecord, type DispatchSource, type Where, type WhereProject,
 } from "../shared/dispatch";
 import type { LinearIssue } from "../shared/linear-issues";
+export type { DispatchPlan, ExistingWorkspace, SourceRoute } from "../shared/dispatch";
 import type { LinearList } from "./linear-issues";
 
 /**
@@ -31,7 +32,6 @@ export class DispatchStore extends JsonFileStore<DispatchFile> {
 }
 
 export type DispatchProject = WhereProject & { path: string };
-export type ExistingWorkspace = { workspaceId: string; title: string; state: string };
 type WorkspaceHandle = { id: string; agents: { create(o: Record<string, unknown>): Promise<{ id: string }> } };
 /** The slice of the plugin's Paseo API a dispatch uses. Typed loosely so tests can pass a fake. */
 export type DispatchPaseo = {
@@ -40,7 +40,8 @@ export type DispatchPaseo = {
     archive(workspaceId: string): Promise<unknown>;
   };
 };
-export type AgentChoice = { config: Record<string, unknown>; label: string };
+/** `picked`: the resolved provider/model/mode/thinking, so the dialog's Agent chip opens on it; `isDefault`: New's default, no override. */
+export type AgentChoice = { config: Record<string, unknown>; label: string; picked?: ActionAgent; isDefault?: boolean };
 export type GithubItem = { title: string; body: string | null; state: string | null };
 
 export type DispatchDeps = {
@@ -82,23 +83,11 @@ export type DispatchInput = {
   title?: string;
   workspace?: "worktree" | "local";
   note?: string;
+  agent?: ActionAgent;
 };
-export type DispatchPlan = {
-  source: DispatchSource;
-  action: { id: string; name: string } | null;
-  /** The actions this source offers, in order: the first is ↵, the second ⌥↵. */
-  actions: { id: string; name: string; icon: string; description: string }[];
-  where: Where;
-  base: { name: string; reason: string } | null;
-  branch: string | null;
-  title: string;
-  workspace: "worktree" | "local";
-  agent: string;
-  instructions: string;
-  hash: string;
-  existing: ExistingWorkspace | null;
-  blockers: string[];
-};
+
+/** The action with this dispatch's own agent pick laid over its own. */
+const withAgent = (action: DispatchAction, pick: ActionAgent | null | undefined): DispatchAction => pick ? { ...action, agent: pick } : action;
 
 const PASEO_DOWN = /ECONNREFUSED|ECONNRESET|EPIPE|not connected|disconnected|socket (hang up|closed)|websocket|connection (closed|lost|refused)|daemon (is )?(not running|unreachable)|timed? ?out/i;
 /** A create that failed because Paseo couldn't be reached (retry later), not because Paseo refused it. */
@@ -133,8 +122,19 @@ export class DispatchService {
   }
   /** What New lists when it opens: the developer's Linear issues (one shared read a minute) and the latest dispatches. */
   async sources(o: { fresh?: boolean; query?: string } = {}) {
-    const [linear, file] = await Promise.all([o.query ? this.d.linear.search(o.query) : this.d.linear.list({ limit: LIST_SHOWN, fresh: o.fresh }), this.d.store.read()]);
-    return { linear, recent: recentRecords(file.records, 3).map(r => this.view(r)) };
+    const [linear, file, projects, learned] = await Promise.all([
+      o.query ? this.d.linear.search(o.query) : this.d.linear.list({ limit: LIST_SHOWN, fresh: o.fresh }), this.d.store.read(),
+      this.d.projects().catch(() => [] as DispatchProject[]), this.d.learned().catch(() => ({})),
+    ]);
+    // Each row's "→ project" (or "→ which project?") and its live workspace, so the list says where ↵ would go.
+    const routes: Record<string, SourceRoute> = {};
+    await Promise.all(linear.issues.map(async issue => {
+      const source = linearSource(issue);
+      const existing = await this.d.existing(source).catch(() => null);
+      const where = resolveWhere({ source, projects, picked: null, rules: file.rules, learned, lastProjectId: file.lastProjectId, workspaceProjectId: existing?.projectId ?? null, noTeam: file.noTeam });
+      routes[issue.key] = { project: where.projectName, guess: where.guess, existing: existing ? { workspaceId: existing.workspaceId, title: existing.title, state: existing.state } : null };
+    }));
+    return { linear, routes, recent: recentRecords(file.records, 3).map(r => this.view(r)) };
   }
   records(): Promise<DispatchRecord[]> { return this.d.store.read().then(f => recentRecords(f.records, RECORDS_MAX).map(r => this.view(r))); }
   private view(r: DispatchRecord): DispatchRecord { return { ...r, prompt: null }; }
@@ -169,7 +169,8 @@ export class DispatchService {
     if (input.actionId && !action) blockers.push(`No action "${input.actionId}". dispatch_actions lists them.`);
     else if (action && !action.appliesTo.includes(source.kind === "pr" ? "pr" : "issue")) blockers.push(`${action.name} isn't offered for a ${KIND_WORD[source.kind]}.`);
     else if (!action) blockers.push("No action is shown. Turn one on in Settings → New work.");
-    const where = resolveWhere({ source, projects, picked: input.projectId ?? null, rules: file.rules, learned: await this.d.learned().catch(() => ({})), lastProjectId: file.lastProjectId, noTeam: file.noTeam });
+    const existing = await this.d.existing(source).catch(() => null);
+    const where = resolveWhere({ source, projects, picked: input.projectId ?? null, rules: file.rules, learned: await this.d.learned().catch(() => ({})), lastProjectId: file.lastProjectId, workspaceProjectId: existing?.projectId ?? null, noTeam: file.noTeam });
     if (!where.projectId) blockers.push(`${where.reason}${where.candidates.length ? ` Projects: ${where.candidates.slice(0, 8).map(c => `${c.name} (${c.id})`).join(", ")}.` : ""}`);
     const project = where.projectId ? projects.find(p => p.id === where.projectId) ?? null : null;
     const pr = source.kind === "pr";
@@ -188,12 +189,13 @@ export class DispatchService {
     }, input.note) : "";
     const gate = await this.d.gate?.(actor).catch(() => null);
     if (gate) blockers.push(gate);
-    const agent = action ? await this.d.agent(action).catch(() => ({ label: "New's default agent", config: {} })) : { label: "", config: {} };
+    const agent: AgentChoice = action ? await this.d.agent(withAgent(action, input.agent)).catch(() => ({ label: "New's default agent", config: {} })) : { label: "", config: {} };
     return {
       source, action: action ? { id: action.id, name: action.name } : null,
       actions: offered.map(a => ({ id: a.id, name: a.name, icon: a.icon, description: a.description })),
-      where, base, branch, title, workspace, agent: agent.label, instructions, hash: textHash(instructions),
-      existing: await this.d.existing(source).catch(() => null), blockers,
+      where, base, branch, title, workspace, agent: agent.label,
+      agentPick: { picked: agent.picked ?? null, isDefault: !input.agent && !action?.agent && agent.isDefault !== false }, instructions, hash: textHash(instructions),
+      existing: existing ? { workspaceId: existing.workspaceId, title: existing.title, state: existing.state } : null, blockers,
     };
   }
 
@@ -214,7 +216,7 @@ export class DispatchService {
     const record: DispatchRecord = dispatchRecordSchema.parse({
       id, at: this.iso(), by: actorBy(actor), source: { kind: plan.source.kind, key: plan.source.key, title: plan.source.title.slice(0, 500), url: plan.source.url },
       actionId: action.id, actionName: action.name, projectId: plan.where.projectId!, projectName: plan.where.projectName!, workspace: plan.workspace,
-      base: plan.base?.name ?? null, branch: plan.branch, prNumber: plan.source.kind === "pr" ? plan.source.number : null, title: plan.title, agentLabel: plan.agent,
+      base: plan.base?.name ?? null, branch: plan.branch, prNumber: plan.source.kind === "pr" ? plan.source.number : null, title: plan.title, agentLabel: plan.agent, agent: input.agent ?? null,
       promptHash: plan.hash, prompt: plan.instructions, state: "queued", step: "Waiting to start", workspaceId: null, agentId: null, error: null, leftBehind: null,
       attempts: 0, nextTryAt: null, undoUntil: null,
     });
@@ -275,7 +277,7 @@ export class DispatchService {
     const act = action ?? effectiveActions(fileNow.actions).find(a => a.id === r.actionId) ?? null;
     let agentId: string;
     try {
-      const choice = act ? await this.d.agent(act) : { config: {}, label: r.agentLabel };
+      const choice = act ? await this.d.agent(withAgent(act, r.agent)) : { config: {}, label: r.agentLabel };
       agentId = (await workspace.agents.create({ config: choice.config, title: r.title, prompt: r.prompt })).id;
     } catch (error) {
       // a-failed-dispatch-leaves-nothing-behind: the workspace just created goes again, as Report an issue's Send does.
