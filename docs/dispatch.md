@@ -85,9 +85,11 @@ sidebar's **New** row, ⌘K **Follow-up: New…** (its title names the key) and 
 `new_shortcut` (⌘⇧N, ⌘⇧O or None). Unset, the key is ⌘⇧N in Paseo's desktop app and ⌘⇧O in a browser tab, because
 Chrome keeps Ctrl/Cmd+Shift+N for a new incognito window and never hands it to a page (`newShortcutPreset`,
 `shared/search-key.ts`); a pick wins everywhere. The key shares Search from anywhere's one capture listener
-(`client/search-key.ts`), and pressing it again closes New. The sidebar row, ⌘K and the key open Home with `?new=<nonce>`
-and Home's host shows the dialog; on Home already (Paseo hands no new params to the screen that's showing) they open it
-in place (`enterNew`, `index.client.tsx`).
+(`client/search-key.ts`), and pressing it again closes New. The Home on screen shows the dialog in place; with none on
+screen (a chat in front, or only a Home Paseo keeps mounted behind) the request waits and Home opens with
+`?new=<nonce>`, whose host shows it (`enterNew`, `index.client.tsx`). Which Home shows it is the host slot's rule
+(`client/host-slot.tsx`, invariant 96 `new-opens-where-you-are`): the one showing it keeps it, else the newest host on
+screen, never a hidden one; Report an issue and Rename title with AI use the same slot.
 
 - **Desktop:** the sources on the left (the field, focused, then My issues: only issues you could start, the first
   preselected; each row says where it would go, or "→ which project?" when New would ask), everything about the selected

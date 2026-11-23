@@ -188,7 +188,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   // ⌘K "Follow-up: Ask the Overseer" opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
   // shared state, so it works whether Home was already open or mounts fresh.
   // New (client/new.tsx): every entry point opens Home with `?new=<nonce>` (and `source` when it carries one).
-  useEffect(() => { if (params.new) openNew(params.source ? { source: params.source } : {}); }, [params.new]); // eslint-disable-line react-hooks/exhaustive-deps
+  // It never navigates again: the request already brought Home here (new-opens-where-you-are).
+  useEffect(() => { if (params.new) openNew(params.source ? { source: params.source } : {}, { navigate: null }); }, [params.new]); // eslint-disable-line react-hooks/exhaustive-deps
   const newLabel = useSyncExternalStore(deps.newKey?.subscribe ?? noSubscribe, deps.newKey?.label ?? noLabel, deps.newKey?.label ?? noLabel);
   const dispatches = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.dispatches, deps.sources.extras.dispatches);
   // New closing may have started one: without the feed, Home reads them then (home-view refreshDispatches).

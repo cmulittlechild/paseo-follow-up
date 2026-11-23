@@ -17,6 +17,7 @@ import { ActionRow, BarBtn, Choices, focusRing } from "./action-row";
 import { Spinner } from "./motion";
 import { pushToast } from "./toast-store";
 import { tint, withAlpha, type Colors, type Theme } from "./theme";
+import { createHostSlot } from "./host-slot";
 
 /**
  * New (docs/dispatch.md): start work from a Linear issue, a GitHub issue or PR, a link or a sentence. One dialog over
@@ -27,36 +28,27 @@ import { tint, withAlpha, type Colors, type Theme } from "./theme";
  * selection, and polls one record only while a dispatch is starting.
  */
 
-// ---------- the request (like the Report sheet: the first mounted host shows it) ----------
+// ---------- the request (new-opens-where-you-are: the host on screen shows it, client/host-slot.tsx) ----------
 
 export type NewRequest = { source?: string };
-let current: (NewRequest & { token: number }) | null = null;
-let token = 0;
-const listeners = new Set<() => void>();
-let version = 0;
-const emit = () => { version++; for (const l of listeners) l(); };
-const hosts: number[] = [];
-let hostIds = 0;
-let fallback: ((r: NewRequest) => void) | null = null;
-
-/** Opens New wherever a host is mounted (Home); otherwise asks the plugin to open Home, which mounts one. */
-export function openNew(request: NewRequest = {}): void {
-  current = { ...request, token: ++token };
-  if (hosts.length) emit(); else fallback?.(request);
-}
-/** index.client.tsx: how to reach a host when none is mounted. */
-export function setNewFallback(open: ((r: NewRequest) => void) | null) { fallback = open; }
-export const closeNew = () => { current = null; emit(); };
-/** Whether a host (Home) is mounted: then openNew shows New in place. */
-export const newHostMounted = () => hosts.length > 0;
+const slot = createHostSlot<NewRequest>();
+/**
+ * Opens New on the Home on screen. With none on screen (a chat in front, or only a Home Paseo keeps mounted behind),
+ * the request is kept and `navigate` (default: the fallback) opens Home; its host shows it. Home passes
+ * `navigate: null` for the `new` param it was opened with, so a request never navigates twice.
+ */
+export const openNew = (request: NewRequest = {}, opts?: { navigate?: ((r: NewRequest) => void) | null }) => slot.open(request, opts);
+/** index.client.tsx: how to reach a host when none is on screen. */
+export const setNewFallback = (open: ((r: NewRequest) => void) | null) => slot.setFallback(open);
+export const closeNew = () => slot.close();
 /** Test seam. */
-export const newRequestNow = () => current;
-const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
-/** Whether New is showing (the sidebar row's active state, the key toggling it). */
-export function useNewOpen(): boolean {
-  useSyncExternalStore(subscribe, () => version, () => version);
-  return !!current;
-}
+export const newRequestNow = () => slot.now();
+/** Whether New is on screen now: the New key closes it only then, else it opens New where the developer is. */
+export const newShowing = () => slot.showing();
+/** Whether New is open (the sidebar row's active state, the key toggling it). */
+export const useNewOpen = () => slot.useOpen();
+/** Whether a request is open, without subscribing (toasts that New would cover). */
+const newIsOpen = () => !!slot.now();
 
 // ---------- small pieces ----------
 
@@ -602,24 +594,21 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
 }
 
 /**
- * Mount on Home: the first mounted host shows New while it's open. Desktop web: a dialog over everything (fixed, one
+ * Mount on Home: the host on screen shows New while it's open (pickNewHost). Desktop web: a dialog over everything (fixed, one
  * scrim across Paseo's sidebar too). Phones: a full screen over Home.
  */
 export function NewHost({ theme, layout, navigation, openSettings }: { theme: Theme; layout: PluginHostProps["layout"]; navigation?: { openWorkspace(i: { workspaceId: string }): void }; openSettings?: () => void }) {
-  const [id] = useState(() => ++hostIds);
-  useEffect(() => { hosts.push(id); emit(); return () => { hosts.splice(hosts.indexOf(id), 1); emit(); }; }, [id]);
-  useSyncExternalStore(subscribe, () => version, () => version);
+  const { request, probe: anchor } = slot.useHost();
   const win = useWindowDimensions();
-  const request = current;
-  if (!request || hosts[0] !== id) return null;
+  if (!request) return anchor;
   const c = theme.colors;
   const dialog = <NewDialog key={request.token} request={request} theme={theme} layout={layout} navigation={navigation} onClose={closeNew} openSettings={openSettings && (() => { closeNew(); openSettings(); })} />;
-  if (layout.compact) return <View role="dialog" aria-modal aria-label="New" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View>;
+  if (layout.compact) return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View></>;
   const width = Math.min(1060, win.width - 64), height = Math.min(796, win.height - 64);
-  return <View role="dialog" aria-modal aria-label="New" style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
+  return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
     <Pressable accessible={false} focusable={false} importantForAccessibility="no" onPress={closeNew} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.42)" }} />
     <View style={{ width, height, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface0, borderWidth: 1, borderColor: c.border, boxShadow: "0px 24px 64px rgba(0,0,0,0.28)" } as ViewStyle}>{dialog}</View>
-  </View>;
+  </View></>;
 }
 
 // ---------- Home's row for recent dispatches ----------
@@ -642,8 +631,8 @@ export function DispatchRows({ records, theme, compact, navigation }: { records:
     for (const r of records) {
       const before = seen.current.get(r.id);
       seen.current.set(r.id, r.state);
-      if (before && before !== r.state && r.state === "created" && !current) pushToast("success", `Started ${r.title}`, recordLine(r, Date.now()).undo ? [{ label: "Undo", onPress: () => void undo(r) }] : [], { durationMs: 10_000 });
-      if (before && before !== r.state && r.state === "failed" && !current) pushToast("warning", `${r.title} didn't start: ${r.error ?? ""}`);
+      if (before && before !== r.state && r.state === "created" && !newIsOpen()) pushToast("success", `Started ${r.title}`, recordLine(r, Date.now()).undo ? [{ label: "Undo", onPress: () => void undo(r) }] : [], { durationMs: 10_000 });
+      if (before && before !== r.state && r.state === "failed" && !newIsOpen()) pushToast("warning", `${r.title} didn't start: ${r.error ?? ""}`);
     }
   }, [records, undo]);
   if (!shown.length) return null;
