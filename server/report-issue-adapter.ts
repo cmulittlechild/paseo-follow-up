@@ -54,7 +54,7 @@ async function stateSection(d: FollowUpReportDeps): Promise<DiagnosticsSection> 
     const open = tracked.flatMap(w => w.prs.filter(p => p.snapshot?.state === "OPEN"));
     rows.push(["Tracked workspaces", `${tracked.length} (${tracked.filter(w => w.enable_auto_sends).length} with Auto-send)`]);
     rows.push(["Open PRs followed", `${open.length} in ${new Set(open.map(p => p.repo.toLowerCase())).size} repositories`]);
-    const stuck = tracked.flatMap(w => w.batches.filter(b => ["blocked", "uncertain"].includes(b.state)));
+    const stuck = tracked.flatMap(w => w.batches.filter(b => ["blocked", "uncertain"].includes(b.state) && !b.movedOn));
     if (stuck.length) rows.push(["Blocked or uncertain batches", String(stuck.length)]);
     const errors = tracked.flatMap(w => w.prs.filter(p => p.error)).length;
     if (errors) rows.push(["PRs that failed to refresh", String(errors)]);

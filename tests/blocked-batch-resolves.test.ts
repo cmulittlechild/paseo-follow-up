@@ -61,8 +61,10 @@ test("a blocked review batch leaves Needs you once its PR merges (no hand edit)"
   f.advance(60_000); await f.engine.tick();
   const w = await f.get();
   const b = w.batches.find(b => b.id === id)!;
-  assert.notEqual(b.state, "blocked");
-  assert.match(b.result, /#1 merged/);
+  // The agent's answer keeps its outcome and words (invariant 104); it moved on, which takes it out of Needs you.
+  assert.equal(b.result, "The build tool is missing on this machine.");
+  assert.equal(b.movedOn?.why, "gone");
+  assert.match(b.movedOn!.reason, /#1 merged/);
   assert.deepEqual(kinds(w, f.now()), [], "nothing it asked for still applies");
   assert.equal(batchView(w, f.now())?.kind, "finish", "what's left is the Done check, not a stuck repair");
   assert.deepEqual(violations(w, f.now()), []);
@@ -74,8 +76,8 @@ test("a blocked batch settles when the condition behind it is gone, though the P
   f.observe("example/app#1", snapshot({ reviewDecision: "APPROVED" }));
   f.advance(60_000); await f.engine.tick();
   const w = await f.get();
-  assert.equal(w.batches.find(b => b.id === id)!.state, "cancelled");
-  assert.match(w.batches.find(b => b.id === id)!.result, /GitHub no longer shows/);
+  assert.equal(w.batches.find(b => b.id === id)!.movedOn?.why, "gone");
+  assert.match(w.batches.find(b => b.id === id)!.movedOn!.reason, /GitHub no longer shows/);
   assert.deepEqual(kinds(w, f.now()), []);
 });
 
@@ -110,7 +112,7 @@ test("the stale batch already in saved state clears at start-up, even in a works
   const f = await fixture(t, w);
   await f.engine.recover();
   const b = (await f.get()).batches.find(b => b.id === "old")!;
-  assert.equal(b.state, "cancelled");
+  assert.equal(b.movedOn?.why, "gone");
   assert.equal(b.settledAt, new Date(clock - 7_000_000).toISOString(), "the blocker's own time stays in Activity");
 });
 
