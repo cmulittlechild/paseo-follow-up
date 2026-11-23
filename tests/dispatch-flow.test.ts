@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rm, testStore } from "./support/store-temp-dir";
 import { DispatchService, DispatchStore, type DispatchDeps, type DispatchPaseo, type DispatchProject } from "../server/dispatch";
-import { RETRY_MS, UNDO_WINDOW_MS } from "../shared/dispatch";
+import { RETRY_MS, UNDO_WINDOW_MS, builtinAction } from "../shared/dispatch";
+import { isEdited } from "../shared/new-settings";
 import type { LinearIssue } from "../shared/linear-issues";
 import { AgentActions } from "../server/agent-actions";
 
@@ -88,7 +89,8 @@ test("a dispatch records, replies, then creates the worktree and starts the agen
     source: { kind: "worktree", projectId: "web", action: "branch-off", baseBranch: "main", branchName: "alice/acme-142-retry-failed-charges" },
   });
   assert.match(String(fake.agents[0].prompt), /ACME-142/);
-  assert.match(String(fake.agents[0].prompt), /Charges that fail are never retried\./);
+  // The built-in references the issue and the agent reads it; the description is never pasted.
+  assert.doesNotMatch(String(fake.agents[0].prompt), /Charges that fail are never retried/);
   const [done] = await service.records();
   assert.deepEqual([done.state, done.workspaceId, done.agentId, done.prompt], ["created", "ws-1", "agent-1", null]);
   assert.equal(done.undoUntil, new Date(clock.now + UNDO_WINDOW_MS).toISOString());
@@ -231,7 +233,7 @@ test("nothing is created without a dispatch: preview and sources read only, and 
   await assert.rejects(service.dispatch({ source: "ACME-142", projectId: "web", note: "changed since", expectHash: picked.hash }), /changed since the dry run/);
   await service.settle();
   assert.deepEqual([fake.creates.length, (await service.records()).length], [0, 0]);
-  assert.deepEqual(linearCalls, ["list", "get ACME-142", "get ACME-142", "get ACME-142", "get ACME-142"]);
+  assert.deepEqual(linearCalls, ["list", "list", "list", "list", "list"], "no get_issue: no action renders {body}, the list row has the title");
 });
 
 test("the Overseer's gate blocks its dispatch with the gate's reason", async t => {
@@ -239,6 +241,32 @@ test("the Overseer's gate blocks its dispatch with the gate's reason", async t =
   await assert.rejects(service.dispatch({ source: "ACME-142", projectId: "web" }, { kind: "agent", agentId: "overseer-1", title: null }), /Ask the developer first/);
   await service.settle();
   assert.equal(fake.creates.length, 0);
+});
+
+test("the agent reads the source itself: no issue body in the first message, a typed task keeps its words, {body} still works", async t => {
+  const { service, linearCalls } = await setup(t);
+  const issue = await service.preview({ source: "ACME-142", projectId: "web" });
+  assert.match(issue.instructions, /^Work on ACME-142 “Retry failed charges” \(https:/);
+  assert.doesNotMatch(issue.instructions, /never retried/);
+  const typed = await service.preview({ source: "Retry failed charges. Use exponential backoff, at most 5 tries.", projectId: "web" });
+  assert.match(typed.instructions, /Use exponential backoff, at most 5 tries\./, "a typed task has no other home: its words stay");
+  assert.ok(!linearCalls.some(c => c.startsWith("get")), "no extra get_issue");
+  // A developer's own action can still paste the description, for an agent without a tracker tool.
+  await service.setActions({ op: "upsert", action: { id: "paste", name: "Paste it", icon: "search", description: "", instructions: "Fix {key}.\n\n{body}", agent: null, workspace: "worktree", branch: "title", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } });
+  const pasted = await service.preview({ source: "ACME-142", projectId: "web", actionId: "paste" });
+  assert.match(pasted.instructions, /Charges that fail are never retried\./);
+  assert.ok(linearCalls.includes("get ACME-142"), "{body} in use: the description is read");
+});
+
+test("a saved built-in with the old pasted-body text reads as the current built-in; an edited one keeps its text", async t => {
+  const { service, deps } = await setup(t);
+  const old = { ...builtinAction("pr"), instructions: builtinAction("pr").instructions.replace(/\{words\}$/, "{body}") };
+  const edited = { ...builtinAction("plan"), instructions: "My own plan for {key}.\n\n{body}" };
+  await deps.store.mutate(f => { f.actions = [old, edited]; });
+  const { actions } = await service.actions();
+  assert.equal(actions.find(a => a.id === "pr")!.instructions, builtinAction("pr").instructions);
+  assert.equal(actions.find(a => a.id === "plan")!.instructions, edited.instructions);
+  assert.equal(isEdited(actions.find(a => a.id === "pr")!), false, "never edited: no Edited badge, no Reset");
 });
 
 test("the gate sees the source's Linear key, so the Overseer's dispatch is scoped to what the developer approved", async t => {

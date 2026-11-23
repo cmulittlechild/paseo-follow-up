@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { approvalCovers, startApproval, startRefusal } from "../shared/overseer";
+import { approvalCovers, developerNote, startApproval, startRefusal } from "../shared/overseer";
 import { briefAnswer, briefAnswers } from "../shared/brief";
 
 // One corpus of how the developer asks the Overseer for new work, and how they don't
@@ -108,4 +108,16 @@ test("the refusal names what counts and one plain ask, never 'only the card'", (
     assert.doesNotMatch(r, /only (approval|an answer|a click) (from|on) (its|your)( own)? card|card only/i);
   }
   assert.match(startRefusal(startApproval("start ACME-14")!, "ACME-12"), /approved ACME-14, not ACME-12/);
+});
+
+test("the developer's note: their words minus the keys and the request itself", () => {
+  const cases: [string, string | null][] = [
+    ["Can you create workspaces for these: ACME-12 ACME-14", null],
+    ["Can you create workspaces for these:\nACME-12\nACME-14", null],
+    ["start ACME-12, focus on the API timeout first", "focus on the API timeout first"],
+    ["go ahead, and keep the old endpoint working", "keep the old endpoint working"],
+    ["start ACME-12. The flaky test is in billing", "The flaky test is in billing"],
+    ["yes", null],
+  ];
+  for (const [message, want] of cases) assert.equal(developerNote(message, "ACME-12"), want, message);
 });

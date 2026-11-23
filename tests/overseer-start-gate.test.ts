@@ -49,7 +49,7 @@ async function fixture(t: { after(fn: () => unknown): void }) {
   /** The developer clicked the Overseer's card: the answer is in the ledger as theirs. */
   const clicked = (text: string) => { ledger.push({ agentId: ov, messageId: `answer-${ledger.length}`, at: new Date(NOW).toISOString(), by: "developer" }); tail = [{ type: "user_message", text, messageId: `answer-${ledger.length - 1}` }]; };
   const start = async (key: string) => await overseer.act(paseo, ov, "start_workspace", { task: `${key} fix it`, project: "acme-app", linear_key: key }) as { planId: string | null; blockers: string[] };
-  return { typed, typedAfterCard, clicked, start, gate: (key: string | null) => overseer.newWorkspaceGate(paseo, key) };
+  return { typed, typedAfterCard, clicked, start, overseer, paseo, ov, gate: (key: string | null) => overseer.newWorkspaceGate(paseo, key) };
 }
 
 const card = (picks: Record<string, string>) => briefAnswers("Start workspaces for ACME-12 and ACME-14?", [
@@ -125,4 +125,28 @@ test("a typed yes to the Overseer's card approves the keys on that card", async 
   assert.ok((await f.start("ACME-12")).planId);
   assert.ok((await f.start("ACME-14")).planId);
   assert.equal((await f.start("ACME-99")).planId, null);
+});
+
+test("the Overseer's dispatch carries the developer's own words, never its summary of the issue", async t => {
+  const f = await fixture(t);
+  const inputs: Record<string, unknown>[] = [];
+  f.overseer.dispatcher = {
+    preview: async input => { inputs.push(input); return { blockers: [], hash: "h", title: "t", branch: "b", base: { name: "main" }, where: { projectName: "acme-app", projectId: "p" }, instructions: "Work on it." }; },
+    dispatch: async () => ({ dispatchId: "d", record: { title: "t", branch: "b", projectName: "acme-app" } }),
+    projects: async () => [{ id: "p", name: "acme-app" }],
+  };
+  const paraphrase = "ACME-12: the export endpoint times out on large accounts; the issue says to stream rows and add a progress bar.";
+  f.typed("Can you create workspaces for these:\nACME-12\nACME-14");
+  await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: paraphrase, linear_key: "ACME-12" });
+  assert.deepEqual(inputs.at(-1), { source: "ACME-12", actionId: "pr" }, "nothing left of the developer's words: no note");
+  f.typed("start ACME-12, keep the old endpoint working");
+  await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: paraphrase, linear_key: "ACME-12" });
+  assert.deepEqual(inputs.at(-1), { source: "ACME-12", note: "keep the old endpoint working", actionId: "pr" });
+  f.clicked(briefAnswers("Start workspaces?", [{ id: "D1", question: "Start a new workspace for ACME-12?", options: [{ letter: "A", label: "New workspace" }] }], { D1: "A" }, { D1: "only the backend part" }));
+  await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: paraphrase, linear_key: "ACME-12" });
+  assert.deepEqual(inputs.at(-1), { source: "ACME-12", note: "only the backend part", actionId: "pr" }, "a card's note on that decision");
+  // Work with no issue has no other home: its task text is the source.
+  f.typed("open a workspace for the flaky login test");
+  await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: "Fix the flaky login test" });
+  assert.deepEqual(inputs.at(-1), { source: "Fix the flaky login test", actionId: "pr" });
 });

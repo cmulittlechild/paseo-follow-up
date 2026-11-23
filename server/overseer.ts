@@ -12,7 +12,7 @@ import { tailSteps, HOME_GROUPS, type PaseoWorkspaceLite, type TailStep } from "
 import { isOpen as questionOpen } from "../shared/questions";
 import { classify, latestPrompt, ledgerSender, type Sources } from "./inbox-classifier";
 import {
-  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvalCovers, startApproval, startRefusal, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
+  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvalCovers, developerNote, startApproval, startRefusal, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
   overseerStateSchema, pageRows, type DigestFile, routeDecision, scoreCandidates, workspaceTitleFor, workstreams, type OverseerState, type WorkstreamRow,
 } from "../shared/overseer";
 import { overseerPrompt } from "./overseer-prompt-source";
@@ -298,7 +298,7 @@ export class Overseer {
         return { confident, candidates: top, next: confident ? `Send it with send_to_agent to ${top[0].agentId} (${top[0].title}), then tell the developer in one line.` : "Not sure: ask the developer with needs_you kind=decision, these candidates plus \"New workspace\"." };
       }
       case "send_to_agent": return this.send(paseo, s, args as { agentId: string; text: string; reply_to_ask?: boolean });
-      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.dispatcher ? this.planDispatch(this.dispatcher, s, args) : this.planWorkspace(paseo, s, args);
+      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.dispatcher ? this.planDispatch(paseo, this.dispatcher, s, args) : this.planWorkspace(paseo, s, args);
       case "rerank": { if (!this.d.rerank) throw new Error("Re-ranking isn't available on this host."); return this.d.rerank(); }
     }
   }
@@ -408,12 +408,17 @@ export class Overseer {
    * and the same records, Undo and failure handling as New. The developer's words go as the source, or as the note
    * when a Linear key is given.
    */
-  private async planDispatch(dispatcher: OverseerDispatch, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
-    if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
+  private async planDispatch(paseo: OverseerPaseo, dispatcher: OverseerDispatch, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
+    if (!args.task && !args.linear_key) throw new Error("start_workspace: give linear_key, or task (the developer's words for work with no issue).");
     const wanted = args.project?.toLowerCase();
     const project = wanted ? (await dispatcher.projects().catch(() => [])).find(p => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted) : undefined;
     const key = args.linear_key?.toUpperCase() ?? linearKeys(args.task)[0] ?? null;
-    const input = { source: key ?? args.task, ...(key && args.task.trim().toUpperCase() !== key ? { note: args.task } : {}), actionId: "pr", ...(project ? { projectId: project.id } : {}), ...(args.base ? { base: args.base } : {}), ...(args.title ? { title: args.title } : {}) };
+    // The developer's words go to the new agent, never the Overseer's paraphrase of the issue: an issue is referenced
+    // by its key and the agent reads it itself (the-overseer-starts-what-the-developer-asked). Work with no issue
+    // has no other home, so its task text is the source.
+    const note = developerNote(await this.lastDeveloperMessage(paseo, s.agentId!), key);
+    const source = key ?? args.task!;
+    const input = { source, ...(note && note !== source.trim() ? { note } : {}), actionId: "pr", ...(project ? { projectId: project.id } : {}), ...(args.base ? { base: args.base } : {}), ...(args.title ? { title: args.title } : {}) };
     const actor = agentActor(s.agentId!, OVERSEER_TITLE);
     const p = await dispatcher.preview(input, actor);
     const blockers = [...p.blockers];
@@ -429,7 +434,8 @@ export class Overseer {
 
   /** Dry run: the workspace Follow-up would start. Runs only after the developer asked for or approved it. */
   private async planWorkspace(paseo: OverseerPaseo, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
-    if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
+    if (!args.task && !args.linear_key) throw new Error("start_workspace: give linear_key, or task (the developer's words for work with no issue).");
+    const task = args.task ?? args.linear_key!;
     const [lites, projects] = await Promise.all([this.d.workspaces(true), listProjects(paseo)]);
     const wanted = args.project?.toLowerCase();
     // Without a project, the one most of the developer's workspaces live in.
@@ -437,15 +443,15 @@ export class Overseer {
     for (const l of lites) if (l.projectId && l.id !== s.workspaceId) counts.set(l.projectId, (counts.get(l.projectId) ?? 0) + 1);
     const busiest = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
     const project = wanted ? projects.find(p => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted) : projects.find(p => p.id === busiest);
-    const key = args.linear_key?.toUpperCase() ?? linearKeys(args.task)[0] ?? null;
-    const title = args.title ?? workspaceTitleFor(args.task, key);
+    const key = args.linear_key?.toUpperCase() ?? linearKeys(task)[0] ?? null;
+    const title = args.title ?? workspaceTitleFor(task, key);
     const branch = branchFor(title);
     const base = args.base ?? "main";
     const blockers: string[] = [];
     if (!project) blockers.push(projects.length ? `Pick a project: ${projects.slice(0, 8).map(p => p.name).join(", ")}.` : "No Paseo project is available.");
     const gate = await this.newWorkspaceGate(paseo, key);
     if (gate) blockers.push(gate);
-    const plan = { title, branch, base, project: project?.name ?? null, firstMessage: forwardText(args.task) };
+    const plan = { title, branch, base, project: project?.name ?? null, firstMessage: await this.firstMessage(paseo, s, task, key) };
     const planId = blockers.length ? null : randomUUID();
     if (planId) this.plans.set(planId, { expiresAt: this.now() + 10 * 60_000, run: async () => {
       const w = await paseo.workspaces.create({ title, source: { kind: "worktree", projectId: project!.id, action: "branch-off", baseBranch: base, branchName: branch } });
@@ -455,6 +461,12 @@ export class Overseer {
       return { started: true, workspaceId: w.id, agentId: agent.id, title, branch };
     } });
     return { dryRun: true, planId, plan, blockers, next: planId ? `Call start_workspace with confirm=true and planId=${planId}. Then tell the developer in one line.` : "Blocked; resolve the blockers first." };
+  }
+  /** The fallback's first message: an issue by its key plus the developer's own words; work with no issue, its task. */
+  private async firstMessage(paseo: OverseerPaseo, s: OverseerState, task: string, key: string | null): Promise<string> {
+    const note = developerNote(await this.lastDeveloperMessage(paseo, s.agentId!), key);
+    if (!key) return forwardText(note && note !== task.trim() ? `${task}\n\n${note}` : task);
+    return forwardText(`Work on ${key}. Read the issue and its comments yourself.${note ? `\n\n${note}` : ""}`);
   }
   private async confirm(planId: string | undefined) {
     if (!planId) throw new Error("start_workspace: confirm needs the planId from the dry run.");

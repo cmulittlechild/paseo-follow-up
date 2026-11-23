@@ -6,7 +6,7 @@ import { actorBy } from "../shared/actor";
 import {
   ACTIONS_MAX, KIND_WORD, LIST_SHOWN, RECORDS_MAX, UNDO_WINDOW_MS, actionsFor, baseReason, branchFor, dispatchFileSchema, dispatchRecordSchema,
   effectiveActions, emptyDispatchFile, linearSource, parseSource, recentRecords, renderAction, resolveWhere, retryDelay, textHash, titleFor,
-  undoable, validateAction, builtinAction, BUILTIN_IDS,
+  undoable, usesBody, validateAction, builtinAction, BUILTIN_IDS,
   type ActionAgent, type BuiltinId, type DispatchPlan, type ExistingWorkspace, type SourceRoute, type DispatchAction, type DispatchFile, type DispatchRecord, type DispatchSource, type Where, type WhereProject,
 } from "../shared/dispatch";
 import type { LinearIssue } from "../shared/linear-issues";
@@ -151,9 +151,15 @@ export class DispatchService {
   private view(r: DispatchRecord): DispatchRecord { return { ...r, prompt: null }; }
 
   /** The source as read: a Linear issue from the open list's cache or one get_issue, a GitHub item in process. */
-  async readSource(raw: string): Promise<DispatchSource> {
+  async readSource(raw: string, o: { body?: boolean } = {}): Promise<DispatchSource> {
     const source = parseSource(raw);
     if (source.kind === "linear" && source.key) {
+      // No action renders the description (`{body}`): the open list's row has the key, title and url the agent needs,
+      // and the agent reads the issue itself. No extra get_issue.
+      if (o.body === false) {
+        const listed = (await this.d.linear.list({ limit: LIST_SHOWN }).catch(() => null))?.issues.find(i => i.key === source.key);
+        if (listed) return linearSource(listed);
+      }
       // The list carries no description: a pasted key is read once (one get_issue), with it.
       const issue = await this.d.linear.get(source.key).catch(() => undefined);
       if (issue) return linearSource(issue);
@@ -172,7 +178,8 @@ export class DispatchService {
   /** The preview: everything a dispatch would do with these inputs, and what blocks it. Reads only. */
   async preview(input: DispatchInput, actor: Actor = { kind: "developer" }): Promise<DispatchPlan> {
     const raw = input.source.trim();
-    const [source, file, projects] = await Promise.all([raw ? this.readSource(raw) : Promise.resolve(parseSource("")), this.d.store.read(), this.d.projects().catch(() => [] as DispatchProject[])]);
+    const [file, projects] = await Promise.all([this.d.store.read(), this.d.projects().catch(() => [] as DispatchProject[])]);
+    const source = raw ? await this.readSource(raw, { body: usesBody(effectiveActions(file.actions)) }) : parseSource("");
     const blockers: string[] = [];
     if (!raw) blockers.push("Give a source: a Linear key or link, a GitHub issue or PR link, or a sentence.");
     const offered = actionsFor(effectiveActions(file.actions), source.kind);
@@ -195,7 +202,7 @@ export class DispatchService {
     const title = input.title?.trim() || titleFor(source);
     const repo = source.repo ?? project?.repo ?? project?.name ?? "";
     const instructions = action ? renderAction(action, {
-      title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, kind: KIND_WORD[source.kind],
+      title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, words: source.kind === "text" ? source.body : "", kind: KIND_WORD[source.kind],
       team: source.team, repo, base: base?.name ?? "", branch: branch ?? (pr ? `the PR's branch` : ""),
     }, input.note) : "";
     const gate = await this.d.gate?.(actor, source.kind === "linear" ? source.key ?? null : null).catch(() => null);

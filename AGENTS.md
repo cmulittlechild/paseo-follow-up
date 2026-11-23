@@ -1168,10 +1168,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    answer approves exactly the decisions answered New workspace. A key the developer didn't approve, or declined (Skip,
    "not ACME-14"), is refused by name; questions ("which open workspaces need me?") and refusals ("don't start a
    workspace yet") approve nothing. The refusal says what counts and suggests one plain ask, never that only the card
-   counts. Deterministic: no model call. 2026-11-23, the developer on 2.4.0-beta.4: "Can you create workspaces for
+   counts. Deterministic: no model call. The new agent gets the issue by its key and the developer's own words
+   (`developerNote`), never the Overseer's paraphrase; New's built-ins reference the source and never paste its body
+   (`{body}` only in an action that asks for it). 2026-11-23, the developer on 2.4.0-beta.4: "Can you create workspaces for
    these" with two keys was refused (the gate's regex needed `\bworkspace\b`, which "workspaces" fails), and the
    Overseer put up a card asking again; the same regex said yes to "which open workspace…" and let any approval start
-   any key. Guarded by `tests/start-approval-corpus.test.ts`, `tests/overseer-start-gate.test.ts` and
+   any key. The same day: "the overseer read the linear issues and wrote their contents in the requests to the agents…
+   no need to chew their food for them". Guarded by `tests/start-approval-corpus.test.ts`, `tests/overseer-start-gate.test.ts` and
    `tests/dispatch-flow.test.ts`.
 
 ## Bugs

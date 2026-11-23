@@ -285,7 +285,7 @@ test("start_workspace runs as New's Create PR once New's dispatch is wired (an a
   const plan = await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: "ACME-1400 fix the CSV export", project: "acme-app" }) as { planId: string; plan: { project: string; firstMessage: string } };
   assert.ok(plan.planId);
   assert.deepEqual([plan.plan.project, plan.plan.firstMessage], ["acme-app", "Work on ACME-1400."]);
-  assert.deepEqual(calls[0].input, { source: "ACME-1400", note: "ACME-1400 fix the CSV export", actionId: "pr", projectId: "p" });
+  assert.deepEqual(calls[0].input, { source: "ACME-1400", actionId: "pr", projectId: "p" }, "the issue by its key; the Overseer's task text is never the note");
   assert.deepEqual(calls[0].actor, { kind: "agent", agentId: f.ov, title: "Overseer" });
   const done = await f.overseer.act(f.paseo, f.ov, "start_workspace", { confirm: true, planId: plan.planId }) as { started: boolean; dispatchId: string };
   assert.deepEqual([done.started, done.dispatchId], [true, "d1"]);

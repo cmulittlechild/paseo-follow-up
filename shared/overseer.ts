@@ -397,6 +397,31 @@ export function startApproval(message: string | null | undefined, proposal?: str
   return null;
 }
 
+/**
+ * The developer's own words for the new agent (the note on the Overseer's dispatch): their latest message minus the
+ * keys it names and the "start these" request itself, or null when nothing else is left. For a card answer, the note
+ * the developer wrote on that key's decision. Never the Overseer's paraphrase of the issue: the agent reads it itself.
+ */
+export function developerNote(message: string | null | undefined, key: string | null): string | null {
+  const m = (message ?? "").trim();
+  if (!m) return null;
+  const head = envelopeParts(m)[0] ?? m;
+  if (head.trim().startsWith(ANSWER_PREFIX)) {
+    const several = parseAnswersMessage(head);
+    const one = several ? null : parseAnswerMessage(head);
+    const decisions = several?.answers ?? (one ? [{ question: one.title, choice: one.choice, label: one.label, words: one.words }] : []);
+    const d = decisions.find(d => key && linearKeys(d.question).includes(key.toUpperCase())) ?? (decisions.length === 1 ? decisions[0] : null);
+    const words = d ? d.words ?? (d.choice === OTHER_LABEL ? d.label?.replace(/^"|"$/g, "") ?? null : null) : null;
+    return words?.trim() || null;
+  }
+  const kept = m.split(/[.!?;\n]+|,\s*/).filter(f => {
+    const lower = f.toLowerCase().trim();
+    return !requests(lower) && !(YES.test(lower) && lower.replace(YES, "").replace(/[^a-z]+/g, "").length === 0);
+  }).map(f => f.replace(new RegExp(KEY.source, "gi"), " ").replace(/\s+/g, " ").replace(/^[\s:,&-]+|[\s:,&-]+$/g, "").replace(/^(and|also|then|but)\s+/i, "").trim())
+    .filter(f => /[a-z]/i.test(f) && !/^(and|or|for|these|those|them|both|all|please|thanks|thank you|asap|now)$/i.test(f));
+  return kept.length ? kept.join(". ") : null;
+}
+
 /** Whether an approval covers a start with this key (null: a task with no Linear key). */
 export function approvalCovers(a: StartApproval, key: string | null): boolean {
   const k = key?.toUpperCase() ?? null;

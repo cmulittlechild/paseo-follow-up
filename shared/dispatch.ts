@@ -42,7 +42,12 @@ export const LIST_SHOWN = 25;
 // ---------- actions ----------
 
 export const ACTION_ICONS = ["git-pull-request", "file-text", "search", "folder-open", "git-branch", "sparkles", "bug", "wrench", "message-square", "play"] as const;
-export const PLACEHOLDERS = ["title", "url", "key", "body", "kind", "team", "repo", "base", "branch"] as const;
+/**
+ * `{body}`: the source's text (an issue's description, a PR's body, a typed task), for an action whose agent can't read
+ * the tracker itself. `{words}`: the developer's own typed task, empty for an issue, PR or link: those have their own
+ * home, and the agent reads them there (the built-ins reference the source, never paste it).
+ */
+export const PLACEHOLDERS = ["title", "url", "key", "body", "words", "kind", "team", "repo", "base", "branch"] as const;
 export type Placeholder = typeof PLACEHOLDERS[number];
 export const BUILTIN_IDS = ["pr", "plan", "investigate", "open", "checkout"] as const;
 export type BuiltinId = typeof BUILTIN_IDS[number];
@@ -82,22 +87,34 @@ const builtin = (a: Omit<DispatchAction, "builtin" | "by" | "agent" | "hidden" |
 /** The built-in set, in order. The first visible one is ↵, the second ⌥↵. Nothing here names a team, repo or person. */
 export const BUILTIN_ACTIONS: readonly DispatchAction[] = [
   builtin({ id: "pr", name: "Create PR", icon: "git-pull-request", description: "Build it and open a PR",
-    instructions: "Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{body}",
+    instructions: "Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "plan", name: "Plan as artifact", icon: "file-text", description: "A detailed plan to read before any code",
-    instructions: "Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{body}",
+    instructions: "Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: true, askWhenPlanReady: true } }),
   builtin({ id: "investigate", name: "Investigate", icon: "search", description: "Find the cause; no code changes",
-    instructions: "Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{body}",
+    instructions: "Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "open", name: "Just open", icon: "folder-open", description: "The workspace and an agent with it loaded", hidden: true,
-    instructions: "Read {key} “{title}” ({url}) and wait for the developer.\n\n{body}",
+    instructions: "Read {key} “{title}” ({url}) and wait for the developer.\n\n{words}",
     workspace: "local", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "checkout", name: "Check out PR", icon: "git-branch", description: "A worktree on the PR's branch", appliesTo: ["pr"],
     instructions: "You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead the PR, its description and its review threads, then wait for the developer.",
     workspace: "worktree", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false } }),
 ];
 export const builtinAction = (id: BuiltinId) => BUILTIN_ACTIONS.find(a => a.id === id)!;
+/**
+ * Instructions a built-in shipped with before (2.4.0-beta.4 pasted the issue's `{body}`). A saved copy still holding
+ * one of these was never edited, so it reads as the current built-in; an edited copy keeps the developer's text.
+ */
+const SHIPPED_BEFORE: Partial<Record<BuiltinId, readonly string[]>> = Object.fromEntries(
+  BUILTIN_ACTIONS.filter(a => a.instructions.endsWith("\n\n{words}")).map(a => [a.builtin!, [a.instructions.replace(/\{words\}$/, "{body}")]]));
+/** A saved built-in with a formerly shipped text, upgraded to the current one. */
+export function currentBuiltin(a: DispatchAction): DispatchAction {
+  return a.builtin && SHIPPED_BEFORE[a.builtin as BuiltinId]?.includes(a.instructions) ? { ...a, instructions: builtinAction(a.builtin as BuiltinId).instructions } : a;
+}
+/** Whether any of these actions renders the source's text: only then does New read an issue's description. */
+export const usesBody = (actions: readonly Pick<DispatchAction, "instructions">[]) => actions.some(a => /\{body\}/.test(a.instructions));
 
 /**
  * The actions in effect: the saved list (null until someone edits one), with every built-in the saved list doesn't
@@ -106,7 +123,7 @@ export const builtinAction = (id: BuiltinId) => BUILTIN_ACTIONS.find(a => a.id =
 export function effectiveActions(saved: readonly DispatchAction[] | null): DispatchAction[] {
   if (!saved) return [...BUILTIN_ACTIONS];
   const ids = new Set(saved.map(a => a.id));
-  return [...saved, ...BUILTIN_ACTIONS.filter(a => !ids.has(a.id) && !(a.builtin && saved.some(s => s.builtin === a.builtin)))];
+  return [...saved.map(currentBuiltin), ...BUILTIN_ACTIONS.filter(a => !ids.has(a.id) && !(a.builtin && saved.some(s => s.builtin === a.builtin)))];
 }
 /** The actions a source offers, visible ones first in list order: the first is ↵, the second ⌥↵. */
 export function actionsFor(actions: readonly DispatchAction[], kind: SourceKind): DispatchAction[] {
