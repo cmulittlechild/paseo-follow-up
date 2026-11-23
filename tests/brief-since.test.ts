@@ -10,7 +10,7 @@ import { RPC_TOOLS } from "../server/agent-parity";
 import { dismissRpc } from "../shared/contracts";
 import { toLinearIssue, type LinearIssue } from "../shared/linear-issues";
 import { defaultWorkdays, raisedNeeds, type Clock, type LogEntry } from "../shared/linear-queue";
-import { changeChip, dueWords, queueRowMeta, raisedRow, sinceBlock, sinceWords, SINCE_LINES, type SinceChange } from "../shared/brief-since";
+import { changeChip, dueWords, openedAge, openedLine, queueRowMeta, raisedRow, sinceBlock, sinceWords, SINCE_LINES, type SinceChange } from "../shared/brief-since";
 
 // The Morning brief's "Since" block, queue screen and decision Q8's raised issues (docs/morning-brief.md#in-the-brief).
 // Fixtures are fictional (ACME-*, bob).
@@ -218,4 +218,24 @@ test("raised-is-needs-you: the worker's needs() is the home feed's answer; a swe
   assert.deepEqual(after.raised.map(n => n.key), ["ACME-142"]);
   assert.notEqual(after.revision, before.revision, "the revision moves, so an open brief pane re-reads");
   assert.equal(after.timeZone, CLOCK.timeZone);
+});
+
+test("a queue row's opened line: by whom, then how long ago (relative under two weeks, else a date), the exact time in the label", () => {
+  // MON is 08:40 on Monday 2026-11-23 in New York.
+  assert.equal(openedAge("2026-11-23T12:00:00.000Z", MON, TZ)?.age, "today");
+  assert.equal(openedAge("2026-11-23T03:00:00.000Z", MON, TZ)?.age, "yesterday", "22:00 Sunday in New York, though Monday in UTC");
+  assert.equal(openedAge("2026-11-18T15:00:00.000Z", MON, TZ)?.age, "5 days ago");
+  assert.equal(openedAge("2026-11-10T15:00:00.000Z", MON, TZ)?.age, "13 days ago");
+  assert.equal(openedAge("2026-11-09T15:00:00.000Z", MON, TZ)?.age, "Nov 9", "two weeks or more: a date");
+  assert.equal(openedAge("2025-10-14T15:00:00.000Z", MON, TZ)?.age, "Oct 14, 2025", "another year names it");
+  assert.equal(openedAge("2026-11-18T15:04:00.000Z", MON, TZ)?.exact, "Nov 18, 2026 at 10:04");
+  assert.equal(openedAge(null, MON, TZ), null);
+  assert.equal(openedAge("not a date", MON, TZ), null);
+
+  const at = "2026-11-11T15:04:00.000Z";
+  assert.deepEqual(openedLine({ createdAt: at, creator: "Dana" }, false, MON, TZ), { text: "opened by Dana · 12 days ago", label: "Opened by Dana on Nov 11, 2026 at 10:04" });
+  assert.deepEqual(openedLine({ createdAt: at, creator: "Alice" }, true, MON, TZ), { text: "opened by you · 12 days ago", label: "Opened by you on Nov 11, 2026 at 10:04" });
+  assert.deepEqual(openedLine({ createdAt: at, creator: null }, null, MON, TZ), { text: "opened 12 days ago", label: "Opened on Nov 11, 2026 at 10:04" }, "no creator: the age alone");
+  assert.deepEqual(openedLine({ createdAt: null, creator: "Sam" }, false, MON, TZ), { text: "opened by Sam", label: "Opened by Sam" });
+  assert.equal(openedLine({ createdAt: null, creator: null }, null, MON, TZ), null, "a snapshot from before: nothing");
 });

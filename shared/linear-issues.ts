@@ -32,6 +32,10 @@ export const linearIssueSchema = z.object({
   assignee: z.string().max(200).nullable().default(null),
   /** The assignee's Linear user id, when the read asked for it: compared with the viewer's to tell "still mine". */
   assigneeId: z.string().max(100).nullable().default(null),
+  /** When the issue was opened, and who opened it (display name, Linear user id): the sweep asks (QUEUE_FIELDS). */
+  createdAt: z.string().max(40).nullable().default(null),
+  creator: z.string().max(200).nullable().default(null),
+  creatorId: z.string().max(100).nullable().default(null),
 });
 export type LinearIssue = z.infer<typeof linearIssueSchema>;
 
@@ -39,8 +43,8 @@ export type LinearIssue = z.infer<typeof linearIssueSchema>;
 export const LIST_FIELDS = ["id", "uuid", "title", "url", "gitBranchName", "status", "statusType", "team", "updatedAt", "priority"] as const;
 /** Fields a single-issue read asks for. */
 export const ISSUE_FIELDS = [...LIST_FIELDS, "description", "assignee"] as const;
-/** Fields the Morning brief's sweep asks for: New's, plus what the brief and the ranker show (due, project, milestone). */
-export const QUEUE_FIELDS = ["id", "uuid", "title", "url", "status", "statusType", "team", "updatedAt", "priority", "dueDate", "project", "projectMilestone"] as const;
+/** Fields the Morning brief's sweep asks for: New's, plus what the brief and the ranker show (due, project, milestone, who opened it and when). */
+export const QUEUE_FIELDS = ["id", "uuid", "title", "url", "status", "statusType", "team", "updatedAt", "priority", "dueDate", "project", "projectMilestone", "createdAt", "createdBy", "createdById"] as const;
 /**
  * Fields the sweep's lookup of an issue that left the queue asks for: enough to say why, and (the queue's fields plus
  * `assigneeId`) to put it back when it never left: still the developer's, in a queue state, missed by the walk.
@@ -55,6 +59,7 @@ export const OPEN_STATE_TYPES = ["started", "unstarted"] as const;
 
 const str = (v: unknown): string | null => typeof v === "string" && v.trim() ? v.trim() : null;
 const clip = (v: string | null, n: number) => v === null ? null : v.slice(0, n);
+const idOf = (v: unknown): string | null => typeof v === "object" && v ? str((v as { id?: unknown }).id) : null;
 const named = (v: unknown): string | null => typeof v === "object" && v ? str((v as { name?: unknown }).name) : str(v);
 
 /** One issue object from a reply, or null when it has no key-shaped identifier or no title. */
@@ -76,7 +81,9 @@ export function toLinearIssue(raw: unknown, assigneeIsMe: boolean | null = null)
     description: typeof i.description === "string" ? i.description : null,
     // Clipped, never refused: an issue a schema bound would drop is an issue missing from the queue (the-queue-is-whole).
     due: str(i.dueDate)?.slice(0, 40) ?? null, project: clip(named(i.project), 200), milestone: clip(named(i.projectMilestone), 200), assignee: clip(named(i.assignee), 200),
-    assigneeId: clip(str(i.assigneeId) ?? (typeof i.assignee === "object" && i.assignee ? str((i.assignee as { id?: unknown }).id) : null), 100),
+    assigneeId: clip(str(i.assigneeId) ?? idOf(i.assignee), 100),
+    createdAt: clip(str(i.createdAt), 40), creator: clip(named(i.createdBy) ?? named(i.creator), 200),
+    creatorId: clip(str(i.createdById) ?? idOf(i.createdBy) ?? idOf(i.creator), 100),
   });
 }
 export const PRIORITY_NAMES = ["No priority", "Urgent", "High", "Medium", "Low"];

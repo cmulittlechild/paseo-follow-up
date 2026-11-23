@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { dispatchActionsRpc, dispatchRpc, linearQueueRpc, sweepQueueRpc } from "../shared/contracts";
-import { changeChip, queueRowMeta, raisedRow, sinceBlock, type SinceChange, type SinceLine } from "../shared/brief-since";
+import { changeChip, openedLine, queueRowMeta, raisedRow, sinceBlock, type SinceChange, type SinceLine } from "../shared/brief-since";
 import { actionIcon, stateIcon } from "../shared/new-view";
 import type { RaisedNeed } from "../shared/linear-queue";
 import type { QueueNeeds } from "./home-view";
@@ -25,7 +25,8 @@ import { withAlpha, type Colors } from "./theme";
  */
 
 type Workspace = { workspaceId: string; title: string } | null;
-type QueueIssueRow = { key: string; title: string; priority: number; state: string | null; stateType: string | null; due: string | null; url: string | null; workspace: Workspace; change: string | null };
+type QueueIssueRow = { key: string; title: string; priority: number; state: string | null; stateType: string | null; due: string | null; url: string | null; workspace: Workspace; change: string | null;
+  createdAt?: string | null; creator?: string | null; openedByYou?: boolean | null };
 type QueueViewData = {
   status: { sweptAt: string | null; complete: boolean | null; running: boolean; total: number; stale: boolean; timeZone: string; sweepAt: string; last: { ok: boolean; error: string | null } | null };
   since: string | null;
@@ -150,20 +151,29 @@ const FILTERS: { id: Filter; label: string; count: (v: QueueViewData) => number 
   { id: "changed", label: "Changed", count: v => v.counts.changed },
 ];
 
+/** "opened by Dana · 12 days ago", with the exact time as the desktop tooltip (React Native Web drops `title`, so it goes on the node). */
+function OpenedText({ text: words, tooltip }: { text: string; tooltip: string }) {
+  const ref = useRef<View | null>(null);
+  useEffect(() => { if (Platform.OS === "web") (ref.current as unknown as { setAttribute?: (k: string, v: string) => void } | null)?.setAttribute?.("title", tooltip); }, [tooltip]);
+  return <Text ref={ref as never}>{words}</Text>;
+}
+
 function QueueRow({ i, change, c, compact, timeZone, navigation }: { i: QueueIssueRow; change: SinceChange | undefined; c: Colors; compact: boolean; timeZone: string; navigation: Nav }) {
   const t = text(c, compact);
   const now = Date.now();
   const chip = changeChip(change ?? null, now, timeZone);
   const meta = queueRowMeta(i, now, timeZone, change);
+  const opened = openedLine({ createdAt: i.createdAt ?? null, creator: i.creator ?? null }, i.openedByYou ?? null, now, timeZone);
   const ws = i.workspace;
   const open = ws ? () => navigation?.openWorkspace({ workspaceId: ws.workspaceId }) : () => openNew({ source: i.key });
-  const label = `${i.key} ${i.title}. ${meta}${chip ? `. ${chip.text}` : ""}${ws ? `. In ${ws.title}` : ". No workspace"}`;
+  const label = `${i.key} ${i.title}. ${meta}${opened ? `. ${opened.label}` : ""}${chip ? `. ${chip.text}` : ""}${ws ? `. In ${ws.title}` : ". No workspace"}`;
   const body = <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
     <View style={{ paddingTop: 2 }}><Icon name={stateIcon(i.stateType)} size={15} color={c.foregroundMuted} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
       <Text style={t.body}><Text style={{ color: c.foregroundMuted }}>{i.key}</Text>  {i.title}</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 4 }}>
-        {!!meta && <Text style={t.meta}>{meta}</Text>}
+        {/* One run of quiet ink, so a phone wraps it word by word and never cuts the state: "Todo · due Wed · opened by Dana · 12 days ago". */}
+        {(!!meta || !!opened) && <Text style={t.meta}>{meta}{opened && <OpenedText text={`${meta ? " · " : ""}${opened.text}`} tooltip={opened.label} />}</Text>}
         {/* The change since the brief: a tinted chip, so the Changed filter's subjects stand out from the plain meta. */}
         {chip && <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: withAlpha(chip.warn ? c.statusWarning : c.foregroundMuted, chip.warn ? 0.12 : 0.1) }}>
           {chip.icon && <Icon name={chip.icon} size={12} color={chip.warn ? c.statusWarning : c.foregroundMuted} />}

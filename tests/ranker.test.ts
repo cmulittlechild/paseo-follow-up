@@ -207,7 +207,7 @@ test("sources: Linear, Slack and GitHub parse tolerantly; the plan reader may on
     { title: "no id" }, { id: "ACME-3", title: "Three", priority: { value: 0, name: "No priority" } },
   ] }));
   assert.deepEqual(page.issues.map(i => [i.key, i.priority?.name ?? null, i.project, i.due]), [["ACME-1", "Urgent", "Identity", "2026-11-10"], ["ACME-3", "No priority", null, null]]);
-  const one = { key: "ACME-1", title: "One", priority: 1, state: "In Progress", stateType: "started", due: "2026-11-10", team: "ACME", project: "Identity", milestone: null, url: null, updatedAt: null, change: "new" };
+  const one = { key: "ACME-1", title: "One", priority: 1, state: "In Progress", stateType: "started", due: "2026-11-10", team: "ACME", project: "Identity", milestone: null, url: null, updatedAt: null, createdAt: null, creator: null, creatorId: null, change: "new" };
   assert.deepEqual(rankIssue(one), { key: "ACME-1", title: "One", priority: "Urgent", status: "In Progress", due: "2026-11-10", project: "Identity", milestone: null, url: null, change: "new" });
   assert.equal(rankIssue({ ...one, priority: 0 }).priority, null, "No priority reads as none");
   assert.equal(parseIssuePage("not json").readable, false);
@@ -352,7 +352,7 @@ test("sources: a Linear reply mcpproxy cut off keeps its whole issues but says i
   assert.equal(cutPage.whole, false, "a cut reply never reads as the end of the list (the-queue-is-whole)");
   assert.equal(parseIssuePage(JSON.stringify({ issues: [issue(4)], hasNextPage: true, cursor: "c2" })).next, "c2");
   const run = async () => { throw new Error("the ranker makes no Linear call of its own"); };
-  const queued = [{ key: "ACME-8", title: "Eight", priority: 2, state: "Todo", stateType: "unstarted", due: null, team: "ACME", project: null, milestone: null, url: null, updatedAt: null, change: "raised Low → High" }];
+  const queued = [{ key: "ACME-8", title: "Eight", priority: 2, state: "Todo", stateType: "unstarted", due: null, team: "ACME", project: null, milestone: null, url: null, updatedAt: null, createdAt: null, creator: null, creatorId: null, change: "raised Low → High" }];
   const src = liveRankSources(new AiJobs(), { run, slackUser: null, queue: { forRanker: async () => queued } });
   assert.deepEqual((await src.linear()).map(i => [i.key, i.priority, i.change]), [["ACME-8", "High", "raised Low → High"]]);
   const failing = liveRankSources(new AiJobs(), { run, slackUser: null, queue: { forRanker: async () => { throw new Error("Linear couldn't be read."); } } });
