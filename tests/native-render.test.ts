@@ -102,7 +102,7 @@ test("pasted images on a phone: the component draws nothing, and the fields it w
   const { ImageField, ImageAttachmentsRow, IMAGES_ON } = await import("../client/image-attach");
   assert.equal(IMAGES_ON, false, "no paste or drop on a phone");
   const model = { images: [{ id: "i1", name: "acme.png", mimeType: "image/png", bytes: 10, data: "AAAA", uri: "data:image/png;base64,AAAA" }], refusal: "6 images is the most one message takes.", blocked: null,
-    add: async () => {}, remove: () => {}, clear: () => {}, uploads: () => undefined, target: null };
+    add: async () => {}, refuse: () => {}, remove: () => {}, clear: () => {}, uploads: () => undefined, target: null };
   const row = await render(createElement(ImageAttachmentsRow, { model, theme, compact: true }));
   assert.equal(row.error, null);
   assert.equal(row.r!.root.findAll(n => typeof n.type === "string").length, 0, "no thumbnail, no refusal line, no empty space");

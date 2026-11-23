@@ -81,6 +81,20 @@ test("every agent-bound field is drawn inside the one ImageField", () => {
   }
 });
 
+test("every field that takes images shows Add image: below the field, or among its own controls", () => {
+  const files = new Set(fields().filter(f => f.key in AGENT_BOUND).map(f => f.file));
+  for (const file of files) {
+    const s = readFileSync(`client/${file}`, "utf8");
+    const inline = (s.match(/<ImageField\b[^>]*attach="inline"/g) ?? []).length;
+    const buttons = (s.match(/<AttachImageButton\b/g) ?? []).length;
+    assert.ok(buttons >= inline, `${file}: ${inline} ImageField with attach="inline" but ${buttons} AttachImageButton: an inline field draws the button itself`);
+  }
+  // The one picker: only image-attach.tsx opens a file input.
+  for (const file of readdirSync("client").filter(f => /\.tsx?$/.test(f) && f !== "image-attach.tsx")) {
+    assert.doesNotMatch(readFileSync(`client/${file}`, "utf8"), /type\s*=\s*"file"|\.type = "file"/, `${file} opens a file picker itself; use AttachImageButton`);
+  }
+});
+
 test("every agent-bound RPC takes images, and every tool behind one takes image paths", () => {
   const contracts = readFileSync("shared/contracts.ts", "utf8");
   for (const name of ["answerQuestionRpc", "briefActionRpc", "overseerAskRpc", "contextAskRpc"]) {
