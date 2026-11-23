@@ -37,6 +37,7 @@ export const ROW_ACTIONS = {
   rename_ai: { tool: "ai_rename" },
   make_main: { tool: "make_main_agent" },
   stop_following: { tool: "set_follow_settings" },
+  archive: { exempt: "Paseo's own archive_workspace tool archives a workspace for an agent; this item sends Paseo that same request." },
 } as const satisfies Record<string, { tool: string; note?: string } | { exempt: string }>;
 export type RowActionId = keyof typeof ROW_ACTIONS;
 
@@ -52,13 +53,70 @@ export type RowMenuItem = {
   hint?: string;
   /** A submenu that opens in place (Later). */
   children?: RowMenuItem[];
-  /** Destructive: asks first with this line. */
+  /** Destructive: asks first with this line. Several lines (`\n`): the first is the step's question, set as its title. */
   confirm?: string;
+  /** The confirm's one line about losing work, drawn in the danger colour (Archive's uncommitted changes). */
+  confirmLoss?: string;
 };
 export type RowMenuSection = { key: string; items: RowMenuItem[] };
 
+/**
+ * What Paseo's workspace list already says about a workspace that archiving touches, read from the descriptor Paseo
+ * streams (no git run, no poll). Paseo's archive stops every agent, closes the terminals and takes the workspace off
+ * the list; for a worktree Paseo created it also runs the teardown and deletes the worktree folder (git worktree
+ * remove --force), so uncommitted changes there are lost. The branch and its commits stay, and Paseo can restore it.
+ */
+export type ArchiveFacts = {
+  kind: "directory" | "worktree" | "checkout" | "local_checkout" | null;
+  /** gitRuntime.isPaseoOwnedWorktree: false means Paseo leaves the folder in place. */
+  ownedWorktree: boolean | null;
+  dirty: boolean | null;
+  diff: { additions: number; deletions: number } | null;
+  /** Commits not pushed to origin. */
+  ahead: number | null;
+  /** Paseo's workspace status is running: an agent is working right now. */
+  running: boolean;
+};
+
+const lines = (n: number, word: string) => `${n} ${word} line${n === 1 ? "" : "s"}`;
+
+/**
+ * The confirm line for Archive: what Paseo's archive really does to this workspace, in plain words. It names what
+ * Paseo's own archive warns about (uncommitted changes, unpushed commits; `worktree-archive-warning.ts` upstream) and
+ * an agent working right now.
+ */
+export function archiveConfirm(title: string, f: ArchiveFacts): string {
+  return archiveConfirmLines(title, f).lines.join("\n");
+}
+
+/** The confirm's lines (the question first, one consequence a line) and the one about losing work, if any. */
+export function archiveConfirmLines(title: string, f: ArchiveFacts): { lines: string[]; loss: string | null } {
+  const out = [`Archive ${title}?`];
+  out.push(f.running ? "An agent is working in it now. Archiving stops it and the other agents, closes its terminals and takes it off your workspace list."
+    : "Its agents stop, its terminals close and it leaves your workspace list.");
+  let loss: string | null = null;
+  if (f.kind === "worktree" && f.ownedWorktree !== false) {
+    const changed = !!f.diff && (f.diff.additions > 0 || f.diff.deletions > 0);
+    const dirty = f.dirty === true || (f.dirty == null && changed);
+    const stat = changed ? [f.diff!.additions > 0 && lines(f.diff!.additions, "added"), f.diff!.deletions > 0 && lines(f.diff!.deletions, "deleted")].filter(Boolean).join(", ") : "";
+    // Paseo's list streams isDirty only once the row has read its git status; until then (null, no diff) nothing says
+    // the worktree is clean, so the line names the loss as possible rather than promising it's safe.
+    if (dirty) { out.push("Paseo deletes its worktree folder."); loss = `Uncommitted changes${stat ? ` (${stat})` : ""} are lost.`; out.push(loss); }
+    else if (f.dirty === false) out.push("Paseo deletes its worktree folder. The branch and its commits stay.");
+    else out.push("Paseo deletes its worktree folder, with any uncommitted changes in it. The branch and its commits stay.");
+    if ((f.ahead ?? 0) > 0) out.push(`${f.ahead} unpushed commit${f.ahead === 1 ? "" : "s"} stay on the local branch.`);
+    out.push(dirty ? "Paseo can restore the workspace later, without those changes." : "Paseo can restore it later.");
+  } else out.push("Its folder stays, and Paseo can restore it later.");
+  return { lines: out, loss };
+}
+
+function archiveConfirmItem(title: string, f: ArchiveFacts): Pick<RowMenuItem, "confirm" | "confirmLoss"> {
+  const { lines, loss } = archiveConfirmLines(title, f);
+  return { confirm: lines.join("\n"), ...(loss ? { confirmLoss: loss } : {}) };
+}
+
 export type RowMenuInput = {
-  s: Pick<Workstream, "key" | "agentId" | "workspaceId" | "title" | "agent">;
+  s: Pick<Workstream, "key" | "agentId" | "workspaceId" | "title" | "agent"> & Partial<Pick<Workstream, "readyToArchive">>;
   /**
    * The agent's inbox flag (needs), snoozed or not: it gets Later and Sign off. A snoozed row's Later changes the time.
    * Needs-you rows raised only by the workspace (a hold, repairs to send) carry no inbox flag, so they have no Later:
@@ -82,21 +140,31 @@ export type RowMenuInput = {
   workspaceLater?: { snoozedUntil: string | null } | null;
   /** The surface can pre-fill an Overseer ask (Home's omnibox, while the Overseer is on). */
   canAsk?: boolean;
+  /**
+   * The surface can archive this workspace (the host's Paseo API has archive and Paseo lists the workspace), with what
+   * the confirm line names. Absent: no Archive item.
+   */
+  archive?: ArchiveFacts | null;
 };
 
 const MAX_ANSWERS = 2;
 
 /** The row's menu, in sections: triage, answer, fix, go, copy and tidy. Only what applies to this row is listed. */
 export function rowMenu(input: RowMenuInput): RowMenuSection[] {
-  const { s, flagged, snoozedUntil, w, needs = [], branch, canAsk, workspaceLater, now = new Date() } = input;
+  const { s, flagged, snoozedUntil, w, needs = [], branch, canAsk, workspaceLater, archive, now = new Date() } = input;
   const sections: RowMenuSection[] = [];
   const add = (key: string, items: (RowMenuItem | null | false | undefined)[]) => {
     const kept = items.filter((x): x is RowMenuItem => !!x);
     if (kept.length) sections.push({ key, items: kept });
   };
 
+  // Archive, only on the developer's click and after the confirm (invariant 6). A row Follow-up calls ready to archive
+  // (the "N to archive" cue) leads with it, first in triage; any other row has it last in tidy.
+  const archiveItem: RowMenuItem | null = s.workspaceId && archive ? { key: "archive", action: "archive", label: "Archive workspace…", icon: "Archive", ...archiveConfirmItem(s.title, archive) } : null;
+  const archiveFirst = !!s.readyToArchive && !!archiveItem;
+
   // 1. Triage, the moves made many times a day. Later first: it's the one Tom named.
-  add("triage", s.agentId && flagged ? [
+  const triage: (RowMenuItem | null | false)[] = s.agentId && flagged ? [
     { key: "later", action: "later", label: "Later", icon: "AlarmClock", ...(snoozedUntil ? { hint: `Later until ${snoozedUntil}` } : {}),
       children: laterChoices(now).map(([id, label]) => ({ key: `later:${id}`, action: "later" as const, label, icon: "Clock", arg: id })) },
     !!snoozedUntil && { key: "bring_back", action: "bring_back", label: "Bring back now", icon: "BellRing" },
@@ -106,7 +174,8 @@ export function rowMenu(input: RowMenuInput): RowMenuSection[] {
     { key: "later_ws", action: "later_ws", label: "Later", icon: "AlarmClock", ...(workspaceLater.snoozedUntil ? { hint: `Later until ${workspaceLater.snoozedUntil}` } : {}),
       children: laterChoices(now).map(([id, label]) => ({ key: `later_ws:${id}`, action: "later_ws" as const, label, icon: "Clock", arg: id })) },
     !!workspaceLater.snoozedUntil && { key: "bring_back_ws", action: "bring_back_ws", label: "Bring back now", icon: "BellRing" },
-  ] : []);
+  ] : [];
+  add("triage", [archiveFirst && archiveItem, ...triage]);
 
   // 2. Answer the open questions, stopped ones first (needsYou's order).
   add("answer", needs.filter(i => i.kind === "question").slice(0, MAX_ANSWERS).map(i => i.kind === "question" && {
@@ -142,6 +211,7 @@ export function rowMenu(input: RowMenuInput): RowMenuSection[] {
       confirm: `Make ${s.agent} the main agent of ${s.title}? It takes over the goal, tasks, questions and Done.` },
     !!w?.enable_tracking && { key: "stop_following", action: "stop_following", label: "Stop following…", icon: "EyeOff",
       confirm: `Stop following ${s.title}? Follow-up keeps its history, and you can follow it again in Settings → Following.` },
+    !archiveFirst && archiveItem,
   ]);
   return sections;
 }

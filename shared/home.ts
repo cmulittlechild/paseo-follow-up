@@ -1,3 +1,4 @@
+import type { ArchiveFacts } from "./row-menu";
 import { sendingOf, type Sending } from "./sending";
 import { liveLine, needsYou, prTone, stackOrder, workspaceSnoozed, type NeedItem, type PrTone } from "./attention";
 import { activity, type Activity } from "./activity";
@@ -52,6 +53,8 @@ export type PaseoWorkspaceLite = {
   branch?: string | null;
   /** The descriptor's own PR, when Paseo's GitHub runtime knows one. */
   pr?: { number: number | null; title: string } | null;
+  /** What archiving would touch, from the same descriptor (row menu's Archive confirm). */
+  archive?: ArchiveFacts;
 };
 
 export type Workstream = {

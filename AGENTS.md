@@ -275,8 +275,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - Writes return a dry-run plan first and run with `confirm: true` and the plan id.
    - Agent writes go into the inbox ledger as `agent:<id>`.
    - `tests/agent-parity.test.ts` reads the client's RPC imports and fails on a new RPC without an entry.
-   - There are no human-only actions. Follow-up also has no button for archiving, untracking a workspace or
-     putting one on hold, so there's no tool for those either.
+   - There are no human-only actions. Follow-up has no button for untracking a workspace or putting one on hold, so
+     there's no tool for those either. The row menu's Archive workspace… sends Paseo's own archive request, which
+     agents already make with Paseo's `archive_workspace` tool, so its `ROW_ACTIONS` entry is an exemption naming it.
 4. **Agents act on others, not themselves.** An agent can't sign itself off, answer its own question through
    `answer_question`, or act on its own brief. Goal, tasks, questions and Done belong to the main agent.
    Contributors get `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, `wait_for_checks`
@@ -285,7 +286,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
 6. **Nothing irreversible on its own.**
-   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself. The developer's
+   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself (invariant 87). The developer's
      Merge is one click that names its whole scope first and merges exactly that at the heads it showed
      (`a-click-on-merge-merges`, `shared/merge-click.ts`); agent tools still dry-run, then run with `confirm: true`.
    - Completion checks never auto-send.
@@ -444,7 +445,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
    brief and the Overseer are rows of the walk; never while typing outside the list's own query field; a key pressed
    with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
-   behind another tab or chat. Enter and O open (invariant 57). Guarded by
+   behind another tab or chat; never while a menu or modal dialog is drawn over the list (the row menu, its confirm step),
+   wherever focus is, since a step swap leaves focus on the page for a frame (2026-11-23: Esc from Archive's confirm,
+   then Enter, opened the selected chat behind the menu); only one on screen and not around the list counts
+   (`overlayOver`), so a dialog or sheet hosting Home, an overlay kept mounted while closed, or the non-modal keys
+   sheet S toggles leaves it its keys. Enter and O open (invariant 57). Guarded by
    `tests/list-keys.test.ts`.
 28. **One ranking for every workspace search** (`one-ranking-for-every-workspace-search`). Home's search and the
    sidebar view's filter order matches by one rank (`byRank` over `SearchHit.rank`, `shared/search.ts`): a title match
@@ -1075,7 +1080,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    a card above the strip that Needs you didn't count, with a second action set in the brief; then Home read it once per
    mount, so the sidebar badge said 5 beside Home's 6 and a morning raise never reached an open Home. Guarded by
    `tests/brief-since.test.ts`, `tests/feed-recovery.test.ts` and `tests/idle-rpc.test.ts`.
-
+87. **Follow-up archives only on the developer's click** (`follow-up-archives-only-on-the-developer-s-click`). The row
+   menu's Archive workspace… (any row with a workspace; first in triage on a row ready to archive, else last in tidy)
+   sends Paseo's own archive request (`workspaces.archive`, the one Paseo's sidebar and agents' `archive_workspace`
+   send) and only from its confirm step, whose lines say what Paseo's archive does: agents stop, terminals close, a
+   worktree Paseo owns is deleted, uncommitted changes in it are lost (named as possible while its git status is
+   unread), unpushed commits stay on the branch, and Paseo can restore it (`archiveConfirm`). No timer, rule or
+   tool archives merged or done work. The only other archive calls undo a workspace Follow-up itself just created
+   (Report an issue's and New's rollback, New's Undo). Guarded by `tests/archive-on-click.test.ts` (every archive call
+   in the plugin is allowed by name) and `tests/row-menu.test.ts`.
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),

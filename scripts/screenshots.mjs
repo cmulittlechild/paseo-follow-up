@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -771,13 +771,15 @@ async function noRealHost(page) {
 const failures = [];
 function makeShooter({ browser, port, out, scheme: forced, optimiser, results, crashed }) {
   /** Opens the web app in a fresh context, runs `drive`, and returns the PNG (optionally clipped to what drive returns). */
-  async function capture(name, viewport, theme, drive, { seen = null, scale = null, init = null } = {}) {
+  async function capture(name, viewport, theme, drive, { seen = null, scale = null, init = null, ws = null } = {}) {
     const colorScheme = forced ?? theme;
     // Always open at desktop width: on a phone Paseo's sidebar is a drawer, so phone frames open Home first, then narrow.
     const context = await browser.newContext({ viewport: DESKTOP, colorScheme, deviceScaleFactor: scale ?? (viewport.width < 768 ? 2 : desktopScale), reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US" });
     try {
       await context.addInitScript(INIT, { seen });
       if (init) await context.addInitScript(init);
+      // A stand-in for one daemon reply or descriptor (the archive review), every other frame passed through as is.
+      if (ws) await context.routeWebSocket(/.*/, ws);
       const page = await context.newPage();
       // SHOTS_CONSOLE=1 prints the page's errors, to tell a real bug from a flaky frame.
       if (process.env.SHOTS_CONSOLE) { page.on("console", m => { if (m.type() === "error") log(`${name} console:`, m.text().slice(0, 600)); }); page.on("pageerror", e => log(`${name} pageerror:`, e.message.slice(0, 600))); }
@@ -1897,6 +1899,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
   if (only.includes("pr-stats")) await prStatsShots({ shoot });
   if (only.includes("pr-stats-off")) await prStatsOffShots({ shoot });
+  if (only.includes("archive")) await archiveShots({ shoot, call });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -2102,6 +2105,126 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
  * surfaces, with no fold. Light and dark. Each shot fails on a schema error's text ("Too big", "expected array") or, on
  * a phone, a page that scrolls sideways.
  */
+/**
+ * Archive workspace… in the row menu (--only archive): last in tidy on a working row, first in triage on a row ready to
+ * archive, the confirm step (a directory workspace, and a worktree with uncommitted changes, unpushed commits and an
+ * agent at work), Paseo refusing, and a real archive whose row then shows under Archived in search. Desktop (right-click)
+ * and phone (long-press), light and dark, 2x. The worktree facts and the refusal are stand-ins on the page's daemon
+ * socket (the harness seeds directory workspaces); the real archive goes to the harness daemon.
+ */
+async function archiveShots({ shoot, call }) {
+  const working = "Billing retries"; const done = "Dark mode tokens"; const real = "Onboarding email";
+  const proxy = ({ worktree = null, refuse = null } = {}) => ws => {
+    const server = ws.connectToServer();
+    const walk = o => {
+      if (!o || typeof o !== "object") return;
+      if (Array.isArray(o)) { o.forEach(walk); return; }
+      if (worktree && "workspaceKind" in o && (o.title === worktree || o.name === worktree)) {
+        Object.assign(o, { workspaceKind: "worktree", status: "running", diffStat: { additions: 12, deletions: 3 } });
+        o.gitRuntime = { ...(o.gitRuntime ?? {}), isPaseoOwnedWorktree: true, isDirty: true, aheadOfOrigin: 2 };
+      }
+      for (const v of Object.values(o)) walk(v);
+    };
+    server.onMessage(m => { if (typeof m !== "string" || !worktree) { ws.send(m); return; } try { const j = JSON.parse(m); walk(j); ws.send(JSON.stringify(j)); } catch { ws.send(m); } });
+    ws.onMessage(m => {
+      if (refuse && typeof m === "string" && m.includes("archive_workspace_request")) {
+        const r = JSON.parse(m).message;
+        ws.send(JSON.stringify({ type: "session", message: { type: "archive_workspace_response", payload: { requestId: r.requestId, workspaceId: r.workspaceId, archivedAt: null, error: refuse } } }));
+        return;
+      }
+      server.send(m);
+    });
+  };
+  /** A real touch (CDP), held for `ms`: a long-press opens the row's sheet, a short one taps. */
+  const touch = async (page, x, y, ms) => {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    await page.waitForTimeout(ms);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.detach();
+    // The page's clock is fixed: move it a second on, or the sheet's guard (no pick within 350 ms of the lift) never arms.
+    page.archiveClock = (page.archiveClock ?? BASE + VIEW) + 1000;
+    await page.clock.setFixedTime(page.archiveClock);
+    await page.waitForTimeout(400);
+  };
+  // The done row sits in Quiet, folded by default: open the fold first.
+  const rowOf = async (page, title) => {
+    if (title === done) { const fold = page.getByRole("button", { name: /^Quiet, \d+\. (Expand|Collapse)$/i }).filter({ visible: true }).first(); await fold.waitFor(); if (await fold.getAttribute("aria-expanded") !== "true") await fold.click(); await page.waitForTimeout(300);
+      const project = page.getByRole("button", { name: /^web, \d+\. Expand$/ }).filter({ visible: true }).first();
+      if (await project.count()) { await project.click(); await page.waitForTimeout(300); } }
+    const row = await homeRow(page, title); await row.scrollIntoViewIfNeeded(); return row;
+  };
+  const open = async (page, vp, title) => {
+    await openHome(page);
+    if (vp === PHONE) {
+      await page.setViewportSize(PHONE);
+      const row = await rowOf(page, title); const b = await row.boundingBox();
+      await touch(page, b.x + 80, b.y + b.height / 2, 900);
+      await page.waitForTimeout(500);
+    } else await (await rowOf(page, title)).click({ button: "right", position: { x: 160, y: 18 } });
+    const item = page.getByRole("menuitem", { name: "Archive workspace…" }).filter({ visible: true }).first();
+    await item.waitFor();
+    await item.scrollIntoViewIfNeeded();
+    // A phone taps (touch events, so the sheet sees the long-press lift); desktop clicks.
+    return { click: async () => { if (vp !== PHONE) { await item.click(); return; } await page.waitForTimeout(400); const b = await item.boundingBox(); await touch(page, b.x + b.width / 2, b.y + b.height / 2, 60); } };
+  };
+  const confirmButton = page => page.getByRole("button", { name: "Archive workspace", exact: true }).filter({ visible: true }).first();
+  const press = async (page, vp, el) => { if (vp !== PHONE) { await el.click(); return; } const b = await el.boundingBox(); await touch(page, b.x + b.width / 2, b.y + b.height / 2, 60); };
+  const opts = (o = {}) => ({ scale: 2, ...o });
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await shoot(`archive-tidy-${size}-${theme}`, vp, theme, async page => { await open(page, vp, working); }, opts());
+    // Desktop: a tall window, so Quiet (where the done row sits) is on screen.
+    const tall = vp === PHONE ? vp : { width: DESKTOP.width, height: 1400 };
+    await shoot(`archive-triage-${size}-${theme}`, tall, theme, async page => { if (tall !== vp) await page.setViewportSize(tall); await open(page, vp, done); }, opts());
+    await shoot(`archive-confirm-${size}-${theme}`, vp, theme, async page => { await (await open(page, vp, working)).click(); await confirmButton(page).waitFor(); }, opts());
+    await shoot(`archive-confirm-worktree-${size}-${theme}`, vp, theme, async page => {
+      await (await open(page, vp, working)).click(); await confirmButton(page).waitFor();
+      await page.getByText(/Uncommitted changes \(12 added lines, 3 deleted lines\) are lost/).filter({ visible: true }).first().waitFor();
+    }, opts({ ws: proxy({ worktree: working }) }));
+    await shoot(`archive-error-${size}-${theme}`, vp, theme, async page => {
+      await (await open(page, vp, working)).click(); await confirmButton(page).waitFor(); await press(page, vp, confirmButton(page));
+      await page.getByText(/Couldn't archive Billing retries/).filter({ visible: true }).first().waitFor();
+      await (await homeRow(page, working)).waitFor();
+    }, opts({ ws: proxy({ refuse: "Worktree teardown failed: example teardown exited 1" }) }));
+    // Keyboard on desktop: the menu key opens the menu, Enter on Archive opens the confirm, Esc goes back to the menu.
+    if (size === "desktop") await shoot(`archive-keys-${theme}`, vp, theme, async page => {
+      await openHome(page);
+      const row = await homeRow(page, working); await row.focus(); await page.waitForTimeout(500);
+      // With no menu open the list keeps its keys: j steps the focus off the row and k brings it back.
+      const focusedId = () => page.evaluate(() => document.activeElement?.id ?? "");
+      const start = await focusedId();
+      await page.keyboard.press("j"); await page.waitForTimeout(300);
+      const moved = await focusedId();
+      if (!start || moved === start) throw new Error(`archive-keys: j didn't move the selection (${start} -> ${moved})`);
+      await page.keyboard.press("k"); await page.waitForTimeout(300);
+      if (await focusedId() !== start) throw new Error("archive-keys: k didn't step back to the row");
+      await page.keyboard.press("Shift+F10");
+      const menu = page.getByRole("menu", { name: `Actions for ${working}` });
+      await menu.waitFor();
+      for (let i = 0; i < 20 && !(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Archive workspace…")); i++) await page.keyboard.press("ArrowUp");
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog").waitFor();
+      await page.keyboard.press("Escape");
+      await menu.waitFor();
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog").waitFor();
+      page.keepFocus = true;
+    }, opts());
+  }
+  // The real thing, last: Paseo archives Onboarding email, the toast says so, the row leaves Home and search shows it
+  // under Archived.
+  await shoot("archive-done-desktop-dark", DESKTOP, "dark", async page => {
+    await (await open(page, DESKTOP, real)).click(); await confirmButton(page).click();
+    await page.getByText(`Archived ${real}`).filter({ visible: true }).first().waitFor({ timeout: 60000 });
+    const rows = page.getByRole("button", { name: new RegExp(`^${real}`) });
+    for (let i = 0; i < 60 && await rows.count(); i++) await page.waitForTimeout(500);
+    await page.keyboard.press("Escape");
+    const field = page.getByRole("textbox", { name: /^(Search workspaces, branches, PRs|Search, or ask the Overseer|Search or ask the Overseer)$/ }).first();
+    await field.fill("onboarding");
+    await page.getByText("Archived", { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30000 });
+  }, opts());
+}
+
 /**
  * pr-stats-settings only: stats.json before the daemon starts, one repository in each state Settings words differently.
  * Every repository that's on synced "tomorrow" on the shots' clock, so none is due and no sync touches the fixture.

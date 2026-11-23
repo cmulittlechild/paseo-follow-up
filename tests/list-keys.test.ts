@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { listMove, ownsKey, stepKey, surfaceVisible, walkOrder, walkTarget } from "../shared/list-keys";
+import { listMove, overlayOver, ownsKey, stepKey, surfaceVisible, walkOrder, walkTarget } from "../shared/list-keys";
 import { listEntries, type ListEntriesInput } from "../shared/list-entries";
 import { sidebarSelected } from "../client/theme";
 
@@ -97,6 +97,40 @@ test("keys belong to the surface holding focus: Home never walks while focus is 
   // Nothing focused: Home's, never the sidebar view's.
   assert.equal(ownsKey({ inside: false, onBody: true, claimBody: true, visible: true }), true);
   assert.equal(ownsKey({ inside: false, onBody: true, claimBody: false, visible: true }), false);
+});
+
+test("an open row menu or its confirm step keeps every key, even while focus sits on the page", async () => {
+  // 2026-11-23 (Archive workspace… render): Esc from the confirm step back to the menu left focus on the page for a
+  // frame, and Enter there opened the selected workspace's chat behind the menu.
+  for (const inside of [false, true]) assert.equal(ownsKey({ inside, onBody: !inside, claimBody: true, visible: true, overlayOpen: true }), false);
+  const src = (f: string) => readFile(join(import.meta.dirname, "..", "client", f), "utf8");
+  const hook = await src("list-keys.ts");
+  const overlays = hook.match(/const OVERLAYS = '([^']+)'/)?.[1] ?? "";
+  for (const role of ['[role="menu"]', '[role="alertdialog"]', '[aria-modal="true"]']) assert.ok(overlays.includes(role), `${role} owns its keys`);
+  // Home's keys sheet is a non-modal dialog beside the list: S must still close it (home-keys "S again hides them").
+  assert.ok(!overlays.split(",").includes('[role="dialog"]'), "a non-modal dialog leaves the list its keys");
+  assert.match(await src("catch-up.tsx"), /<View role="dialog" accessibilityLabel=\{label\}/, "the keys sheet is that non-modal dialog");
+  assert.match(hook, /overlayOpen: overlayOver\(doc\.querySelectorAll\?\.\(OVERLAYS\) \?\? \[\], root\)/, "the walk asks whether one is over the list on every key");
+  assert.match(await src("row-menu.tsx"), /role=\{confirm \? "alertdialog" : "menu"\}/, "the row menu's two roles are the ones listed");
+});
+
+test("only a menu or dialog drawn over the list keeps its keys, not one around it or one kept mounted closed", () => {
+  // 2026-11-23 (#291 review): a document-wide check would leave Home's keys dead for good inside a dialog or sheet that
+  // hosts it, or while Paseo keeps a closed overlay mounted.
+  const root = { id: "list root" };
+  const el = (o: { hosts?: boolean; shown?: boolean; engine?: boolean }) => ({
+    contains: (other: unknown) => !!o.hosts && other === root,
+    getClientRects: () => ({ length: o.shown === false ? 0 : 1 }),
+    ...(o.engine ? { checkVisibility: () => o.shown !== false } : {}),
+  });
+  const menu = el({}), confirm = el({ engine: true });
+  assert.equal(overlayOver([menu], root), true, "the open row menu blocks");
+  assert.equal(overlayOver([confirm], root), true, "its confirm step blocks");
+  assert.equal(overlayOver([el({ hosts: true })], root), false, "a dialog that hosts the list does not block");
+  assert.equal(overlayOver([el({ shown: false })], root), false, "a hidden overlay does not block");
+  assert.equal(overlayOver([el({ shown: false, engine: true })], root), false, "hidden per checkVisibility does not block");
+  assert.equal(overlayOver([el({ hosts: true }), menu], root), true, "a menu inside the hosting dialog still blocks");
+  assert.equal(overlayOver([], root), false);
 });
 
 test("a mounted but hidden Home never takes a body key", async () => {
