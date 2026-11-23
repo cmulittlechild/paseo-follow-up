@@ -1,7 +1,7 @@
 {
   "name": "paseo-follow-up",
   "private": false,
-  "version": "2.4.0-beta.4",
+  "version": "2.4.0-beta.5",
   "description": "Follows every workspace your coding agents work in until it's done: one list of what needs you.",
   "type": "module",
   "files": [
@@ -20,6 +20,7 @@
     "README.md",
     "THIRD_PARTY_NOTICES.md",
     "docs/screenshots/",
+    "!docs/screenshots/follow-up-demo*",
     "scripts/build.mjs"
   ],
   "scripts": {
@@ -45,6 +46,7 @@
     "test:wait-live": "node scripts/check-wait.mjs --live",
     "shots": "node scripts/screenshots.mjs",
     "shots:readme": "sh scripts/readme-shots.sh",
+    "video": "node scripts/demo-video.mjs",
     "check:paseo-keys": "tsx scripts/check-paseo-keys.ts"
   },
   "devDependencies": {

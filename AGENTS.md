@@ -1183,7 +1183,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    task and note, the Overseer's reply box, Home's search when it asks the Overseer, an agent's reply box, More context,
    a question's answer and note, the brief card's answer and note, Catch up's note) takes pasted or dropped images on
    desktop web through one component (`client/image-attach.tsx`: `useImageAttachments`, `ImageField`), never a
-   per-surface copy; a phone draws nothing (no image picker for plugin fields) and keeps no space. One set of caps
+   per-surface copy, and shows that component's one Add image button (`AttachImageButton`: the system file picker
+   where the platform has one, as Paseo's composer opens it; under the field, or among a one-line field's own
+   controls); a phone draws nothing (no image picker for plugin fields) and keeps no space. One set of caps
    (`shared/images.ts`: PNG, JPEG, GIF, WebP; 6 a message, 5 MB each, 20 MB in all) refuses past a cap up front with the
    reason (invariant 8). One rule says who takes them (`imageSupport`, `server/image-support.ts`), asked once per
    recipient when the first image is added (`follow.image-support`), and a recipient that can't says so on the field
@@ -1200,7 +1202,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-23, the developer: "also make sure the 'New' panel can receive images pasted, and also the other
    conversations you have implemented like the overseer". Guarded by `tests/every-agent-field-takes-images.test.ts`
    (every client TextInput classified: agent-bound inside ImageField, or why not), `tests/pasted-images.test.ts`,
-   `tests/unsent-images.test.ts` and `tests/native-render.test.ts`.
+   `tests/unsent-images.test.ts`, `tests/attach-images.test.ts` and `tests/native-render.test.ts`.
 
 98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
    only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`
