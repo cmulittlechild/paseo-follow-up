@@ -61,6 +61,7 @@ export default function contribute(host: PluginClientContext) {
   reportTimeZone();
   const openOverview = () => client.openScreen({ screenId: OVERVIEW });
   const openLog = () => client.openScreen({ screenId: OVERVIEW, params: { view: "log" } });
+  const openQueue = () => client.openScreen({ screenId: OVERVIEW, params: { view: "queue" } });
   const openCatchUp = () => client.openScreen({ screenId: OVERVIEW, params: { view: "catchup", at: "0", n: String(Date.now()) } });
   // PR stats (docs/pr-stats.md#the-page): Home's view `stats`; a phone's person drill-down is its own screen.
   const openStats = (params: StatsParams = {}) => client.openScreen({ screenId: OVERVIEW, params: { view: "stats", ...Object.fromEntries(Object.entries(params).filter(([, v]) => !!v)) as Record<string, string>, n: String(Date.now()) } });
@@ -123,7 +124,7 @@ export default function contribute(host: PluginClientContext) {
     noteDone: (agentId, cancel) => inbox.noteDone(agentId, cancel), endDone: agentId => inbox.endDone(agentId),
   };
   const openItem = (key: string, extra: { question?: string } = {}) => client.openScreen({ screenId: OVERVIEW, params: { item: key, ...(extra.question ? { question: extra.question } : {}) } });
-  const homeDeps = { sources, openSettings, openPanel, openLog, openCatchUp, openStats, openHome: openOverview, openItem, briefDeps, searchKey, newKey };
+  const homeDeps = { sources, openSettings, openPanel, openLog, openQueue, openCatchUp, openStats, openHome: openOverview, openItem, briefDeps, searchKey, newKey };
   const Overview = (props: PluginScreenProps) => <><FollowHome {...props} deps={homeDeps} />{reportHost(props)}</>;
   const Panel = (props: PluginWorkspacePanelProps) => <><FollowPanel {...props} openSettings={openSettings} openOverview={openOverview} openLarge={openLarge} inbox={inbox} live={store} briefDeps={briefDeps} sources={sources} />{reportHost(props)}</>;
   const Large = (props: PluginScreenProps) => <FollowLarge {...props} openSettings={openSettings} openOverview={openOverview} live={store} />;

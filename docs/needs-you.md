@@ -469,6 +469,7 @@ Follow-up holds:
 | `check` (a PR action Follow-up couldn't confirm) | Hides the ask; the action record stays | Its result changing | `dismissedItems` |
 | `answer` (failed, or copied or in chat and not sent) | Hides the ask; the answer and its delivery stay as they are | Its delivery state changing (sent, failed again) | `dismissedItems` |
 | `message` (an undelivered forward or report) | Hides the ask; the queue item keeps retrying, Retry and Cancel stay in the queue | Its state changing (queued to failed) | `dismissedItems` |
+| A raised Linear issue (the Morning brief's decision Q8: raised to Urgent or High, no workspace) | Hides the item (`follow.dismiss` with `issue`; `linear-queue.json` `dismissed`) | A later raise of the same issue | Nothing: no agent owns it ([morning-brief.md](morning-brief.md#in-the-brief)) |
 
 ## Opening the PR a row names
 
