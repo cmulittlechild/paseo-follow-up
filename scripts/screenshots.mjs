@@ -481,6 +481,9 @@ const NEEDS_YOU_STATES = [
       rpc("follow.obligation", { title: "Pick who gets usage alerts", status: "blocked", ask: "Should usage alerts go to the workspace owner only, or to every admin?", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Wire alert thresholds", status: "blocked", evidence: "Waits for #232's review before the thresholds move to config", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Check alert emails in staging", status: "waiting", afterPrs: ["example/app#232"] }),
+      // due-by-fact: a task with no PRs says its re-check date (3 days out by default), and one past it reads Due.
+      rpc("follow.obligation", { title: "Watch the next nightly usage roll-up", status: "pending" }),
+      rpc("follow.obligation", { title: "Confirm the usage export with billing", status: "waiting", recheck: "2026-01-01" }),
       msg("Thresholds are in #232. One task needs your call on who gets the alerts.")], flag: false },
   // one-ask-one-item: a task blocked on something the developer does and reports back, and the turn's Action brief
   // about it: one Done card, carrying the brief's context, never a brief beside a "write the decision" card.
@@ -1913,6 +1916,17 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await openChat(page, s.title, s.prompt);
         await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
         await settleOn(page);
+      });
+      // due-by-fact: phones read a workspace's Tasks in the larger view (as tasks-phone): what moves each task.
+      if (s.state === "tasks") await shoot(`ny-tasks-phone-${theme}`, PHONE, theme, async page => {
+        await openChat(page, s.title, s.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+        const due = page.getByText(/^Due since /).last();
+        await due.waitFor({ timeout: 60000 });
+        await page.setViewportSize(PHONE);
+        await due.evaluate(el => el.scrollIntoView({ block: "center" }));
+        if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("ny-tasks-phone scrolls sideways");
       });
       if (s.homeToo === false) continue;
       await shoot(`ny-${s.state}-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await (await homeRow(page, s.title)).click(); await settleOn(page); });
