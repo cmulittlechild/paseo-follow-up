@@ -1195,7 +1195,7 @@ export function migrateFirstRun(state: InboxState, agents: Map<string, AgentInfo
  * developer has to act (auto-send off, a hold, or a blocked/unconfirmed repair).
  */
 export function repairsGoToAgent(w: Pick<FollowWorkspace, "enable_auto_sends" | "hold" | "batches">): boolean {
-  return w.enable_auto_sends && !w.hold && !w.batches.some(b => ["blocked", "uncertain"].includes(b.state));
+  return w.enable_auto_sends && !w.hold && !w.batches.some(b => ["blocked", "uncertain"].includes(b.state) && !b.movedOn);
 }
 
 /**

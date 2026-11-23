@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "batch-churn"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -146,6 +146,10 @@ function pulls() {
     232: { title: "Usage alert thresholds", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     // needs-you-states' person item: a stale CHANGES_REQUESTED, no open threads, nothing left in the code.
     262: { title: "Retry failed invoice webhooks", state: "OPEN", author: "dana", changes: ["ravi"], checks: [ok("test"), ok("lint")] },
+    // batch-churn only: a review that keeps moving (#270; batchChurnShots adds threads and replies) and a PR that later
+    // gets a conflict (#271). `replies`: a thread's last comment time, by index (default 08:30).
+    270: { title: "Sign outgoing webhook payloads", state: "OPEN", author: "dana", changes: ["sam"], threads: 2, checks: [ok("test"), ok("lint")] },
+    271: { title: "Document webhook signature checks", state: "OPEN", author: "dana", reviewers: ["sam"], checks: [ok("test"), ok("lint")] },
   };
 }
 /**
@@ -196,7 +200,7 @@ for (const m of query.matchAll(/(p\\d+):pullRequest\\(number:(\\d+)\\)/g)) {
     reviewRequests: { pageInfo: { hasNextPage: false }, nodes: (p.reviewers ?? []).map(l => ({ requestedReviewer: user(l) })) },
     latestReviews: { pageInfo: { hasNextPage: false }, nodes: [...(p.reviewed ?? []).map(l => ({ state: "APPROVED", author: user(l) })), ...(p.changes ?? []).map(l => ({ state: "CHANGES_REQUESTED", author: user(l) }))] },
     baseRef: { branchProtectionRule: base === "main" ? { requiredStatusCheckContexts: ["test", "lint"] } : null, associatedPullRequests: { nodes: base === "main" ? [] : [{ number: Number(base.slice(7)), headRefName: base, state: d[Number(base.slice(7))]?.state ?? "OPEN", headRepository: { nameWithOwner: p.repo ?? "example/app" } }] } },
-    reviewThreads: { pageInfo: { hasNextPage: false }, nodes: Array.from({ length: p.threads ?? 0 }, (_, i) => ({ id: "thread-" + n + "-" + i, isResolved: false, comments: { nodes: [{ updatedAt: "2026-03-04T08:30:00Z" }] } })) },
+    reviewThreads: { pageInfo: { hasNextPage: false }, nodes: Array.from({ length: p.threads ?? 0 }, (_, i) => ({ id: "thread-" + n + "-" + i, isResolved: false, comments: { nodes: [{ updatedAt: (p.replies && p.replies[i]) || "2026-03-04T08:30:00Z" }] } })) },
     commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: p.checks ?? [] } } } }] } };
 }
 // pr-stats-settings: the opt-in sheet's estimate (search issueCount + repository id, with GitHub's rateLimit).
@@ -452,6 +456,16 @@ const SENDING_STATES = [
 ];
 
 /**
+ * batch-churn only (a-changed-review-updates-never-cancels): one workspace whose review keeps moving. batchChurnShots
+ * drives it through the churn, the agent's "already on it" and the healed records an older release left.
+ */
+const BATCH_CHURN_STATES = [
+  { key: "bc-review", title: "Webhook signatures", minute: 160, prompt: "APP-205: sign outgoing webhook payloads and document how receivers check them.", flag: false,
+    steps: [rpc("follow.enroll", { goal: "APP-205 Signed webhooks" }), rpc("follow.register-pr", { repo: "example/app", number: 270, stack: "Webhook signatures" }),
+      rpc("follow.register-pr", { repo: "example/app", number: 271, stack: "Webhook docs" }), msg("Opened example/app#270 and #271. Sam is reviewing #270.")] },
+];
+
+/**
  * needs-you-states only (an-open-question-renders-once-per-surface, task asks): one workspace per Needs you state.
  * Billing retries above is the brief pointing at its own question.
  */
@@ -576,7 +590,7 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1904,6 +1918,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("archive")) await archiveShots({ shoot, call });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
+  if (only.includes("batch-churn")) await batchChurnShots({ shoot, seeded, call, home, cli });
   if (only.includes("needs-you-states")) {
     // One Needs you block per surface: each state on the panel (desktop) and Home's detail pane (desktop and phone),
     // light and dark. Tall panel frames so the block, Tasks and their neighbours all fit.
@@ -3541,6 +3556,137 @@ async function sendingShots({ shoot, seeded, call, home }) {
   await shoot("sending-hold-home-light", DESKTOP, "light", shown([...held, "The agent is idle; Follow-up doesn't wake it"]));
   await shoot("sending-hold-home-phone-light", PHONE, "light", shown(held, true));
   await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 }));
+}
+/**
+ * batch-churn (a-changed-review-updates-never-cancels): Webhook signatures in three states, each as the panel (Messages
+ * to the agent, then Activity) and Home's detail (Needs you), desktop light and 390 dark.
+ * a. churn: the agent answered the review blocked, then Sam added two threads and replied on one; the answer is kept
+ *    (moved on: changed) and the next message, queued, says what moved.
+ * b. on it: that message went out and the agent answered in_progress while it keeps working ("Sent · … is on it"); #271
+ *    got a conflict, so a repair on another PR waits.
+ * c. healed: records an older release left (a changed review cancelled "No longer needed", an answer a Retry rewrote as
+ *    cancelled) are healed at start-up: the plugin is disabled, they are written to state.json, and it is enabled again.
+ */
+async function batchChurnShots({ shoot, seeded, call, home, cli }) {
+  const w = seeded.workspaces.find(x => x.key === "bc-review");
+  const spec = BATCH_CHURN_STATES[0];
+  const ws = async () => (await call("follow.list", {})).workspaces.find(x => x.id === w.workspaceId);
+  const pendingBatch = async (test = () => true) => {
+    let batch = null;
+    await until("Webhook signatures queued batch", async () => { await call("follow.refresh", {}); batch = (await ws())?.batches.find(b => b.state === "pending" && test(b)); return !!batch; }, { tries: 240, every: 500 });
+    return batch;
+  };
+  const scriptsFile = join(home, "fixture-scripts.json");
+  const agentSays = async steps => { const scripts = JSON.parse(await fs.readFile(scriptsFile, "utf8")); scripts[`agent:${w.agentId}`] = steps; await fs.writeFile(scriptsFile, JSON.stringify(scripts)); };
+  const sendAndWait = async batch => {
+    await call("follow.send", { workspaceId: w.workspaceId, batchId: batch.id });
+    await until("Webhook signatures sent", async () => ["sent", "sending"].includes((await ws())?.batches.find(b => b.id === batch.id)?.state), { tries: 120, every: 500 });
+  };
+  const fixture = join(home, "gh-fixture.json");
+  const editPr = async (n, change) => { const d = JSON.parse(await fs.readFile(fixture, "utf8")); d[n] = { ...d[n], ...change }; await fs.writeFile(fixture, JSON.stringify(d)); };
+
+  // a. The first message goes out; the agent answers blocked. Then the review moves: two new threads, a reply on one.
+  const first = await pendingBatch();
+  await agentSays([msg("Thread 2 on #270 asks for key rotation, which needs Sam's call.")]);
+  await sendAndWait(first);
+  await call("follow.acknowledge", { agentId: w.agentId, batchId: first.id, outcome: "blocked",
+    result: "Fixed thread 1 on #270. Thread 2 asks whether signing keys rotate; that needs Sam's call before I change the scheme." });
+  await editPr(270, { threads: 4, replies: { 1: "2026-03-04T11:40:00Z" } });
+  const second = await pendingBatch(b => b.id !== first.id);
+  await until("the blocked answer moved on", async () => (await ws())?.batches.find(b => b.id === first.id)?.movedOn?.why === "changed", { tries: 120, every: 500 });
+
+  const TALL = { width: DESKTOP.width, height: 1300 };
+  // Activity folds after a few rows; the older (healed) ones sit behind "Show all N".
+  const showAllActivity = async (page, scroll) => {
+    if (scroll !== "Activity") return;
+    await page.getByText("Activity", { exact: true }).filter({ visible: true }).last().waitFor({ timeout: 90000 });
+    const more = page.getByText(/^Show all \d+$/).filter({ visible: true }).last();
+    if (await more.isVisible().catch(() => false)) await more.click();
+  };
+  const panel = (scroll, words) => async page => {
+    await page.setViewportSize(TALL);
+    await openChat(page, spec.title, spec.prompt);
+    await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+    await showAllActivity(page, scroll);
+    const el = page.getByText(words).filter({ visible: true }).first(); await el.waitFor({ timeout: 90000 });
+    await page.getByText(scroll, { exact: true }).filter({ visible: true }).last().evaluate(e => e.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(400);
+  };
+  const panelPhone = (scroll, words) => async page => {
+    await openChat(page, spec.title, spec.prompt);
+    await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+    await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+    await showAllActivity(page, scroll);
+    await page.getByText(words).filter({ visible: true }).first().waitFor({ timeout: 90000 });
+    await page.setViewportSize(PHONE);
+    await page.getByText(scroll, { exact: true }).filter({ visible: true }).last().evaluate(e => e.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(400);
+    if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("batch-churn panel scrolls sideways at 390");
+  };
+  const homeShot = (words, phone) => async page => {
+    await openHome(page);
+    if (phone) await page.setViewportSize(PHONE);
+    await (await homeRow(page, spec.title)).click();
+    await page.getByText(words).filter({ visible: true }).first().waitFor({ timeout: 90000 });
+    await page.waitForTimeout(400);
+  };
+  const state = async (name, words, extra) => {
+    await shoot(`bc-${name}-panel-light`, TALL, "light", panel("Messages to the agent", words.panel));
+    await shoot(`bc-${name}-activity-light`, TALL, "light", panel("Activity", words.activity));
+    await shoot(`bc-${name}-home-light`, DESKTOP, "light", homeShot(words.home));
+    await shoot(`bc-${name}-panel-phone-dark`, PHONE, "dark", panelPhone("Messages to the agent", words.panel));
+    await shoot(`bc-${name}-activity-phone-dark`, PHONE, "dark", panelPhone("Activity", words.activity));
+    await shoot(`bc-${name}-home-phone-dark`, PHONE, "dark", homeShot(words.home, true));
+    if (extra) await extra();
+  };
+  await state("churn", { panel: /Next message to Webhook signatures/, activity: /updated on GitHub/, home: spec.title }, async () => {
+    // The queued message itself (Preview): the review line says what moved since the last message.
+    for (const [theme, viewport] of [["light", DESKTOP], ["dark", PHONE]]) await shoot(`bc-churn-preview-${theme === "light" ? "light" : "phone-dark"}`, viewport, theme, async page => {
+      await panel("Messages to the agent", /Next message to Webhook signatures/)(page);
+      await page.getByRole("button", { name: /^Preview the next message/ }).filter({ visible: true }).first().click();
+      await page.getByText(/since the last message: 2 new threads, 1 with new replies/).filter({ visible: true }).first().waitFor({ timeout: 60000 });
+      if (viewport === PHONE) await page.setViewportSize(PHONE);
+      await page.waitForTimeout(400);
+    });
+  });
+
+  // b. The update goes out to an agent that keeps working; it answers in_progress. #271 gets a conflict meanwhile.
+  await agentSays([think("A subagent is already going through the new threads on #270."), { hold: true }]);
+  await sendAndWait(second);
+  await until("Webhook signatures' agent at work", async () => (await client.fetchAgent(w.agentId)).agent?.status === "running", { tries: 120, every: 500 });
+  await call("follow.acknowledge", { agentId: w.agentId, batchId: second.id, outcome: "in_progress", result: "Already on it: a subagent is working through the new threads on #270." });
+  // Auto-send on, so the queued repair on #271 says what it waits for (not "auto-send is off").
+  await call("follow.control", { workspaceId: w.workspaceId, enable_auto_sends: true });
+  await editPr(271, { conflict: true });
+  await pendingBatch(b => b.tasks.some(t => t.kind === "conflict"));
+  await state("on-it", { panel: /is on it/, activity: /already on/, home: spec.title });
+
+  // c. Records an older release left, healed at start-up.
+  await cli("plugin", "disable", "follow-up");
+  await new Promise(r => setTimeout(r, 4000));
+  const stateFile = join(home, "plugin-data", "follow-up", "state.json");
+  const saved = JSON.parse(await fs.readFile(stateFile, "utf8"));
+  const stored = saved.workspaces.find(x => x.id === w.workspaceId);
+  const review = stored.batches.find(b => b.id === first.id).tasks.find(t => t.kind === "review");
+  const iso = minutes => new Date(BASE + minutes * 60_000).toISOString();
+  const old = (id, minute, fingerprint, state, result, attempts = 1) => ({ id, messageId: `${id}-message`, tasks: [{ ...review, fingerprint, parts: undefined }], state, createdAt: iso(minute), sentAt: iso(minute + 1),
+    settledAt: iso(minute + 4), attempts, result, recipientAgentId: null, contextPath: null, activityAt: null, acknowledgmentError: null, recoveryHandoffs: [] });
+  stored.batches.unshift(
+    // A changed review a release before the fix cancelled as gone.
+    old("shots-old-churn", 120, "older-a", "cancelled", "No longer needed: GitHub no longer shows what it asked for."),
+    // The agent's answer, then the developer's Retry, which rewrote the answer as cancelled.
+    old("shots-old-answer", 140, "older-b", "cancelled", "Thread 1 needs Sam to confirm the header name before I rename it."),
+    old("shots-old-retry", 150, "older-b", "completed", "Renamed the header to X-Signature after Sam confirmed it.", 2));
+  await fs.writeFile(stateFile, JSON.stringify(saved));
+  // Enabling compiles the worker again, which can outlast the CLI's 60 s request: wait for the worker instead.
+  await cli("plugin", "enable", "follow-up").catch(error => { if (!/DAEMON_REQUEST_TIMEOUT/.test(`${error?.stdout ?? ""}${error?.message ?? ""}`)) throw error; });
+  await until("Follow-up back after the heal", async () => {
+    try { const b = (await ws())?.batches ?? []; return b.find(x => x.id === "shots-old-churn")?.movedOn?.why === "changed" && b.find(x => x.id === "shots-old-answer")?.movedOn?.why === "retried"; }
+    catch { return false; }
+  }, { tries: 600, every: 500 });
+  const healed = (await ws()).batches;
+  if (healed.find(x => x.id === "shots-old-answer").state !== "blocked") throw new Error("the answered batch wasn't restored as blocked");
+  await state("healed", { panel: "Messages to the agent", activity: /sent again/, home: spec.title });
 }
 /**
  * Settings, one tab per category (Paseo 0.16+, client/settings-screens.ts), or Follow-up's own tabs on 0.15: every

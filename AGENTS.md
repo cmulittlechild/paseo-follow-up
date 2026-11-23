@@ -744,7 +744,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`a-batch-item-leaves-once-nothing-applies`, `a-human-only-outcome-is-a-human-item`). Every refresh re-checks a
    blocked or unconfirmed repair batch against the PRs as they are now, the same rule a queued batch follows: once no
    task's condition still applies (every PR merged or closed, or each condition's fingerprint gone: the review
-   dismissed or replaced, checks passing, the conflict resolved) it settles with the reason and leaves Needs you
+   dismissed or replaced, checks passing, the conflict resolved) it settles with the reason and leaves Needs you, an
+   answered one keeping its outcome (invariant 104)
    (`settleMoot` in `server/engine.ts`, `stillApplies` in `shared/send-decision.ts`). A PR GitHub didn't answer for
    still applies. Start-up runs the same pass over every tracked workspace, dormant ones included. An agent outcome
    only a person can move (`acknowledge_batch` blocked with `humanOnly`: a stale review only its reviewer can change,
@@ -1160,6 +1161,21 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    that's it". New from a chat opened Home as `?new=1`; opening Home again (the sidebar's Follow-up, ⌘K Home) pushed a
    second Home and Paseo kept the first mounted, hidden; the first mounted host drew every later New in it. Guarded by
    `tests/new-opens-where-you-are.test.ts`.
+104. **A changed review is an update, never a cancel** (`a-changed-review-updates-never-cancels`). A sent batch whose
+   item got new content on GitHub (the same review, new threads or replies: its task key still open with a new
+   fingerprint) is superseded, never "No longer needed"; the next message tells the agent what moved in counts
+   (`taskUpdate`, `shared/send-decision.ts`). "No longer needed" is only for an item GitHub stopped showing. A batch
+   the agent answered keeps its outcome and words: a later GitHub change or the developer's Retry marks it `movedOn`
+   (changed, gone, retried, duplicate), which takes it out of Needs you and the queue (`holdsQueue`, `stuckBatch`)
+   and reads muted in Activity, never as a failure. `acknowledge_batch` `in_progress` (the agent or its own subagent
+   is on it) settles the batch without failure, and its unchanged items aren't sent again while the workspace is busy,
+   for at most `IN_PROGRESS_MAX_MS` (`inProgressHolds`). A busy signal that can't clear never holds auto-sends: an
+   agent in error or closed has no background work (`backgroundCount`), and other agents' work keeps a sent message
+   open at most `IN_PROGRESS_MAX_MS`. State an older release left heals at start-up (`healBatches`, logged in counts
+   only). 2026-11-23: in one workspace a churning review made a new message every few minutes and each sent one was
+   cancelled seconds later as "No longer needed"; the agent's "already on it" showed as "The repairs didn't finish",
+   Retry sent the identical items again twice, and a blocked answer held the queue. Guarded by
+   `tests/review-batch-churn.test.ts`, `tests/blocked-batch-resolves.test.ts` and `INVARIANTS`.
 
 ## Bugs
 

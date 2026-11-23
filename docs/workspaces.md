@@ -116,9 +116,25 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
      `reconcile` re-checks a `blocked` or `uncertain` repair batch against the tasks the PRs show now, as it does a
      queued one (`stillApplies`, `shared/send-decision.ts`): once no task's condition (key and fingerprint) is still
      open, because every PR merged or closed or the review was dismissed or replaced, the checks pass or the conflict
-     is gone, it settles `cancelled` with the reason ("No longer needed: #142 merged.") and its blocker's own time, and
-     leaves Needs you. A PR GitHub didn't answer for still applies (unknown is not off). `recover()` runs the same pass
-     at start-up over every tracked workspace, dormant ones included, so a batch an older release left stuck clears.
+     is gone, it leaves Needs you and the queue with the reason and its blocker's own time. An answer the agent gave
+     keeps its state and words and gets `movedOn` (`why: "gone"`, "No longer needed: #142 merged."); an unconfirmed
+     send settles `cancelled`. A PR GitHub didn't answer for still applies (unknown is not off). `recover()` runs the
+     same pass at start-up over every tracked workspace, dormant ones included, so a batch an older release left stuck
+     clears.
+   - **A changed review is an update, never a cancel** (`a-changed-review-updates-never-cancels`). A stuck batch whose
+     exact condition is gone but whose task key is still open (the same review with new threads or replies) changed:
+     it gets `movedOn` with `why: "changed"` (`changedNotGone`), never "No longer needed", and the next message says
+     what moved in counts ("since the last message: 2 new threads, 1 with new replies", `taskUpdate` over the task's
+     `parts`, the review's `threadId@updatedAt`). A batch with `movedOn` never holds the queue (`holdsQueue`) or shows
+     as stuck (`stuckBatch`); Activity words it as updated, sent again or no longer needed, muted. Retry on an answered
+     batch marks it `movedOn` `retried` instead of rewriting it `cancelled`. `acknowledge_batch` takes
+     `outcome: "in_progress"` when the agent or its own subagent is already on it: the batch settles `completed` with
+     `inProgress`, and its unchanged conditions count as delivered while the workspace is busy (`inProgressHolds`, at
+     most `IN_PROGRESS_MAX_MS`, 2 h), so the same items are never sent again meanwhile. Other agents' work keeps a sent
+     message open at most `IN_PROGRESS_MAX_MS` after it went out, and an agent in `error` or `closed` reports no
+     background work (`backgroundCount`), so a busy signal that can't clear never holds auto-sends. `healBatches`
+     (in `recover()`, logged in counts only) relabels a churned "No longer needed" whose task a later batch carried,
+     restores an answer a Retry rewrote, and sets aside an older answer whose exact conditions went out again.
    - **A human-only outcome is a human item** (`a-human-only-outcome-is-a-human-item`). `acknowledge_batch` blocked
      with `humanOnly: true` says nothing is left for an agent: only a person can move it (a reviewer must re-review or
      dismiss a stale review, access must be granted). The batch settles `completed` with `humanOnly`, and `reconcile`
