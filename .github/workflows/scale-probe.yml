@@ -1,5 +1,5 @@
-# TEMPORARY (fix/scale-flake): samples test:scale's worker peak on several runners, with and without the host's
-# glibc MALLOC_* lines, on the same runner each. Removed before the PR merges.
+# TEMPORARY (fix/scale-flake): readings and catch proofs for the scale gate under the live allocator env.
+# Removed before the PR merges.
 name: scale-probe
 on:
   push:
@@ -12,20 +12,51 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        i: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        include:
+          - { kind: reading, i: 1 }
+          - { kind: reading, i: 2 }
+          - { kind: reading, i: 3 }
+          - { kind: reading, i: 4 }
+          - { kind: reading, i: 5 }
+          - { kind: reading, i: 6 }
+          - { kind: reading, i: 7 }
+          - { kind: reading, i: 8 }
+          - { kind: reading, i: 9 }
+          - { kind: reading, i: 10 }
+          - { kind: reading, i: 11 }
+          - { kind: reading, i: 12 }
+          - { kind: reading, i: 13 }
+          - { kind: reading, i: 14 }
+          - { kind: reading, i: 15 }
+          - { kind: reading, i: 16 }
+          - { kind: ab286, i: 1 }
+          - { kind: ab286, i: 2 }
+          - { kind: ab286, i: 3 }
+          - { kind: reg283, i: 1 }
+          - { kind: reg283, i: 2 }
+          - { kind: synth, i: 1 }
+          - { kind: synth, i: 2 }
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm install --global @getpaseo/cli@0.15.2 @anthropic-ai/claude-code@2.1.300 @openai/codex@0.162.1
-      - name: runner
+      - name: probe
+        env:
+          MALLOC_ARENA_MAX: "2"
+          MALLOC_MMAP_THRESHOLD_: "131072"
+          MALLOC_TRIM_THRESHOLD_: "131072"
         run: |
-          nproc; grep -m1 "model name" /proc/cpuinfo; uname -r; cat /sys/kernel/mm/transparent_hugepage/enabled; ldd --version | head -1; free -m
-      - name: scale both ways
-        run: |
-          plain() { npm run -s test:scale 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[plain] /'; }
-          malloc() { MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072 MALLOC_TRIM_THRESHOLD_=131072 npm run -s test:scale 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[malloc] /'; }
-          if [ $(( ${{ matrix.i }} % 2 )) = 1 ]; then plain; malloc; else malloc; plain; fi
+          grep -m1 "model name" /proc/cpuinfo
+          at() { rm -rf /tmp/t && git worktree add -q --detach /tmp/t "$1" && (cd /tmp/t && npm ci --silent >/dev/null 2>&1 && npm run -s test:scale 2>&1 | grep -E "lifetimePeakRssMb|idleMedianRssMb|over [0-9.]+ MB" | sed "s/^/[$1] /"); git worktree remove --force /tmp/t; }
+          case "${{ matrix.kind }}" in
+            reading) npm run -s test:scale 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[reading] /' ;;
+            synth) node scripts/scale-check.mjs --workspaces 140 --awake 5 --idle 90 --realistic --rss-budget realistic --idle-rss-budget realistic --cpu-budget 3 --request-budget 2 --retain-mb 20 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[synth20] /' ;;
+            reg283) at 28881bc4 ;;
+            ab286) if [ $(( ${{ matrix.i }} % 2 )) = 1 ]; then at a1b0c10e; at 9b4945c5; else at 9b4945c5; at a1b0c10e; fi ;;
+          esac

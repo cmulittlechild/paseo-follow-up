@@ -31,7 +31,7 @@ import { harness, spawnDaemon } from "./harness.mjs";
 import { harnessEnv, harnessConfig } from "./harness-env.mjs";
 import { fakeGithub } from "./fake-github.mjs";
 import { scaleGh } from "./scale-github.mjs";
-import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, BURST_RETURN_BUDGET_MB, burstReturnVerdict, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainPlan, drainState, idleBudgetMb, idleVerdict, peakBudgetMb, REALISTIC_PEAK_BUDGET_MB, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
+import { ACK_READ_MS, BUSY_GROWTH_BUDGET_MB, BUSY_ITEM_BYTES, BUSY_TURN_ITEMS, BUSY_TURNS_PER_MIN, BURST_RETURN_BUDGET_MB, burstReturnVerdict, busyVerdict, DRAIN_BOUND_MS, DRAIN_QUIET_MS, drainPlan, drainState, idleBudgetMb, idleVerdict, peakBudgetMb, LIVE_MALLOC_ENV, REALISTIC_PEAK_BUDGET_MB, SEND_SETTLE_MS, settleBoundMs, settleState } from "./scale-budget.mjs";
 
 const exec = promisify(execFile);
 // The check drives a real Paseo daemon, so it needs the paseo CLI (CI installs @getpaseo/cli). Without it, local
@@ -81,7 +81,11 @@ const traceFile = arg("request-trace", null);
 let github = null;
 if (REALISTIC) { await mkdir(join(root, "bin"), { recursive: true }); await writeFile(join(root, "bin/gh"), scaleGh()); const { chmod } = await import("node:fs/promises"); await chmod(join(root, "bin/gh"), 0o700); if (shape) { await writeFile(join(root, "pr-states.json"), JSON.stringify(shape.prStates)); process.env.SCALE_GH_STATES = join(root, "pr-states.json"); }
   github = await fakeGithub({ dir: root, gh: join(root, "bin/gh"), owners: shape ? shape.owners : ["example"], gzip: process.argv.includes("--gh-gzip") }); }
-const env = harnessEnv(root, { home, strip: github?.strip ?? [], set: { ...(traceFile ? { FOLLOW_UP_REQUEST_TRACE: traceFile } : {}), ...(heapDir || cpuDir || allocDir ? { NODE_OPTIONS: [heapDir && `--heapsnapshot-signal=SIGUSR2 --diagnostic-dir=${heapDir}`, cpuDir && `--cpu-prof --cpu-prof-dir=${cpuDir}`, allocDir && `--require ${join(dirname(fileURLToPath(import.meta.url)), "alloc-prof.cjs")}`].filter(Boolean).join(" ") } : {}), ...(allocDir ? { FOLLOW_UP_ALLOC_PROF: allocDir, ...(process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS ? { FOLLOW_UP_ALLOC_PROF_WINDOWS: process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS } : {}) } : {}), ...(arg("cycles", null) ? { SCALE_GH_EPOCH: join(root, "gh-epoch") } : {}), ...(titleIndexCheck ? { CLAUDE_CONFIG_DIR: join(root, "claude") } : {}), PASEO_DAEMON_URL: counted, PASEO_RELAY_ENABLED: "false", ...(github?.env ?? {}) } });
+// --retain-mb <n>: a synthetic regression; every plugin process holds n MB from its start (scripts/scale-retain.cjs).
+const RETAIN_MB = Number(arg("retain-mb", "0"));
+const preloads = [RETAIN_MB > 0 && `--require ${join(dirname(fileURLToPath(import.meta.url)), "scale-retain.cjs")}`];
+// The live host's allocator env (LIVE_MALLOC_ENV), whatever the caller's shell has: CI and a local run measure alike.
+const env = harnessEnv(root, { home, strip: github?.strip ?? [], set: { ...LIVE_MALLOC_ENV, ...(RETAIN_MB > 0 ? { SCALE_RETAIN_MB: String(RETAIN_MB) } : {}), ...(traceFile ? { FOLLOW_UP_REQUEST_TRACE: traceFile } : {}), ...(heapDir || cpuDir || allocDir || RETAIN_MB > 0 ? { NODE_OPTIONS: [...preloads, heapDir && `--heapsnapshot-signal=SIGUSR2 --diagnostic-dir=${heapDir}`, cpuDir && `--cpu-prof --cpu-prof-dir=${cpuDir}`, allocDir && `--require ${join(dirname(fileURLToPath(import.meta.url)), "alloc-prof.cjs")}`].filter(Boolean).join(" ") } : {}), ...(allocDir ? { FOLLOW_UP_ALLOC_PROF: allocDir, ...(process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS ? { FOLLOW_UP_ALLOC_PROF_WINDOWS: process.env.FOLLOW_UP_ALLOC_PROF_WINDOWS } : {}) } : {}), ...(arg("cycles", null) ? { SCALE_GH_EPOCH: join(root, "gh-epoch") } : {}), ...(titleIndexCheck ? { CLAUDE_CONFIG_DIR: join(root, "claude") } : {}), PASEO_DAEMON_URL: counted, PASEO_RELAY_ENABLED: "false", ...(github?.env ?? {}) } });
 const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120_000, maxBuffer: 8 << 20 })).stdout);
 let daemon = null; let client = null;
 const start = async () => {

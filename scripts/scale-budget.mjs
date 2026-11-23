@@ -12,6 +12,18 @@ export function median(xs) {
 }
 
 /**
+ * The allocator env test:scale runs the daemon with: the live host's (Paseo's env file, ~/.config/paseo/env, which every
+ * plugin process inherits since 2026-11-15). Without it glibc gives each allocating thread its own arena (up to 8 per
+ * core), and how many the worker's ~2 s cold-start tick opens is a race: 2026-11-23, ten CI runners each ran test:scale
+ * both ways, back to back. Plain: 9-12 arenas, peak 312-335 MB (8 of 10 over the budget), idle median 234-253. With
+ * these: 1-6 arenas, peak 299-312, idle 213-227, on the same runners (AMD EPYC 7763 and 9V74, Intel 8573C alike). The
+ * heap was the same both ways; the difference was anonymous native memory. Local runs always had it (agent shells
+ * inherit Paseo's env) and CI never did, so the two disagreed. scale-runner-facts: scale-check prints the runner, the
+ * worker's arenas and the peak's anonymous/file split on its scale-diag line.
+ */
+export const LIVE_MALLOC_ENV = Object.freeze({ MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "131072", MALLOC_TRIM_THRESHOLD_: "131072" });
+
+/**
  * test:scale's idle budget (realistic seed), derived from CI's own distribution: test:scale runs on CI's runner, so its
  * budget comes from what that runner reads, not from harness terms. 2026-11-13: 49 CI readings of test:scale's idle
  * median (tests/fixtures/ci-idle-rss.txt, the last 60 CI runs without three failing outliers, plus #174's 243, which
