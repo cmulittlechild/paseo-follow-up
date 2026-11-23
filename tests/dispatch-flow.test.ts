@@ -284,3 +284,32 @@ test("the dispatch tool: the dry run creates nothing, confirm starts exactly tha
   await service.settle();
   assert.equal(fake.creates.length, 1);
 });
+
+test("the Agent chip's pick overrides the action's agent, is kept on the record and starts that agent after a retry", async t => {
+  const asked: unknown[] = [];
+  const { service, fake, clock, down, upAgain } = await setup(t, {
+    agent: async action => { asked.push(action.agent); return { config: { provider: action.agent?.provider ?? "claude" }, label: action.agent?.provider ?? "Claude", picked: { provider: action.agent?.provider ?? "claude" }, isDefault: !action.agent }; },
+  });
+  const plain = await service.preview({ source: "ACME-142", projectId: "web" });
+  assert.deepEqual(plain.agentPick, { picked: { provider: "claude" }, isDefault: true });
+  const picked = await service.preview({ source: "ACME-142", projectId: "web", agent: { provider: "codex", mode: "full-access" } });
+  assert.deepEqual([picked.agent, picked.agentPick.isDefault], ["codex", false]);
+  down();
+  const { record } = await service.dispatch({ source: "ACME-142", projectId: "web", agent: { provider: "codex", mode: "full-access" } });
+  assert.deepEqual(record.agent, { provider: "codex", mode: "full-access" });
+  await service.settle();
+  upAgain();
+  clock.now += RETRY_MS[0] + 1;
+  await service.retryDue();
+  await service.settle();
+  assert.deepEqual(fake.agents[0].config, { provider: "codex" });
+});
+
+test("the list says where each issue would go and which already has a workspace", async t => {
+  const { service } = await setup(t, {
+    existing: async source => source.key === "ACME-142" ? { workspaceId: "ws-9", title: "Retry charges", state: "tracked" } : null,
+  });
+  await service.setSettings({ rules: { ACME: "web" } });
+  const out = await service.sources();
+  assert.deepEqual(out.routes["ACME-142"], { project: "web", guess: false, existing: { workspaceId: "ws-9", title: "Retry charges", state: "tracked" } });
+});

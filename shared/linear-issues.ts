@@ -47,6 +47,8 @@ export const QUEUE_FIELDS = ["id", "uuid", "title", "url", "status", "statusType
  */
 export const LEFT_FIELDS = [...QUEUE_FIELDS, "assignee", "assigneeId"] as const;
 /** Issues per list_issues page (60 at once came back cut off; server/ranker.ts). Not a cap on how many are read. */
+/** One read of the developer's list: the issues, or why there are none ("missing": Linear isn't connected). */
+export type LinearList = { status: "ok"; issues: LinearIssue[]; at: number; more: boolean } | { status: "missing" | "error"; issues: []; at: number; error: string; more: false };
 export const PAGE_SIZE = 25;
 /** Open work: what New lists before anything is typed. */
 export const OPEN_STATE_TYPES = ["started", "unstarted"] as const;

@@ -77,6 +77,13 @@ test("titles and branches", () => {
 const P = (id: string, repo: string | null = null, worktree = true): WhereProject => ({ id, name: id, repo, worktree });
 const where = (over: Partial<WhereInput>) => resolveWhere({ source: { kind: "linear", team: "ACME", repo: null }, projects: [P("web", "acme/web"), P("app", "example/app")], rules: {}, learned: {}, lastProjectId: null, noTeam: "last", ...over });
 
+test("a source already being worked on goes where its workspace is, after an explicit pick and the link", () => {
+  assert.deepEqual([where({ workspaceProjectId: "app" }).projectId, where({ workspaceProjectId: "app" }).how, where({ workspaceProjectId: "app" }).reason], ["app", "workspace", "Where its workspace is"]);
+  assert.equal(where({ workspaceProjectId: "app", picked: "web" }).projectId, "web");
+  assert.equal(where({ workspaceProjectId: "app", rules: { ACME: "web" } }).projectId, "app");
+  assert.equal(where({ workspaceProjectId: "gone" }).how, "ambiguous");
+});
+
 test("where it goes, in order, with its reason", () => {
   assert.equal(where({ picked: "app", rules: { ACME: "web" } }).how, "picked");
   const link = where({ source: { kind: "issue", team: null, repo: "Example/App" } });

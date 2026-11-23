@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -67,7 +67,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -239,17 +239,47 @@ function linearIssues() {
     "APP-151": { title: "Dunning email copy for failed renewals", status: "Todo" },
   };
 }
-/** A fake `mcpproxy`: Linear's get_issue and list_teams from the fixture file, a tool error for everything else. */
-function fakeMcpproxy(file) {
+/**
+ * New's list (`--only new`): the developer's open issues, newest update first, as Linear's list_issues answers them
+ * (issues[], hasNextPage, cursor). Fictional keys and titles; `minute` is after BASE.
+ */
+function newIssues() {
+  const issue = (key, title, status, statusType, minute, description = "") => ({ id: key, title, url: "https://linear.app/example/issue/" + key, gitBranchName: `dana/${key.toLowerCase()}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32).replace(/-+$/, "")}`,
+    status, statusType, team: key.startsWith("APP") ? "App" : key.startsWith("WEB") ? "Web" : "Ops", updatedAt: new Date(at(minute)).toISOString(), priority: { value: 2, name: "High" }, assignee: "Dana", description });
+  return [
+    issue("APP-151", "Dunning email copy for failed renewals", "Todo", "unstarted", 175, "The dunning email after the last retry still says \"your card was declined\". Rewrite it for failed renewals and link the billing page."),
+    issue("APP-142", "Retry failed charges with exponential backoff", "In Progress", "started", 160, "Charges that fail with a network error are retried once. Retry up to 4 times with backoff."),
+    issue("WEB-31", "Invoice PDF rounds VAT wrong for CHF totals", "In Progress", "started", 120, "CHF totals round VAT per line instead of per invoice."),
+    issue("OPS-12", "Rotate the staging database password", "Todo", "unstarted", 90, "Rotate it and update the deploy secret."),
+    issue("APP-163", "Rate-limit webhook retries per endpoint", "Todo", "unstarted", 30, "One slow endpoint holds every retry."),
+  ];
+}
+/**
+ * A fake `mcpproxy`: Linear's get_issue, list_issues and list_teams from the fixture files, a tool error for everything
+ * else. `<file>.mode` set to "error" or "missing" makes every call fail the way a down or absent Linear does.
+ */
+function fakeMcpproxy(file, listFile) {
   return `#!/usr/bin/env node
-const issues = JSON.parse(require("fs").readFileSync(${JSON.stringify(file)}, "utf8"));
+const fs = require("fs");
+const issues = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, "utf8"));
+let list = []; try { list = JSON.parse(fs.readFileSync(${JSON.stringify(listFile)}, "utf8")); } catch {}
+let mode = "ok"; try { mode = fs.readFileSync(${JSON.stringify(file + ".mode")}, "utf8").trim(); } catch {}
 const flag = name => (process.argv.find(a => a.startsWith("--" + name + "=")) || "").slice(name.length + 3);
 const tool = flag("tool-name"); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
 const reply = (text, isError = false) => { console.log(JSON.stringify({ content: [{ type: "text", text }], isError })); process.exit(0); };
+if (mode === "missing") { console.error("server linear not found"); process.exit(1); }
+if (mode === "error") { console.error("Linear API timed out"); process.exit(1); }
 if (tool === "linear:list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
+if (tool === "linear:list_issues") {
+  const q = (args.query || "").toLowerCase();
+  const found = q ? list.filter(i => (i.id + " " + i.title).toLowerCase().includes(q)) : list;
+  reply(JSON.stringify({ issues: found, hasNextPage: false, cursor: null }));
+}
 if (tool === "linear:get_issue") {
+  const listed = list.find(i => i.id === args.id);
+  if (listed) reply(JSON.stringify(listed));
   const i = issues[args.id];
-  reply(i ? JSON.stringify({ identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
+  reply(i ? JSON.stringify({ id: args.id, identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
 }
 // Settings → Morning brief's chat search (fictional): the reply chat-fixture.json says, the pickers' fixed results.
 if (/search_public_and_private$/.test(tool)) {
@@ -475,7 +505,15 @@ async function seed({ call, home }) {
   // recolor the sidebar on every run.
   // Two projects, so the sidebar and Quiet's folds don't read as one repo.
   const repos = {};
-  for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
+  // New (`--only new`) starts worktrees, so its projects are Git repositories on main, in folders of their own.
+  for (const name of ["app", "web"]) {
+    repos[name] = join(tmpdir(), only.includes("new") ? "follow-up-shots-fixture-new" : "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true });
+    if (only.includes("new") && !existsSync(join(repos[name], ".git"))) {
+      const git = (...a) => exec("git", ["-C", repos[name], ...a], { timeout: 30000 });
+      await git("init", "-q", "-b", "main"); await fs.writeFile(join(repos[name], "README.md"), `# example/${name}\n`);
+      await git("add", "."); await git("-c", "user.name=Dana", "-c", "user.email=dana@example.com", "commit", "-q", "-m", "init");
+    }
+  }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
   const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
@@ -1794,6 +1832,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
+  if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
@@ -2332,6 +2371,158 @@ async function homeKeysShots({ shoot, out }) {
   // A run filtered to the renders (--shot '^home-keys-sheet') runs no checks: it leaves an earlier home-keys.json alone
   // rather than overwriting its record with an empty list.
   if (checks.length) await fs.writeFile(join(out, "home-keys.json"), JSON.stringify(checks, null, 2));
+}
+
+/**
+ * New (`--only new`, docs/dispatch.md#the-dialog): every state of the dialog, desktop and phone, light and dark, from
+ * the fake Linear list (newIssues); the four ways in (Home's + New, ⌘K, the sidebar row, the key in a browser tab and
+ * in the desktop app); the Display setting; Home's row with Undo. Dispatches run on this harness daemon only, into
+ * Git projects of its own. Writes new.json with every check.
+ */
+async function newShots({ shoot, call, out, home, billing }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`new: ${name}`); log(`new check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const linear = mode => fs.writeFile(join(home, "linear-fixture.json.mode"), mode);
+  // New's default agent is the Overseer's (until Settings → Agents has its own row): the fixture provider here.
+  await call("follow.set-agent-setting", { role: "overseer", entry: { provider: "followup-fixture", model: "fixture" } });
+  const settings = await call("follow.dispatch-settings", {});
+  const project = name => settings.projects.find(p => p.name === name || p.name.endsWith(`/${name}`));
+  if (project("web")) await call("follow.set-dispatch-settings", { rules: { WEB: project("web").id } });
+  // An action whose agent can't start: the agent-failure state (the workspace is archived again).
+  await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { id: "elsewhere", name: "Try elsewhere", icon: "play", description: "On a provider this host lacks",
+    instructions: "Work on {title}.", agent: { provider: "no-such-provider" }, workspace: "worktree", branch: "title", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } } });
+
+  const FIELD = "Paste a link or describe the task";
+  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  const row = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
+  // A preview is up: its instructions toggle, or (project still to pick) the line standing in for the fields.
+  const preview = page => dialog(page).getByText(/^((Show|Hide) instructions|From, branch and agent fill in once you pick a project\.)$/).filter({ visible: true }).first().waitFor();
+  const narrow = async (page, vp) => { if (vp.width < 768) { await page.setViewportSize(vp); await page.waitForTimeout(300); } };
+  const openFromHome = async (page, vp, { list = true } = {}) => {
+    await openHome(page); await narrow(page, vp);
+    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await dialog(page).waitFor();
+    if (list) await row(page, /^APP-151 Dunning/).waitFor();
+  };
+  const type = async (page, text) => { const f = dialog(page).getByRole("textbox", { name: FIELD }).first(); await f.fill(text); await page.waitForTimeout(250); };
+  /** Phones: a row opens the preview screen; desktop: it selects in place. */
+  const pick = async (page, name) => { await row(page, name).click(); await preview(page); };
+  const primary = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
+  // The harness's Paseo makes a worktree in 30 s or more (0.15: slower each time), so a dispatch gets three minutes.
+  const DISPATCH_WAIT = 180_000;
+  const startWords = async (page, vp, words, action = /^Create PR/) => {
+    // A worktree-failure shot saves a base that doesn't exist; a shot that died before clearing it must not fail the rest.
+    if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+    await openFromHome(page, vp); await type(page, words);
+    if (vp.width < 768) await row(page, /^Start from your words/).click();
+    await preview(page);
+    // Words with no last project ask which project (two projects here): pick app, as a developer would.
+    // (Once app has been used, words guess it and there's nothing to pick.)
+    const app = dialog(page).getByRole("button", { name: "Start in app" });
+    if (await app.count()) await app.first().click();
+    await primary(page, action).waitFor();
+    return action;
+  };
+
+  // Linear down and Linear missing first: a failed list is never cached, an answered one is (for the worker's minute).
+  for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await linear("error");
+    await shoot(`new-fail-linear-${device}-${theme}`, vp, theme, async page => { await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Couldn't read Linear").waitFor(); });
+    await linear("missing");
+    await shoot(`new-no-linear-${device}-${theme}`, vp, theme, async page => { await openFromHome(page, vp, { list: false }); await dialog(page).getByText(/once Linear is connected/).waitFor(); });
+  }
+  await linear("ok");
+
+  let n = 0;
+  for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    const name = state => `new-${state}-${device}-${theme}`;
+    const phone = vp.width < 768;
+    await shoot(name("issues"), vp, theme, async page => {
+      await openFromHome(page, vp);
+      if (!phone) { await preview(page); check(`${device} ${theme}: the first issue that can start is preselected (not one with a live workspace)`, await dialog(page).getByText("Invoice PDF rounds VAT wrong for CHF totals").count() >= 2); }
+      check(`${device} ${theme}: an unruled team's row asks which project`, await dialog(page).getByText("→ which project?").count() > 0);
+    });
+    await shoot(name("search"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "webhook"); await row(page, /^Search all of Linear/).waitFor(); });
+    await shoot(name("url"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://linear.app/example/issue/WEB-31/invoice-pdf-rounds-vat");
+      check(`${device} ${theme}: a pasted key in the list selects that row`, await dialog(page).getByText("From your link").count() > 0);
+      if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
+    await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
+    await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
+    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^APP-142 /);
+      check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
+    await shoot(name("ambiguous"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^OPS-12 /); await dialog(page).getByText("Which project for OPS?").first().waitFor();
+      check(`${device} ${theme}: ambiguous blocks every action`, await dialog(page).getByText("Pick a project first; the actions start there.").count() > 0); });
+    await shoot(name("instructions"), vp, theme, async page => { await openFromHome(page, vp); if (phone) await pick(page, /^WEB-31 /); else await preview(page);
+      if (phone) { const show = dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first(); await show.evaluate(el => el.scrollIntoView({ block: "center" })); await show.click(); } else await page.keyboard.press("Control+i");
+      await dialog(page).getByText("Follow-up then adds its usual workspace instructions.").waitFor(); });
+    // A dispatch: its steps, then created (Open workspace, Undo), from the developer's words (a new workspace each time).
+    await shoot(name("created"), vp, theme, async page => {
+      const action = await startWords(page, vp, `Add a CSV export to the audit log page (${++n}).`);
+      await primary(page, action).click();
+      await dialog(page).getByText(/^(Starting|Started) /).first().waitFor();
+      await shoot.now(name("dispatching"), page, theme);
+      await dialog(page).getByText(/^Started /).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: created offers Undo`, await primary(page, /^Undo/).count() > 0);
+    });
+    await shoot(name("fail-worktree"), vp, theme, async page => {
+      const action = await startWords(page, vp, `Fix the export button's spacing (${++n}).`);
+      { const b = dialog(page).getByRole("button", { name: /^Base branch main/ }).filter({ visible: true }).first(); await b.scrollIntoViewIfNeeded(); await b.click(); }
+      const base = dialog(page).getByRole("textbox", { name: "Base branch" }); await base.fill("release/no-such-branch"); await base.press("Enter");
+      await dialog(page).getByRole("button", { name: /^Base branch release\/no-such-branch/ }).waitFor();
+      await primary(page, action).click();
+      await dialog(page).getByText(/didn't start$/).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: a worktree failure says nothing was created`, await dialog(page).getByText("Nothing was created.").count() > 0);
+      if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+    });
+    await shoot(name("fail-agent"), vp, theme, async page => {
+      await startWords(page, vp, `Tidy the audit log filters (${++n}).`);
+      await primary(page, /^More/).click(); await dialog(page).getByRole("button", { name: "Try elsewhere" }).click();
+      await dialog(page).getByText(/didn't start$/).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: an agent failure archives the workspace again`, await dialog(page).getByText(/archived again/).count() > 0);
+    });
+    // Home's row for the dispatches just made: Undo inside the window.
+    await shoot(name("home-row"), vp, theme, async page => { await openHome(page); await narrow(page, vp); await page.getByRole("button", { name: /^Undo / }).filter({ visible: true }).first().waitFor(); });
+  }
+
+  // The ways in (desktop): Home's + New, ⌘K, the sidebar row, the key in a browser tab (Ctrl+Shift+O) and in the
+  // desktop app (Ctrl+Shift+N; Chrome keeps Ctrl+Shift+N for incognito, so only the app gets it).
+  for (const theme of ["light", "dark"]) {
+    await shoot(`new-entry-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("button", { name: /^New \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor(); });
+    await shoot(`new-entry-cmdk-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page); await page.keyboard.press("Control+k"); await page.keyboard.type("Follow-up: New");
+      const item = page.getByText("Follow-up: New… (Ctrl+Shift+O)", { exact: true }).filter({ visible: true }).first();
+      await item.waitFor(); await shoot.now(`new-cmdk-row-${theme}`, page, theme);
+      await item.click(); await dialog(page).waitFor();
+    });
+    await shoot(`new-entry-sidebar-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const side = page.getByRole("button", { name: "New", exact: true }).filter({ visible: true }).first();
+      await side.waitFor(); await side.click(); await dialog(page).waitFor();
+      check(`${theme}: the sidebar row opens New`, true);
+    });
+    await shoot(`new-entry-key-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const composer = page.locator("textarea").filter({ visible: true }).last(); await composer.click(); await composer.fill("draft");
+      await page.keyboard.press("Control+Shift+N"); await page.waitForTimeout(800);
+      check(`${theme}: Ctrl+Shift+N does nothing in a browser tab`, await dialog(page).count() === 0);
+      await page.keyboard.press("Control+Shift+O"); await dialog(page).waitFor();
+      check(`${theme}: Ctrl+Shift+O opens New from a chat's composer in a browser tab`, true);
+      await page.keyboard.press("Control+Shift+O"); await page.waitForTimeout(500);
+      check(`${theme}: the key again closes New`, await dialog(page).count() === 0);
+      await page.keyboard.press("Control+Shift+O"); await dialog(page).waitFor();
+    });
+    await shoot(`new-entry-key-app-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const composer = page.locator("textarea").filter({ visible: true }).last(); await composer.click();
+      await page.keyboard.press("Control+Shift+N"); await dialog(page).waitFor();
+      check(`${theme}: Ctrl+Shift+N opens New in the desktop app`, true);
+    }, { init: () => { const ua = navigator.userAgent; Object.defineProperty(navigator, "userAgent", { get: () => `${ua} Electron/38.0.0` }); } });
+    await shoot(`new-settings-${theme}`, DESKTOP, theme, async page => {
+      await openSettingsAt(page, "display", DESKTOP);
+      const r = page.getByText("New from anywhere", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+    });
+  }
+  await fs.writeFile(join(out, "new.json"), JSON.stringify({ checks }, null, 2));
 }
 
 async function shortcutShots({ shoot, seeded, call, out, billing }) {
@@ -3446,7 +3637,8 @@ try {
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
-  await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") ? newIssues() : []));
+  await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.

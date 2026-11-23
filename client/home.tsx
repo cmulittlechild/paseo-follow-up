@@ -17,6 +17,8 @@ import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
+import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
+import type { NewKey } from "./search-key";
 import { DockedPane } from "./docked-pane";
 import type { DockState } from "./dock";
 import { NeedsYouBlock } from "./needs-you";
@@ -77,6 +79,8 @@ export type HomeDeps = {
   briefDeps: BriefDeps;
   /** The search-from-anywhere key (client/search-key.ts), for the search field's chip. */
   searchKey?: SearchKey;
+  /** New from anywhere's key, for Home's + New tooltip. */
+  newKey?: NewKey;
 };
 
 /**
@@ -171,6 +175,16 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
   // ⌘K "Follow-up: Ask the Overseer" opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
   // shared state, so it works whether Home was already open or mounts fresh.
+  // New (client/new.tsx): every entry point opens Home with `?new=<nonce>` (and `source` when it carries one).
+  useEffect(() => { if (params.new) openNew(params.source ? { source: params.source } : {}); }, [params.new]); // eslint-disable-line react-hooks/exhaustive-deps
+  const newLabel = useSyncExternalStore(deps.newKey?.subscribe ?? noSubscribe, deps.newKey?.label ?? noLabel, deps.newKey?.label ?? noLabel);
+  const dispatches = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.dispatches, deps.sources.extras.dispatches);
+  // New closing may have started one: without the feed, Home reads them then (home-view refreshDispatches).
+  const newOpen = useNewOpen();
+  const wasOpen = useRef(newOpen);
+  useEffect(() => { if (wasOpen.current && !newOpen) deps.sources.extras.refreshDispatches(); wasOpen.current = newOpen; }, [newOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dispatchRows = <DispatchRows records={dispatches} theme={theme} compact={compact} navigation={navigation} />;
+  const newHost = <NewHost theme={theme} layout={layout} navigation={navigation} openSettings={() => deps.openSettings()} />;
   const [replyFocus, setReplyFocus] = useState(0);
   useEffect(() => {
     if (!params.ask) return;
@@ -243,15 +257,17 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
     afterNeeds={compact && model.needs > 0 ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
-    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} />}>
+    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onNew={() => openNew()} newLabel={newLabel} />}>
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
         <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} anywhereKey={anywhereKey} />
+        {compact && <IconButton theme={theme} compact icon="Plus" label="New" onPress={() => openNew()} />}
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>
       <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
+      {!omnibox.results && dispatchRows}
       {!compact && !omnibox.results && <StatusStrip theme={theme} model={model} filter={filter} onFilter={setFilter} touch={compact} dense={compact} />}
       {!compact && !omnibox.results && <UsageMeters theme={theme} sources={deps.sources} dense={compact} hold={!!model.hold} />}
       {!compact && !omnibox.results && <SetupOffer theme={theme} compact={compact} view={props.onboarding} />}
@@ -271,6 +287,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     {current || selected === OVERSEER_KEY && overseer || selected === BRIEF_KEY ? detail : list}
     {updateSheets}
     <View style={{ position: "absolute", left: 12, right: 12, bottom: bottomGap(true) + (current || selected === OVERSEER_KEY ? 132 : 0) }}><UndoBar store={inbox} theme={theme} touch /></View>
+    {newHost}
   </View>;
   return <View ref={homeRef} style={{ flex: 1, flexDirection: "row", backgroundColor: c.surface0 }}>
     <HomeSplit theme={theme} detail={detail} main={<View style={{ flex: 1, minWidth: 0 }}>
@@ -283,6 +300,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       { title: "In the search", keys: HOME_KEYS.filter(k => k.when === "search").map(k => k.key === "/" && anywhereKey ? { ...k, key: `/ or ${anywhereKey}` } : k) },
       { title: "Answering", keys: HOME_KEYS.filter(k => k.when === "pane") },
     ]} />}
+    {newHost}
   </View>;
 }
 
@@ -323,7 +341,7 @@ export function DisplaySplit({ theme, main, side, field, defaultFraction, range,
 const HOME_DETAIL_MIN_PX = 360;
 const HOME_LIST_MIN_PX = 480;
 
-function ListHeader({ theme, compact, onSettings, onKeys }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void }) {
+function ListHeader({ theme, compact, onSettings, onKeys, onNew, newLabel }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void; onNew?: () => void; newLabel?: string | null }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16 }}>
     {/* Home first, the version second: a muted caption on the title's line, never a control beside the cog. */}
@@ -331,6 +349,8 @@ function ListHeader({ theme, compact, onSettings, onKeys }: { theme: Theme; comp
       <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: compact ? 17 : 15, fontWeight: "600" }}>Home</Text>
       <VersionMark theme={theme} touch={compact} openSettings={onSettings} />
     </View>
+    {/* New first, then the other header controls. */}
+    {onNew && <Button theme={theme} compact={compact} kind="secondary" icon="Plus" title="New" keyHint={newLabel ?? undefined} accessibilityLabel={newLabel ? `New (${newLabel})` : "New"} onPress={onNew} />}
     {/* The keys sheet's way in for the mouse (S from the keyboard); desktop web, where the keys are. */}
     {onKeys && Platform.OS === "web" && <IconButton theme={theme} compact={compact} icon="Keyboard" label="Keys (S)" tooltip onPress={onKeys} />}
     <IconButton theme={theme} compact={compact} icon="Settings" label="Follow-up settings" onPress={onSettings} />

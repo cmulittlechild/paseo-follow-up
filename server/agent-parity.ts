@@ -254,6 +254,14 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.created-items": { tools: ["workspace_status"], note: "Read-only live facts for the chat's created-agent / created-workspace cards; an agent reads them through workspace_status and Paseo's own list_agents." },
   "follow.report-issue-link": { tools: ["report_issue"], note: "Open on GitHub with no agent to send to; report_issue's confirm returns the same prefilled link without GitHub auth." },
   "follow.whats-new-seen": { exempt: "Records that a person closed What's new on a device; an agent reading the notes isn't someone seeing the sheet." },
+  // New (client/new.tsx, docs/dispatch.md).
+  "follow.dispatch-sources": { tools: ["dispatch_sources"], note: "New's list: the developer's Linear issues and where each would go." },
+  "follow.dispatch-preview": { tools: ["dispatch"], note: "The dialog's preview is dispatch's dry run (no confirm): the same plan, instructions and blockers." },
+  "follow.dispatch": { tools: ["dispatch"], note: "confirm=true with the dry run's plan id starts exactly what the preview showed." },
+  "follow.dispatch-records": { tools: ["dispatch_records"], note: "The dialog's progress while a dispatch starts; Home's row reads the same records from the home feed." },
+  "follow.dispatch-undo": { tools: ["dispatch_undo"], note: "Undo in the dialog, the toast and Home's row: cancel a queued dispatch or archive what it created, inside the window." },
+  "follow.dispatch-settings": { tools: ["dispatch_settings"], note: "The Project picker's list of projects." },
+  "follow.set-dispatch-settings": { tools: ["set_dispatch_settings"], note: "Changing From saves the base for that project, as set_dispatch_settings bases does." },
 };
 
 /**

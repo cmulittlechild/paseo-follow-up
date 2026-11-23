@@ -18,7 +18,8 @@ export const PAGES_MAX = 40;
 /** Pages read per PAGE_SIZE open issues wanted, at most (closed issues in between take room). */
 export const OPEN_PAGES_PER_LIMIT = 3;
 
-export type LinearList = { status: "ok"; issues: LinearIssue[]; at: number; more: boolean } | { status: "missing" | "error"; issues: []; at: number; error: string; more: false };
+import type { LinearList } from "../shared/linear-issues";
+export type { LinearList };
 
 /** "Linear isn't connected": mcpproxy isn't installed, or it has no Linear server or tool. Anything else is a read error. */
 export function linearMissing(error: unknown): boolean {

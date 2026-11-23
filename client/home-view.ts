@@ -1,5 +1,6 @@
+import type { DispatchRecord } from "../shared/dispatch";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { contextAskRpc, contextListRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
+import { contextAskRpc, contextListRpc, dispatchRecordsRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { Priority } from "../shared/priorities";
@@ -44,6 +45,8 @@ export function createHomeExtras(client: PluginClientContext) {
   let rank: RpcOutput<typeof rankStatusRpc> | null = null;
   /** Catch up's More context asks: pushed on the home feed; read when Catch up opens or moves, never on a timer of their own. */
   let context: ContextRequest[] = [];
+  /** New's recent dispatches, pushed on the home feed (Home's row); nothing reads them on a timer. */
+  let dispatches: DispatchRecord[] = [];
   const setContext = (next: ContextRequest[]) => { if (JSON.stringify(next) === JSON.stringify(context)) return false; context = next; return true; };
   const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
   const agents = new Map<string, AgentLite>();
@@ -118,6 +121,7 @@ export function createHomeExtras(client: PluginClientContext) {
       if (stopped) return;
       priorities = event.priorities; rank = event.rank; overseer = event.overseer;
       if (event.context) setContext(event.context);
+      if (event.dispatches) dispatches = event.dispatches;
       if (event.usage) usage = { ...event.usage, resources: usage.resources };
       if (!event.rank.running) { for (const done of rankWaiters) done(); rankWaiters.clear(); }
       // Smart Session's files can't be watched: read the meters once a minute instead.
@@ -138,6 +142,13 @@ export function createHomeExtras(client: PluginClientContext) {
     void readSort().then(changed => { if (changed) emit(); }).catch(() => undefined);
     void client.rpc(usageRpc, {}).then(next => { usage = { ...next, accounts: usage.accounts.length ? usage.accounts : next.accounts }; emit(); }).catch(() => undefined);
   } else { homePolls = pollHome(); sortPolls = pollSort(); }
+  // Without the feed (Paseo 0.15, or while it's down) New's dispatches are read once now and when New closes
+  // (refreshDispatches), never on a timer: they only change when someone starts one.
+  const readDispatches = () => client.rpc(dispatchRecordsRpc, {}).then(r => {
+    if (stopped || JSON.stringify(r.records) === JSON.stringify(dispatches)) return;
+    dispatches = r.records; emit();
+  }).catch(() => undefined);
+  if (!home) void readDispatches();
 
   const putAgent = (a: AgentEntry["agent"]) => {
     if (!a?.id) return;
@@ -231,6 +242,10 @@ export function createHomeExtras(client: PluginClientContext) {
     async restartOverseer() { overseer = await client.rpc(overseerRestartRpc, {}); emit(); return overseer; },
     /** Catch up's More context asks and their answers. */
     context: () => context,
+    /** New's recent dispatches (client/new.tsx's Home row). */
+    dispatches: () => dispatches,
+    /** New closed: without the feed, read the dispatches it may have started (the feed pushes them itself). */
+    refreshDispatches: () => { if (!home || homePolls) void readDispatches(); },
     /** Reads the asks once (Catch up opening or moving on, so a 0.15 host or a dropped feed is never stale for long). */
     async refreshContext() { if (await readContext().catch(() => false)) emit(); },
     /** Asks the Overseer or the card's agent; the ask shows at once, its answer arrives on the feed. */

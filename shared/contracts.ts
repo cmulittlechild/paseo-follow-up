@@ -367,6 +367,8 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   usageLive: z.boolean(),
   /** Catch up's More context asks (pushed when one is asked or answered); absent from an older worker. */
   context: z.array(contextRequestSchema).optional(),
+  /** New's recent dispatches (Home's row: in progress, failed, Undo); absent from an older worker. */
+  dispatches: z.array(dispatchRecordSchema).optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
 export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed] as const;
