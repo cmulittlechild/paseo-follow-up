@@ -399,6 +399,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    card included: an open brief without an ask points at what Needs you holds ("Needs you: 7 tasks ready, and 1 more",
    "Waiting on your answer to Q1"). 2026-11-22: the chat's card read "Finished · No ask stated" beside Send 7 tasks
    and Merge 3 PRs; it had its own check, for open questions only. Guarded by `tests/brief-card.test.ts`.
+   **A running agent is not finished** (`a-running-agent-is-not-finished`): a finish that asked nothing (no ask in
+   words, no question) is outlived by the agent's next turn, whoever started it (Follow-up's own message, another
+   agent, a schedule), so a running agent's row is Working, never "Finished · No ask stated" with Sign off
+   (`finishOutlived` in `liveFlag`, `shared/inbox.ts`: shown, not erased; the next turn end flags again). A finish with
+   a real ask or an open question still stands. 2026-11-23 (the batch-churn renders): Follow-up's repair started the
+   main agent's next turn and Home listed the workspace in Needs you as finished. A worker that starts mid-turn (a reload, an update)
+   never saw the turn start, so the prompt that started it (Paseo's `lastUserMessageAt`) stands in; without it the
+   same render, after a disable and enable, listed the working agent as finished again. Guarded by
+   `tests/batch-churn-followups.test.ts` and `runningFinishViolations` (`shared/status-invariants.ts`).
 22. **View state is per device; settings are per host** (`view-state-is-per-device-settings-are-per-host`). The
    settings category, settings folds, Home group folds and What's new "seen" live in the device settings document
    `follow-up-view` on Paseo 0.16 (`client/view-store.ts`), with localStorage kept as the first-paint cache for one
@@ -755,7 +764,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    item with Ask for re-review and Send to agent (both agent tools: `add_reviewers`, `retry_batch` with `task`), not
    re-sent and not holding the queue. 2026-11-18, Tom on 2.2.0: Needs you showed "The tasks didn't finish" with Open
    main agent for a review the agent said only the reviewer could clear, still there two hours after the PR merged.
-   Guarded by `tests/blocked-batch-resolves.test.ts` and `INVARIANTS`.
+   **A person part is a person item** (`a-person-part-is-a-person-item`): when only part of it waits on a person, the
+   agent names that part in `acknowledge_batch` `waitingOn` with any outcome; the agent's latest answer for the task
+   decides (`personPart`, `shared/send-decision.ts`, keyed by the task so review churn keeps it), Needs you shows it as a
+   person item while the PR is open, and later messages for that task tell the agent to leave it. 2026-11-23 (the
+   batch-churn renders): the agent said one thread needed the reviewer's call, and the update after the review changed
+   asked it to fix every thread again, with nothing in Needs you.
+   Guarded by `tests/blocked-batch-resolves.test.ts`, `tests/review-batch-churn.test.ts` and `INVARIANTS`.
 
 55. **Dictated text lands in the field** (`dictated-text-lands-in-the-field`). Catch up's mic puts the host's
    transcript into the answer field's own words (`AnswerDraft.words`, invariant 53) at the caret, editable; it never
@@ -1229,7 +1244,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`taskUpdate`, `shared/send-decision.ts`). "No longer needed" is only for an item GitHub stopped showing. A batch
    the agent answered keeps its outcome and words: a later GitHub change or the developer's Retry marks it `movedOn`
    (changed, gone, retried, duplicate), which takes it out of Needs you and the queue (`holdsQueue`, `stuckBatch`)
-   and reads muted in Activity, never as a failure. `acknowledge_batch` `in_progress` (the agent or its own subagent
+   and reads muted in Activity, never as a failure, with GitHub as the one that changed ("#270 changed on GitHub · the
+   next message says what's new", then "sent again with what's new" once a later message carried it, `changedOnGithub`
+   in `shared/activity.ts`). `acknowledge_batch` `in_progress` (the agent or its own subagent
    is on it) settles the batch without failure, and its unchanged items aren't sent again while the workspace is busy,
    for at most `IN_PROGRESS_MAX_MS` (`inProgressHolds`). A busy signal that can't clear never holds auto-sends: an
    agent in error or closed has no background work (`backgroundCount`), and other agents' work keeps a sent message

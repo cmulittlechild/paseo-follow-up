@@ -140,6 +140,12 @@ export const batchSchema = z.object({
    */
   humanOnly: z.boolean().optional(),
   /**
+   * The part of this batch only a person can move, in the agent's words ("thread 2 needs the reviewer's call"), with
+   * any outcome. A person item in Needs you until a later answer for the same task drops it, and the next message
+   * tells the agent to leave that part (a-person-part-is-a-person-item).
+   */
+  waitingOn: z.string().max(500).optional(),
+  /**
    * The agent acknowledged it in_progress: it (or its own subagent) is already working on it. Settled completed, not a
    * failure; its unchanged conditions are not sent again while that work runs (inProgressHolds, shared/send-decision.ts),
    * only once the workspace is quiet or the condition changes (invariant a-changed-review-updates-never-cancels).

@@ -794,7 +794,7 @@ export class Engine {
    * still open. The batch settles completed and its still-open conditions wait as the developer's "person" tasks, a PR
    * item, never "The tasks didn't finish" (a-human-only-outcome-is-a-human-item).
    */
-  async acknowledge(agentId: string, batchId: string, outcome: "completed" | "blocked" | "in_progress", result: string, workspaceId?: string, humanOnly?: boolean): Promise<Workspace> {
+  async acknowledge(agentId: string, batchId: string, outcome: "completed" | "blocked" | "in_progress", result: string, workspaceId?: string, humanOnly?: boolean, waitingOn?: string): Promise<Workspace> {
     if (humanOnly && outcome !== "blocked") throw new Error("humanOnly goes with outcome \"blocked\": use it when nothing is left for an agent and only a person can move what is still open.");
     // Resolved on the snapshot, written to that one workspace (a-send-never-clones-the-whole-state), re-checked inside.
     const target = agentWorkspace(await this.store.snapshot(), agentId, "read", workspaceId);
@@ -811,6 +811,8 @@ export class Engine {
       // completed and its unchanged conditions wait for that work (inProgressHolds), never sent again meanwhile.
       b.state = humanOnly || outcome === "in_progress" ? "completed" : outcome; b.result = result; b.acknowledgmentError = null; b.settledAt = new Date(this.now()).toISOString();
       if (humanOnly) b.humanOnly = true; else delete b.humanOnly;
+      // The person part is this answer's: a later answer without one says nothing waits on a person any more.
+      if (waitingOn?.trim() && !isRecovery(b) && !completionCheck(b)) b.waitingOn = waitingOn.trim(); else delete b.waitingOn;
       if (outcome === "in_progress") b.inProgress = true; else delete b.inProgress;
       delete b.movedOn;
       if (outcome === "completed" && w.inventory) for (const task of b.tasks.filter(t => t.kind === "inventory"))

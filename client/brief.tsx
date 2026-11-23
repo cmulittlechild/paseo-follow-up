@@ -8,7 +8,7 @@ import { deliveryStatus } from "../shared/queue";
 import { Icon, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { BRIEF_KIND, briefCardAsk, BRIEF_VERSION, askedDecisions, cardPicks, notedCount, pickedCount, briefSchema, collapsedLine, outcomeLabel, extrasFit, hasOriginal, nothingNeededLine, isTight, pastRows, pastTone, selectsFirst, sendBar, shownBrief, pastAsk, liveBrief, newAnswerId, type Brief, type BriefDecision, type BriefMove } from "../shared/brief";
 import { needsYou } from "../shared/attention";
-import { age } from "../shared/inbox";
+import { age, briefOutlived } from "../shared/inbox";
 import { noReviewReposVersion, onNoReviewRepos } from "../shared/pr-workflow";
 import { briefKey, HEADLINE_WORD } from "../shared/headline";
 /** The card's kind word comes from the same table as the pill and the Needs-you row. */
@@ -41,7 +41,7 @@ export type BriefDeps = {
   /** The workspace's list form (shared/list.ts); the PR sheet reads the full one itself. */
   workspace(id: string): ListWorkspace | undefined;
   /** The agent's Needs-you inbox row, so a card knows whether its brief is an ask (briefAsks). */
-  row?(agentId: string): { needs?: unknown } | null;
+  row?(agentId: string): { needs?: unknown; status?: string; turnStartedAt?: string | null } | null;
   /** Opens Follow-up's panel for a workspace whose record this client hasn't loaded yet. */
   openPanel(workspaceId: string): void;
   /** Done's Undo window, so the composer pill says Done (and its Undo cancels the same toast) until it ends. */
@@ -385,7 +385,9 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // The check itself failed (or there's no agent to ask): don't leave a dead card. The server still validates every
   // action against the stored brief, and a moot refusal reconciles, so acting on the row is safe.
   const unverifiable = live.isError || !agentId;
-  const shown = row.state !== "open" ? { brief: row, actionable: false } : unverifiable && checked.brief.state === "open" ? { ...checked, actionable: true } : checked;
+  const verified = row.state !== "open" ? { brief: row, actionable: false } : unverifiable && checked.brief.state === "open" ? { ...checked, actionable: true } : checked;
+  // A running agent's newer turn outlived a finish that asked nothing: it reads as the turn before, not "Finished".
+  const shown = agentId && briefOutlived(verified.brief, deps.row?.(agentId)) ? { brief: { ...verified.brief, state: "superseded" as const }, actionable: false } : verified;
   const b = shown.brief;
   // One predicate decides whether the brief's own words draw (briefCardShown, inside briefCardAsk): beside what Needs you
   // holds, a brief without an ask points at it instead (a-brief-without-an-ask-never-sits-beside-needs-you).

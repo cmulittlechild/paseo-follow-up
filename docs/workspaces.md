@@ -143,6 +143,13 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
      as detail) with Ask for re-review (the PR sheet's reviewers; `add_reviewers`), Send to agent (`follow.control`
      `retryTask`, the `retry_batch` tool with `task`) and the PR link. A changed condition (a new review, a new head)
      has a new fingerprint and goes out as usual; a merged PR ends it.
+   - **A person part is a person item** (`a-person-part-is-a-person-item`). When only part of a batch waits on a person
+     (one review thread needs the reviewer's call), the agent names it in `acknowledge_batch` `waitingOn` with any
+     outcome and goes on with the rest (`Batch.waitingOn`). The agent's latest answer for that task decides
+     (`personPart`, keyed by the task, not its fingerprint, so a review that keeps changing keeps it): while its PR is
+     open, Needs you has a person item ("Part of #270 waits on its reviewer", the agent's words as detail, with Ask for
+     re-review and Send to agent), and every later message for that task ends its item with "Leave this part for a person: "…"". A later
+     answer without `waitingOn`, Send to agent (`retryTask`) or a merged PR ends it.
    - A recovery batch follows the same rule: one that ends without an acknowledgment but caught the PR list up
      (`inventory.syncedRevision`) is done.
    - A reload mid-send makes it `uncertain` (`engine.recover()`). The next refresh reads the recipient's chat for the

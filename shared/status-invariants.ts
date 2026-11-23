@@ -7,13 +7,13 @@ import type { ListWorkspace as Workspace } from "./list";
 import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, TASK_DONE, taskCardsFor, taskNeed, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
-import { flagFate, newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
+import { finishOutlived, flagFate, newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, summary } from "./model";
 import { liveLine, needsYou, reviewersAskStands, type NeedItem } from "./attention";
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
 import { freshPriorities, type Priority } from "./priorities";
 import { agentCard, automaticHold, batchView, holdSuperseded } from "./status";
-import { conditionId, isCapped, mainWait, NO_PROGRESS_CAP, personHeld, sendDecision, stuckRepair } from "./send-decision";
+import { conditionId, isCapped, mainWait, NO_PROGRESS_CAP, personHeld, personPart, sendDecision, stuckRepair } from "./send-decision";
 import { messageStrip, obligationDelivery, repairRows } from "./task-rows";
 import { followUpObligations } from "./follow-up";
 import { PRESENCE, claimsWorking, taskStatus } from "./task-status";
@@ -39,6 +39,22 @@ const inFlight = (w: Workspace) => w.batches.some(b => ["sending", "sent"].inclu
 const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w, now)?.line ?? "", batchView(w, now)?.line ?? "", ...needsYou(w, now).flatMap(i => [i.title, "blocker" in i ? i.blocker ?? "" : ""])];
 
 export const INVARIANTS: Invariant[] = [
+  {
+    id: "a-person-part-is-a-person-item",
+    why: "2026-11-23 (batch-churn renders): the agent answered that one review thread needed the reviewer's call, then the review changed and the update asked the agent to fix every thread again, with nothing in Needs you about the person's part. A part the agent's latest answer says only a person can move (Batch.waitingOn) is a person item while its PR is open.",
+    check(w, now) {
+      const keys = new Set(w.batches.flatMap(b => b.tasks.map(t => t.key)));
+      const items = new Set(needsYou(w, now).filter(i => i.kind === "person").map(i => i.taskKey));
+      for (const key of keys) {
+        if (!personPart(w, key) || items.has(key)) continue;
+        const target = w.batches.flatMap(b => b.tasks).find(t => t.key === key)?.target;
+        const pr = w.prs.find(p => p.key === target);
+        if (pr?.snapshot?.state && pr.snapshot.state !== "OPEN") continue;
+        return `${key}: the agent said part of it waits on a person, but Needs you has no person item for it`;
+      }
+      return null;
+    },
+  },
   {
     id: "a-pr-summary-says-the-worst",
     why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs, and the chip counts failing PRs as the live line does.",
@@ -736,6 +752,17 @@ export function closedFlagViolations(model: Pick<HomeModel, "byKey">, rows: read
     else if (fate === "show" && s.group !== "needs") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId}'s live ask is in ${s.group}, not Needs you` });
   }
   return out;
+}
+
+/**
+ * `a-running-agent-is-not-finished` (AGENTS.md 21): an inbox row whose agent is on a newer turn never carries the last
+ * turn's finish when that finish asked nothing (`finishOutlived`, shared/inbox.ts). 2026-11-23 (batch-churn renders):
+ * Follow-up's repair started the main agent's next turn, and Home listed the workspace in Needs you as "Finished · No
+ * ask stated" with Sign off while the agent was working.
+ */
+export function runningFinishViolations(rows: readonly InboxRow[]): { id: string; detail: string }[] {
+  return rows.filter(r => ["running", "initializing"].includes(r.status) && r.turnStartedAt && finishOutlived(r.needs, r.brief ?? null, r.turnStartedAt))
+    .map(r => ({ id: "a-running-agent-is-not-finished", detail: `${r.agentId} is on a turn started ${r.turnStartedAt} but still flags the last turn's finish, which asked nothing` }));
 }
 
 /**

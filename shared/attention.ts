@@ -4,7 +4,7 @@ import { deliveryStatus } from "./queue";
 import { sentence } from "./errors";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summary, type Task, type Status } from "./model";
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
-import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, holdsQueue, mainWait, stuckBatch } from "./send-decision";
+import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, holdsQueue, mainWait, personPart, stuckBatch } from "./send-decision";
 import { workingLine } from "./task-status";
 import { owedTask } from "./task-view";
 import { taskDue } from "./task-due";
@@ -202,6 +202,11 @@ export function personTitle(t: Pick<Task, "kind" | "title">, number?: number): s
   if (number === undefined) return `${t.title}: waits on a person, not the agent`;
   return t.kind === "review" ? `#${number} waits on its reviewer` : `#${number} waits on a person, not the agent`;
 }
+/** A task part only a person can move (Batch.waitingOn): the agent goes on with the rest. */
+export function partTitle(t: Pick<Task, "kind" | "title">, number?: number): string {
+  if (number === undefined) return `Part of ${t.title} waits on a person`;
+  return t.kind === "review" ? `Part of #${number} waits on its reviewer` : `Part of #${number} waits on a person`;
+}
 /** A capped task's Needs-you title: what is still wrong, in plain words. */
 export function cappedTitle(t: Pick<Task, "kind" | "target" | "title">): string {
   const pr = `#${t.target.split("#")[1] ?? t.target}`;
@@ -318,6 +323,16 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
     const pr = w.prs.find(p => p.key === h.task.target);
     items.push({ kind: "person", key: `person:${h.task.key}`, taskKey: h.task.key, prKey: pr?.key ?? null, review: h.task.kind === "review", title: personTitle(h.task, pr?.number), ...linkFor(h.task.target),
       detail: why || `${capitalize(agentName(w))} says nothing is left for an agent here.` });
+  }
+  // a-person-part-is-a-person-item: the part of a task the agent said only a person can move, while its PR is open and
+  // the whole task isn't already a person item. The rest of the task goes on with the agent.
+  const parts = new Map<string, Task>();
+  for (const b of w.batches) for (const t of b.tasks) parts.set(t.key, t);
+  for (const t of parts.values()) {
+    const part = personPart(w, t.key);
+    const pr = part ? w.prs.find(p => p.key === t.target) : undefined;
+    if (!part || (pr && pr.snapshot?.state && pr.snapshot.state !== "OPEN") || (w.heldTasks ?? []).some(h => h.held === "person" && h.task.key === t.key)) continue;
+    items.push({ kind: "person", key: `person:${t.key}`, taskKey: t.key, prKey: pr?.key ?? null, review: t.kind === "review", title: partTitle(t, pr?.number), ...linkFor(t.target), detail: part.text });
   }
   for (const a of w.prActions.filter(a => a.state === "uncertain")) {
     const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");

@@ -1,0 +1,3 @@
+- A workspace whose agent is working again no longer sits in Needs you as "Finished · No ask stated".
+- When an agent says part of a repair waits on a person, such as one review thread that needs the reviewer's call, that part shows in Needs you and later messages tell the agent to leave it.
+- Activity says which PR changed on GitHub ("#270 changed on GitHub") instead of "1 repair updated on GitHub".

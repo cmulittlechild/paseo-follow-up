@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { communicationReady } from "../shared/communication";
 import { taskSchedule } from "../shared/task-trigger";
 import { isWorkspaceRoot, type WorkspaceAgent } from "./workspace-agent";
-import { taskUpdate } from "../shared/send-decision";
+import { personPart, taskUpdate } from "../shared/send-decision";
 
 function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 /**
@@ -84,7 +84,13 @@ export function messageText(w: Workspace, batch: Pick<Batch, "tasks">): string {
   // so the agent reads an update, never a fresh "do this" (invariant a-changed-review-updates-never-cancels).
   const at = w.batches.indexOf(batch as Batch);
   const before = at < 0 ? w.batches : w.batches.slice(0, at);
-  return orderTasks(w, batch.tasks).map((t, i) => { const update = taskUpdate(before, t); return `${i + 1}. ${t.title}${update ? ` (${update})` : ""}`; }).join("\n");
+  return orderTasks(w, batch.tasks).map((t, i) => {
+    // a-person-part-is-a-person-item: the part the agent said waits on a person stays with the developer.
+    const part = personPart({ batches: before }, t.key);
+    // Its own sentence after the item, quoted: inside the update's parentheses it read three colons deep, after "fix".
+    const update = taskUpdate(before, t);
+    return `${i + 1}. ${t.title}${update ? ` (${update})` : ""}${part ? `. Leave this part for a person: "${part.text.replace(/\s+/g, " ").trim()}"` : ""}`;
+  }).join("\n");
 }
 
 export function batchPrompt(w: Workspace, batch: Batch): string {
