@@ -238,7 +238,8 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
         </>}
         {/* What turning on means doesn't depend on the count: shown whenever Turn on is offered. */}
         {facts && <>
-          {point("CirclePause", "Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first.")}
+          {/* The budget-low reason already says the 40% rule; say it once. */}
+          {e?.wait?.reason !== "budget" && point("CirclePause", "Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first.")}
           {point("Lock", `Stored on this machine only${e?.bytes ? `, about ${sizeWords(e.bytes)}` : ""}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
           <Text style={t.meta}>90 days · everyone · calendar time. Change these in the repository's options.</Text>
         </>}
