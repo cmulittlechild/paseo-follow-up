@@ -229,6 +229,14 @@ PLAYWRIGHT_CORE=<playwright-core dir> CHROMIUM=<chromium binary> ~/paseo-harness
   [guide](guide.md)'s phone and sidebar shots, into `docs/screenshots/`: `home` and `phone` on Paseo 0.15, then `sidebar` on Paseo 0.16 (`HARNESS_PASEO=0.16`),
   each through `harness-slot` and shown as the latest stable tag. Re-run it whenever Home's rows, the panel's copy or
   the fixture change, then read every image before committing.
+- **Demo video.** `npm run video -- --out <dir>` (`scripts/demo-video.mjs`, through `harness-slot`) records the 20-30 s
+  demo for the plugin page and README: Home, Catch up (Allow, Skip, a recommended answer), what went back to agents by
+  itself, an Overseer question from Home's search, and Home again, with a drawn cursor and a caption band. It boots
+  `screenshots.mjs --only home --overseer-review --keep` and records a CDP screencast at the frames' own timestamps.
+  Needs `FFMPEG` (libx264 and libwebp; a pinned `ffmpeg-static` outside the repo works). Writes
+  `follow-up-demo.mp4`, a poster PNG, an animated WebP and review frames (one every 2 s) to `--out` (default
+  `.demo-video/`, git-ignored). The video is hosted outside the repo and the npm package; read the frames before
+  publishing one.
 - **`--whats-new-review`** (review evidence, not README images): the sheet after a minor update (`2.0.1` to `2.1.0`,
   this repo's own section) on desktop and phone, and Settings → General's "Show What's new after updates" switch on
   and off (set through `set_updates`), desktop and phone, into `--out`.

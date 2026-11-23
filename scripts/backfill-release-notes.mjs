@@ -15,13 +15,16 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { NO_NOTES, compare, framed, gitSource, ownNotes, releaseBody, releaseNotes } from "./release-body.mjs";
 
+const VERSION_TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
 /**
  * What to do with each release: `{ tag, action: "write" | "keep", reason, body?, replaced? }`. Pure apart from `src`,
- * so tests can drive it.
+ * so tests can drive it. Only version releases (`vX.Y.Z[-pre]`) are pages to frame: a release under any other tag (the
+ * `media-assets` release that hosts the demo video) isn't a version and is left alone.
  */
 export function plan(releases, src, { only = null, except = [] } = {}) {
   return releases
-    .filter(r => (!only || only.includes(r.tagName)) && !except.includes(r.tagName))
+    .filter(r => VERSION_TAG.test(r.tagName) && (!only || only.includes(r.tagName)) && !except.includes(r.tagName))
     .sort((a, b) => compare(a.tagName.slice(1), b.tagName.slice(1)))
     .map(r => {
       if (framed(r.body)) return { tag: r.tagName, action: "keep", reason: "already in the format" };
