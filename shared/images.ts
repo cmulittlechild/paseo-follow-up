@@ -45,6 +45,8 @@ export const imageRefSchema = z.object({
 });
 export type ImageRef = z.infer<typeof imageRefSchema>;
 
+/** "1 image", "2 images": the count a summary line shows. */
+export const imagesWord = (n: number) => `${n} image${n === 1 ? "" : "s"}`;
 export const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1).replace(/\.0$/, "")} MB`;
 const tooBig = (name: string, bytes: number) => `${name && name !== "image" ? `${name} is` : "That image is"} ${mb(bytes)}; the most is ${mb(MAX_IMAGE_BYTES)}.`;
 export const WRONG_TYPE = "Only PNG, JPEG, GIF and WebP images.";

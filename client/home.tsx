@@ -856,13 +856,17 @@ function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in 
   // In a dock (the detail pane), the dock draws the hairline; on its own it draws one. Phones keep the hint as the
   // input's accessibility hint instead of small print under it, where it collided with the gesture bar.
   return <View style={{ padding: compact ? 12 : 14, gap: 6, ...(docked ? {} : { borderTopWidth: 1, borderTopColor: c.border }) }}>
-    <ImageField model={img} theme={theme} compact={compact}>
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, borderRadius: compact ? 12 : 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, paddingLeft: 12, paddingRight: compact ? 1 : 6, paddingVertical: compact ? 0 : 6 }}>
+    {/* The images sit inside the composer, above the words, so they read as part of the message Send sends. */}
+    <ImageField model={img} theme={theme} compact={compact} row={false}>
+    <View style={{ borderRadius: compact ? 12 : 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
+    {(!!img.images.length || !!img.refusal) && <View style={{ paddingHorizontal: 12, paddingTop: 10 }}><ImageAttachmentsRow model={img} theme={theme} compact={compact} /></View>}
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingLeft: 12, paddingRight: compact ? 1 : 6, paddingVertical: compact ? 0 : 6 }}>
       <TextInput ref={inputRef} accessibilityLabel={`Reply to ${agentName}`} accessibilityHint={compact && hint ? hint : undefined} onFocus={() => onFocusChange?.(true)} onBlur={() => onFocusChange?.(false)} value={value} onChangeText={setValue} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} multiline
         numberOfLines={compact ? 1 : undefined}
         onKeyPress={e => { const k = e.nativeEvent as unknown as { key: string; metaKey?: boolean; ctrlKey?: boolean }; if (k.key === "Enter" && (k.metaKey || k.ctrlKey)) void send(); }}
         style={{ flex: 1, minHeight: compact ? 46 : 36, maxHeight: 140, color: c.foreground, fontSize: 14, lineHeight: 20, paddingVertical: compact ? 13 : 6, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
       <IconButton theme={theme} compact={compact} icon="ArrowUp" label="Send" disabled={!value.trim() || sending || !!img.blocked} spinning={sending} onPress={() => void send()} color={value.trim() && !img.blocked ? c.foreground : undefined} />
+    </View>
     </View>
     </ImageField>
     {!!hint && !compact && <Text style={{ color: c.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{hint}</Text>}

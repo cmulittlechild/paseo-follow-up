@@ -3985,6 +3985,9 @@ async function pasteImagesShots({ shoot, call }) {
       await paste(field, ["revenue-chart.png", "legend-overlap.png"]);
       await visible(dialog.getByRole("button", { name: "Remove legend-overlap.png" })).waitFor();
       check(`${device} ${theme}: New shows both thumbnails`, await thumbs(page).count() === 2);
+      // The source card (desktop) or the bar's line (phone) counts them once the plan re-renders.
+      const counted = await page.getByText(/· 2 images/).filter({ visible: true }).first().waitFor({ timeout: 5000 }).then(() => true, () => false);
+      check(`${device} ${theme}: New's summary counts the images`, counted);
       await settle(page); await noOverflow(page, name("new"));
     });
     await shoot(name("overseer"), vp, theme, async page => {
@@ -3996,6 +3999,14 @@ async function pasteImagesShots({ shoot, call }) {
       await paste(field, ["billing-chart.png"]);
       await visible(page.getByRole("button", { name: "Remove billing-chart.png" })).waitFor();
       check(`${device} ${theme}: the Overseer's reply shows one thumbnail`, await thumbs(page).count() === 1);
+      // A click on the thumbnail shows it larger; the X closes it and the image stays attached.
+      await visible(page.getByRole("button", { name: /^View billing-chart\.png/ })).click();
+      const viewer = page.getByRole("dialog", { name: /^billing-chart\.png/ });
+      await viewer.waitFor();
+      check(`${device} ${theme}: a thumbnail opens the viewer`, await viewer.count() > 0);
+      await page.getByRole("button", { name: "Close image" }).click();
+      await viewer.waitFor({ state: "detached" });
+      check(`${device} ${theme}: closing the viewer keeps the image`, await thumbs(page).count() === 1);
       await settle(page); await noOverflow(page, name("overseer"));
     });
     const ownAnswer = async page => {
@@ -4008,17 +4019,23 @@ async function pasteImagesShots({ shoot, call }) {
     };
     await shoot(name("question"), vp, theme, async page => {
       const field = await ownAnswer(page);
+      await field.focus();
       await paste(field, ["staging-keys.png"]);
-      await visible(page.getByRole("button", { name: "Remove staging-keys.png" })).waitFor();
-      await field.scrollIntoViewIfNeeded();
+      const x = visible(page.getByRole("button", { name: "Remove staging-keys.png" }));
+      await x.waitFor();
+      // Centred: the phone dock covers the page's last rows, where the thumbnail would sit.
+      await x.evaluate(el => el.scrollIntoView({ block: "center" }));
       check(`${device} ${theme}: the question's answer shows one thumbnail`, await thumbs(page).count() === 1);
       await settle(page); await noOverflow(page, name("question"));
     });
     await shoot(name("refusal"), vp, theme, async page => {
       const field = await ownAnswer(page);
+      await field.focus();
       await paste(field, ["one.png", "two.png", "three.png", "four.png", "five.png", "six.png", "seven.png"]);
       const line = visible(page.getByText("6 images is the most one message takes."));
-      await line.waitFor(); await line.scrollIntoViewIfNeeded();
+      await line.waitFor();
+      // Centred, as a focused field sits: the phone dock covers the page's last rows.
+      await line.evaluate(el => el.scrollIntoView({ block: "center" }));
       check(`${device} ${theme}: seven at once is refused with the reason, and none is added`, await thumbs(page).count() === 0);
       await settle(page); await noOverflow(page, name("refusal"));
     });

@@ -13,6 +13,7 @@ import { Pressable, Text } from "./text";
 import { text, type Theme } from "./kit";
 import { withAlpha } from "./theme";
 import { imageSupportRpc } from "../shared/contracts";
+import { ImageViewer, refocus, viewerInline, type ViewedImage } from "./image-viewer";
 import { imageRefusal, imageTargetKey, mb, type ImageSupport, type ImageTarget, type ImageUpload } from "../shared/images";
 
 export const IMAGES_ON = Platform.OS === "web";
@@ -151,18 +152,29 @@ export function ImageField({ model, theme, compact = false, children, style, row
   </View>;
 }
 
-/** The thumbnails with their ×, the refusal and the support line. Draws nothing when there is nothing to say. */
+/**
+ * The thumbnails with their ×, the refusal and the support line. Draws nothing when there is nothing to say. A click on
+ * a thumbnail shows it larger in the release notes' viewer (image-viewer.tsx), so the right screenshot is checked
+ * before Send.
+ */
 export function ImageAttachmentsRow({ model, theme, compact = false }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean }) {
+  const [viewed, setViewed] = useState<{ image: ViewedImage; from: unknown } | null>(null);
   if (!IMAGES_ON) return null;
   const c = theme.colors; const t = text(c, compact);
   const { images, refusal, blocked } = model;
   if (!images.length && !refusal) return null;
+  const view = (i: AttachedImage, from: unknown) => {
+    const label = `${i.name}, ${mb(i.bytes)}`;
+    Image.getSize(i.uri, (w, h) => setViewed({ image: { url: i.uri, label, width: w, aspect: w / Math.max(1, h) }, from }), () => setViewed({ image: { url: i.uri, label, width: null, aspect: 16 / 10 }, from }));
+  };
   const size = compact ? 56 : 48;
   return <View style={{ gap: 6 }}>
-    {!!images.length && <View role="list" accessibilityLabel={`${images.length} image${images.length === 1 ? "" : "s"} attached`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+    {!!images.length && <View role="list" accessibilityLabel={`${images.length} image${images.length === 1 ? "" : "s"} attached`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, paddingTop: 6, paddingRight: 6 }}>
       {images.map(i => <View key={i.id} role="listitem" style={{ width: size, height: size }}>
-        <Image source={{ uri: i.uri }} accessibilityLabel={`${i.name}, ${mb(i.bytes)}`} accessibilityIgnoresInvertColors resizeMode="cover"
-          style={{ width: size, height: size, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface2 }} {...({ title: `${i.name} · ${mb(i.bytes)}` } as object)} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`View ${i.name}, ${mb(i.bytes)}`} onPress={e => view(i, e?.currentTarget)} {...({ title: `${i.name} · ${mb(i.bytes)}` } as object)}>
+          <Image source={{ uri: i.uri }} accessibilityIgnoresInvertColors resizeMode="cover"
+            style={{ width: size, height: size, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface2 }} />
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${i.name}`} onPress={() => model.remove(i.id)} hitSlop={compact ? 10 : 6}
           style={(state) => { const { hovered, focused } = state as { hovered?: boolean; focused?: boolean }; return { position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center",
             backgroundColor: hovered || focused ? c.foreground : withAlpha(c.foreground, 0.85), borderWidth: 1, borderColor: c.surface0 }; }}>
@@ -170,6 +182,8 @@ export function ImageAttachmentsRow({ model, theme, compact = false }: { model: 
         </Pressable>
       </View>)}
     </View>}
-    {!!(refusal || blocked) && <Text accessibilityRole="alert" aria-live="polite" style={[t.meta, { color: blocked ? c.statusDanger : c.statusWarning }]}>{refusal ?? blocked}</Text>}
+    {/* A refusal adds nothing of what was pasted (the whole paste is refused), so it says so. */}
+    {!!(refusal || blocked) && <Text accessibilityRole="alert" style={[t.meta, { color: blocked ? c.statusDanger : c.statusWarning }]}>{refusal ? `${refusal} Nothing was added.` : blocked}</Text>}
+    {viewed && <ImageViewer image={viewed.image} inline={viewerInline(compact)} onClose={() => { const from = viewed.from; setViewed(null); refocus(from); }} />}
   </View>;
 }

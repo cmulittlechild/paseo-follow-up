@@ -319,10 +319,12 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
 
 - **Desktop web**: a paste into the field (image items of the clipboard; a paste that is only images types no file name)
   or a drop on it adds images. The field takes a dashed accent outline while a file is dragged over it. Each image shows
-  as a small thumbnail under the field with a remove ×; hovering a thumbnail names it and its size.
+  as a small thumbnail under the field with a remove ×; hovering a thumbnail names it and its size, and a click shows it
+  larger in the release notes' viewer (`client/image-viewer.tsx`) so the right screenshot is checked before Send. A
+  reply box (an agent's, the Overseer's) draws its thumbnails inside the composer, above the words.
 - **Caps** (`shared/images.ts`): PNG, JPEG, GIF and WebP; 6 per message, 5 MB each (Claude's API limit), 20 MB in all.
   A paste past a cap is refused at once with the reason under the field ("6 images is the most one message takes.",
-  "That image is 7.2 MB; the most is 5 MB."), and nothing is added.
+  "That image is 7.2 MB; the most is 5 MB." then "Nothing was added."), and nothing is added.
 - **Before Send**: when the first image is added, the field asks `follow.image-support` once for its recipient (cached
   per recipient for the session). A recipient that can't take images says so on the field ("Acme Agent can't take
   images; remove them to send.") and Send waits until they are removed. Never after Send.
@@ -330,6 +332,7 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
   under the search row with "Sent with your ask to the Overseer."
 - **New** keeps one set for the task field and the note; the thumbnails sit under the task field on desktop, and under
   the note on a phone-width web window, where the note's screen is the one showing.
+  The source card ("Your words · 2 images") and the phone bar's line count them, so what goes is on screen before the click.
 - **Phones (the native app)**: the plugin client has no image picker for plugin fields (`@getpaseo/plugin/client`'s
   attachment sources serve Paseo's own composer), so nothing is drawn and no space is kept.
 - `tests/every-agent-field-takes-images.test.ts` classifies every TextInput in `client/`: agent-bound fields must be

@@ -4,6 +4,7 @@ import { Pressable, Text } from "./text";
 import { useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
 import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
+import { imagesWord } from "../shared/images";
 import { agentSettingsRpc, dispatchPreviewRpc, dispatchRecordsRpc, dispatchRpc, dispatchSettingsRpc, dispatchSourcesRpc, dispatchUndoRpc, setDispatchSettingsRpc } from "../shared/contracts";
 import type { ActionAgent, DispatchPlan, DispatchRecord, DispatchSources } from "../shared/dispatch";
 import type { Catalog } from "../shared/agent-settings";
@@ -104,13 +105,14 @@ function Field({ label, children, c, compact, reason }: { label: string; childre
 type Overrides = { projectId?: string; base?: string; branch?: string; title?: string; workspace?: "worktree" | "local"; agent?: ActionAgent; note?: string };
 type Open = null | "project" | "base" | "workspace" | "branch" | "title" | "agent" | "note";
 
-function SourceCard({ plan, c, compact }: { plan: DispatchPlan; c: Colors; compact: boolean }) {
+/** `images`: how many pasted images go with the words, so what is sent is on screen before the click. */
+function SourceCard({ plan, c, compact, images = 0 }: { plan: DispatchPlan; c: Colors; compact: boolean; images?: number }) {
   const s = plan.source;
   const body = s.kind === "text" ? "" : s.body.replace(/\s+/g, " ").trim();
   return <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: compact ? 14 : 14, gap: 6, backgroundColor: c.surface1 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       <Icon name={kindIcon(s.kind)} size={14} color={c.foregroundMuted} />
-      <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{sourceLine(s)}</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{sourceLine(s)}{images ? ` · ${imagesWord(images)}` : ""}</Text>
       {s.state && <View style={{ paddingHorizontal: 6, borderRadius: 4, backgroundColor: tint(c.statusWarning, c) }}><Text style={{ color: c.foreground, fontSize: 12 }}>{s.state}</Text></View>}
       {s.team && <View style={{ paddingHorizontal: 6, borderRadius: 4, backgroundColor: c.surface2 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Team {s.team}</Text></View>}
     </View>
@@ -142,7 +144,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
   const candidates = (projects ?? plan.where.candidates.map(x => ({ id: x.id, name: x.name }))).map(p => ({ id: p.id, label: p.name, on: p.id === plan.where.projectId, hint: plan.where.candidates.find(x => x.id === p.id)?.lastUsed ? "last used" : undefined }));
   const provider = catalog?.providers.find(p => p.id === (overrides.agent?.provider ?? plan.agentPick.picked?.provider));
   return <View style={{ gap: compact ? 16 : 14, opacity: busy ? 0.6 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-    <SourceCard plan={plan} c={c} compact={compact} />
+    <SourceCard plan={plan} c={c} compact={compact} images={img.images.length} />
     {plan.existing && <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 8, backgroundColor: c.surface2 }}>
       <Icon name="ExternalLink" size={16} color={c.foreground} />
       <View style={{ flex: 1 }}>
@@ -572,7 +574,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         {recordBar ?? <>
           {planNow && <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
             <Icon name={kindIcon(planNow.source.kind)} size={14} color={c.foregroundMuted} />
-            <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, flex: 1 }}>{targetLine(planNow)}</Text>
+            <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, flex: 1 }}>{[targetLine(planNow), img.images.length ? imagesWord(img.images.length) : ""].filter(Boolean).join(" · ")}</Text>
           </View>}
           {!onPreview && errorLine}
           {planNow ? <ActionRow bar={bar} c={c} compact onAction={id => void start(id)} onOpen={openWorkspace} more={more} setMore={setMore} /> : null}
