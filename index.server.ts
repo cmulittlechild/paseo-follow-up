@@ -1620,9 +1620,9 @@ export default function contribute(server: PluginServerContext) {
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list() };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn() };
     },
-    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context]),
+    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
     onFirst: () => { usageWatch = usage.watch(() => void homeFeed.changed()); },
     onLast: () => { usageWatch?.close(); usageWatch = null; },
@@ -1644,6 +1644,24 @@ export default function contribute(server: PluginServerContext) {
   serve(rpc.inboxFeed, (_input, push, signal) => inboxFeed.serve(push, signal));
   serve(rpc.homeFeed, (_input, push, signal) => homeFeed.serve(push, signal));
   serve(rpc.displayFeed, (_input, push, signal) => displayFeed.serve(push, signal));
+  // The PR stats page (docs/pr-stats.md): one feed per repository on screen. While a subscriber is open the repository
+  // syncs every 5 minutes instead of hourly; a run's end or a settings write pushes its status, and the page re-reads.
+  const statsFeeds = new Map<string, ValueFeed<Awaited<ReturnType<typeof prStats.feedState>>>>();
+  prStats.onChange = repo => {
+    if (repo === null) { for (const feed of statsFeeds.values()) void feed.changed(); } else void statsFeeds.get(repo)?.changed();
+    feeds.home();
+  };
+  serve(rpc.prStatsFeed, (input, push, signal) => {
+    const repo = input.repo;
+    let feed = statsFeeds.get(repo);
+    if (!feed) {
+      let release: (() => void) | null = null;
+      const made = new ValueFeed({ read: async () => { await requireReady(); return prStats.feedState(repo); },
+        onFirst: () => { release = prStats.watching(repo); }, onLast: () => { release?.(); release = null; if (statsFeeds.get(repo) === made) statsFeeds.delete(repo); } });
+      statsFeeds.set(repo, feed = made);
+    }
+    feed.serve(push, signal);
+  });
   handle(rpc.needsYouRpc, async ({ agentId, ...input }, { paseo }) => {
     await requireReady(); seen(paseo);
     if (!(await inboxSettings()).enable_inbox) throw new Error("The Needs-you inbox is off, so there's no brief to fill. Finish with your normal reply.");

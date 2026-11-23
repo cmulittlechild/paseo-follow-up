@@ -200,6 +200,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-project-tracking": { tools: ["set_project_tracking"] },
   "follow.pr-workflow": { tools: ["pr_workflow", "agent_settings"] },
   "follow.set-pr-workflow": { tools: ["set_pr_workflow"] },
+  "follow.pr-stats": { tools: ["pr_stats"], note: "The page's leaderboard, a person's drill-down (person) and a refresh (fresh); pr_stats also returns the waiting-now list the page leaves out." },
   "follow.pr-stats-settings": { tools: ["pr_stats_settings"], note: "With estimate: true it is the opt-in sheet's numbers; set_pr_stats enable shows them as its dry run." },
   "follow.set-pr-stats": { tools: ["set_pr_stats"] },
   "follow.reviewer-settings": { tools: ["reviewer_settings"] },
