@@ -2698,7 +2698,7 @@ async function newShots({ shoot, call, out, home, billing }) {
         await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
         await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);
         // The row's title, not the tab of the same name.
-        const r = page.getByText("The agent New starts for an action", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+        const r = page.getByText("Starts the work you begin from New", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
         check(`${theme} ${device}: Agents → New work copies the Overseer by default`, await page.getByText("Same as the Overseer").filter({ visible: true }).count() > 0);
       });
     }
