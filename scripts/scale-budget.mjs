@@ -12,19 +12,32 @@ export function median(xs) {
 }
 
 /**
- * test:scale's idle budget (realistic seed), derived from CI's own distribution: test:scale runs on CI's runner, so its
- * budget comes from what that runner reads, not from harness terms. 2026-11-13: 49 CI readings of test:scale's idle
- * median (tests/fixtures/ci-idle-rss.txt, the last 60 CI runs without three failing outliers, plus #174's 243, which
- * read over the old 240 on a PR that changed no product code and passed on rerun).
- *   CI_IDLE_P50_MB: the median of those readings. CI_IDLE_SD_MB: their standard deviation.
- *   SPREAD_SDS: how many standard deviations of run-to-run noise the budget absorbs (4 × 7.5 = 30 MB; #174's 243 is
- *   23 over the median, so it passes).
- * What it catches: a regression that adds 30 MB puts the median at the budget and fails about half the runs; one that
- * adds 45 MB fails every run (even the lowest reading, 206, would read 251). tests/scale-budget.test.ts checks these
- * constants against the fixture (drift over 1 MB fails).
+ * The allocator env test:scale runs the daemon with: the live host's (Paseo's env file, ~/.config/paseo/env, which every
+ * plugin process inherits since 2026-11-15). Without it glibc gives each allocating thread its own arena (up to 8 per
+ * core), and how many the worker's ~2 s cold-start tick opens is a race: 2026-11-23, ten CI runners each ran test:scale
+ * both ways, back to back. Plain: 9-12 arenas, peak 312-335 MB (8 of 10 over the budget), idle median 234-253. With
+ * these: 1-6 arenas, peak 299-312, idle 213-227, on the same runners (AMD EPYC 7763 and 9V74, Intel 8573C alike). The
+ * heap was the same both ways; the difference was anonymous native memory. Local runs always had it (agent shells
+ * inherit Paseo's env) and CI never did, so the two disagreed. scale-runner-facts: scale-check prints the runner, the
+ * worker's arenas and the peak's anonymous/file split on its scale-diag line.
  */
-export const CI_IDLE_P50_MB = 220;
-export const CI_IDLE_SD_MB = 7.5;
+export const LIVE_MALLOC_ENV = Object.freeze({ MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "131072", MALLOC_TRIM_THRESHOLD_: "131072" });
+
+/**
+ * test:scale's idle budget (realistic seed), derived from CI's own distribution: test:scale runs on CI's runner, so its
+ * budget comes from what that runner reads, not from harness terms. 2026-11-23: 26 CI readings of test:scale's idle
+ * median under LIVE_MALLOC_ENV (tests/fixtures/ci-idle-rss.txt: 26 runners, AMD EPYC 7763/9V74/9V45 and Intel 8573C,
+ * 6973P and 6975P). The earlier fixture (2026-11-13, median 220, SD 7.5) was read without the allocator env; its spread
+ * was mostly the arena race.
+ *   CI_IDLE_P50_MB: the median of those readings. CI_IDLE_SD_MB: their standard deviation.
+ *   SPREAD_SDS: how many standard deviations of run-to-run noise the budget absorbs (4 × 3.7 ≈ 15 MB).
+ * What it catches: a regression that adds 15 MB puts the median at the budget and fails about half the runs; one that
+ * adds 25 MB fails every run (even the lowest reading, 208, would read 233). A synthetic 20 MB retained from the start
+ * (scale-check --retain-mb 20) read 236 and 241 on CI. tests/scale-budget.test.ts checks these constants against the
+ * fixture (drift over 1 MB fails).
+ */
+export const CI_IDLE_P50_MB = 215.5;
+export const CI_IDLE_SD_MB = 3.7;
 export const SPREAD_SDS = 4;
 export const REALISTIC_IDLE_BUDGET_MB = CI_IDLE_P50_MB + SPREAD_SDS * CI_IDLE_SD_MB;
 /**
@@ -42,18 +55,18 @@ export function idleBudgetMb(value) {
 
 /**
  * test:scale's worker peak budget (lifetime VmHWM, realistic seed), derived from CI's own distribution the same way.
- * It was a typed-in 300 MB: 2026-11-16 main itself read 313 (74fdcdf, #210's merge) and #211, which adds nothing the
- * worker holds on a normal start, read 310; locally main and #211 peaked alike (286/285 vs 284/280 MB). 51 readings
- * (tests/fixtures/ci-peak-rss.txt): the last 50 main CI runs' test:scale peaks since the seed's last level shift
- * (2026-11-14, ~245 → ~275 MB), plus #211's 310. Two clusters, ~273-279 and ~290-299: the peak is one high-water
- * mark, so whether a collection lands just before the heaviest moment moves it by ~20 MB run to run.
+ * 2026-11-23: 26 readings under LIVE_MALLOC_ENV (tests/fixtures/ci-peak-rss.txt, the same runners as the idle fixture).
+ * The earlier fixture (2026-11-16, median 278, SD 10.8, budget 321.2) was read without the allocator env, and on
+ * 2026-11-23 main's plain peak sat at 312-335 on most runners: the arena race, not the code (scale-runner-facts).
+ * The peak is the ~2 s cold-start tick (the scale-diag line's peakSplit), anonymous memory.
  *   CI_PEAK_P50_MB: the median of those readings. CI_PEAK_SD_MB: their standard deviation. SPREAD_SDS as above.
- * What it catches: a regression that adds 43 MB puts the median at the budget and fails about half the runs; one that
- * adds 55 MB fails every run (even the lowest reading, 268, would read 323). tests/scale-budget.test.ts checks these
+ * What it catches: a regression that adds 15 MB puts the median at the budget and fails about half the runs; one that
+ * adds 21 MB fails every run (even the lowest reading, 297, would read 318). --retain-mb 20 read 321 and 325 on CI;
+ * #283's pre-fix head (28881bc4), the last real regression, read 412-413. tests/scale-budget.test.ts checks these
  * constants against the fixture (drift over 1 MB fails).
  */
-export const CI_PEAK_P50_MB = 278;
-export const CI_PEAK_SD_MB = 10.8;
+export const CI_PEAK_P50_MB = 302.5;
+export const CI_PEAK_SD_MB = 3.7;
 export const REALISTIC_PEAK_BUDGET_MB = CI_PEAK_P50_MB + SPREAD_SDS * CI_PEAK_SD_MB;
 /** A named budget for scale-check's --rss-budget: `realistic` (test:scale) or a number of MB. */
 export const PEAK_BUDGETS = { realistic: REALISTIC_PEAK_BUDGET_MB };
