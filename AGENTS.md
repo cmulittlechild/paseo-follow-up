@@ -79,12 +79,12 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/send-words.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/task-dup.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
-| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
+| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
-| Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
+| Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
 | PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
@@ -1027,8 +1027,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `MISS_REDISCOVER_MS` (10 min), so an upstream down or still connecting at the first discovery (an mcpproxy restart,
    an OAuth refresh, a worker started right after an install) is found once it's back, never a day later; a source
    switched off is not a miss. A failed discovery answers every read with its error for `FAILED_DISCOVERY_MS` (60 s),
-   so a down mcpproxy isn't asked on every read; Check sources again always asks. Guarded by
-   `tests/brief-sources.test.ts`.
+   so a down mcpproxy isn't asked on every read; Check sources again always asks. **An AI job that reads outside
+   content can only read** (`a-job-that-reads-outside-content-can-only-read`): the text a job reads (a plan artifact,
+   a thread, an issue) was written by someone else, so a prompt saying "read only" is not the guard. Every Claude job
+   runs under one PreToolUse hook (`server/job-guard.ts`, passed with `--settings`) that refuses any tool call outside
+   the job's grant before it runs, whatever `--allowedTools` or the text say; the default grant is nothing and the
+   plan reader's (and Settings' title read) is the Artifact tool's `read` only. A refused call is logged by tool and
+   action name only (`ai-jobs.jsonl` `refused`) and the job still completes on what it read. Codex jobs run in a
+   read-only sandbox without the shell tool. A job on any other provider (`server/job-agent.ts`) runs as a Paseo agent
+   with that provider's own tools and has no such guard yet: an open gap, not an exemption. 2026-11-23:
+   the plan reader kept the Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
+   `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete).
 82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
    channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
    shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
@@ -1127,6 +1136,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
    closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
    queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
+95. **A taken issue is not a suggestion** (`a-taken-issue-is-not-a-suggestion`). One predicate decides whether an issue
+   already has a workspace, `issueWorkspaces` (`shared/issue-workspace.ts`): a live (unarchived) workspace that links it,
+   or one tracking a PR whose branch or title names its key as a whole token, the PR's workspace first, then the most
+   recently active. The worker builds it once per read from state it already holds (`issueHolders`, `takenIssues`), so
+   invariant 94 still holds. Every surface that offers to start work from an issue reads it: New's list and its
+   preselection (a taken issue folds into "N issues already have a workspace" and ↵ opens its workspace), dispatch's
+   `existing` (paste, preview, the `dispatch` dry run), `dispatch_sources`' `taken`, Needs you's raised issues
+   (`raisedNeeds`) and the brief's Since block. 2026-11-23, on 2.4.0-beta.3: 8 of New's first 9 issues were ones a
+   planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a
+   workspace" was two rules that counted only links and New listed every issue anyway. Guarded by
+   `tests/taken-issues.test.ts` and `tests/new-view.test.ts`.
 
 ## Bugs
 

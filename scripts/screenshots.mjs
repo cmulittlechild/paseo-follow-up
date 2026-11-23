@@ -130,7 +130,7 @@ function pulls() {
     247: { title: "Checkout button copy", state: "OPEN", author: "dana", conflict: true, threads: 1, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     248: { title: "Refund reason codes", state: "OPEN", author: "dana", conflict: true, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     160: { title: "Welcome email template", state: "OPEN", author: "dana", conflict: true, threads: 2, reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
-    170: { title: "Sign webhook payloads", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
+    170: { title: "APP-160: Sign webhook payloads", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [ok("test"), ok("lint")] },
     181: { repo: "example/web", title: "Dark mode color tokens", state: "MERGED", author: "dana", checks: [ok("test"), ok("lint")] },
     // The README lead shot's other groups (2.0.x): Waiting, Fixing, Later.
     188: { title: "Render invoices as PDF", state: "OPEN", author: "dana", reviewers: ["ravi"], checks: [failed("test"), ok("lint"), ok("e2e")] },
@@ -272,6 +272,8 @@ function newIssues() {
     issue("WEB-31", "Invoice PDF rounds VAT wrong for CHF totals", "In Progress", "started", 120, "CHF totals round VAT per line instead of per invoice."),
     issue("OPS-12", "Rotate the staging database password", "Todo", "unstarted", 90, "Rotate it and update the deploy secret."),
     issue("APP-163", "Rate-limit webhook retries per endpoint", "Todo", "unstarted", 30, "One slow endpoint holds every retry."),
+    // Taken by a tracked PR's title, not a link (Webhook signing's #170 "APP-160: …"): New folds it with APP-142.
+    issue("APP-160", "Sign webhook payloads", "In Review", "started", 60, "Sign every webhook payload with the endpoint's secret."),
   ];
 }
 /**
@@ -2775,7 +2777,7 @@ async function newShots({ shoot, call, out, home, billing }) {
     await openHome(page); await narrow(page, vp);
     await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
     await dialog(page).waitFor();
-    if (list) await row(page, /^APP-151 Dunning/).waitFor();
+    if (list) await row(page, /^WEB-31 Invoice/).waitFor();
   };
   const type = async (page, text) => { const f = dialog(page).getByRole("textbox", { name: FIELD }).first(); await f.fill(text); await page.waitForTimeout(250); };
   /** Phones: a row opens the preview screen; desktop: it selects in place. */
@@ -2821,7 +2823,7 @@ async function newShots({ shoot, call, out, home, billing }) {
       if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
     await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
-    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^APP-142 /);
+    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ issues? already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
       check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
     await shoot(name("ambiguous"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^OPS-12 /); await dialog(page).getByText("Which project for OPS?").first().waitFor();
       check(`${device} ${theme}: ambiguous blocks every action`, await dialog(page).getByText("Pick a project first; the actions start there.").count() > 0); });
@@ -2856,6 +2858,32 @@ async function newShots({ shoot, call, out, home, billing }) {
     // Home's row for the dispatches just made: Undo inside the window.
     await shoot(name("home-row"), vp, theme, async page => { await openHome(page); await narrow(page, vp); await page.getByRole("button", { name: /^Undo / }).filter({ visible: true }).first().waitFor(); });
   }
+  // a-taken-issue-is-not-a-suggestion: APP-142 (linked by Billing retries) and APP-160 (named by Webhook signing's PR
+  // title) fold into one last row; opened, each is muted and names its workspace, and ↵ opens it. All taken: one line.
+  for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) {
+    const phone = vp.width < 768;
+    const fold = page => row(page, /^\d+ issues? already ha(s|ve) a workspace/);
+    await shoot(`new-taken-folded-${device}-${theme}`, vp, theme, async page => {
+      await openFromHome(page, vp); await fold(page).waitFor();
+      check(`${device} ${theme}: a taken issue is not listed until the fold opens`, !(await dialog(page).getByRole("button", { name: /^APP-142 / }).filter({ visible: true }).count()) && !(await dialog(page).getByRole("button", { name: /^APP-160 / }).filter({ visible: true }).count()));
+      if (!phone) { await preview(page); check(`${device} ${theme}: ↵ starts a free issue, never a taken one`, !(await primary(page, /^Open it/).count())); }
+    });
+    await shoot(`new-taken-open-${device}-${theme}`, vp, theme, async page => {
+      await openFromHome(page, vp); await fold(page).click();
+      await dialog(page).getByText("Webhook signing · running").first().waitFor();
+      check(`${device} ${theme}: the PR-named issue names its workspace`, true);
+      // Phones keep the list in view (picking opens the preview screen, which new-existing renders).
+      if (!phone) { await pick(page, /^APP-160 /); check(`${device} ${theme}: a taken issue's ↵ is Open it`, await primary(page, /^Open it/).count() > 0); }
+    });
+  }
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues().filter(i => ["APP-142", "APP-160"].includes(i.id))));
+  await call("follow.dispatch-sources", { fresh: true });
+  for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) await shoot(`new-taken-all-${device}-${theme}`, vp, theme, async page => {
+    await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Nothing new to start.").waitFor();
+    if (vp.width >= 768) check(`${device} ${theme}: all taken, the fold is selected and says what ↵ does`, await dialog(page).getByText("shows them").count() > 0);
+  });
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues()));
+  await call("follow.dispatch-sources", { fresh: true });
 
   // The ways in (desktop): Home's + New, ⌘K, the sidebar row, the key in a browser tab (Ctrl+Shift+O) and in the
   // desktop app (Ctrl+Shift+N; Chrome keeps Ctrl+Shift+N for incognito, so only the app gets it).

@@ -10,6 +10,7 @@ import {
   type ActionAgent, type BuiltinId, type DispatchPlan, type ExistingWorkspace, type SourceRoute, type DispatchAction, type DispatchFile, type DispatchRecord, type DispatchSource, type Where, type WhereProject,
 } from "../shared/dispatch";
 import type { LinearIssue } from "../shared/linear-issues";
+import { holderOf } from "../shared/issue-workspace";
 export type { DispatchPlan, ExistingWorkspace, SourceRoute } from "../shared/dispatch";
 import type { LinearList } from "./linear-issues";
 
@@ -54,6 +55,11 @@ export type DispatchDeps = {
   learned(): Promise<Record<string, Record<string, number>>>;
   /** An unarchived workspace that already has this source (its linked key, or for a PR its owner). */
   existing(source: DispatchSource): Promise<ExistingWorkspace | null>;
+  /**
+   * Every queue key a live workspace already has, with that workspace (a-taken-issue-is-not-a-suggestion, the same
+   * predicate as `existing`): one map per list read, never a lookup per issue.
+   */
+  taken?(): Promise<ReadonlyMap<string, ExistingWorkspace>>;
   /** The repository's default branch for a project, or null. */
   defaultBase(projectId: string): Promise<string | null>;
   /** The agent an action starts (the action's own, else New's default agent). */
@@ -127,14 +133,16 @@ export class DispatchService {
       this.d.projects().catch(() => [] as DispatchProject[]), this.d.learned().catch(() => ({})),
     ]);
     // Each row's "→ project" (or "→ which project?") and its live workspace, so the list says where ↵ would go.
+    // a-taken-issue-is-not-a-suggestion: an issue a live workspace has is listed in `taken`, never offered as new work.
     const routes: Record<string, SourceRoute> = {};
+    const taken = this.d.taken ? await this.d.taken().catch(() => null) : null;
     await Promise.all(linear.issues.map(async issue => {
       const source = linearSource(issue);
-      const existing = await this.d.existing(source).catch(() => null);
+      const existing = taken ? holderOf(taken, issue.key) : await this.d.existing(source).catch(() => null);
       const where = resolveWhere({ source, projects, picked: null, rules: file.rules, learned, lastProjectId: file.lastProjectId, workspaceProjectId: existing?.projectId ?? null, noTeam: file.noTeam });
       routes[issue.key] = { project: where.projectName, guess: where.guess, existing: existing ? { workspaceId: existing.workspaceId, title: existing.title, state: existing.state } : null };
     }));
-    return { linear, routes, recent: recentRecords(file.records, 3).map(r => this.view(r)) };
+    return { linear, routes, taken: linear.issues.filter(i => routes[i.key]?.existing).map(i => i.key), recent: recentRecords(file.records, 3).map(r => this.view(r)) };
   }
   records(): Promise<DispatchRecord[]> { return this.d.store.read().then(f => recentRecords(f.records, RECORDS_MAX).map(r => this.view(r))); }
   private view(r: DispatchRecord): DispatchRecord { return { ...r, prompt: null }; }

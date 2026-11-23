@@ -1,0 +1,2 @@
+- New suggests only issues you could start. An issue another workspace already has, linked or with a PR that names it, folds into one row at the end of My issues, and Enter there opens that workspace.
+- A raised issue that already has a PR in a workspace no longer shows in Needs you.

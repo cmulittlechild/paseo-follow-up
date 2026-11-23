@@ -95,6 +95,7 @@ import { DispatchService, DispatchStore, type ActionChange, type DispatchPaseo, 
 import { LinearIssues } from "./server/linear-issues";
 import { LinearQueue, LinearQueueStore } from "./server/linear-queue";
 import { teamOf } from "./shared/linked";
+import { holderOf, issueWorkspaces } from "./shared/issue-workspace";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostFeature, type ServerInfo } from "./server/host-features";
@@ -1247,6 +1248,22 @@ export default function contribute(server: PluginServerContext) {
     return rows.map(p => ({ id: p.projectId, name: p.projectCustomName || p.projectDisplayName, repo: p.projectKind === "git" ? projectRepo(p.projectKey) : null, worktree: p.projectKind === "git", path: p.projectRootPath }));
   };
   const linkedOf = async () => Object.entries((await linkedStore.read()).workspaces);
+  // a-taken-issue-is-not-a-suggestion: the one "which live workspace has this issue" map (shared/issue-workspace.ts):
+  // a link or a tracked PR whose branch or title names the key. Built per read from state already in hand.
+  const issueHolders = async () => {
+    const [state, linked] = await Promise.all([store.snapshot(), linkedOf()]);
+    const latest = (w: (typeof state.workspaces)[number]) => [w.mainWorkAt ?? "", ...w.batches.map(b => b.activityAt ?? b.sentAt ?? b.createdAt)].reduce((a, b) => b > a ? b : a, "");
+    return issueWorkspaces({
+      workspaces: state.workspaces.map(w => ({ id: w.id, title: w.title, archived: w.archived, enable_tracking: w.enable_tracking, activityAt: latest(w), prs: w.prs })),
+      links: linked.map(([id, l]) => [id, l.items.flatMap(i => i.kind === "linear" && i.key ? [i.key] : [])] as const),
+    });
+  };
+  // New's view of it: each holder with the project it's in (Paseo's directory, cached), for resolveWhere.
+  const takenIssues = async () => {
+    const [holders, rows] = await Promise.all([issueHolders(), gateway.directory.read().catch(() => null)]);
+    const projectOf = new Map((rows?.workspaces ?? []).map(w => [w.id, (w as { projectId?: string | null }).projectId ?? null]));
+    return new Map([...holders].map(([key, h]) => [key, { ...h, projectId: projectOf.get(h.workspaceId) ?? null }]));
+  };
   const dispatcher = new DispatchService({
     store: new DispatchStore(directory),
     linear: linearIssues,
@@ -1282,13 +1299,9 @@ export default function contribute(server: PluginServerContext) {
         return w ? { workspaceId: w.id, title: w.title, state: "tracked", projectId: await projectOf(w.id) } : null;
       }
       if (source.kind !== "linear" || !source.key) return null;
-      for (const [workspaceId, links] of await linkedOf()) {
-        if (!links.items.some(i => i.kind === "linear" && i.key === source.key)) continue;
-        const w = live(workspaceId);
-        if (w) return { workspaceId: w.id, title: w.title, state: w.enable_tracking ? "tracked" : "untracked", projectId: await projectOf(w.id) };
-      }
-      return null;
+      return holderOf(await takenIssues(), source.key);
     },
+    taken: takenIssues,
     // The repository's default branch (origin/HEAD), read from the checkout once an hour.
     defaultBase: async projectId => {
       const hit = baseCache.get(projectId);
@@ -1372,18 +1385,8 @@ export default function contribute(server: PluginServerContext) {
     linear: linearIssues,
     settings: () => morningBrief!.settings(),
     clock: briefClock,
-    // Unarchived workspaces with the key linked: "has a workspace" in the queue (dispatcher.existing's rule).
-    workspaces: async () => {
-      const state = await store.snapshot();
-      const live = new Map(state.workspaces.filter(w => !w.archived).map(w => [w.id, w.title]));
-      const out = new Map<string, { workspaceId: string; title: string }>();
-      for (const [workspaceId, links] of await linkedOf()) {
-        const title = live.get(workspaceId);
-        if (title === undefined) continue;
-        for (const i of links.items) if (i.kind === "linear" && i.key && !out.has(i.key)) out.set(i.key, { workspaceId, title });
-      }
-      return out;
-    },
+    // "Has a workspace" in the queue: the one predicate New and dispatch read (a-taken-issue-is-not-a-suggestion).
+    workspaces: issueHolders,
     tight: () => !governor.allowsBackground(),
     onChange: () => feeds.home(),
     log: line => console.warn(line),

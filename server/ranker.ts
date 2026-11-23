@@ -18,6 +18,7 @@ import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
 import { truncated } from "../shared/scale";
 import { canonicalArtifactUrl } from "../shared/morning-brief";
+import { ARTIFACT_READ } from "./job-guard";
 import { clockFor, BRIEF_SETTINGS_DEFAULT, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
@@ -106,7 +107,10 @@ export const planReplySchema = z.object({
 });
 export const PLAN_SYSTEM = "You read one Claude artifact with the Artifact tool, action \"read\" only, and summarise its planning content. Never call the Artifact tool with any other action (never publish, update, delete, comment or share). Reply with one JSON object only: {\"title\": string|null, \"items\": [{\"level\": \"initiative|project|milestone|issue\", \"title\": string, \"keys\": [Linear keys like ACME-123]}]}. Focus on this week; at most 60 items. Never include share keys, links or raw HTML.";
 
-/** The plan reader: one Claude turn with only the Artifact tool, which Paseo's Claude provider enables with CLAUDE_CODE_ARTIFACT=1. */
+/**
+ * The plan reader: one Claude turn with only the Artifact tool, which Paseo's Claude provider enables with CLAUDE_CODE_ARTIFACT=1.
+ * The plan is someone else's text, so the job guard (ARTIFACT_READ) lets through the read action only, whatever it says.
+ */
 export const planArgs = (input: RunInput) => {
   const base = claudeArgs(input);
   const tools = base.indexOf("--tools");
@@ -132,7 +136,7 @@ const runFile: Run = async (command, args, timeout, env) => (await exec(command,
 export { ghAccounts };
 
 /** The live sources: read-only mcpproxy calls, in-process GitHub reads, and one Artifact read for the plan. */
-export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceDirectory; gate?: SourceGate; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null>; queue?: { forRanker(): Promise<(QueueIssue & { change: string | null })[]> } } = {}): RankSources {
+export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceDirectory; gate?: SourceGate; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null>; /** The `claude` command the plan reader runs (tests: a fake provider). */ claude?: string; queue?: { forRanker(): Promise<(QueueIssue & { change: string | null })[]> } } = {}): RankSources {
   const run = opts.run ?? runFile;
   // The chat, calendar and mail servers are whichever have those recipes' tools (nothing-built-in-about-a-workplace).
   const tools = opts.tools ?? sourceDirectory(run);
@@ -200,7 +204,7 @@ export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceD
       const model = (await opts.model?.()) ?? "sonnet";
       const r = await jobs.run({ name: "rank-plan", prompt: `Read this artifact with the Artifact tool (action "read"): ${url}\nThen reply with the JSON object.`, system: PLAN_SYSTEM, schema: planReplySchema, model,
         // Always Claude: the Artifact tool is Claude Code's.
-        provider: "claude", runner: claudeRunner("claude", planArgs, PLAN_ENV), timeoutMs: 180_000, maxOutputChars: 20_000 });
+        provider: "claude", runner: claudeRunner(opts.claude ?? "claude", planArgs, PLAN_ENV, ARTIFACT_READ), timeoutMs: 180_000, maxOutputChars: 20_000 });
       if (!r.ok) throw new Error(r.error);
       // A plan with nothing in it is a failed read (the model sometimes answers before reading), not an empty week.
       if (!r.value.items.length) throw new Error("The plan came back empty.");
