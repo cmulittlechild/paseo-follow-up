@@ -17,6 +17,9 @@ import { MorningBriefCategory, briefSettingsKey, briefSourcesKey } from "./morni
 import type { SourcesView } from "../shared/brief-sources";
 import { briefSummary, type BriefSettingsView } from "../shared/morning-brief";
 import { PrStatsSettings } from "./pr-stats-settings";
+import { NewWorkCategory, newActionsKey, newSettingsKey } from "./new-settings";
+import { newWorkSummary, type SettingsView as NewSettingsView } from "../shared/new-settings";
+import type { DispatchAction } from "../shared/dispatch";
 import { UpdatesSections, useUpdates } from "./updates";
 import { generalSummary } from "../shared/updates";
 import { BackHeader, CategoryList, CategoryTabs, Disclosure } from "./settings-shell";
@@ -220,17 +223,20 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
   const updates = useUpdates().data;
   const brief = useQuery({ queryKey: briefSettingsKey, queryFn: skipToken }).data as BriefSettingsView | undefined;
   const sources = useQuery({ queryKey: briefSourcesKey, queryFn: skipToken }).data as SourcesView | undefined;
+  const newActions = useQuery({ queryKey: newActionsKey, queryFn: skipToken }).data as { actions: DispatchAction[] } | undefined;
+  const newSettings = useQuery({ queryKey: newSettingsKey, queryFn: skipToken }).data as NewSettingsView | undefined;
   return {
     general: updates ? generalSummary(updates) : null,
     following: follow ? followingSummary(follow) : null,
     reviewers: reviewers ? reviewersSummary(reviewers.config) : null,
     agents: agents ? agentsSummary(agents, changed) : null,
     brief: brief ? briefSummary(brief, Date.now(), sources?.line) : null,
+    new: newWorkSummary(newActions?.actions ?? null, newSettings ?? null),
   };
 }
 
 /**
- * Follow-up's settings, in five categories. Desktop: tabs under the host's own settings nav, the last one remembered
+ * Follow-up's settings, in seven categories. Desktop: tabs under the host's own settings nav, the last one remembered
  * on this device. Phone: the category list, drilling in with a back row. Only the open category mounts, so only its
  * data loads.
  */
@@ -270,6 +276,8 @@ export function FollowSettings({ theme, layout, openSetup, openReport, category:
     </View>
     : category === "agents" ? <AgentsCategory theme={theme} compact={compact} />
     : category === "brief" ? <MorningBriefCategory theme={theme} compact={compact} />
+    // Under Paseo's tabs a tab can't switch another, so the Agents link is Follow-up's own tabs only.
+    : category === "new" ? <NewWorkCategory theme={theme} compact={compact} openAgents={only ? undefined : () => pick("agents")} />
     : <DisplaySections theme={theme} />;
   // Phones: the shared gutter and the bottom inset (the gesture bar), like every other Follow-up surface.
   const page = { padding: compact ? space(true).gutter : 24, gap: 18, maxWidth: 720, width: "100%" as const, alignSelf: "center" as const, paddingBottom: 40 };

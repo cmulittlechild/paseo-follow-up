@@ -11,6 +11,7 @@ export const SETTINGS_CATEGORIES = [
   { id: "following", title: "Following", icon: "Radar", blurb: "Projects, workspaces, auto-send" },
   { id: "reviewers", title: "Reviewers", icon: "UserCheck", blurb: "Default and per-repo lists" },
   { id: "agents", title: "Agents", icon: "Bot", blurb: "Questions, Overseer, models" },
+  { id: "new", title: "New work", icon: "SquarePlus", blurb: "New's actions, where work goes, bases" },
   { id: "display", title: "Inbox & display", icon: "Inbox", blurb: "Sidebar, pills, Needs-you inbox" },
   { id: "brief", title: "Morning brief", icon: "Sunrise", blurb: "This week's plan, the Linear queue" },
 ] as const;
