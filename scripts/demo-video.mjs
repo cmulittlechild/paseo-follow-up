@@ -47,8 +47,8 @@ await harness();
 const asVersion = arg("--as-version") ?? (await exec("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*.[0-9]*", "--exclude", "*-*"])).stdout.trim().replace(/^v/, "");
 
 // ---------- the frame ----------
-const W = 1920, H = 1200, BAND = 176;
-const SCALE = 1.5; // device pixels per CSS pixel: the app is laid out at 1280×683, captured at 1920×1024
+const W = 1920, H = 1200, BAND = 180;
+const SCALE = 1.5; // device pixels per CSS pixel: the app is laid out at 1280×680, captured at 1920×1020
 const VIEW = { width: W / SCALE, height: Math.round((H - BAND) / SCALE) };
 const APP_H = Math.round(VIEW.height * SCALE);
 const VIEW_TIME = Date.parse("2026-03-04T12:00:00.000Z"); // screenshots.mjs: BASE + VIEW
@@ -322,7 +322,7 @@ try {
   const at = key => Math.max(0, remap(marks[key]) / PACE);
   const total = out_t.at(-1);
   const inputs = ["-f", "concat", "-safe", "0", "-i", join(work, "frames.txt"), ...beats.flatMap(k => ["-loop", "1", "-i", capFiles[k]])];
-  let filter = `[0:v]fps=30,scale=${W}:${APP_H}:flags=lanczos,pad=${W}:${H}:0:0:color=0x222126[v0]`;
+  let filter = `[0:v]fps=30,scale=${W}:${APP_H}:flags=lanczos,pad=${W}:${H}:0:0:color=0x222126,setsar=1[v0]`;
   beats.forEach((k, i) => {
     const from = i === 0 ? 0 : at(k), to = i + 1 < beats.length ? at(beats[i + 1]) : total + 1;
     filter += `;[v${i}][${i + 1}:v]overlay=0:${APP_H}:shortest=1:enable='between(t,${from.toFixed(3)},${to.toFixed(3)})'[v${i + 1}]`;
