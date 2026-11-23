@@ -33,7 +33,8 @@ import { agentRecord, markerInFile, transcriptFile } from "./transcript";
 import { DaemonDirectory, type DirectoryRows } from "./directory";
 import { traceDaemon } from "./request-trace";
 import type { TurnTimeline } from "./turn-timeline";
-import { PASEO_UNREACHABLE } from "../shared/queue";
+import { PASEO_UNREACHABLE, deliveryReceipt } from "../shared/queue";
+import type { Delivered } from "./message-queue";
 type RecoveryAgentOptions = Partial<PluginBeforeRequests["agent.create"]["config"]> & { workspaceId: string; labels: Record<string, string>; idempotencyKey: string; env: Record<string, string>; /** Paseo 0.16 (features.backgroundAgents): no tab, no notification, no sidebar row. */ background?: boolean };
 
 /**
@@ -596,7 +597,7 @@ export class PaseoGateway implements Gateway {
    * active turn). Session Guard pauses and pending permission prompts defer it; an unavailable agent falls back to the
    * next. DeliveryDeferred means nothing was sent (safe to retry); any other error came after the message went out.
    */
-  async deliverTo(target: { workspaceId: string | null; recipients: string[] }, text: string, messageId: string, by?: string): Promise<string> {
+  async deliverTo(target: { workspaceId: string | null; recipients: string[] }, text: string, messageId: string, by?: string): Promise<Delivered> {
     let attempted = false;
     return this.connect(async client => {
       for (const id of target.recipients) {
@@ -610,9 +611,12 @@ export class PaseoGateway implements Gateway {
         if (conversationGone(a.lastError)) throw new ConversationGone(id, a.lastError!);
         attempted = true;
         await beforeSend(id, messageId, by).catch(() => undefined);
-        try { await client.sendMessage(id, text, { messageId, activeTurnBehavior: "steer" }); }
+        // Paseo 0.17.2+ answers with a receipt (queued behind the turn, or the behavior a provider fell back to); kept on
+        // the queue item and its record. 0.17.1 and older answer nothing, and nothing changes.
+        let receipt: unknown;
+        try { receipt = await client.sendMessage(id, text, { messageId, activeTurnBehavior: "steer" }); }
         catch (error) { if (conversationGone(error)) throw new ConversationGone(id, error instanceof Error ? error.message : String(error)); throw error; }
-        return id;
+        return { to: id, receipt: deliveryReceipt(receipt) };
       }
       throw new DeliveryDeferred("no agent in this workspace can take it right now");
     }).catch(error => {

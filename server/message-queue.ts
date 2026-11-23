@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, ambiguousDelay, GONE_REASON, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind } from "../shared/queue";
+import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BACKOFF_AFTER_MS, envelopeText, ambiguousDelay, GONE_REASON, QUEUE_ATTEMPT_MS, QUEUE_CAP_MS, QUEUE_QUIET_MS, QUEUE_RECENT, neverLeftDelay, queueFileSchema, queueItemSchema, type QueueFile, type QueueItem, type QueueItemInput, type NewQueueItem, type QueueKind, type DeliveryReceipt, deliveryReceipt } from "../shared/queue";
 import { ConversationGone, DeliveryDeferred, idRefused, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
 import type { Workspace } from "../shared/model";
@@ -39,10 +39,12 @@ export interface Channel {
    */
   companions?(key: string, target: Target): Promise<NewQueueItem[]>;
 }
+/** A send that left: who got it, and Paseo's receipt (0.17.2+; null before). */
+export type Delivered = { to: string; receipt: DeliveryReceipt | null };
 /** How messages reach Paseo. PaseoGateway in the worker; fakes in tests. */
 export interface Courier {
   /** Sends to the first available recipient and returns it. DeliveryDeferred: nothing was sent. */
-  deliverTo(target: Target, text: string, messageId: string, by?: string): Promise<string>;
+  deliverTo(target: Target, text: string, messageId: string, by?: string): Promise<string | Delivered>;
   /** Whether `messageId` is in the agent's chat since `since` (`marker`: the text to look for where ids aren't kept). Null: unknown. */
   arrived(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null>;
   /** Connect-only: whether Paseo answers, on the worker's one connection, without reading or waking any agent. */
@@ -65,6 +67,15 @@ export function queueTimeScale(directory: string, env: NodeJS.ProcessEnv = proce
   const r = relative(real(temp), real(directory));
   if (r === "" || r.startsWith("..") || isAbsolute(r)) return 1;
   return Math.max(0.001, value);
+}
+
+/**
+ * FOLLOW_UP_HARNESS_RECEIPT: a Paseo 0.17.2+ receipt (JSON) every send reports, for rendering its wording on a harness
+ * host older than 0.17.2. Like the time scale, it counts only when the data dir is under the OS temp dir.
+ */
+export function harnessReceipt(directory: string, env: NodeJS.ProcessEnv = process.env): DeliveryReceipt | null {
+  if (!env.FOLLOW_UP_HARNESS_RECEIPT || queueTimeScale(directory, { FOLLOW_UP_QUEUE_TIME_SCALE: "0.5" }) === 1) return null;
+  try { return deliveryReceipt(JSON.parse(env.FOLLOW_UP_HARNESS_RECEIPT)); } catch { return null; }
 }
 
 export class MessageQueue {
@@ -316,10 +327,12 @@ export class MessageQueue {
     const by = items.find(i => i.by === "developer")?.by ?? items.find(i => i.by)?.by;
     try {
       this.sends++;
-      const to = await withDeadline(this.courier.deliverTo(target, envelopeText(items.map(i => i.text)), messageId, by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
+      const sent = await withDeadline(this.courier.deliverTo(target, envelopeText(items.map(i => i.text)), messageId, by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
       // A stopped worker writes nothing: the next one owns queue.json and reads this send back as uncertain.
       if (this.stopped) return;
-      for (const item of items) { if (item.envelope) item.envelope.to = to; await this.settle(item, "sent", null, to); }
+      const { to, receipt: real } = typeof sent === "string" ? { to: sent, receipt: null } : sent;
+      const receipt = real ?? harnessReceipt(this.directory);
+      for (const item of items) { if (item.envelope) item.envelope.to = to; item.receipt = receipt; await this.settle(item, "sent", null, to); }
     } catch (error) {
       if (this.stopped) return;
       for (const item of items) {
