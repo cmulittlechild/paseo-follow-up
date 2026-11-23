@@ -34,6 +34,8 @@ export function probeOnScreen(el: unknown): boolean {
 
 /** How often an open request looks again for a host coming on screen or leaving it (only while open). */
 export const HOST_LOOK_MS = 250;
+/** How long a shown request may sit with no host on screen before it's dropped. */
+export const LEFT_BEHIND_MS = 1000;
 
 export type HostSlot<R extends object> = ReturnType<typeof createHostSlot<R>>;
 
@@ -45,6 +47,8 @@ export function createHostSlot<R extends object>() {
   const hosts: { id: number; visible: () => boolean }[] = [];
   let hostIds = 0;
   let owner: number | null = null;
+  /** When the open request was last on screen (null: never shown yet, so it waits for a host). */
+  let shownAt: number | null = null;
   let fallback: ((r: R) => void) | null = null;
   let watch: ReturnType<typeof setInterval> | null = null;
 
@@ -52,6 +56,11 @@ export function createHostSlot<R extends object>() {
   const notify = () => { version++; for (const l of listeners) l(); };
   const settle = () => {
     owner = current ? pick(owner) : null;
+    if (current && owner !== null) shownAt = Date.now();
+    // Shown, then off screen for good (the developer left that Home): drop it, so it never comes back on its own on a
+    // later screen nor swallows the next New. A short grace covers a host hidden for a frame mid-navigation.
+    if (current && owner === null && shownAt !== null && Date.now() - shownAt >= LEFT_BEHIND_MS) { current = null; shownAt = null; }
+    if (!current) shownAt = null;
     // A host can come on screen or leave it without mounting (Paseo brings a kept screen forward): while a request is
     // open, look again a few times a second. Closed, nothing runs.
     if (current && !watch) {
@@ -72,6 +81,7 @@ export function createHostSlot<R extends object>() {
      */
     open(request: R, opts: { navigate?: ((r: R) => void) | null } = {}): void {
       current = { ...request, token: ++token };
+      shownAt = null;
       emit();
       if (owner === null) (opts.navigate === undefined ? fallback : opts.navigate)?.(request);
     },
@@ -79,6 +89,8 @@ export function createHostSlot<R extends object>() {
     now: () => current,
     /** Whether any host is on screen now. */
     shown: () => pick(null) !== null,
+    /** Whether the open request is on screen now (a toggle closes only what the developer can see). */
+    showing: () => !!current && pick(owner) !== null,
     setFallback(open: ((r: R) => void) | null): void { fallback = open; },
     /** Whether a request is open (shown or waiting for a host). */
     useOpen(): boolean { useSyncExternalStore(subscribe, snapshot, snapshot); return !!current; },

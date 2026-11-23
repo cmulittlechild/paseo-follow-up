@@ -43,6 +43,8 @@ export const setNewFallback = (open: ((r: NewRequest) => void) | null) => slot.s
 export const closeNew = () => slot.close();
 /** Test seam. */
 export const newRequestNow = () => slot.now();
+/** Whether New is on screen now: the New key closes it only then, else it opens New where the developer is. */
+export const newShowing = () => slot.showing();
 /** Whether New is open (the sidebar row's active state, the key toggling it). */
 export const useNewOpen = () => slot.useOpen();
 /** Whether a request is open, without subscribing (toasts that New would cover). */

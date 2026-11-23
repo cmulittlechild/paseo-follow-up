@@ -1151,7 +1151,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Report an issue, Rename title with AI) shows on the one on screen, through one registry (`createHostSlot`,
    `client/host-slot.tsx`): the host showing it keeps it while it's on screen, else the most recently mounted host
    that's on screen (`pickHost`; web: its probe is laid out and the page visible, `surfaceVisible`), never a hidden
-   one. A request made while no host is on screen is kept until one is (it navigates once, to Home), never lost; while
+   one. A request made while no host is on screen is kept until one is (it navigates once, to Home), never lost; one
+   that was shown and then sits off screen for `LEFT_BEHIND_MS` (the developer left that Home) is dropped, so it never
+   comes back on its own, and the New key closes New only while it's on screen (`newShowing`), else it opens it. While
    open the slot looks again every `HOST_LOOK_MS`, and closed nothing runs. Every New entry point (Home's + New, the
    sidebar's New, ⌘K, the New key, Try again, the brief's Start…) goes through `openNew`. 2026-11-23, the developer on
    2.4.0-beta.3 with Paseo 0.17.1: "the 'New' button just stopped working, it takes me to the follow page home page and

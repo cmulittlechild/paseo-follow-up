@@ -133,3 +133,29 @@ test("a slot's request shows on the host on screen; New, Report and Rename all u
   }
   for (const f of ["new.tsx", "report-issue.tsx", "rename.tsx"]) assert.match(readFileSync(new URL(f, dir), "utf8"), /createHostSlot</, `${f} opens through the host slot`);
 });
+
+// Phone render, 2026-11-23: New left open in a Home the developer navigated away from kept the request, so the next
+// New key press closed it (the toggle) and nothing opened. A shown request whose host leaves the screen is dropped,
+// and the key closes New only while it's on screen.
+test("a shown New left behind is dropped, and the key closes only what's on screen", async () => {
+  closeNew();
+  setNewFallback(() => {});
+  const home = { on: true };
+  const r = await mountHost(home);
+  await act(async () => { openNew(); }); await tick();
+  assert.equal(dialogs(r), 1);
+  assert.equal(newModule.newShowing(), true, "on screen: the key closes it");
+  home.on = false; await tick(300);
+  assert.equal(newModule.newShowing(), false, "off screen: the key opens New where the developer is");
+  await tick(1300);
+  assert.equal(newModule.newRequestNow(), null, "left behind for good: dropped, never reappearing later");
+  home.on = true; await tick(400);
+  assert.equal(dialogs(r), 0, "coming back to that Home shows nothing on its own");
+  // A request never shown still waits (the navigation to Home takes longer than the grace).
+  home.on = false; await act(async () => { openNew(); }); await tick(1600);
+  assert.ok(newModule.newRequestNow(), "never shown: kept");
+  home.on = true; await tick(400);
+  assert.equal(dialogs(r), 1);
+  await act(async () => { closeNew(); r.unmount(); });
+  setNewFallback(null);
+});

@@ -2,7 +2,7 @@ import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
 import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
 import { NewSidebarRow } from "./client/new-entry";
-import { closeNew, newRequestNow, openNew, setNewFallback, type NewRequest } from "./client/new";
+import { closeNew, newShowing, openNew, setNewFallback, type NewRequest } from "./client/new";
 import { withButtonVisibility } from "./client/button-visibility";
 import { openExternalUrl, type PluginClientContext, type PluginButtonRegistration, type PluginScreenProps, type PluginSurfaceProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { Dimensions } from "react-native";
@@ -104,7 +104,7 @@ export default function contribute(host: PluginClientContext) {
   const homeWithNew = (r: NewRequest) => ({ screenId: OVERVIEW, params: { new: String(++newToken), ...(r.source ? { source: r.source } : {}) } });
   setNewFallback(r => client.openScreen(homeWithNew(r)));
   const enterNew = (openScreen: (t: { screenId: string; params?: Record<string, string> }) => void) => openNew({}, { navigate: r => openScreen(homeWithNew(r)) });
-  const openNewAnywhere = () => { if (newRequestNow()) { closeNew(); return; } enterNew(t => client.openScreen(t)); };
+  const openNewAnywhere = () => { if (newShowing()) { closeNew(); return; } enterNew(t => client.openScreen(t)); };
   const sources = { inbox, live: store, paseo: paseoWorkspaces, extras };
   const offActivity = extras.onActivity(() => { inbox.nudge(); store.nudge(); });
   // "Sign off & next" from a pill or ⌘K: the screen relays it to the host's navigation.
