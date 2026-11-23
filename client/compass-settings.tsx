@@ -4,7 +4,8 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, SettingsSection, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
-import { Button, Switch, errorText, text, type Theme } from "./kit";
+import { Button, SubmitScope, Switch, errorText, text, type Theme } from "./kit";
+import { RichText } from "./rich-text";
 import { raised, tint } from "./theme";
 import { compassFindRpc, compassRpc, readCompassRpc, setCompassRpc } from "../shared/contracts";
 import {
@@ -115,14 +116,14 @@ function SourceRow({ view, source, first, busy, onEdit, onToggle, theme, compact
   const slow = source.places.some(p => view.places[`${p.kind}:${p.id}`]?.status === "slow-path");
   return <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: compact ? 14 : 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
     <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-      <Text style={[t.label, { color: source.enabled ? c.foreground : c.foregroundMuted }]}>{source.label}</Text>
+      <RichText plain style={[t.label, { color: source.enabled ? c.foreground : c.foregroundMuted }]}>{source.label}</RichText>
       <Text style={t.meta}>{whoWhere(source)}</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {source.roles.map(r => <View key={r} style={{ paddingHorizontal: 8, minHeight: 20, justifyContent: "center", borderRadius: 999, backgroundColor: c.surface2 }}>
           <Text style={[t.meta, { color: c.foreground }]}>{ROLE_INFO[r].label}</Text>
         </View>)}
       </View>
-      {source.instructions ? <Text numberOfLines={2} style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</Text> : null}
+      {source.instructions ? <RichText plain numberOfLines={2} style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</RichText> : null}
       {source.enabled && (live
         ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${open ? "Hide" : "Show"} ${live} note${live === 1 ? "" : "s"} from ${source.label}`} onPress={() => setOpen(o => !o)} hitSlop={compact ? 0 : 6}
             style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 20 }}>
@@ -152,8 +153,8 @@ function NoteList({ notes, view, theme, compact }: { notes: CompassNote[]; view:
   const where = (n: CompassNote) => n.match.workspace ? view.workspaces[n.match.workspace] ?? "its workspace" : n.match.issue ? n.match.issue : "not matched to a workspace";
   return <View style={{ gap: 10, paddingTop: 2 }}>
     {notes.map(n => <View key={n.id} style={{ gap: 2, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: c.border }}>
-      <Text style={[t.body, { color: c.foreground }]}>{n.what}</Text>
-      {n.quote && <Text numberOfLines={3} style={[t.meta, { fontStyle: "italic" }]}>{`“${n.quote}”`}</Text>}
+      <RichText plain style={[t.body, { color: c.foreground }]}>{n.what}</RichText>
+      {n.quote && <RichText plain numberOfLines={3} style={[t.meta, { fontStyle: "italic" }]}>{`“${n.quote}”`}</RichText>}
       <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{[n.until ? `Until ${day(n.until)}` : null, ROLE_INFO[n.role].label, where(n)].filter(Boolean).join(" · ")}</Text>
     </View>)}
   </View>;
@@ -193,7 +194,7 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
   </View>;
   const labelCol = (s: string) => <Text style={[t.meta, { width: compact ? undefined : 96, minWidth: compact ? 64 : undefined }]}>{s}</Text>;
   const row = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 } as const;
-  return <View style={{ padding: compact ? 14 : 12, gap: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
+  return <SubmitScope enabled={ready && !busy} onSubmit={save} style={{ padding: compact ? 14 : 12, gap: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
     {!source && <View style={{ gap: 6 }}>
       <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Start from</Text>
       <View style={row}>
@@ -242,13 +243,13 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
     </View>
     <View style={[row, { justifyContent: "space-between" }]}>
       <View style={row}>
-        <Button title={source ? "Save" : "Add source"} kind="primary" theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
+        <Button title={source ? "Save" : "Add source"} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
         <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
       </View>
       {onRemove && <Button title="Remove source" kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}
     </View>
     {!ready && <Text style={t.meta}>{!who ? "Pick whose words count." : !places.length ? "Pick where to read them." : "Give it at least one role."}</Text>}
-  </View>;
+  </SubmitScope>;
 }
 
 /** People or channels from the chat tool's own search (compass_find): only results with the tool's own id can be picked. */
@@ -282,15 +283,15 @@ function ReadingNotes({ value, busy, onSave, theme, compact }: { value: string; 
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const dirty = draft.trim() !== value.trim();
-  return <View style={{ gap: 6 }}>
+  return <SubmitScope enabled={dirty && !busy} onSubmit={() => onSave(draft)} style={{ gap: 6 }}>
     <Text style={[t.label, { color: c.foreground }]}>How to read your Compass</Text>
     <TextInput accessibilityLabel="How to read your Compass" multiline value={draft} onChangeText={v => setDraft(v.slice(0, COMPASS.instructions))} placeholder="P0 means today. 'The renewal' is the acme renewal. Customer asks wait for the plan unless they name a date."
       placeholderTextColor={c.foregroundMuted} style={{ minHeight: 72, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       <Text style={[t.meta, { flex: 1, minWidth: 180 }]}>{`For every source. ${draft.length}/${COMPASS.instructions}`}</Text>
-      {dirty && <Button title="Save" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onSave(draft)} />}
+      {dirty && <Button title="Save" kind="primary" shortcut theme={theme} compact={compact} loading={busy} onPress={() => onSave(draft)} />}
     </View>
-  </View>;
+  </SubmitScope>;
 }
 
 /** The glossary: your words → an issue key. Matching reads it before anything else, word for word. */
@@ -304,7 +305,7 @@ function Glossary({ entries, busy, onSave, theme, compact }: { entries: Glossary
     <Text style={[t.label, { color: c.foreground }]}>Glossary</Text>
     <Text style={t.meta}>Your own words for your work. When a note says one, it goes to that issue's workspace.</Text>
     {entries.map(g => <View key={g.words} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 28 }}>
-      <Text style={[t.body, { color: c.foreground }]}>{`“${g.words}”`}</Text>
+      <RichText plain style={[t.body, { color: c.foreground }]}>{`“${g.words}”`}</RichText>
       <Icon name="ArrowRight" size={12} color={c.foregroundMuted} />
       <Text style={[t.body, { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }]}>{means(g)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${g.words}`} disabled={busy} onPress={() => onSave(entries.filter(x => x !== g))} hitSlop={6}
