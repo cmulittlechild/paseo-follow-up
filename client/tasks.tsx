@@ -41,11 +41,11 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
     failure: `Schedule for ${o.title} not saved`,
   }) };
   const busy = save.isPending;
-  const options = [["manual", "Manual"], ["now", "Now"], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
+  const options = [["manual", "Not sent"], ["now", "Now"], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
   return <SubmitScope enabled={!busy && valid} onSubmit={() => save.mutate()} style={{ gap: 10 }}>
     <View style={{ gap: 4 }}>
       <Text style={t.label}>Send to the agent</Text>
-      <Text style={t.meta}>Manual tasks wait for you. Scheduled tasks join the next message to the agent when they come due, and still follow your Auto-send choice.</Text>
+      <Text style={t.meta}>Not sent: the task comes due when its PRs merge or deploy, or on its re-check date, and the agent is reminded at the end of its turn. Scheduled tasks join the next message to the agent instead, and still follow your Auto-send choice.</Text>
     </View>
     <View accessibilityRole="radiogroup" accessibilityLabel={`Send trigger for ${o.title}`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {options.map(([value, label]) => <Pressable key={value} accessibilityRole="radio" accessibilityLabel={label} aria-checked={event === value} accessibilityState={{ checked: event === value, disabled: busy }} disabled={busy} onPress={() => { setEvent(value); }}
@@ -110,7 +110,7 @@ function TaskRow({ o, w, agents, openAgent, theme, onOpen, compact, hit }: { o: 
         : <RichText plain numberOfLines={3} style={[t.body, finished(o) ? { color: c.foregroundMuted } : null]}>{o.title}</RichText>}
       {hit?.via ? <ViaLine via={hit.via} theme={theme} compact={compact} /> : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
         {scheduled && !finished(o) ? <Chip theme={theme} label={`${status}${prs ? ` · ${prs}` : ""}`} color={c.foregroundMuted} />
-          : <Text style={[t.meta, blockedOnDeveloper(o) && !linkedQuestion(o, w) ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{status}{prs && !finished(o) && !linkedQuestion(o, w) ? ` · waits for ${prs}` : ""}</Text>}
+          : <Text style={[t.meta, blockedOnDeveloper(o) && !linkedQuestion(o, w) ? { color: c.statusWarning } : null, { fontVariant: ["tabular-nums"] }]}>{status}{prs && !finished(o) && !linkedQuestion(o, w) && !/#\d/.test(status) ? ` · waits for ${prs}` : ""}</Text>}
         <OpenAgentLink status={line} openAgent={openAgent} theme={theme} compact={compact} />
       </View>}
     </View>

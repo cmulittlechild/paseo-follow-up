@@ -88,6 +88,18 @@ export const obligationSchema = z.object({
    * (workingAgentId, e.g. an orchestrator's subagent). The task's line reads that agent's live state (shared/task-status.ts).
    */
   workingAgentId: idSchema.optional(),
+  /**
+   * due-by-fact: when a task with no PRs comes due (default 3 days after its last update), or, set by the agent, the
+   * earliest a PR-made due fact nudges it again. ISO time.
+   */
+  recheckAt: z.string().optional(),
+  /** When it was done or waived (ISO). Finished tasks are pruned 30 days later (shared/task-due.ts pruneFinished). */
+  finishedAt: z.string().optional(),
+  /**
+   * The turn-end nudges about this task's current due fact (`key`), as the agent hook recorded them: how many, the last
+   * one, and the task's revision then. Two with no change since make the task stale (shared/task-due.ts).
+   */
+  nudged: z.object({ key: z.string(), count: z.number().int().nonnegative(), at: z.string(), revision: z.number().int().nonnegative() }).optional(),
 });
 /**
  * A task blocked on the developer: blocked with a real question for them (`ask`). Only these become questions, flag

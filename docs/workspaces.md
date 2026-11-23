@@ -252,6 +252,24 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 - **Triggers** (`shared/task-trigger.ts`): `now`, `merge` or `deploy`, with an optional `delayDays`. Deploy state
   comes from `server/deployments.ts` and `server/deployment-anchor.ts`, only for configured repositories; elsewhere
   it stays unknown.
+- **Due by fact** (`shared/task-due.ts`, invariant `due-by-fact`). Every open task knows what moves it, and none is
+  "Manual". With `afterPrs` it comes due when every PR reaches `dependencyStage` (merged, or deployed; a repository
+  with no deploy target counts its merge), or when one closes unmerged. With no PRs it comes due on `recheckAt`: the
+  agent's `recheck` ("YYYY-MM-DD"), else 3 days (`RECHECK_DAYS`) after its last `update_obligation`; a later `recheck`
+  also holds a PR-made fact. A task blocked on the developer (Needs you has it) or on a developer-timed trigger (it is
+  sent as a message) is left out. Due is a nudge, never an auto-send and never a done: the worker lists each agent's
+  due tasks in `scopes.json` (`dueByAgent`: the task's working contributor and the main agent, oldest first, at most
+  5), and the Stop hook names at most 3 whose time passed (`pickNudges`), each at most twice for the same fact and
+  revision and at most once a day, sharing `hook-state/task-nudges-<workspace>.json`: "Task <id> "<title, 60 chars>":
+  #231 deployed. Do it and close it with evidence, or keep it with recheck="YYYY-MM-DD" and why." Nothing due adds
+  nothing. Every 10 minutes the worker reads that receipt into each task's `nudged` (`maintainTasks`); two nudges with
+  no change to the task make it **stale** (`isStale`: "Stale · #231 deployed · nudged twice, no answer"), and it is
+  never closed for the agent (only a supersede by id waives one). The task row says the moving fact: "Due · #231
+  merged", "After #232 merges", "Re-check Nov 25" (`dueLabel` through `taskSchedule`). The same pass stamps tasks from
+  before due-by-fact (a re-check 3 days out, `finishedAt` now) and prunes finished tasks 30 days after `finishedAt`
+  unless something still reads them (`pruneBlocked`): every task finished in a workspace not yet declared done (the
+  completion batch's fingerprint lists every task), an unsettled batch carrying it, an open question naming it.
+  Batches and Activity keep their own copy of a task's title.
 - **Lifecycle-only tasks.** `shared/follow-up.ts` drops approve, merge and deploy checklist tasks (`lifecycleOnly`),
   and decides `deployed` and recovery batches. `server/deployment-anchor.ts` pins the merge commit a deploy was
   seen for.

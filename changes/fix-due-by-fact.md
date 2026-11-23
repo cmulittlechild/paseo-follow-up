@@ -1,0 +1,3 @@
+- Tasks no longer sit forever as "Manual". Each task now says what moves it: waiting for its pull request, due because it merged or deployed, or a re-check date.
+- When a task comes due, its agent is reminded at the end of its turn to do the check and close it, or to set a new re-check date. It is reminded at most twice, and nothing is closed for it.
+- A due task the agent ignores twice shows as stale. Finished tasks are cleared from storage after 30 days.
