@@ -89,6 +89,8 @@ export const obligationSchema = z.object({
    * (workingAgentId, e.g. an orchestrator's subagent). The task's line reads that agent's live state (shared/task-status.ts).
    */
   workingAgentId: idSchema.optional(),
+  /** The agent whose update_obligation made it (a-new-task-is-checked-once): its exact-title repeat updates this task. */
+  createdBy: idSchema.optional(),
   /**
    * due-by-fact: when a task with no PRs comes due (default 3 days after its last update), or, set by the agent, the
    * earliest a PR-made due fact nudges it again. ISO time.
