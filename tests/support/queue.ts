@@ -13,9 +13,9 @@ export async function testQueue(directory: string, o: { deliver?: Courier["deliv
   const delivered: Delivery[] = [];
   const courier: Courier = {
     deliverTo: async (target, text, messageId, by) => {
-      const to = o.deliver ? await o.deliver(target, text, messageId, by) : target.recipients[0]!;
-      delivered.push({ target, text, messageId, by, to });
-      return to;
+      const sent = o.deliver ? await o.deliver(target, text, messageId, by) : target.recipients[0]!;
+      delivered.push({ target, text, messageId, by, to: typeof sent === "string" ? sent : sent.to });
+      return sent;
     },
     arrived: o.arrived ?? (async (_agentId, messageId) => delivered.some(d => d.messageId === messageId)),
     ...(o.probe ? { probe: o.probe } : {}),

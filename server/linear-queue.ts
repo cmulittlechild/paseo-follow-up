@@ -4,7 +4,7 @@ import { readError, linearMissing } from "./linear-issues";
 import type { LinearIssue } from "../shared/linear-issues";
 import {
   BRIEF_SETTINGS_DEFAULT, QUEUE, briefSince, byUrgency, changeLine, changesSince, current, diffSweeps, emptyQueueFile, leftCause, leftKeys, markSeen, missedRead, morningDue,
-  priorityName, pruneLog, queueFileSchema, queueIssues, raisedNeeds, toQueueIssue, workdaySince, zoned,
+  openedByYou, priorityName, pruneLog, queueFileSchema, queueIssues, raisedNeeds, toQueueIssue, workdaySince, zoned,
   type BriefSettings, type RaisedNeed, type Clock, type LogEntry, type QueueChange, type QueueFile, type QueueIssue, type Sweep, type SweepTrigger,
 } from "../shared/linear-queue";
 
@@ -53,7 +53,8 @@ export type QueueView = {
   };
   since: string | null;
   changes: (QueueChange & { line: string; workspace: { workspaceId: string; title: string } | null })[];
-  groups: { priority: number; name: string; count: number; issues: (QueueIssue & { workspace: { workspaceId: string; title: string } | null; change: string | null })[] }[];
+  /** Each issue with its workspace, its change since, and `openedByYou`: its creator is the developer (null: can't tell). */
+  groups: { priority: number; name: string; count: number; issues: (QueueIssue & { workspace: { workspaceId: string; title: string } | null; change: string | null; openedByYou: boolean | null })[] }[];
   counts: { all: number; noWorkspace: number; changed: number };
   more: number;
   /** Decision Q8: raises to Urgent or High on issues with no workspace, not dismissed. Home shows them in Needs you. */
@@ -145,13 +146,15 @@ export class LinearQueue {
     // A lookup that finds the issue still the developer's, in a queue state, is a missed read: it goes back into this
     // sweep from the lookup and logs nothing (the-queue-is-whole).
     const left: Record<string, LogEntry["left"]> = {};
+    const keys = prev && complete ? leftKeys(prev, next) : [];
+    // The developer's Linear id, read once and cached: lookups compare it with an issue's assignee, and the queue
+    // screen with each issue's creator ("opened by you").
+    let viewer = file.viewer;
+    if (!viewer && (keys.length || Object.values(issues).some(i => i.creatorId))) {
+      try { viewer = await this.d.linear.viewerId(); reads++; } catch { viewer = null; }
+      if (viewer) { const id = viewer; await this.d.store.mutate(f => { f.viewer = id; }); }
+    }
     if (prev && complete) {
-      const keys = leftKeys(prev, next);
-      let viewer = file.viewer;
-      if (keys.length && !viewer) {
-        try { viewer = await this.d.linear.viewerId(); reads++; } catch { viewer = null; }
-        if (viewer) { const id = viewer; await this.d.store.mutate(f => { f.viewer = id; }); }
-      }
       for (const key of keys) {
         try {
           const found = await this.d.linear.leftIssue(key);
@@ -200,7 +203,7 @@ export class LinearQueue {
     const snap = current(file);
     const changes = changesSince(file.log, since).map(c => ({ ...c, line: changeLine(c), workspace: workspaces.get(c.key) ?? null }));
     const changed = new Map(changes.map(c => [c.key, c.line]));
-    const all = queueIssues(snap).map(i => ({ ...i, workspace: workspaces.get(i.key) ?? null, change: changed.get(i.key) ?? null }));
+    const all = queueIssues(snap).map(i => ({ ...i, workspace: workspaces.get(i.key) ?? null, change: changed.get(i.key) ?? null, openedByYou: openedByYou(i, file.viewer) }));
     const filtered = o.filter === "no-workspace" ? all.filter(i => !i.workspace) : o.filter === "changed" ? all.filter(i => i.change) : all;
     const limit = o.limit ?? filtered.length;
     const shown = filtered.slice(0, limit);

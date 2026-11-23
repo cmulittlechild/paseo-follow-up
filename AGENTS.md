@@ -89,7 +89,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
 | PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
-| Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
+| Provider hooks, static text in the system prompt | `server/agent-hooks.ts`, `server/agent-hook.mjs`, `server/session-prompt.ts` | [hooks](docs/hooks.md) |
 | Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
 | Wait for background jobs | `server/wait.ts`, `server/host-features.ts`, `server/wait-jobs.ts`, `server/wait-runner.sh`, `shared/wait.ts` | [wait](docs/wait.md) |
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
@@ -1286,8 +1286,11 @@ Guarded by `npm run check:notes` and `release:notes` (`scripts/release-notes.mjs
   renders loose. Keep routine tools untransformed. Paseo's `create_agent` / `create_workspace` calls are replaced by
   Follow-up's created card, so the group's "N tool calls" count excludes them, like the Done card. Rules: [docs/client.md](docs/client.md#chat-rows-and-paseos-grouping),
   guarded by `tests/chat-grouping.test.ts`.
-- **Native tools have no MCP `instructions`.** Guidance for native tools goes through tool descriptions and the
-  SessionStart hook (`server/agent-hook.mjs`), not through the bridge's `initialize` reply.
+- **Native tools have no MCP `instructions`.** Guidance for native tools goes through tool descriptions and, on
+  Paseo 0.17, the session's system prompt (`appendSystemPrompt`, `server/session-prompt.ts`), else the SessionStart
+  hook (`server/agent-hook.mjs`), never through the bridge's `initialize` reply. Static text added to one goes in
+  both: the worker names what it moved in `FOLLOW_UP_SYSTEM_PROMPT` and the hook leaves that out
+  ([docs/hooks.md](docs/hooks.md#static-text-in-the-system-prompt-paseo-017)).
 - **Forgetting `npm run prepare`.** Editing `server/mcp.mjs`, `server/agent-hook.mjs`, `server/overseer-prompt.md`
   or `server/wait-runner.sh` without regenerating means the packed plugin ships the old copy.
 - **Adding a tool in one place.** A new agent tool needs:

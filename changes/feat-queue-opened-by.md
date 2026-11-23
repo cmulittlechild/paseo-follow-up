@@ -1,0 +1,1 @@
+- Your Linear queue shows who opened each issue and how long ago, or "opened by you" for your own. Hover for the exact date and time.

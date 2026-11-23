@@ -1,0 +1,105 @@
+import { execFile } from "node:child_process";
+import { hookSource } from "./hook-source";
+
+/**
+ * Paseo 0.17 (#9781): a plugin's `agent.open.before` result may carry `appendSystemPrompt`, which the provider gets as
+ * part of its system prompt (Claude's appended system prompt, Codex's developer instructions). Follow-up's static
+ * session text goes there instead of the SessionStart hook's `additionalContext`: the role texts that native tools
+ * lack (needs_you, the action tools, the Overseer), Wait's guidance, and the wait_for_checks line. The worker names the
+ * parts it put in the prompt in FOLLOW_UP_SYSTEM_PROMPT, and the hook leaves exactly those out (docs/hooks.md).
+ *
+ * Only parts the hook would surely add are moved; the rest stays the hook's: the workspace instructions (they follow
+ * the role and the PR workflow, which change mid-session), the digest, the polling nudge and the Stop check.
+ */
+export const SYSTEM_PROMPT_ENV = "FOLLOW_UP_SYSTEM_PROMPT";
+export const PROMPT_PARTS = ["needsYou", "action", "overseer", "wait", "backgroundWork", "checks"] as const;
+export type PromptPart = typeof PROMPT_PARTS[number];
+
+/** The bridge's texts (server/mcp.mjs, as written to the data directory), the ones the hook reads too. */
+export type BridgeTexts = { needsYouInstruction?: string; actionInstruction?: string; overseerInstruction?: string; waitInstruction?: string; backgroundWorkInstruction?: string };
+
+// One source for the hook's wording and tool names: read out of the hook's own source.
+const literal = <T>(name: string): T => {
+  const m = hookSource.match(new RegExp(`export const ${name} = (.+?);\\n`));
+  if (!m) throw new Error(`session-prompt: the hook no longer exports ${name}`);
+  return JSON.parse(m[1]!) as T;
+};
+export const checksLine = literal<string>("checksLine");
+const toolPattern = new RegExp(`(?<![\\w])(${literal<string[]>("TOOL_NAMES").join("|")})(?![\\w])`, "g");
+/** The hook's `named`: Follow-up's tools under the names a native session has them (follow_<name>). */
+export const named = (text: string, native: boolean) => native ? text.replace(toolPattern, "follow_$1") : text;
+
+/**
+ * Which parts a session gets in its system prompt, from the env Follow-up launched it with. Mirrors the hook's
+ * SessionStart (server/hook-source.ts): a recovery agent gets nothing (the hook returns first); the Overseer gets its
+ * native role texts and Wait's; any other session gets Wait's; and a native root agent (the hook's gate always passes
+ * for one) gets its role texts and the checks line. A background agent never reaches here (invariant 9).
+ */
+export function promptParts(env: Readonly<Record<string, string | undefined>>): PromptPart[] {
+  if (env.FOLLOW_UP_RECOVERY === "1") return [];
+  const native = env.FOLLOW_UP_TOOLS === "native";
+  const overseer = env.FOLLOW_UP_OVERSEER === "1";
+  const root = env.FOLLOW_UP_ROOT === "1";
+  const parts: PromptPart[] = [];
+  if (native && (overseer || root)) {
+    if (env.FOLLOW_UP_BRIEF) parts.push("needsYou");
+    if (root) parts.push("action");
+    if (overseer) parts.push("overseer");
+  }
+  if (env.FOLLOW_UP_WAIT === "1") parts.push("wait");
+  else if (env.FOLLOW_UP_BACKGROUND_WORK === "1") parts.push("backgroundWork");
+  if (native && root && !overseer) parts.push("checks");
+  return parts;
+}
+
+/** The parts' text, in the hook's order, named for the session's tools. A part with no text is dropped. */
+export function promptText(parts: readonly PromptPart[], bridge: BridgeTexts, native: boolean): { parts: PromptPart[]; text: string[] } {
+  const raw: Record<PromptPart, string | undefined> = {
+    needsYou: bridge.needsYouInstruction, action: bridge.actionInstruction, overseer: bridge.overseerInstruction,
+    wait: bridge.waitInstruction, backgroundWork: bridge.backgroundWorkInstruction, checks: checksLine,
+  };
+  const kept = parts.filter(p => !!raw[p]);
+  // Role texts and the checks line are named for native tools, as the hook does; Wait's texts never name Follow-up's.
+  return { parts: kept, text: kept.map(p => p === "wait" || p === "backgroundWork" ? raw[p]! : named(raw[p]!, native)) };
+}
+
+type OpenRequest = { provider: string; purpose: string; env: Record<string, string>; appendSystemPrompt?: string[] };
+export type PromptDeps = {
+  /** The host takes `appendSystemPrompt` from a session-open hook (Paseo 0.17+). */
+  hostSupports(): Promise<boolean>;
+  /** The provider can take it: Claude always; Codex from 0.121 (older throws on a new thread). */
+  providerSupports(provider: string): Promise<boolean>;
+  bridge(): Promise<BridgeTexts | null>;
+};
+
+/**
+ * The session-open result with Follow-up's static text as `appendSystemPrompt`, and FOLLOW_UP_SYSTEM_PROMPT naming
+ * what moved. Unchanged when the host or provider can't take it, the bridge can't be read, or nothing applies: the
+ * hook then adds all of it, as before.
+ */
+export async function withSystemPrompt<R extends OpenRequest>(request: R, deps: PromptDeps, options: { background?: boolean } = {}): Promise<R & { appendSystemPrompt?: string[] }> {
+  // Invariant 9: a background agent (another plugin's helper) gets nothing from Follow-up, its system prompt included.
+  if (options.background) return request;
+  if (request.purpose !== "interactive" || !["claude", "codex"].includes(request.provider)) return request;
+  const wanted = promptParts(request.env);
+  if (!wanted.length) return request;
+  if (!(await deps.hostSupports().catch(() => false)) || !(await deps.providerSupports(request.provider).catch(() => false))) return request;
+  const bridge = await deps.bridge().catch(() => null);
+  if (!bridge) return request;
+  const { parts, text } = promptText(wanted, bridge, request.env.FOLLOW_UP_TOOLS === "native");
+  if (!parts.length) return request;
+  return { ...request, appendSystemPrompt: [...(request.appendSystemPrompt ?? []), text.join("\n\n")], env: { ...request.env, [SYSTEM_PROMPT_ENV]: parts.join(",") } };
+}
+
+/** The installed Codex CLI's version as [major, minor, patch], or null (not installed, unreadable). */
+export function codexVersion(command = "codex", timeoutMs = 5000): Promise<[number, number, number] | null> {
+  return new Promise(resolve => {
+    execFile(command, ["--version"], { timeout: timeoutMs }, (error, stdout) => {
+      const m = !error && /(\d+)\.(\d+)\.(\d+)/.exec(String(stdout));
+      resolve(m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null);
+    });
+  });
+}
+export const atLeast = (v: readonly number[] | null, min: readonly number[]) => !!v && (v[0]! - min[0]! || v[1]! - min[1]! || v[2]! - min[2]!) >= 0;
+/** Codex from this version takes developer instructions on a new thread (Paseo throws "Update Codex to 0.121.0" below it). */
+export const CODEX_PROMPT_MIN = [0, 121, 0] as const;

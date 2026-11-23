@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { plainError } from "./shared/errors";
 import { TranscriptTitleLookup, TranscriptTitleStore, trackedTitleTranscripts } from "./server/transcript-titles";
 import { fillLinkedTitles, fillWorkspaceTitles, localTitles, workspaceNeedsTitles, type TitleIndex } from "./shared/local-titles";
@@ -99,6 +100,7 @@ import { holderOf, issueWorkspaces } from "./shared/issue-workspace";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostFeature, type ServerInfo } from "./server/host-features";
+import { CODEX_PROMPT_MIN, atLeast, codexVersion, withSystemPrompt, type BridgeTexts, type PromptDeps } from "./server/session-prompt";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
@@ -1879,7 +1881,21 @@ export default function contribute(server: PluginServerContext) {
   saveBackground = backgroundAgentsFile(directory, () => background.ids);
   try { background.seed(JSON.parse(readFileSync(join(directory, "background-agents.json"), "utf8"))?.agents); } catch { /* none yet */ }
   const isBackground = (agentId: string, paseo: PluginHandlerContext["paseo"]) => background.check(agentId, async id => (await paseo.agents.ref(id).refresh())?.agent as { background?: unknown } | undefined);
-  const withWait = (handler: SessionOpen): SessionOpen => async (input, context) => wait.open((await handler(input, context)) ?? input.request, { background: await isBackground(input.request.agentId, context.paseo) });
+  // Paseo 0.17 (features.checkoutWorktreeList marks 0.17.0+, the first host whose session-open result takes
+  // appendSystemPrompt; 0.16's schema is strict and refuses it): the static session text goes in the system prompt
+  // and the hook leaves it out (server/session-prompt.ts). Codex takes it from 0.121.
+  const hostPrompt = hostFeature("checkoutWorktreeList", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
+  let codexPrompt: Promise<boolean> | null = null;
+  const promptDeps: PromptDeps = {
+    hostSupports: hostPrompt,
+    providerSupports: async provider => provider === "claude" || provider === "codex" && await (codexPrompt ??= codexVersion().then(v => atLeast(v, CODEX_PROMPT_MIN))),
+    bridge: async () => await import(pathToFileURL(join(directory, "mcp.mjs")).href) as BridgeTexts,
+  };
+  const withWait = (handler: SessionOpen): SessionOpen => async (input, context) => {
+    const background = await isBackground(input.request.agentId, context.paseo);
+    const opened = await wait.open((await handler(input, context)) ?? input.request, { background });
+    return withSystemPrompt(opened, promptDeps, { background });
+  };
   const removers = [
     server.on("agent.permission_requested", async (event, { paseo }) => { trustApi = paseo; await trust.handle(event.agent, event.request as never).catch(() => undefined); }),
     displaySettings.subscribe(() => void writeBriefState().catch(() => undefined)),

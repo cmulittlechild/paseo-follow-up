@@ -12,6 +12,11 @@ const env = name => process.env[`FOLLOW_UP_${name}`] ?? (runtime.legacyEnvPrefix
 const directory = dirname(fileURLToPath(import.meta.url));
 /** 1.4.0-beta.2: launched with Follow-up's tools served by Paseo's MCP (follow_<name>), or the follow-up bridge (<name>). Agents opened before the upgrade carry no flag and keep the bridge names. */
 let native = env("TOOLS") === "native";
+/**
+ * Paseo 0.17: the parts of the static session text the worker put in this session's system prompt (appendSystemPrompt,
+ * server/session-prompt.ts), by name. The hook leaves exactly those out, so the agent reads each once.
+ */
+const inPrompt = new Set(String(env("SYSTEM_PROMPT") ?? "").split(",").filter(Boolean));
 // Tool names that read unambiguously in prose; kept identical to server/mcp.mjs's underscore names (a test checks it).
 export const TOOL_NAMES = ["workspace_status", "brief_settings", "set_brief_settings", "brief_plan", "set_brief_plan", "brief_chat_search", "brief_sources", "set_brief_sources", "compass", "compass_find", "set_compass", "read_compass", "sync_workspace", "enroll_workspace", "register_pr", "exclude_stack", "update_obligation", "acknowledge_batch", "ask_question", "record_answer", "withdraw_question", "set_spec", "link_item", "unlink_item", "link_items", "set_linked_items", "workspace_about", "agent_settings", "needs_you", "declare_done", "list_prs", "add_reviewers", "enable_merge_when_ready", "disable_merge_when_ready", "send_repairs", "set_auto_send", "clear_hold", "retry_batch", "inbox_list", "sign_off", "snooze_workspace", "set_finish_flags", "set_priorities", "agent_digest", "route_candidates", "send_to_agent", "start_workspace", "display_settings", "set_display", "follow_settings", "set_follow_settings", "project_settings", "set_project_tracking", "pr_workflow", "set_pr_workflow", "pr_stats", "pr_stats_settings", "set_pr_stats", "reviewer_settings", "reviewer_suggestions", "save_reviewers", "set_agent_setting", "set_wait_for_jobs", "onboarding_status", "onboarding_checks", "set_onboarding", "rank_status", "rerank_priorities", "overseer_status", "overseer_start", "overseer_restart", "overseer_ask", "inbox_brief", "brief_action", "queue_list", "queue_action", "inbox_act", "answer_question", "dismiss_question", "dismiss_item", "run_recovery", "set_workspace_spec", "set_task_trigger", "pr_controls", "browser_status", "trust_bypass_status", "release_notes", "updates_status", "check_updates", "set_updates", "install_update", "make_main_agent", "retry_move", "report_issue", "report_send", "ai_rename", "catch_up_deck", "context_requests", "ask_context", "context_reply", "linear_queue", "sweep_queue", "dispatch_sources", "dispatch_records", "dispatch_undo", "dispatch_actions", "set_dispatch_actions", "dispatch_settings", "set_dispatch_settings", "wait_for_checks"];
 const toolPattern = new RegExp(`(?<![\\w])(${TOOL_NAMES.join("|")})(?![\\w])`, "g");
@@ -219,9 +224,9 @@ async function nativeExtras(brief) {
   const bridge = await import(pathToFileURL(join(directory, "mcp.mjs")).href).catch(() => null);
   if (!bridge) return [];
   return [
-    brief?.enable_inbox && env("BRIEF") ? bridge.needsYouInstruction : null,
-    env("ROOT") === "1" ? bridge.actionInstruction : null,
-    env("OVERSEER") === "1" ? bridge.overseerInstruction : null,
+    brief?.enable_inbox && env("BRIEF") && !inPrompt.has("needsYou") ? bridge.needsYouInstruction : null,
+    env("ROOT") === "1" && !inPrompt.has("action") ? bridge.actionInstruction : null,
+    env("OVERSEER") === "1" && !inPrompt.has("overseer") ? bridge.overseerInstruction : null,
   ].filter(Boolean).map(text => named(text));
 }
 /**
@@ -230,7 +235,7 @@ async function nativeExtras(brief) {
  */
 async function waitExtras() {
   const key = env("WAIT") === "1" ? "waitInstruction" : env("BACKGROUND_WORK") === "1" ? "backgroundWorkInstruction" : null;
-  if (!key) return [];
+  if (!key || inPrompt.has(key === "waitInstruction" ? "wait" : "backgroundWork")) return [];
   const bridge = await import(pathToFileURL(join(directory, "mcp.mjs")).href).catch(() => null);
   return bridge?.[key] ? [bridge[key]] : [];
 }
@@ -293,7 +298,7 @@ async function main() {
     return;
   }
   const context = () => instructions(lease, contributor, workflow);
-  const sessionText = async () => [workspace ? context() : null, ...await nativeExtras(brief), ...await waitExtras(), workspace || env("ROOT") === "1" ? named(checksLine) : null].filter(Boolean).join("\n\n");
+  const sessionText = async () => [workspace ? context() : null, ...await nativeExtras(brief), ...await waitExtras(), (workspace || env("ROOT") === "1") && !inPrompt.has("checks") ? named(checksLine) : null].filter(Boolean).join("\n\n");
   const name = event.hook_event_name;
   if (!["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"].includes(name)) return;
   const session = createHash("sha256").update(String(event.session_id ?? agentId)).digest("hex").slice(0, 24);

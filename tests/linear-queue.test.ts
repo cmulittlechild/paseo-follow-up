@@ -10,7 +10,7 @@ import { LinearQueue, LinearQueueStore, type QueueReader } from "../server/linea
 import { RPC_TOOLS } from "../server/agent-parity";
 import { toLinearIssue, type LinearIssue } from "../shared/linear-issues";
 import {
-  QUEUE, changeLine, changesSince, clockFor, defaultWorkdays, diffSweeps, leftCause, markSeen, missedRead, morningDue, workdaySince, zoned,
+  QUEUE, changeLine, openedByYou, queueFileSchema, changesSince, clockFor, defaultWorkdays, diffSweeps, leftCause, markSeen, missedRead, morningDue, workdaySince, zoned,
   type Clock, type QueueIssue, type Sweep,
 } from "../shared/linear-queue";
 
@@ -23,9 +23,10 @@ const MON_FRI: Clock = { timeZone: "America/New_York", workdays: defaultWorkdays
 const TUE = Date.parse("2026-11-10T07:30:00.000Z");
 const H = 3_600_000;
 
-type Raw = { key: string; title?: string; priority?: number; state?: string; stateType?: string; due?: string | null; assignee?: string | null; assigneeId?: string | null };
+type Raw = { key: string; title?: string; priority?: number; state?: string; stateType?: string; due?: string | null; assignee?: string | null; assigneeId?: string | null; createdAt?: string; creator?: string; creatorId?: string };
 const raw = (r: Raw) => ({ id: r.key, title: r.title ?? `Issue ${r.key}`, priority: { value: r.priority ?? 4, name: "x" }, status: r.state ?? "Todo", statusType: r.stateType ?? "unstarted",
-  dueDate: r.due ?? null, team: { name: "Acme" }, url: `https://linear.app/acme/issue/${r.key}`, updatedAt: "2026-11-09T10:00:00.000Z", ...(r.assignee !== undefined ? { assignee: r.assignee ? { name: r.assignee } : null } : {}), ...(r.assigneeId !== undefined ? { assigneeId: r.assigneeId } : {}) });
+  dueDate: r.due ?? null, team: { name: "Acme" }, url: `https://linear.app/acme/issue/${r.key}`, updatedAt: "2026-11-09T10:00:00.000Z", ...(r.assignee !== undefined ? { assignee: r.assignee ? { name: r.assignee } : null } : {}), ...(r.assigneeId !== undefined ? { assigneeId: r.assigneeId } : {}),
+  ...(r.createdAt ? { createdAt: r.createdAt } : {}), ...(r.creator ? { createdBy: r.creator } : {}), ...(r.creatorId ? { createdById: r.creatorId } : {}) });
 const issue = (r: Raw): LinearIssue => toLinearIssue(raw(r), true)!;
 
 /** A fake reader: the developer's issues per state type, paged; `left` answers get_issue for issues that left. */
@@ -144,7 +145,7 @@ test("the-queue-is-whole: a failed sweep keeps the last complete snapshot and sa
 });
 
 const sweep = (at: number, issues: Raw[], complete = true): Sweep => ({ at: new Date(at).toISOString(), complete, pages: 1,
-  issues: Object.fromEntries(issues.map(r => { const i = issue(r); const q: QueueIssue = { key: i.key, title: i.title, priority: i.priority!.value, state: i.state, stateType: i.stateType, due: i.due, team: i.team, project: null, milestone: null, url: i.url, updatedAt: i.updatedAt }; return [q.key, q]; })) });
+  issues: Object.fromEntries(issues.map(r => { const i = issue(r); const q: QueueIssue = { key: i.key, title: i.title, priority: i.priority!.value, state: i.state, stateType: i.stateType, due: i.due, team: i.team, project: null, milestone: null, url: i.url, updatedAt: i.updatedAt, createdAt: i.createdAt, creator: i.creator, creatorId: i.creatorId }; return [q.key, q]; })) });
 
 test("the-queue-is-whole: an issue raised while the sweep walks the pages is neither left nor new, through the real reader", async t => {
   // Linear as list_issues orders it: 30 of the developer's issues, newest update (or creation) first. Midway through
@@ -367,4 +368,45 @@ test("the queue view: each issue's workspace or none, filters, and counts that a
   assert.equal(none.more, 1);
   assert.equal(none.groups.reduce((n, g) => n + g.count, 0), 2, "group counts add up to the filter's total");
   assert.equal(clockFor({ timeZone: null, workdays: null }, null, "Asia/Jerusalem").workdays.join(), "Sun,Mon,Tue,Wed,Thu");
+});
+
+test("who opened an issue and when: parsed, kept, shown, and never a change (the first sweep after the upgrade logs nothing)", async t => {
+  // Linear's list reply: createdBy as a name (or an object), createdById.
+  const parsed = toLinearIssue({ id: "ACME-12", title: "Twelve", createdAt: "2026-10-14T08:00:00.000Z", createdBy: "Dana", createdById: "user-dana" })!;
+  assert.deepEqual([parsed.createdAt, parsed.creator, parsed.creatorId], ["2026-10-14T08:00:00.000Z", "Dana", "user-dana"]);
+  const nested = toLinearIssue({ id: "ACME-13", title: "Thirteen", createdBy: { id: "user-sam", name: "Sam" } })!;
+  assert.deepEqual([nested.createdAt, nested.creator, nested.creatorId], [null, "Sam", "user-sam"]);
+
+  // A snapshot written before these fields still parses, with each null.
+  const old = { version: 1, sweeps: [{ at: new Date(TUE).toISOString(), complete: true, pages: 1, issues: { "ACME-1": { key: "ACME-1", title: "One", priority: 4, state: "Todo", stateType: "unstarted", due: null, team: "ACME", project: null, milestone: null, url: null, updatedAt: null } } }],
+    log: [], last: null, seen: null, morningDay: null };
+  const file = queueFileSchema.parse(old);
+  assert.deepEqual([file.sweeps[0].issues["ACME-1"].createdAt, file.sweeps[0].issues["ACME-1"].creator, file.sweeps[0].issues["ACME-1"].creatorId], [null, null, null]);
+
+  // Before the upgrade the sweep had no creators; after it every issue has one. Nothing reads as changed.
+  const before: Raw[] = [{ key: "ACME-1", priority: 2 }, { key: "ACME-2" }, { key: "ACME-3" }];
+  const reader = fakeReader({ issues: before });
+  const { queue, time } = await setup(t, reader);
+  await queue.sweep("morning");
+  reader.set([
+    { key: "ACME-1", priority: 2, createdAt: "2026-11-10T06:00:00.000Z", creator: "Alice", creatorId: "user-alice" },
+    { key: "ACME-2", createdAt: "2026-10-14T08:00:00.000Z", creator: "Dana", creatorId: "user-dana" },
+    { key: "ACME-3", createdAt: "2025-12-01T08:00:00.000Z" },
+  ]);
+  time.now += H;
+  const r = await queue.sweep("manual");
+  assert.equal(r.changes, 0, "adding who opened it is never a change");
+  assert.deepEqual(changesSince((await queue.read()).log, null), []);
+  assert.equal(reader.calls.filter(c => c === "viewer").length, 1, "the viewer's id is read once for 'opened by you', with no issue to look up");
+
+  const view = await queue.view({});
+  const rows = Object.fromEntries(view.groups.flatMap(g => g.issues).map(i => [i.key, i]));
+  assert.deepEqual([rows["ACME-1"].creator, rows["ACME-1"].openedByYou], ["Alice", true], "the developer's own issue");
+  assert.deepEqual([rows["ACME-2"].creator, rows["ACME-2"].openedByYou, rows["ACME-2"].createdAt], ["Dana", false, "2026-10-14T08:00:00.000Z"]);
+  assert.deepEqual([rows["ACME-3"].creator, rows["ACME-3"].openedByYou], [null, null], "no creator known");
+  assert.equal(openedByYou({ creatorId: "user-alice" }, null), null, "an unknown viewer can't tell");
+
+  // Parity: linear_queue reads the same view, so an agent gets the same fields.
+  const tool = RPC_TOOLS.find(x => x.name === "linear_queue")!;
+  assert.equal(tool.rpc, "follow.linear-queue");
 });

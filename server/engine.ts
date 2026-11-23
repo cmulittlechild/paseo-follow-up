@@ -505,11 +505,13 @@ export class Engine {
     const before = snapshot?.questions.find(q => q.id === item.ref.questionId)?.answer?.delivery;
     if (!before || before.messageId !== item.messageId || ["recorded", "signed-off"].includes(before.state)) return;
     const to = item.to ?? item.envelope?.to ?? before.to;
-    if (before.state === state && before.reason === item.reason && (before.nextAt ?? null) === item.nextAt && before.to === to) return;
+    const receipt = state === "sent" ? item.receipt ?? null : null;
+    if (before.state === state && before.reason === item.reason && (before.nextAt ?? null) === item.nextAt && before.to === to && JSON.stringify(before.receipt ?? null) === JSON.stringify(receipt)) return;
     await this.store.mutateWorkspace(item.ref.workspaceId, w => {
       const a = w.questions.find(q => q.id === item.ref.questionId)?.answer;
       if (!a || a.delivery.messageId !== item.messageId || ["recorded", "signed-off"].includes(a.delivery.state)) return;
-      a.delivery = { ...a.delivery, state, to, reason: item.reason, nextAt: item.nextAt, at: a.delivery.state === state ? a.delivery.at : new Date(this.now()).toISOString() };
+      const { receipt: _old, ...kept } = a.delivery;
+      a.delivery = { ...kept, state, to, reason: item.reason, nextAt: item.nextAt, at: a.delivery.state === state ? a.delivery.at : new Date(this.now()).toISOString(), ...(receipt ? { receipt } : {}) };
     });
   }
   /** Background work after an RPC replied lands on its record; tests await `idle()`. */
@@ -617,7 +619,7 @@ export class Engine {
           if (item.reason && b.refusal?.reason !== item.reason) b.refusal = { reason: item.reason, at };
           break;
         case "sending": b.state = "sending"; b.recipientAgentId = b.recipientAgentId ?? w.mainAgentId; delete b.refusal; break;
-        case "sent": if (["sending", "uncertain", "pending"].includes(b.state)) { b.state = "sent"; b.sentAt ??= at; b.activityAt = at; b.result = ""; if (item.to) b.recipientAgentId = item.to; } break;
+        case "sent": if (["sending", "uncertain", "pending"].includes(b.state)) { b.state = "sent"; b.sentAt ??= at; b.activityAt = at; b.result = ""; if (item.to) b.recipientAgentId = item.to; if (item.receipt) b.receipt = item.receipt; } break;
         case "uncertain": b.state = "uncertain"; b.result = "Delivery wasn't confirmed. Follow-up reads the agent's chat before sending it again, so it never arrives twice."; break;
         case "failed":
           if (item.gone) { b.state = "pending"; b.result = ""; b.recipientAgentId = null; w.goneAgent = { agentId: item.gone, at, reason: item.reason ?? "" }; w.runtimeReason = GONE_REASON; }

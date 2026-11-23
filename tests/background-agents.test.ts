@@ -107,7 +107,9 @@ test("session open asks about background before giving any root treatment", asyn
   const guard = open.indexOf("isBackground(");
   assert.ok(guard > 0, "the session_open handler checks for a background agent");
   for (const later of ["FOLLOW_UP_OVERSEER", "isWorkspaceRoot(", "withTools("]) assert.ok(guard < open.indexOf(later), `before ${later}`);
-  assert.match(source, /wait\.open\(.*\{ background: await isBackground\(/, "and Wait is told too");
+  assert.match(source, /const background = await isBackground\(input\.request\.agentId/, "the wrapper asks once");
+  assert.match(source, /wait\.open\(.*\{ background \}\)/, "and Wait is told too");
+  assert.match(source, /withSystemPrompt\(opened, promptDeps, \{ background \}\)/, "and the system prompt (Paseo 0.17)");
 });
 
 test("the hook stays silent for a listed background agent: no context, no Stop-hook nudge", async t => {
