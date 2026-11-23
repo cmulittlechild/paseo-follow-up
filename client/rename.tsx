@@ -12,6 +12,7 @@ import { Button, SubmitScope, text, type Theme } from "./kit";
 import { overviewKey } from "./keys";
 import { Spinner } from "./motion";
 import { hasToastHost, pushToast, runAction } from "./toast-store";
+import { createHostSlot } from "./host-slot";
 
 /**
  * Rename title with AI (docs/ai-roles.md#rename-title-with-ai): one dialog for every entry point (row menus, the panel's More
@@ -20,27 +21,17 @@ import { hasToastHost, pushToast, runAction } from "./toast-store";
  */
 
 export type RenameRequest = { workspaceId: string; title?: string | null };
-let current: (RenameRequest & { token: number }) | null = null;
-let token = 0;
-const listeners = new Set<() => void>();
-let version = 0;
-const emit = () => { version++; for (const l of listeners) l(); };
-const hosts: number[] = [];
-let hostIds = 0;
-
-/** Opens the dialog in the first mounted host (Home, the panel, the sidebar view, Settings). */
-export function openRename(request: RenameRequest): void { current = { ...request, token: ++token }; emit(); }
-const close = () => { current = null; emit(); };
+const slot = createHostSlot<RenameRequest>();
+/** Opens the dialog on the host on screen (Home, the panel, the sidebar view, Settings; new-opens-where-you-are). */
+export function openRename(request: RenameRequest): void { slot.open(request, { navigate: null }); }
+const close = () => slot.close();
 /** Test seam. */
-export const renameRequestNow = () => current;
+export const renameRequestNow = () => slot.now();
 
 export function RenameHost({ theme, compact }: { theme: Theme; compact: boolean }) {
-  const [id] = useState(() => ++hostIds);
-  useEffect(() => { hosts.push(id); emit(); return () => { hosts.splice(hosts.indexOf(id), 1); emit(); }; }, [id]);
-  useSyncExternalStore(l => { listeners.add(l); return () => { listeners.delete(l); }; }, () => version, () => version);
-  const request = current;
-  if (!request || hosts[0] !== id) return null;
-  return <RenameDialog key={request.token} request={request} theme={theme} compact={compact} onClose={close} />;
+  const { request, probe } = slot.useHost();
+  if (!request) return probe;
+  return <>{probe}<RenameDialog key={request.token} request={request} theme={theme} compact={compact} onClose={close} /></>;
 }
 
 /** Shown after a rename: what it's called now, with Undo for 10 s (held while the pointer or focus is on it). */

@@ -1,8 +1,8 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
-import { createNewKey, createSearchKey, installSearchShortcut, onHomeRoute } from "./client/search-key";
+import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
 import { NewSidebarRow } from "./client/new-entry";
-import { closeNew, newHostMounted, newRequestNow, openNew, setNewFallback } from "./client/new";
+import { closeNew, newRequestNow, openNew, setNewFallback, type NewRequest } from "./client/new";
 import { withButtonVisibility } from "./client/button-visibility";
 import { openExternalUrl, type PluginClientContext, type PluginButtonRegistration, type PluginScreenProps, type PluginSurfaceProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { Dimensions } from "react-native";
@@ -96,19 +96,14 @@ export default function contribute(host: PluginClientContext) {
   // One store of More context asks for every question surface (client/more-context.tsx).
   setContextSource(extras);
   const searchKey = createSearchKey();
-  // New (client/new.tsx): every entry point lands on Home with `new` set, whose host shows the dialog; with Home
-  // already mounted, openNew shows it in place. The key toggles it.
+  // New (client/new.tsx): every entry point goes through openNew. The Home on screen shows it in place; with none on
+  // screen (a chat in front, or only a Home Paseo keeps mounted behind), the request waits and Home opens with `new`
+  // set, whose host shows it (new-opens-where-you-are). The key toggles it.
   const newKey = createNewKey();
   let newToken = 0;
-  setNewFallback(r => client.openScreen({ screenId: OVERVIEW, params: { new: String(++newToken), ...(r.source ? { source: r.source } : {}) } }));
-  // On Home, New opens in place (openScreen to the screen already showing is skipped, as the search key does). A Home
-  // kept mounted behind takes it and is brought forward; with none, Home opens with `new` set and its host shows New.
-  const enterNew = (openScreen: (t: { screenId: string; params?: Record<string, string> }) => void) => {
-    const loc = (globalThis as { location?: { pathname?: string } }).location;
-    if (newHostMounted() && onHomeRoute(loc?.pathname, OVERVIEW)) { openNew(); return; }
-    if (newHostMounted()) { openNew(); openScreen({ screenId: OVERVIEW }); return; }
-    openScreen({ screenId: OVERVIEW, params: { new: String(++newToken) } });
-  };
+  const homeWithNew = (r: NewRequest) => ({ screenId: OVERVIEW, params: { new: String(++newToken), ...(r.source ? { source: r.source } : {}) } });
+  setNewFallback(r => client.openScreen(homeWithNew(r)));
+  const enterNew = (openScreen: (t: { screenId: string; params?: Record<string, string> }) => void) => openNew({}, { navigate: r => openScreen(homeWithNew(r)) });
   const openNewAnywhere = () => { if (newRequestNow()) { closeNew(); return; } enterNew(t => client.openScreen(t)); };
   const sources = { inbox, live: store, paseo: paseoWorkspaces, extras };
   const offActivity = extras.onActivity(() => { inbox.nudge(); store.nudge(); });
