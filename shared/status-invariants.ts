@@ -24,6 +24,8 @@ import { compactPrStatus, prLink, prPresentation } from "./presentation";
 import { agentMerges } from "./pr-workflow";
 import { mergeScope } from "./merge-click";
 import { GONE_REASON } from "./queue";
+import { taskSchedule } from "./task-trigger";
+import { taskDue } from "./task-due";
 
 /**
  * Status invariants: what must hold for any workspace, whatever path changed it. Pure, no IO, and never throwing:
@@ -523,6 +525,19 @@ export const INVARIANTS: Invariant[] = [
     check(w) {
       const stop = w.interruption;
       return stop?.kind === "canceled" && automaticHold(w) && stop.cause && stop.cause !== "stop" ? `holds for a ${stop.cause} turn ${stop.turnId ?? "?"}` : null;
+    },
+  },
+  {
+    id: "due-by-fact",
+    why: "2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged and nobody ran the check, because a task without developer timing read \"Manual\" and never came due. A task's line says what moves it, and a due task says Due (or Stale).",
+    check(w, now) {
+      for (const o of w.obligations) {
+        const label = taskSchedule(o, w, now).label;
+        if (label === "Manual") return `task ${o.id} reads Manual`;
+        const d = taskDue(o, w, now);
+        if (d?.due && !o.trigger && !/^(Due · |Due since |Stale · )/.test(label)) return `task ${o.id} is due (${d.fact}) but reads "${label}"`;
+      }
+      return null;
     },
   },
 ];

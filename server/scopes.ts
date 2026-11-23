@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { State, Workspace } from "../shared/model";
 import type { AgentWorkflow, PrWorkflow } from "../shared/pr-workflow";
+import { dueByAgent, type DueEntry } from "../shared/task-due";
 
 export type Role = "main" | "contributor" | "recovery";
 /**
@@ -11,12 +12,17 @@ export type Role = "main" | "contributor" | "recovery";
  * call. This file is a few KB and rewritten only when a role changes.
  */
 /** `demoted` (1.4.0-beta.22): the newest time this contributor lost the main role, so its hook can say so on its next turn. */
-type Entry = { role: Role; workspaceId: string; workflow?: AgentWorkflow; demoted?: { to: string; at: string; reason: string | null; by: string } };
+/**
+ * `due` (due-by-fact): the agent's tasks with a due time, oldest first, at most 5, each with its nudge line. The hook
+ * nudges the ones whose time has passed at the agent's turn end; a future re-check date waits in the list, so a date
+ * passing needs no rewrite.
+ */
+type Entry = { role: Role; workspaceId: string; workflow?: AgentWorkflow; demoted?: { to: string; at: string; reason: string | null; by: string }; due?: DueEntry[] };
 /**
  * `workflow` (1.4.0-beta.14) is the workspace's PR workflow and review-fix command, so the hook and bridge give
  * GitHub-only workspaces GitHub instructions. Absent: Graphite with /fix-pr, as every earlier version said.
  */
-export function scopes(state: State, workflow?: (w: Workspace) => AgentWorkflow): Record<string, Entry> {
+export function scopes(state: State, workflow?: (w: Workspace) => AgentWorkflow, now = Date.now()): Record<string, Entry> {
   const agents: Record<string, Entry> = {};
   for (const w of state.workspaces) {
     if (!w.enable_tracking || w.archived) continue;
@@ -27,6 +33,7 @@ export function scopes(state: State, workflow?: (w: Workspace) => AgentWorkflow)
     }
     for (const b of w.batches) if (b.recipientAgentId && !b.settledAt && ["sending", "sent", "blocked", "uncertain"].includes(b.state) && b.tasks.every(t => t.kind === "inventory")) agents[b.recipientAgentId] = { role: "recovery", workspaceId: w.id, ...flow };
     agents[w.mainAgentId] = { role: "main", workspaceId: w.id, ...flow };
+    for (const [id, due] of Object.entries(dueByAgent(w, now))) { const e = agents[id]; if (e && e.workspaceId === w.id && e.role !== "recovery") e.due = due; }
   }
   return agents;
 }

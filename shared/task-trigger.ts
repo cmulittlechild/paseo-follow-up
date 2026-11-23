@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ListObligation as Obligation, ListWorkspace as Workspace, ListPr as Pr } from "./list";
 import { deployed } from "./follow-up";
+import { dueLabel } from "./task-due";
 
 export const taskTriggerSchema = z.object({ event: z.enum(["now", "merge", "deploy"]), delayDays: z.number().int().min(0).max(3650).default(0) });
 export type TaskTrigger = z.infer<typeof taskTriggerSchema>;
@@ -9,7 +10,9 @@ export const notSetUpEvidence = (repo: string) => `Deploy check not set up for $
 const timestamp = (value?: string | null) => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
 export function taskSchedule(o: Obligation, w: Workspace, now = Date.now()): { ready: boolean; dueAt: string | null; label: string } {
   const t = o.trigger;
-  if (!o.enable_follow_up || !t) return { ready: false, dueAt: null, label: "Manual" };
+  // due-by-fact: with no developer timing a task says what moves it ("Due · #231 merged", "After #232 merges",
+  // "Re-check Nov 25", "Stale · …"); it is never "Manual".
+  if (!o.enable_follow_up || !t) return { ready: false, dueAt: null, label: dueLabel(o, w, now) ?? "Open" };
   if (t.event === "now") return { ready: o.afterPrs.length === 0 && t.delayDays === 0, dueAt: null, label: "Now" };
   const label = `${t.delayDays ? `${t.delayDays}d after ` : "After "}${t.event}`;
   if (!o.afterPrs.length) return { ready: false, dueAt: null, label };
