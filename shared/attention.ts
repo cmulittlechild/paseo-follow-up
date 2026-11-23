@@ -5,6 +5,7 @@ import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summ
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from "./send-decision";
 import { workingLine } from "./task-status";
+import { taskViewRow, taskViewRows } from "./task-view";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { orderedStacks, prLink, settledForDisplay, type PrLink } from "./presentation";
 import { downstackScan, githubApproved, graphiteReady, isGithubFlow, mergeBlockers, prActionBlocks } from "./pr-actions";
@@ -442,7 +443,7 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
 export type LiveIcon = "spinner" | "sent" | "done" | "paused" | "waiting" | "alert" | "failing" | "idle";
 /** What is happening right now, in one line, with the time it started when known. */
 /**
- * The panel header's live line. Say it once (Q49): while a message is queued, the Tasks strip right below carries when
+ * The panel header's live line. Say it once (Q49): while a message is queued, the Next message card below carries when
  * and why, so the header says only who and what. Home has no strip and keeps liveLine's full line.
  */
 export function headerLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text: string; since: string | null } {
@@ -473,12 +474,17 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   // Otherwise it says what the task row says: "<agent> idle", "<agent> closed", "Agent unavailable" or "In progress", with no spinner.
   const live = liveWorkingTask(w);
   if (live) return { icon: "spinner", text: live.title, since: null };
+  // A due task is what the agent owes next, so the line names it, not whichever task comes first (a waiting one whose
+  // PR is still in review). Stale says so: the agent was told twice and didn't answer.
+  const owed = taskViewRows(w, undefined, now).find(r => r.kind === "stale" || r.kind === "due");
+  if (owed) return { icon: "waiting", text: `${owed.kind === "stale" ? "Stale" : "Due"}: ${owed.o.title}`, since: null };
   const working = followUpObligations(w).find(o => o.status === "working");
   if (working) return { icon: "waiting", text: `${working.title} · ${workingLine(working, w.taskAgents ?? {}).text}`, since: null };
   // A wait the agent declared (a waiting task: a release, a reload window, a detached job) says what it waits on. The
   // waiting icon, Home's Waiting group and the brief's "Waiting on others" already say it waits, so the line doesn't.
+  // With what moves it ("· after #232 merges"), so the line never reads as if that task were happening now.
   const waiting = followUpObligations(w).find(o => o.status === "waiting");
-  if (waiting) return { icon: "waiting", text: waiting.title, since: null };
+  if (waiting) { const moves = taskViewRow(waiting, w, undefined, now); return { icon: "waiting", text: moves.kind === "after-pr" || moves.kind === "recheck" ? `${waiting.title} · ${moves.meta[0].toLowerCase()}${moves.meta.slice(1)}` : waiting.title, since: null }; }
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
   // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
   const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);

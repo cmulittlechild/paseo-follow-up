@@ -76,7 +76,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | --- | --- | --- |
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
-| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
+| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx` | [dispatch](docs/dispatch.md) |
@@ -446,7 +446,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the row. Search breaks a tie by score; the filter keeps its groups and, inside each, the list's own order for a
    tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
    (`overseerMatches`). No surface ranks workspace matches its own way. One matcher everywhere (`tokenMatch`): the
-   workspace panel's section search (Pull requests, Tasks, Activity; `client/section-search.tsx`) filters with it
+   workspace panel's section search (Pull requests, Activity; `client/section-search.tsx`) filters with it
    through `filterItems`, and item lists keep their own order, since a section list is a filter, not a ranking.
    Guarded by `tests/filter-rank.test.ts`, `tests/home-beta2.test.ts` and `tests/section-search.test.ts`.
 29. **Sheet content scrolls with the sheet** (`sheet-content-scrolls-with-the-sheet`). Every client ScrollView and
@@ -1035,6 +1035,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+
+84. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
+   developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 1 due · 1 stale"; due
+   neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
+   stale and due first; a task waiting on the developer says "In Needs you" with no question id and comes last; no
+   section search. Finished tasks are in Activity, the send queue and repairs in the Next message card
+   (`client/messages.tsx`), the schedule editor behind a row's "Send on a schedule…". The header's live line names a
+   due or stale task before a waiting one, and a waiting one says what moves it. 2026-11-22, two critiques: the card
+   mirrored Needs you ("Q1 · waiting on your answer"), sorted the due task last, carried the send queue and every
+   finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
+   `tests/tasks-view.test.ts` and `INVARIANTS`.
 
 ## Bugs
 

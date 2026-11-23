@@ -156,14 +156,15 @@ retargeting instead of Graphite restacks.
 ## Repairs are tasks (Q49)
 
 A PR condition Follow-up finds (a conflict, review feedback, a failing required check, a restack) is a task row in the
-workspace's Tasks, next to the developer's and agents' own tasks (`shared/task-rows.ts`, `client/tasks.tsx`). Nothing
+panel's Next message card, with the message it rides (`shared/task-rows.ts`, `client/messages.tsx`); the agent's own
+tasks are a separate card (tasks-are-the-agent-s). Nothing
 is stored per repair: a row comes from the message it rides (the pending or sent batch), the tasks `reconcile` held
 back (`heldTasks`), or a settled message (Done). The batch is the internal delivery record and never shows.
 
 - **One rule for every task in a message.** Repairs and Auto tasks (obligations with Auto and a due trigger) ride the
   same message and get the same states: Queued, Sent, Needs you (capped), Done. The Done check isn't a task: it stays
   "Ready to finish" in Needs you.
-- **Say it once.** The strip at the top of Tasks ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
+- **Say it once.** The strip at the top of the Next message card ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
   minute so new changes join the same message", with Preview and Send now) carries when and why, from `sendDecision`.
   A row in the message says only Queued or Sent (invariant `message-rows-say-it-once`). Send now shows only where the
   server takes it (`canSendNow`) and the send doesn't wait on the developer (then Send lives in Needs you only). While
@@ -226,6 +227,19 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 `plugin-data/follow-up/status-diagnostics.jsonl` (`server/status-check.ts`, rotated at 256 KB).
 
 ## Tasks (obligations)
+
+**The developer's view: Agent's tasks** (`shared/task-view.ts`, `client/tasks.tsx`, invariant `tasks-are-the-agent-s`).
+Tasks are the agent's to-do list, so the panel folds them to one line by default, in every state: "Agent's tasks ·
+6 open · 1 due · 1 stale". Due is the agent's normal work and stays neutral; only stale (due, nudged twice, no answer)
+is amber. Opened, a row per open task: a glyph per kind of move (a dot for due, amber for stale, a PR for "After #232
+merges", a calendar for a re-check, a pause for blocked, a hand or question bubble for one in Needs you), the title, and
+one line saying what moves it (`taskViewRows`). Stale and due come first, oldest first, each with the agent's note under
+it; a task waiting on the developer reads "In Needs you" (no question id) and opens it there, and comes last. A row
+opens in place: the whole note, its agent, and "Send on a schedule…", the developer's override (`update_obligation`
+`trigger` is the agent's way). Finished tasks leave the card for Activity ("Task done · …", with the evidence); the
+footer says "3 finished this week · in Activity". The send queue and the repairs are the Next message card
+(`client/messages.tsx`). The header's live line names the task the agent owes ("Due: …", "Stale: …") before any
+waiting one, and a waiting one says what moves it ("Check alert emails in staging · after #232 deploys").
 
 - **Who is working on a task** (invariant `a-task-only-says-working-when-its-agent-is`). `update_obligation` with
   `status: working` records the calling agent as `workingAgentId`, or the agent it names with `workingAgentId` (an
@@ -291,8 +305,8 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   reads the same (`findOpenMatch`); a superseded question is followed to its replacement and a withdrawn one covers
   nothing. `syncTaskQuestions` records it on the task (`coveredBy`), closes a card the task made before as "Already asked
   as Q1." (or "Already answered as Q1."), and Needs you shows no decision item for it. An answered question keeps
-  covering the task while its ask is unchanged: the agent has the answer and moves the task, so the task reads "Q1 ·
-  answered, waiting on the agent" in Tasks and doesn't count as the developer's (`waitsOnDeveloper`, `shared/model.ts`).
+  covering the task while its ask is unchanged: the agent has the answer and moves the task, so the task reads "Due · Q1
+  answered" in Tasks (due-by-fact) and doesn't count as the developer's (`waitsOnDeveloper`, `shared/model.ts`).
   A changed ask drops the cover and looks again. `update_obligation` says "Already asked as Q1" (or answered) in its
   reply's `note`, and `ask_question` and `needs_you` run the sync at once, so a card the task made closes when the
   richer question arrives. 2026-11-22, Tom: "a lot of the time, 2 questions are created for the same thing"; live data
