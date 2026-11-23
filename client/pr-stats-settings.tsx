@@ -5,7 +5,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal, SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { prStatsSettingsRpc, setPrStatsRpc } from "../shared/contracts";
-import { estimateLines, sizeWords, statsRepoLine, statsRepoWait, statsRepoWaitTone, type SetPrStatsInput, type StatsSettingsView, type StatsTeam } from "../shared/pr-stats-settings";
+import { estimateBlocked, estimateLines, sizeWords, statsRepoLine, statsRepoWait, statsRepoWaitTone, type SetPrStatsInput, type StatsSettingsView, type StatsTeam } from "../shared/pr-stats-settings";
 import { Button, errorText, SubmitScope, text, type Theme } from "./kit";
 import { Pressable } from "./text";
 
@@ -201,15 +201,22 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
   const e = query.data?.estimate ?? null;
   const slice = query.data?.settings.slice ?? 0.05;
   const lines = e ? estimateLines(e, slice) : null;
+  // No count never means no way forward (invariant 106): the sheet says why in plain words and Turn on stays live,
+  // except for a repository this account can't read.
+  const blocked = query.isPending ? null : estimateBlocked(e, query.error ? errorText(query.error) : null, ms => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  const canTurnOn = !!lines || !!blocked?.canTurnOn;
   const point = (icon: string, main: ReactNode, sub?: string) => <View style={{ flexDirection: "row", gap: 10 }}>
     <View style={{ paddingTop: compact ? 2 : 1 }}><Icon name={icon} size={16} color={c.foregroundMuted} /></View>
     <View style={{ flex: 1, gap: 2 }}><Text style={t.body}>{main}</Text>{sub && <Text style={t.meta}>{sub}</Text>}</View>
   </View>;
   return <Modal title={`Turn on PR stats for ${repo}?`} open onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
-      <SubmitScope enabled={!!lines} onSubmit={onTurnOn} style={{ gap: compact ? 16 : 14, maxWidth: 560 }}>
+      <SubmitScope enabled={canTurnOn} onSubmit={onTurnOn} style={{ gap: compact ? 16 : 14, maxWidth: 560 }}>
         {query.isPending && <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><ActivityIndicator color={c.foregroundMuted} /><Text style={t.meta}>Counting PRs changed in the last 90 days…</Text></View>}
-        {(query.error || e?.error) && <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{e?.error ?? errorText(query.error)}</Text>}
+        {blocked && <View style={{ gap: 4 }}>
+          <Text accessibilityRole="alert" style={[t.body, { color: blocked.tone === "danger" ? c.statusDanger : c.foreground }]}>{blocked.why}</Text>
+          <Text style={[t.meta]}>{blocked.next}</Text>
+        </View>}
         {lines && e && <>
           <Text style={[t.body, { color: c.foregroundMuted }]}>About <Text style={[t.body, { fontWeight: "600" }]}>{`${e.prs!.toLocaleString("en-US")} PRs`}</Text> changed in the last 90 days.</Text>
           {point("Gauge", <>Reading them costs about <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.charAt(0).toLowerCase()}${lines.time.slice(1)}`}</>,
@@ -220,7 +227,7 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
         </>}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
           <Button theme={theme} compact={compact} grow={compact} kind="ghost" title="Cancel" onPress={onClose} />
-          <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title="Turn on" disabled={!lines} onPress={onTurnOn} />
+          <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title="Turn on" disabled={!canTurnOn} onPress={onTurnOn} />
         </View>
       </SubmitScope>
     </Modal.Content>

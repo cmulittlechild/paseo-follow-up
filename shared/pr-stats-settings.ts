@@ -101,6 +101,13 @@ export const statsEstimateSchema = z.object({
   bytes: z.number().int().nonnegative().nullable(),
   /** Why there is no estimate: the repository can't be read, or the gate is closed. */
   error: z.string().nullable(),
+  /**
+   * Why the count couldn't run now, when the stats gate held it (GitHub's limit low, stats' share spent, another read
+   * running), with when it can (epoch ms; null: unknown). Turning on still goes ahead: the first sync waits the same way.
+   */
+  wait: z.object({ reason: z.enum(["governor", "budget", "slice", "busy"]), until: z.number().nullable() }).nullable().default(null),
+  /** The account can't read the repository (not found or no access): the only answer that refuses Turn on. */
+  unreadable: z.boolean().default(false),
 });
 export type StatsEstimate = z.infer<typeof statsEstimateSchema>;
 
@@ -206,6 +213,25 @@ export function statsRepoWaitTone(row: z.infer<typeof statsRepoRowSchema>): "dan
   if (st.error) return "danger";
   if (!st.waiting) return null;
   return st.waiting.reason === "budget" || st.waiting.reason === "slice" ? "warning" : st.waiting.reason === "governor" ? "muted" : null;
+}
+/**
+ * The opt-in sheet's lines when there is no count (a-read-the-developer-starts-never-waits-on-the-governor): why, in plain
+ * words, and what Turn on does then. `canTurnOn` is false only for a repository the account can't read; the sheet never
+ * dead-ends otherwise. `time` formats an epoch-ms time in the developer's zone.
+ */
+export function estimateBlocked(e: StatsEstimate | null, failure: string | null, time: (ms: number) => string): { why: string; next: string; canTurnOn: boolean; tone: "danger" | "warning" } | null {
+  if (e && e.prs !== null && e.points !== null) return null;
+  if (!e) return failure ? { why: `Couldn't count the PRs: ${failure}`, next: "You can still turn stats on. They start reading on the next sync and show their progress here.", canTurnOn: true, tone: "warning" } : null;
+  if (e.unreadable) return { why: e.error ?? `Can't read ${e.repo} with this GitHub account.`, next: "Check the account has access to the repository, then try again.", canTurnOn: false, tone: "danger" };
+  const at = e.wait?.until ? time(e.wait.until) : null;
+  const why = e.wait?.reason === "budget" ? `Can't count the PRs right now: your GitHub limit is under 40%${at ? ` until ${at}` : " until GitHub resets it"}, and stats wait so your agents and PR checks come first.`
+    : e.wait?.reason === "slice" ? `Can't count the PRs right now: stats used their share of GitHub's limit this hour${at ? `. The next read can go at ${at}` : ""}.`
+    : e.wait?.reason === "busy" ? "Can't count the PRs right now: another stats read is still running."
+    : `Couldn't count the PRs: ${e.error ?? "GitHub didn't answer"}`;
+  const next = e.wait?.reason === "busy" ? "Close this and try again in a moment, or turn stats on now and they start reading when it's done."
+    : at ? `You can turn stats on now. They start reading at ${at}, never past their share.`
+    : "You can still turn stats on. They start reading on the next sync and show their progress here.";
+  return { why, next, canTurnOn: true, tone: "warning" };
 }
 /** The opt-in sheet's cost line. */
 export function estimateLines(e: StatsEstimate, slice: number): { cost: string; time: string } | null {

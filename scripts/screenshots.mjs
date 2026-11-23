@@ -1925,7 +1925,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
-  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
+  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot, call, home });
   if (only.includes("pr-stats")) await prStatsShots({ shoot });
   if (only.includes("pr-stats-off")) await prStatsOffShots({ shoot });
   if (only.includes("archive")) await archiveShots({ shoot, call });
@@ -2388,7 +2388,7 @@ async function prStatsOffShots({ shoot }) {
   }
 }
 /** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
-async function prStatsSettingsShots({ shoot }) {
+async function prStatsSettingsShots({ shoot, call, home }) {
   const TALL = { width: DESKTOP.width, height: 1400 }, PHONE_TALL = { width: PHONE.width, height: 1800 };
   const section = async (page, vp) => {
     await page.setViewportSize(vp);
@@ -2429,6 +2429,36 @@ async function prStatsSettingsShots({ shoot }) {
       await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
     });
   }
+  // a-read-the-developer-starts-never-waits-on-the-governor (invariant 106): the sheet while the machine is busy (the
+  // count still loads, Turn on live) and with GitHub's limit low (no count, why and when in plain words, Turn on live).
+  // Desktop light and 390×844 dark.
+  const sheet = async (page, vp, repo, wait) => {
+    await section(page, vp);
+    await page.getByLabel("Another repository, owner/repo").filter({ visible: true }).first().fill(repo);
+    await page.getByRole("button", { name: /^Add/ }).filter({ visible: true }).first().click();
+    await page.getByText(`Turn on PR stats for ${repo}?`).filter({ visible: true }).first().waitFor();
+    await page.getByText(wait).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    const body = await page.evaluate(() => document.body.innerText);
+    if (/machine is busy/i.test(body)) throw new Error("pr-stats-settings: the sheet says the machine is busy");
+    const off = await page.getByRole("button", { name: "Turn on", exact: true }).filter({ visible: true }).last().evaluate(e => e.getAttribute("aria-disabled") === "true" || e.hasAttribute("disabled"));
+    if (off) throw new Error(`pr-stats-settings: Turn on is off in the ${repo} sheet`);
+    await page.setViewportSize(vp.width === PHONE.width ? PHONE : DESKTOP);
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats-settings: the phone sheet scrolls sideways");
+  };
+  const pairs = [["desktop", TALL, "light"], ["phone", PHONE_TALL, "dark"]];
+  await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 780 }));
+  await until("the governor holds background work", async () => (await call("follow.usage", {})).resources?.level === "constrained", { tries: 120, every: 500 });
+  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-busy-${size}-${theme}`, vp, theme, async page => { await sheet(page, vp, "example/mobile", /1,840/); });
+  await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 }));
+  const fixture = join(home, "gh-fixture.json");
+  const d = JSON.parse(await fs.readFile(fixture, "utf8"));
+  // GitHub's reset 40 minutes ahead on the daemon's (fake) clock, as --github-wait-review does.
+  const c = JSON.parse(await fs.readFile(clockFile, "utf8"));
+  const resetAt = new Date(c.fake + (Date.now() - c.real) * c.rate + 40 * 60_000).toISOString();
+  await fs.writeFile(fixture, JSON.stringify({ ...d, _rate: { cost: 1, remaining: 640, limit: 5000, resetAt } }));
+  await until("stats see GitHub's limit low", async () => (await call("follow.pr-stats-settings", { repo: "example/mobile", estimate: true })).estimate?.wait?.reason === "budget", { tries: 120, every: 1000 });
+  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-low-${size}-${theme}`, vp, theme, async page => { await sheet(page, vp, "example/mobile", /GitHub limit is under 40%/); });
+  await fs.writeFile(fixture, JSON.stringify(d));
 }
 async function prScaleShots({ shoot }) {
   const spec = PR_SCALE_STATES[0];
@@ -4289,7 +4319,7 @@ try {
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));
   // sending only: a fake cgroup at 10% of memory.high from the start (the governor finds its cgroup once), raised later.
-  if (only.includes("sending")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
+  if (only.includes("sending") || only.includes("pr-stats-settings")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
 
   const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 22 })).stdout);
