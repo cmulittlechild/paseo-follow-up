@@ -20,6 +20,12 @@ const AGENT_BOUND: Record<string, string> = {
 const NOT_AGENT_BOUND: Record<string, string> = {
   "new.tsx|{label}": "EditLine: a branch or title value in New's preview, not words to the agent",
   "linked.tsx|\"Filter, or paste a link or key\"": "a filter and link field for linked items",
+  "compass-settings.tsx|\"How to read this source\"": "a setting (the ranker's standing text, not a message)",
+  "compass-settings.tsx|\"Source name\"": "a setting",
+  "compass-settings.tsx|{kind === \"people\" ? \"Search people\" : \"Search channels\"}": "a setting's search",
+  "compass-settings.tsx|\"How to read your Compass\"": "a setting (the ranker's standing text, not a message)",
+  "compass-settings.tsx|\"Word\"": "a setting",
+  "compass-settings.tsx|\"Issue key\"": "a setting",
   "morning-brief-settings.tsx|\"The plan's link\"": "a setting",
   "morning-brief-settings.tsx|{kind === \"people\" ? \"Search people\" : \"Search channels\"}": "a setting's search",
   "morning-brief-settings.tsx|\"Time zone\"": "a setting",
