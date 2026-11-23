@@ -101,10 +101,6 @@ export class SourceDirectory {
     return selfIdFrom(d.tools.filter(t => servers.has(t.server)));
   }
 
-  /**
-   * One read: the recipe's tool for `role`, with only the arguments its schema takes, through `tool-read`. Throws
-   * NoSourceError when no (allowed) server has it.
-   */
   /** The read tools one server has (Ask's planner sees these). */
   async serverTools(server: string): Promise<ReadTool[]> { return (await this.discover()).tools.filter(t => t.server === server); }
 
@@ -118,6 +114,10 @@ export class SourceDirectory {
     return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(json)}`, `--reason=Follow-up: ${opts.reason}`, "--log-level=error", "-o", "json"], opts.timeoutMs));
   }
 
+  /**
+   * One read: the recipe's tool for `role`, with only the arguments its schema takes, through `tool-read`. Throws
+   * NoSourceError when no (allowed) server has it.
+   */
   async call(id: RecipeId, role: string, args: Record<string, unknown>, opts: { reason: string; timeoutMs: number; allowed?: (server: string) => boolean; fit?: boolean }): Promise<string> {
     const tool = await this.tool(id, role, opts.allowed);
     if (!tool) throw new NoSourceError(id, role);

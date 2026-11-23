@@ -294,12 +294,17 @@ export class Ranker {
   }
   async state(): Promise<RankerState> { try { return rankerStateSchema.parse(JSON.parse(await readFile(this.path, "utf8"))); } catch { return { ...EMPTY }; } }
 
-  /** The scheduled run: in the window, at the role's cadence, only with room to spare. */
+  /** New input that should reach today's rank (the morning's Ask items): the next scheduled tick runs once, cadence or not. */
+  private dueNow = false;
+  markDue(): void { this.dueNow = true; }
+
+  /** The scheduled run: in the window, at the role's cadence (or once after markDue), only with room to spare. */
   async tick(): Promise<RankResult | null> {
     if (this.running || !inRankWindow(this.now(), await this.clock()) || !await this.d.enabled()) return null;
     const [s, role] = await Promise.all([this.state(), this.d.role()]);
-    if (s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
+    if (!this.dueNow && s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
     if (await this.d.tight?.()) return null;
+    this.dueNow = false;
     return this.run({ trigger: "schedule" });
   }
 

@@ -1,4 +1,4 @@
-import { applySourcesChange, briefSources, GITHUB_SOURCE, recipe, sourceId, sourcesLine, type BriefSource, type RecipeId, type SourceRead, type SourcesChange, type SourcesView, type Upstream } from "../shared/brief-sources";
+import { applySourcesChange, briefSources, GITHUB_SOURCE, recipe, sourceId, sourcesLine, upstreamHealth, type BriefSource, type RecipeId, type SourceRead, type SourcesChange, type SourcesView, type Upstream } from "../shared/brief-sources";
 import type { AskItem } from "../shared/ask";
 import type { AskPlan, AskResult } from "./ask";
 import { clockFor, isWorkday, zoned } from "../shared/linear-queue";
@@ -24,6 +24,11 @@ export type BriefSourcesDeps = {
   ask?: (server: string, opts: { since: number; plan: AskPlan | null; timeZone: string }) => Promise<AskResult>;
   /** The governor says the VM is tight: the morning's asks wait (they spend model calls). */
   tight?: () => boolean;
+  /**
+   * A morning's asks stored items that differ from the last ones: the ranker's next tick runs once even inside its
+   * cadence, so today's items reach today's rank (its scheduled run can start before the asks finish).
+   */
+  onAsked?: () => void;
   now?: () => number;
   onChange?: () => void;
   log?: (line: string) => void;
@@ -158,20 +163,28 @@ export class BriefSources {
 
   /** The morning's asks: each Ask source that's on, once a workday after the sweep time, one at a time. */
   private async morningAsks(dayStart: number): Promise<void> {
-    // Cheap first (the loop runs every 15 s): only Ask sources that are on and not asked since this morning's sweep time.
+    // Cheap first (the loop runs every 15 s): only Ask sources that are on, whose upstream is fine in the last list
+    // (a signed-out or disconnected one is skipped here, so it costs one store read a tick), and not asked since this
+    // morning's sweep time. No upstream list yet: unknown is not off, so it counts.
     const file0 = await this.d.store.read();
-    const due = (this.d.tools.cached()?.matched ?? []).some(m => !m.recipe && m.readTools > 0 && file0.sources.on[sourceId(m.server)] === true
+    const upstreamOk = (server: string) => !this.upstreamList || upstreamHealth(this.upstreamList.find(u => u.name === server)).health === "ok";
+    const due = (this.d.tools.cached()?.matched ?? []).some(m => !m.recipe && m.readTools > 0 && file0.sources.on[sourceId(m.server)] === true && upstreamOk(m.server)
       && !((a => a && !a.preview && Date.parse(a.at) >= dayStart)(file0.sources.asked[sourceId(m.server)])));
     if (!due || !this.d.ask) return;
     return this.asking ??= (async () => {
-      const rows = (await this.rows()).filter(r => r.kind === "ask" && r.on && r.health !== "sign-in");
+      const rows = (await this.rows()).filter(r => r.kind === "ask" && r.on && r.server && upstreamOk(r.server));
       const file = await this.d.store.read();
+      let changed = false;
       for (const row of rows) {
         const last = file.sources.asked[row.id];
         if (last && !last.preview && Date.parse(last.at) >= dayStart) continue;
-        if (this.d.tight?.()) return;
+        if (this.d.tight?.()) break;
+        const before = last && !last.preview ? JSON.stringify(last.items) : null;
         await this.ask(row, false);
+        const after = (await this.d.store.read()).sources.asked[row.id];
+        if (after && !after.error && JSON.stringify(after.items) !== before) changed = true;
       }
+      if (changed) this.d.onAsked?.();
     })().finally(() => { this.asking = null; this.d.onChange?.(); });
   }
 

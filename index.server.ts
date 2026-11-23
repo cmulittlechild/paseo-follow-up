@@ -1445,6 +1445,8 @@ export default function contribute(server: PluginServerContext) {
     // Ask (server/ask.ts): the Summary's role, a fast model; the reads go through the same directory (tool-read only).
     ask: (server, opts) => askSource({ tools: sourceDirectory(), jobs: aiJobs, role: () => agentSettings.role("about") }, server, { ...opts, now: Date.now() }),
     tight: () => !governor.allowsBackground(),
+    // Today's Ask items reach today's rank: the ranker's next tick (this loop) runs once, inside its cadence or not.
+    onAsked: () => ranker?.markDue(),
     onChange: () => feeds.home(), log: line => console.warn(line),
   });
   handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });

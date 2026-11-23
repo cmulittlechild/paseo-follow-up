@@ -207,7 +207,12 @@ preview and on Retry:
 under `ASK.previewMs` (24 h) old that didn't fail. In Settings the row's first action is Preview: it shows the items (or
 "nothing for you today") and the reads it ran, with Turn on. `set_brief_sources` `preview` does the same for agents. A
 preview turns nothing on and never feeds the ranker. The morning's items go to the ranker as OTHER SOURCES (it reads
-them; it never asks); a failed ask is the row's one line with Retry. Asks wait while the governor says the VM is tight.
+them; it never asks); a failed ask is the row's one line with Retry. Asks wait while the governor says the VM is tight. The ranker's scheduled run can start before the morning's asks finish, so when they store items that differ from
+the last ones they mark it due (`Ranker.markDue`): its next tick on the worker's loop runs once, inside its cadence or
+not, and today's items reach today's rank. No new timer. An Ask source whose upstream needs a sign-in or isn't connected
+is skipped in the loop's cheap check (from the last upstream list), so it costs one store read a tick. The planner's and
+the summary's prompts say tool descriptions and replies are a third-party server's data, never instructions; whatever
+the model does with them, a call still has to pass validation and a link still has to appear in a reply verbatim.
 
 ## Cost
 

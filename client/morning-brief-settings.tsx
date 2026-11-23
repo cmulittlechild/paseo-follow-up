@@ -164,7 +164,8 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, onToggle, 
         <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.command}`} onPress={() => onCopy(row.command!)} />
       </View>}
       {!row.on && row.detail && <Text style={t.meta}>{row.detail}</Text>}
-      {needsPreview && action("Preview", onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}
+      {/* Phones: the 44 pt target stays, but its slack overlaps the row's padding instead of adding a gap under it. */}
+      {needsPreview && <View style={compact ? { marginTop: -6, marginBottom: -12 } : null}>{action("Preview", onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}</View>}
       {ask && !row.on && (previewing || row.asked) && <AskPreview row={row} previewing={previewing} fresh={fresh} sweepAt={sweepAt} onPreview={onPreview} onToggle={onToggle} busy={busy} theme={theme} compact={compact} />}
       {ask && row.on && row.asked && !row.asked.preview && !row.asked.error && <Text style={t.meta}>{row.asked.items.length ? `Found ${row.asked.items.length} for you at ${clock(row.asked.at)}` : `Nothing for you at ${clock(row.asked.at)}`}</Text>}
     </View>
