@@ -107,10 +107,15 @@ export function controlWorkspace(state: State, input: { workspaceId: string; ena
   }
   if (input.retryBatchId) {
     const b = w.batches.find(b => b.id === input.retryBatchId);
-    if (!b || !["blocked", "uncertain"].includes(b.state)) throw new Error("This batch cannot be retried.");
+    if (!b || !["blocked", "uncertain"].includes(b.state) || b.movedOn) throw new Error("This batch cannot be retried.");
     if (b.attempts >= 3) throw new Error("Three delivery attempts were made. Resolve this batch with the main agent.");
-    b.state = "cancelled";
-    w.batches.push({ ...b, ...(recoveryBatch(b) ? { enable_manual_recovery: true } : {}), id: randomUUID(), messageId: randomUUID(), state: "pending", attempts: b.attempts + 1, createdAt: new Date(now).toISOString(), sentAt: null, settledAt: null, result: "", activityAt: null, acknowledgmentError: null });
+    // The agent's answer stays its record (invariant a-changed-review-updates-never-cancels): a blocked batch is marked
+    // sent again, never rewritten as cancelled. An unconfirmed one never reached an answer, so it is cancelled.
+    if (b.state === "blocked" && b.sentAt) b.movedOn = { at: new Date(now).toISOString(), why: "retried", reason: "Sent again on Retry." };
+    else b.state = "cancelled";
+    // The copy is a new message: it carries none of the old one's outcome marks.
+    const { movedOn: _movedOn, inProgress: _inProgress, ...copy } = b;
+    w.batches.push({ ...copy, ...(recoveryBatch(b) ? { enable_manual_recovery: true } : {}), id: randomUUID(), messageId: randomUUID(), state: "pending", attempts: b.attempts + 1, createdAt: new Date(now).toISOString(), sentAt: null, settledAt: null, result: "", activityAt: null, acknowledgmentError: null });
   }
   const at = new Date(now).toISOString();
   if (input.clearHold || input.retryBatchId && !recoveryBatch(w.batches.find(b => b.id === input.retryBatchId)!)) { w.completion = null; w.declaration = null; w.updatedAt = at; }

@@ -43,6 +43,12 @@ export function activity(w: Workspace): Activity[] {
     rows.push({ key: `sent:${b.id}`, at: b.sentAt, icon: "Send", tone: "muted", text: `Sent ${n} to the main agent`, detail: b.tasks.map(t => shortRefs(t.title, w)).join(" · "), took: null });
     // A human-only outcome (Batch.humanOnly) isn't finished work: it waits on a person.
     if (b.settledAt && b.state === "completed" && b.humanOnly) rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "UserRound", tone: "warning", text: `${n} ${b.tasks.length === 1 ? "waits" : "wait"} on a person, not the agent`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
+    // The agent is already on it (Batch.inProgress): progress, not a finish and not a failure, so no "took".
+    else if (b.settledAt && b.state === "completed" && b.inProgress) rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "Hourglass", tone: "muted", text: `Main agent is already on ${n}`, detail: b.result || null, took: null });
+    // Moved on since it went out (Batch.movedOn): updated, sent again, or no longer needed. Never a failure on screen.
+    // The detail is the agent's own words; Follow-up's own reason would only repeat the title (gone keeps it: it names
+    // what ended, "#270 merged").
+    else if (b.movedOn) rows.push({ key: `stopped:${b.id}`, at: b.settledAt ?? b.movedOn.at, icon: b.movedOn.why === "gone" ? "CircleSlash" : "RefreshCw", tone: "muted", text: b.movedOn.why === "changed" ? `${n} updated on GitHub · the next message has what's new` : b.movedOn.why === "gone" ? `${n} no longer needed` : `${n} sent again`, detail: b.result && (b.movedOn.why === "gone" || b.result !== b.movedOn.reason) ? b.result : null, took: b.settledAt ? duration(b.sentAt, b.settledAt) : null });
     else if (b.settledAt && b.state === "completed") rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "Wrench", tone: "success", text: `Main agent finished ${n}`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
     else if (b.settledAt && ["blocked", "cancelled"].includes(b.state)) rows.push({ key: `stopped:${b.id}`, at: b.settledAt, icon: "OctagonAlert", tone: b.state === "blocked" ? "danger" : "muted", text: b.state === "blocked" ? `${n} didn't finish` : `${n} cancelled`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
   }

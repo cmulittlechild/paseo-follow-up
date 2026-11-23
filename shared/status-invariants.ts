@@ -184,6 +184,24 @@ export const INVARIANTS: Invariant[] = [
     },
   },
   {
+    id: "a-changed-review-updates-never-cancels",
+    why: "2026-11-23: a review that kept getting new comments made a new message every few minutes, and the one already sent was cancelled seconds later as \"No longer needed: GitHub no longer shows what it asked for\" although the review was still there, overwriting the agent's answer. The agent's \"already on it\" showed as \"The repairs didn't finish\", Retry sent the same items again, and a blocked answer held the queue. A changed item is an update, an answer keeps its outcome, and only one answer about the same items stands.",
+    check(w, now) {
+      const keys = (i: number) => new Set(w.batches.slice(i + 1).flatMap(b => b.tasks.map(t => t.key)));
+      for (const [i, b] of w.batches.entries()) {
+        if (recoveryBatch(b) || !b.sentAt) continue;
+        if (b.state === "cancelled" && b.result.startsWith("No longer needed") && b.tasks.some(t => keys(i).has(t.key))) return `${b.id} says "No longer needed" though a later message carries the same task`;
+        if (b.movedOn && b.state !== "blocked" && b.state !== "cancelled") return `${b.id} moved on but is ${b.state}`;
+      }
+      const conditions = (b: Workspace["batches"][number]) => b.tasks.map(conditionId).sort().join("|");
+      const standing = w.batches.filter(b => !recoveryBatch(b) && b.state === "blocked" && !b.movedOn && !!b.sentAt);
+      const twice = standing.find((b, i) => standing.slice(i + 1).some(x => conditions(x) === conditions(b)));
+      if (twice) return `${twice.id} and a later answer about the same items both stand`;
+      const failing = needsYou(w, now).find(i => i.kind === "retry" && (() => { const b = w.batches.find(b => b.id === i.batchId); return !!b?.movedOn || !!b?.inProgress; })());
+      return failing ? `${failing.key} shows a batch that moved on or is in progress as a failure` : null;
+    },
+  },
+  {
     id: "no-sends-when-idle-claim", why: "2026-11-10 wks_4b27f268: \"sends when the agent is idle\" while the agent was idle and nothing would send",
     check: (w, now) => lines(w, now).find(l => /sends when the agent is idle/i.test(l)) ?? null,
   },

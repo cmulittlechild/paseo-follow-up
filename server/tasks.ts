@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { communicationReady } from "../shared/communication";
 import { taskSchedule } from "../shared/task-trigger";
 import { isWorkspaceRoot, type WorkspaceAgent } from "./workspace-agent";
+import { taskUpdate } from "../shared/send-decision";
 
 function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 /**
@@ -17,7 +18,7 @@ function fingerprint(value: unknown): string { return createHash("sha256").updat
 export type TaskWording = { reviewFix?: (repo: string) => string | null; github?: (repo: string) => boolean };
 export function tasksFor(w: Workspace, now = Date.now(), wording: TaskWording = {}): Task[] {
   const tasks: Task[] = [];
-  const add = (kind: Task["kind"], target: string, title: string, value: unknown) => tasks.push({ key: `${kind}:${target}`, kind, target, title, fingerprint: fingerprint(value) });
+  const add = (kind: Task["kind"], target: string, title: string, value: unknown, parts?: string[]) => tasks.push({ key: `${kind}:${target}`, kind, target, title, fingerprint: fingerprint(value), ...(parts ? { parts } : {}) });
   for (const pr of w.prs) {
     const s = pr.snapshot;
     if (!s?.complete || pr.error || s.state !== "OPEN" || s.draft) continue;
@@ -25,7 +26,7 @@ export function tasksFor(w: Workspace, now = Date.now(), wording: TaskWording = 
     if (s.threads.length || s.reviewDecision === "CHANGES_REQUESTED") {
       const reason = s.threads.length ? `${s.threads.length} open thread${s.threads.length === 1 ? "" : "s"}` : "changes requested";
       const fix = wording.reviewFix ? wording.reviewFix(pr.repo) : "/fix-pr";
-      add("review", pr.key, fix ? `Use ${fix} for ${pr.repo}#${pr.number} (${reason})` : `Address review comments on ${pr.repo}#${pr.number} (${reason}): read the unresolved threads, fix, push, then reply and resolve`, [s.head, s.reviewDecision, [...s.threads].sort((a, b) => a.id.localeCompare(b.id))]);
+      add("review", pr.key, fix ? `Use ${fix} for ${pr.repo}#${pr.number} (${reason})` : `Address review comments on ${pr.repo}#${pr.number} (${reason}): read the unresolved threads, fix, push, then reply and resolve`, [s.head, s.reviewDecision, [...s.threads].sort((a, b) => a.id.localeCompare(b.id))], s.threads.length ? s.threads.map(t => `${t.id}@${t.updatedAt}`).sort() : undefined);
     }
     if (s.failedChecks.length) add("checks", pr.key, `Fix required checks on ${pr.repo}#${pr.number}: ${s.failedChecks.join(", ")}`, [s.head, s.failedChecks.slice().sort()]);
     const parent = w.prs.find(p => p.key === pr.parent);
@@ -79,7 +80,11 @@ export { needsPrObservations } from "../shared/send-decision";
 
 /** The message's task lines as the agent reads them, without the batch id line: Preview, the task sheet and workspace_status. */
 export function messageText(w: Workspace, batch: Pick<Batch, "tasks">): string {
-  return orderTasks(w, batch.tasks).map((t, i) => `${i + 1}. ${t.title}`).join("\n");
+  // A task an earlier message already carried with other content says what moved since (the same review, new threads),
+  // so the agent reads an update, never a fresh "do this" (invariant a-changed-review-updates-never-cancels).
+  const at = w.batches.indexOf(batch as Batch);
+  const before = at < 0 ? w.batches : w.batches.slice(0, at);
+  return orderTasks(w, batch.tasks).map((t, i) => { const update = taskUpdate(before, t); return `${i + 1}. ${t.title}${update ? ` (${update})` : ""}`; }).join("\n");
 }
 
 export function batchPrompt(w: Workspace, batch: Batch): string {

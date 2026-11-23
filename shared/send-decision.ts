@@ -1,4 +1,4 @@
-import type { Task } from "./model";
+import type { Task, Batch as StoredBatch } from "./model";
 import type { ListBatch as Batch, ListWorkspace as Workspace } from "./list";
 import { recoveryBatch } from "./follow-up";
 
@@ -7,6 +7,12 @@ export const SETTLE_MS = 60_000;
 
 /** States of a non-recovery batch that hold the queue: one message at a time per workspace. */
 export const OPEN_BATCH_STATES: readonly Batch["state"][] = ["sending", "sent", "blocked", "uncertain"];
+/**
+ * The batch holds the workspace's queue (one message at a time): it is going out, out, or stuck, and nothing it was
+ * about has moved on since (Batch.movedOn). A batch whose review changed, went away, or was sent again never holds the
+ * next message (invariant a-changed-review-updates-never-cancels).
+ */
+export const holdsQueue = (b: Pick<Batch, "state" | "movedOn">) => OPEN_BATCH_STATES.includes(b.state) && !b.movedOn;
 
 /** The batch has tasks that only make sense against a clean read of the workspace's PRs. */
 export function needsPrObservations(w: Pick<Workspace, "obligations">, batch: Pick<Batch, "tasks">): boolean {
@@ -83,7 +89,7 @@ export function sendDecision(w: Workspace, now: number, o: { settleMs?: number; 
   const b = o.batch ?? w.batches.find(b => b.state === "pending" && !recoveryBatch(b));
   // What the developer's own Send (Engine.sendPending/dispatch) refuses, checked in the same order.
   const prUnread = b && needsPrObservations(w, b) ? w.prs.find(p => p.error || !p.snapshot?.complete) : undefined;
-  const openBatch = !!b && w.batches.some(x => x.id !== b.id && !recoveryBatch(x) && OPEN_BATCH_STATES.includes(x.state));
+  const openBatch = !!b && w.batches.some(x => x.id !== b.id && !recoveryBatch(x) && holdsQueue(x));
   // The developer's Send is taken while the main agent is busy: it goes the moment the main agent is free (Q96).
   const canSendNow = !!b && b.state === "pending" && !recoveryBatch(b) && !w.archived && w.enable_tracking && !w.hold && !w.goneAgent &&
     (!w.runtimeReason || !!mainWait(w)) && !openBatch && !prUnread;
@@ -162,8 +168,10 @@ export const personHeld = (w: Pick<Workspace, "batches">, t: Pick<Task, "key" | 
 };
 
 /** Blocked or unconfirmed: a repair batch whose outcome the developer is shown (Needs you's "The repairs didn't finish"). */
-export const stuckRepair = (b: Pick<Batch, "state" | "tasks">) =>
-  ["blocked", "uncertain"].includes(b.state) && !recoveryBatch(b) && !(b.tasks.length > 0 && b.tasks.every(t => t.kind === "completion"));
+export const stuckRepair = (b: Pick<Batch, "state" | "tasks" | "movedOn">) =>
+  ["blocked", "uncertain"].includes(b.state) && !b.movedOn && !recoveryBatch(b) && !(b.tasks.length > 0 && b.tasks.every(t => t.kind === "completion"));
+/** Blocked or unconfirmed and still standing (nothing moved on since): what Needs you, Retry and the Home line call stuck. */
+export const stuckBatch = (b: Pick<Batch, "state" | "movedOn">) => ["blocked", "uncertain"].includes(b.state) && !b.movedOn;
 
 /**
  * Whether GitHub's answer for the task's PR is known (a complete snapshot and no read error), or the task isn't about a
@@ -193,4 +201,60 @@ export function mootReason(w: Pick<Workspace, "prs">, b: Pick<Batch, "tasks">): 
   if (prs.length && ended.length === prs.length && ended.length === new Set(b.tasks.map(t => t.target)).size)
     return `No longer needed: ${ended.map(p => `#${p.number} ${p.snapshot!.state === "MERGED" ? "merged" : "closed"}`).join(", ")}.`;
   return "No longer needed: GitHub no longer shows what it asked for.";
+}
+
+/**
+ * The agent answered it: acknowledge_batch recorded its outcome (blocked, with its words). Older records carry no flag:
+ * a blocked repair that went out with no refused acknowledgment is the agent's own answer.
+ */
+export const agentAnswered = (b: Pick<StoredBatch, "state" | "sentAt" | "acknowledgmentError" | "unacknowledged" | "tasks">) =>
+  b.state === "blocked" && !!b.sentAt && !b.acknowledgmentError && !b.unacknowledged && !recoveryBatch(b);
+
+/**
+ * A stuck batch whose exact conditions are gone but whose task is still open with new content (the same review, new
+ * threads or replies): it changed, it isn't over. The next message carries what's new (taskUpdate). Invariant
+ * a-changed-review-updates-never-cancels.
+ */
+export function changedNotGone(b: Pick<Batch, "tasks">, open: readonly Pick<Task, "key" | "fingerprint">[]): boolean {
+  const keys = new Set(open.map(t => t.key));
+  return b.tasks.some(t => keys.has(t.key));
+}
+/** The developer's words for a batch whose conditions moved on, by why. "No longer needed" only when nothing is left. */
+export function movedOnReason(w: Pick<Workspace, "prs">, b: Pick<Batch, "tasks">, why: "changed" | "gone" | "retried" | "duplicate"): string {
+  switch (why) {
+    case "changed": return "Updated on GitHub since it went out; the next message carries what's new.";
+    case "gone": return mootReason(w, b);
+    case "retried": return "Sent again on Retry.";
+    case "duplicate": return "The same items went out again in a later message.";
+  }
+}
+
+/** How long an agent's in-progress answer holds its unchanged conditions at most, so a busy signal that never clears can't hold them forever. */
+export const IN_PROGRESS_MAX_MS = 2 * 60 * 60_000;
+/**
+ * The agent said it is already on this condition (Batch.inProgress) and its work hasn't settled: some agent in the
+ * workspace is still at work (runtimeBusy, backgroundBusy) and the answer is under IN_PROGRESS_MAX_MS old. The same
+ * condition isn't sent again meanwhile; a changed one (a new fingerprint) is a new condition and goes out as usual.
+ */
+export function inProgressHolds(w: Pick<Workspace, "runtimeBusy" | "backgroundBusy">, b: Pick<Batch, "state" | "inProgress" | "settledAt">, now: number): boolean {
+  if (b.state !== "completed" || !b.inProgress || !b.settledAt) return false;
+  return (w.runtimeBusy || w.backgroundBusy) && now - Date.parse(b.settledAt) < IN_PROGRESS_MAX_MS;
+}
+
+/**
+ * What moved in a task since the last message about it, in counts: "2 new threads, 1 with new replies". Null when no
+ * earlier sent message had this task with other content, or either side has no parts. `before`: the batches before it.
+ */
+export function taskUpdate(before: readonly Pick<Batch, "tasks" | "sentAt">[], t: Pick<Task, "key" | "fingerprint" | "parts">): string | null {
+  if (!t.parts) return null;
+  const last = [...before].reverse().find(b => !!b.sentAt && b.tasks.some(x => x.key === t.key));
+  const prior = last?.tasks.find(x => x.key === t.key);
+  if (!prior?.parts || prior.fingerprint === t.fingerprint) return null;
+  const was = new Map(prior.parts.map(p => { const at = p.lastIndexOf("@"); return [at < 0 ? p : p.slice(0, at), p] as const; }));
+  let added = 0, replied = 0;
+  for (const p of t.parts) { const at = p.lastIndexOf("@"); const id = at < 0 ? p : p.slice(0, at); if (!was.has(id)) added++; else if (was.get(id) !== p) replied++; }
+  const now = new Set(t.parts.map(p => { const at = p.lastIndexOf("@"); return at < 0 ? p : p.slice(0, at); }));
+  const resolved = [...was.keys()].filter(id => !now.has(id)).length;
+  const bits = [added && `${added} new thread${added === 1 ? "" : "s"}`, replied && `${replied} with new replies`, resolved && `${resolved} resolved`].filter(Boolean);
+  return bits.length ? `since the last message: ${bits.join(", ")}` : "since the last message: the review changed";
 }
