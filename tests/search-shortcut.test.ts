@@ -87,3 +87,30 @@ test("one global listener, web only, in the capture phase; the ⌘K row and Home
   const home = await readFile(join(root, "client/home.tsx"), "utf8");
   assert.match(home, /anywhereKey=\{anywhereKey\}/);
 });
+
+// New from anywhere (`new_shortcut`, docs/dispatch.md#the-dialog): the default depends on the host, a pick wins.
+import { NEW_SHORTCUTS, isDesktopApp, newShortcutHint, newShortcutOptions, newShortcutPreset } from "../shared/search-key";
+
+test("New from anywhere: ⌘⇧N in Paseo's desktop app, ⌘⇧O in a browser tab, and a pick wins on both", () => {
+  assert.equal(newShortcutPreset(undefined, true), "mod-shift-n");
+  assert.equal(newShortcutPreset(undefined, false), "mod-shift-o", "Chrome keeps Ctrl/Cmd+Shift+N for incognito in a tab");
+  assert.equal(newShortcutPreset("garbage", false), "mod-shift-o");
+  for (const desktop of [true, false]) for (const pick of NEW_SHORTCUTS) assert.equal(newShortcutPreset(pick, desktop), pick);
+  assert.equal(isDesktopApp({ paseoDesktop: {} }), true);
+  assert.equal(isDesktopApp({ navigator: { userAgent: "Mozilla/5.0 Chrome/140 Electron/38.0.0" } }), true);
+  assert.equal(isDesktopApp({ navigator: { userAgent: "Mozilla/5.0 Chrome/140 Safari/537.36" } }), false);
+  assert.deepEqual(newShortcutOptions(true).map(o => o.label), ["⌘⇧N", "⌘⇧O", "None"]);
+  assert.deepEqual(newShortcutOptions(false).map(o => o.label), ["Ctrl+Shift+N", "Ctrl+Shift+O", "None"]);
+  assert.match(newShortcutHint(false, true), /⌘⇧N for a new incognito window, so ⌘⇧O/);
+  const press = (key: string, mod: Partial<KeyEventLike> = {}): KeyEventLike => ({ key, metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, ...mod });
+  assert.equal(matchesShortcut(press("N"), "mod-shift-n", true), true);
+  assert.equal(matchesShortcut(press("o"), "mod-shift-o", true), true);
+  assert.equal(matchesShortcut(press("n"), "mod-shift-o", true), false);
+  assert.equal(matchesShortcut(press("n", { shiftKey: false }), "mod-shift-n", true), false, "⌘N stays Paseo's");
+  assert.equal(matchesShortcut(press("n"), "none", true), false);
+});
+
+test("New from anywhere never takes one of Paseo's own keys", () => {
+  const bound = new Set(normalizeCombos(PASEO_BOUND));
+  for (const preset of NEW_SHORTCUTS) for (const combo of shortcutCombos(preset)) assert.ok(!bound.has(combo), `${preset} (${combo}) is one of Paseo's own keys`);
+});

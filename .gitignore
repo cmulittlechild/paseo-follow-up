@@ -4,3 +4,4 @@ node_modules
 .preview-isolated.json
 test-results/
 .feeds-check/
+.dispatch-shots/

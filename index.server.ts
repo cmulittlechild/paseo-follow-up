@@ -1248,16 +1248,18 @@ export default function contribute(server: PluginServerContext) {
     existing: async source => {
       const state = await store.snapshot();
       const live = (id: string) => state.workspaces.find(w => w.id === id && !w.archived) ?? null;
+      // The project it's in (Paseo's directory, cached): a source already being worked on goes there (resolveWhere).
+      const projectOf = async (id: string) => (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === id)?.projectId ?? null;
       if (source.kind === "pr" && source.repo && source.number) {
         const owner = prOwner(state, source.repo, source.number);
         const w = owner ? live(owner.workspaceId) : null;
-        return w ? { workspaceId: w.id, title: w.title, state: "tracked" } : null;
+        return w ? { workspaceId: w.id, title: w.title, state: "tracked", projectId: await projectOf(w.id) } : null;
       }
       if (source.kind !== "linear" || !source.key) return null;
       for (const [workspaceId, links] of await linkedOf()) {
         if (!links.items.some(i => i.kind === "linear" && i.key === source.key)) continue;
         const w = live(workspaceId);
-        if (w) return { workspaceId: w.id, title: w.title, state: w.enable_tracking ? "tracked" : "untracked" };
+        if (w) return { workspaceId: w.id, title: w.title, state: w.enable_tracking ? "tracked" : "untracked", projectId: await projectOf(w.id) };
       }
       return null;
     },
@@ -1282,7 +1284,11 @@ export default function contribute(server: PluginServerContext) {
       const mode = action.agent?.mode ?? (action.agent?.provider ? null : role?.mode ?? null) ?? (provider === "claude" ? "bypassPermissions" : null);
       const thinking = action.agent?.thinking ?? (action.agent?.provider ? null : role?.thinking ?? null);
       const selection = model ? `${provider}/${model}` : api ? await providerModel(api as unknown as OverseerPaseo, provider) : provider;
-      return { config: { provider: selection, ...(mode ? { modeId: mode } : {}), ...(thinking ? { thinkingOptionId: thinking } : {}) }, label: model ? `${provider} ${model}` : provider.charAt(0).toUpperCase() + provider.slice(1) };
+      return {
+        config: { provider: selection, ...(mode ? { modeId: mode } : {}), ...(thinking ? { thinkingOptionId: thinking } : {}) },
+        label: model ? `${provider} ${model}` : provider.charAt(0).toUpperCase() + provider.slice(1),
+        picked: { provider, ...(model ? { model } : {}), ...(mode ? { mode } : {}), ...(thinking ? { thinking } : {}) }, isDefault: !action.agent,
+      };
     },
     multiplicity: () => hostMultiplicity(),
     paseo: async () => api ? {
@@ -1635,15 +1641,17 @@ export default function contribute(server: PluginServerContext) {
   const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => waiting ?? loadError ?? hookError ?? writeHealth.message() ?? engine.error);
   const inboxFeed = new ValueFeed({ read: async () => { await requireReady(); return inboxAnswer({ ...await inbox.list(), error: inboxError }, undefined); }, key: v => v.etag ?? JSON.stringify(v) });
   let usageWatch: { close(): void } | null = null;
+  // New's dispatches for Home's row: the last hour's (the client drops what its clock says is over), at most 5.
+  const homeDispatches = async () => (await dispatcher.records().catch(() => [])).filter(r => Date.now() - Date.parse(r.at) < 3_600_000).slice(0, 5);
   const homeFeed = new ValueFeed({
     read: async () => {
       await requireReady();
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn() };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches() };
     },
-    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats]),
+    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats, v.dispatches]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
     onFirst: () => { usageWatch = usage.watch(() => void homeFeed.changed()); },
     onLast: () => { usageWatch?.close(); usageWatch = null; },

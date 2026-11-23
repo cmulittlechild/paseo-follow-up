@@ -9,10 +9,44 @@ export const SEARCH_SHORTCUTS = ["mod-shift-k", "mod-shift-h", "none"] as const;
 export type SearchShortcut = typeof SEARCH_SHORTCUTS[number];
 export const DEFAULT_SEARCH_SHORTCUT: SearchShortcut = "mod-shift-k";
 
-const KEYS: Record<Exclude<SearchShortcut, "none">, { key: string; code: string; shift: boolean }> = {
+/**
+ * "New from anywhere": opens New (docs/dispatch.md). Absent means the host's default (`newShortcutPreset`): ⌘⇧N inside
+ * Paseo's desktop app, ⌘⇧O in a browser tab, where Chrome keeps Ctrl/Cmd+Shift+N for a new incognito window and never
+ * hands it to the page. An explicit pick wins everywhere.
+ */
+export const NEW_SHORTCUTS = ["mod-shift-n", "mod-shift-o", "none"] as const;
+export type NewShortcut = typeof NEW_SHORTCUTS[number];
+/** Every preset a Follow-up key can take. */
+export type KeyPreset = SearchShortcut | NewShortcut;
+
+const KEYS: Record<Exclude<KeyPreset, "none">, { key: string; code: string; shift: boolean }> = {
   "mod-shift-k": { key: "k", code: "KeyK", shift: true },
   "mod-shift-h": { key: "h", code: "KeyH", shift: true },
+  "mod-shift-n": { key: "n", code: "KeyN", shift: true },
+  "mod-shift-o": { key: "o", code: "KeyO", shift: true },
 };
+
+/** Inside Paseo's desktop app (Electron: it sets `window.paseoDesktop`), not a browser tab. */
+export function isDesktopApp(win: unknown = globalThis): boolean {
+  const w = win as { paseoDesktop?: unknown; navigator?: { userAgent?: string } } | null;
+  return !!w && (w.paseoDesktop != null || /\bElectron\//.test(w.navigator?.userAgent ?? ""));
+}
+export function isNewShortcut(value: unknown): value is NewShortcut {
+  return typeof value === "string" && (NEW_SHORTCUTS as readonly string[]).includes(value);
+}
+/** The key New answers to: the explicit pick, else the host's default (unknown is the default, never off). */
+export function newShortcutPreset(value: unknown, desktop: boolean): NewShortcut {
+  return isNewShortcut(value) ? value : desktop ? "mod-shift-n" : "mod-shift-o";
+}
+/** The Settings → Display choices for New from anywhere. */
+/** The setting's hint: what the key opens, and why a browser tab defaults to ⌘⇧O. */
+export function newShortcutHint(desktop: boolean, mac: boolean): string {
+  return desktop ? "Opens New from any screen, even mid-message."
+    : `Opens New from any screen. In a browser tab, Chrome keeps ${shortcutLabel("mod-shift-n", mac)} for a new incognito window, so ${shortcutLabel("mod-shift-o", mac)} is the default here.`;
+}
+export function newShortcutOptions(mac: boolean): { label: string; value: NewShortcut }[] {
+  return NEW_SHORTCUTS.map(value => ({ value, label: shortcutLabel(value, mac) ?? "None" }));
+}
 
 /** ⌘ on a Mac (and iPad keyboards), Ctrl everywhere else; reads the browser's navigator when given none. */
 export function isMac(platform?: string): boolean {
@@ -36,7 +70,7 @@ export type KeyEventLike = { key: string; code?: string; metaKey: boolean; ctrlK
  * and the key by its character or its physical code (so the key works across keyboard layouts).
  * Never while an input method is composing, never on auto-repeat.
  */
-export function matchesShortcut(event: KeyEventLike, preset: SearchShortcut, mac: boolean): boolean {
+export function matchesShortcut(event: KeyEventLike, preset: KeyPreset, mac: boolean): boolean {
   if (preset === "none" || event.isComposing || event.repeat) return false;
   const want = KEYS[preset];
   const mod = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
@@ -45,7 +79,7 @@ export function matchesShortcut(event: KeyEventLike, preset: SearchShortcut, mac
 }
 
 /** How the platform prints it: "⌘⇧K" on a Mac; "Ctrl+Shift+K" elsewhere; null for None. */
-export function shortcutLabel(preset: SearchShortcut, mac: boolean): string | null {
+export function shortcutLabel(preset: KeyPreset, mac: boolean): string | null {
   if (preset === "none") return null;
   const { key, shift } = KEYS[preset];
   const k = key.toUpperCase();
@@ -53,7 +87,7 @@ export function shortcutLabel(preset: SearchShortcut, mac: boolean): string | nu
 }
 
 /** The preset in Paseo's own combo spelling ("Cmd+Shift+K", "Ctrl+Shift+K"), to compare with PASEO_BOUND. */
-export function shortcutCombos(preset: SearchShortcut): string[] {
+export function shortcutCombos(preset: KeyPreset): string[] {
   if (preset === "none") return [];
   const { key, shift } = KEYS[preset];
   const k = key.toUpperCase();
