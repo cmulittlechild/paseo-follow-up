@@ -37,7 +37,9 @@ test("an option-less question's field says what to write; no line above it says 
 test("the tasks footer's \"in Activity\" is a link to the Activity card", async () => {
   assert.deepEqual(finishedParts(summary), { count: "2 finished this week", place: "in Activity", text: "2 finished this week · in Activity" });
   assert.equal(finishedParts({ ...summary, finished: 0, finishedThisWeek: 0 }), null);
-  assert.match(await src("client/tasks.tsx"), /accessibilityRole="link" onPress=\{onShowActivity\}/);
+  const tasks = await src("client/tasks.tsx");
+  assert.match(tasks, /<Pressable accessibilityRole="link" accessibilityLabel=\{`\$\{footer\.count\}\. Show finished tasks in Activity`\} onPress=\{onShowActivity\}/, "the whole row is the link, named for a screen reader");
+  assert.match(tasks, /minHeight: compact \? 44 : undefined/, "a 44pt target on touch");
   const panel = await src("client/panel.tsx");
   assert.match(panel, /onShowActivity=\{showActivity\}/);
   assert.match(panel, /<View ref=\{logRef\}/, "it scrolls to the Activity card, in either column");

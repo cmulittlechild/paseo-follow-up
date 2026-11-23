@@ -185,10 +185,17 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
     {shown && !rows.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
       <Text style={t.meta}>Nothing open. The agent records work that outlives a merge here, like a migration to run or a production check.</Text>
     </View>}
-    {shown && footer && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c.border }}>
-      {/* "in Activity" is a link: finished tasks are listed there (tasks-are-the-agent-s). */}
-      <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{footer.place && onShowActivity ? <>{`${footer.count} · `}<Text accessibilityRole="link" onPress={onShowActivity} style={{ color: c.foreground, textDecorationLine: "underline" }}>{footer.place}</Text></> : footer.text}</Text>
-    </View>}
+    {shown && footer && (onShowActivity
+      // "in Activity" is a link: finished tasks are listed there (tasks-are-the-agent-s). The whole row is the target
+      // (44pt on touch), and the label says where it goes when read alone.
+      ? <Pressable accessibilityRole="link" accessibilityLabel={`${footer.count}. Show finished tasks in Activity`} onPress={onShowActivity}
+          hitSlop={compact ? undefined : { top: 8, bottom: 8 }}
+          style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, minHeight: compact ? 44 : undefined, justifyContent: "center", borderTopWidth: 1, borderTopColor: c.border }}>
+        <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{`${footer.count} · `}<Text style={{ color: c.foreground, textDecorationLine: "underline" }}>{footer.place}</Text></Text>
+      </Pressable>
+      : <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c.border }}>
+        <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{footer.text}</Text>
+      </View>)}
     <ScheduleSheet o={w.obligations.find(o => o.id === schedule) ?? null} w={w} theme={theme} compact={compact} onClose={() => setSchedule(null)} />
   </Card>;
 }
