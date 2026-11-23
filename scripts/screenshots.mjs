@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn", "gallery", "frames"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -63,13 +63,13 @@ function fail(message) { console.error(`screenshots: ${message}`); process.exit(
 if (!process.env.PLAYWRIGHT_CORE || !existsSync(join(process.env.PLAYWRIGHT_CORE, "package.json"))) fail("set PLAYWRIGHT_CORE to a playwright-core directory (e.g. ~/paseo-switcher/node_modules/playwright-core)");
 if (!process.env.CHROMIUM || !existsSync(process.env.CHROMIUM)) fail("set CHROMIUM to a Chromium or chrome-headless-shell binary");
 const paseoVersion = await exec("paseo", ["--version"], { timeout: 30000 }).then(r => r.stdout.trim(), () => null);
-// The sidebar shot and --sidebar-review need sidebar views, which arrive in Paseo 0.16 (HARNESS_PASEO=0.16); every
-// other shot stays on 0.15.x.
-const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
+// The sidebar shot and --sidebar-review need sidebar views, which arrive in Paseo 0.16 (HARNESS_PASEO=0.16 runs the
+// global CLI, 0.16 or later); every other shot stays on 0.15.x.
+const paseo016 = /(^|\D)0\.1[6-9]\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") || only.includes("new") || PASTE_LIKE(only) ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") || PASTE_LIKE(only) || only.includes("gallery") || only.includes("frames") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -461,6 +461,8 @@ const WORKSPACES = [
       msg("The preview works in example/web#224. Q1 asks what to do with duplicates.")] },
   { key: "invoices", project: "app", after: "fix", title: "Invoice PDFs", minute: 105, prompt: "APP-182: render invoices as PDF and attach them to the receipt email.",
     steps: [rpc("follow.enroll", { goal: "APP-182 Invoice PDFs on the receipt email" }), rpc("follow.register-pr", { repo: "example/app", number: 188, stack: "Invoice PDFs" }),
+      // The deploy frame's task: Invoice PDFs shows a repair going back to its agent and a task that waits on the deploy.
+      rpc("follow.obligation", { title: "Send a test receipt from staging after the deploy", status: "waiting", afterPrs: ["example/app#188"] }),
       msg("Opened example/app#188.")] },
   { key: "views", project: "web", after: "fix", title: "Saved views", minute: 112, prompt: "WEB-41: save dashboard layouts as named views.",
     steps: [rpc("follow.enroll", { goal: "WEB-41 Saved dashboard views" }), rpc("follow.register-pr", { repo: "example/web", number: 205, stack: "Saved views" }),
@@ -1656,6 +1658,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, "utf8")), error: "the agent was archived" }));
     await shoot("sidebar-overseer-error-dark", SIDEBAR, "dark", async page => { await sidebarView(page, "Couldn't bring it back", false); });
   }
+  if (only.includes("gallery") || only.includes("frames")) await galleryShots({ shoot, call, home, billing });
   for (const name of [...SHOTS, "local-titles"]) {
     if (!only.includes(name) || name === "setup") continue;
     if (name === "home") await shoot("home", DESKTOP, "dark", async page => {
@@ -4510,6 +4513,250 @@ async function dockInViewShots({ shoot }) {
 
 function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES, ...MERGE_CLICK_STATES].find(x => x.key === key); return { title: w.title, prompt: w.prompt }; }
 
+/**
+ * gallery (docs/screenshots/gallery/, `npm run shots:gallery`): one current render of every main surface, desktop light
+ * and 390×844 dark, under stable names (`gallery-<surface>-<device>-<theme>`; scripts/gallery-shots.sh drops the
+ * prefixes and writes INDEX.md). Synthetic data only. The sidebar view needs Paseo 0.16+; on 0.15 it is skipped.
+ *
+ * frames (README images, `npm run shots:readme`): 16:9 frames of the app in context, Paseo's sidebar visible, as
+ * light/dark pairs (`frame-<surface>-<theme>`: Home, the sidebar view, the Overseer, a task waiting on a deploy), the
+ * cover's sources (`cover-home`, Home in light; `catch-up-phone-<theme>`, Catch up on a phone) for scripts/cover.mjs.
+ */
+const FRAME = { width: 1600, height: 900 };
+async function galleryShots({ shoot, call, home, billing }) {
+  const G = only.includes("gallery"), F = only.includes("frames");
+  const pair = async (name, drive, vp = FRAME) => { if (F) for (const theme of ["light", "dark"]) await shoot(`frame-${name}-${theme}`, vp, theme, page => drive(page, vp)); };
+  const both = async (surface, drive, { desktop = DESKTOP, phone = PHONE, phoneDrive = drive, desktopOnly = false, scale } = {}) => {
+    if (!G) return;
+    await shoot(`gallery-${surface}-desktop-light`, desktop, "light", page => drive(page, desktop), scale ? { scale } : undefined);
+    if (!desktopOnly) await shoot(`gallery-${surface}-phone-dark`, phone, "dark", async page => {
+      const clip = await phoneDrive(page, phone);
+      if (await page.evaluate(() => document.documentElement.scrollWidth) > phone.width) throw new Error(`gallery-${surface}-phone scrolls sideways`);
+      return clip;
+    });
+  };
+  // Captures open at desktop size (Paseo's phone layout needs Home first); a drive narrows or resizes to its frame.
+  const narrow = async (page, vp) => { if (vp.width !== DESKTOP.width || vp.height !== DESKTOP.height) await page.setViewportSize(vp); };
+  /**
+   * A slide's crop: from the element whose own text is `top` (exact match first) down to the first element after it whose
+   * text holds `bottom`, as wide as `top`'s nearest ancestor at least `minWidth` wide, padded. Scrolls it into view.
+   */
+  // `lastBottom`: the last match of `bottom` (every row of a group, whatever order equal times sort in).
+  // `last`: the last exact match of `top` (Home's "Sending" group header, not the "2 Sending" count above the list).
+  const region = (page, top, bottom, { minWidth = 300, padTop = 16, padBottom = 16, padX = 12, last = false, lastBottom = false } = {}) => page.evaluate(([top, bottom, minWidth, padTop, padBottom, padX, last, lastBottom]) => {
+    const own = e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim();
+    const shown = e => e.checkVisibility() && e.getClientRects().length;
+    const all = [...document.querySelectorAll("body *")].filter(shown);
+    const a = (last ? all.findLast(e => own(e) === top) : all.find(e => own(e) === top)) ?? all.find(e => own(e).includes(top));
+    if (!a) throw new Error(`region: no visible "${top}"`);
+    const after = all.filter(e => (a.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && own(e).includes(bottom));
+    const b = lastBottom ? after.at(-1) : after[0];
+    if (!b) throw new Error(`region: no visible "${bottom}" after "${top}"`);
+    a.scrollIntoView({ block: "center" });
+    let w = a; while (w.parentElement && w.getBoundingClientRect().width < minWidth) w = w.parentElement;
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(), rw = w.getBoundingClientRect();
+    const x = Math.max(0, rw.left - padX), y = Math.max(0, ra.top - padTop);
+    return { x, y, width: Math.min(innerWidth - x, rw.width + 2 * padX), height: Math.min(innerHeight - y, rb.bottom + padBottom - y) };
+  }, [top, bottom, minWidth, padTop, padBottom, padX, last, lastBottom]);
+  // The bordered card around `text` (the nearest ancestor at least minWidth wide with side borders), with even padding:
+  // a slide shows a whole card, not a slice of one with its border lines at the edges.
+  const cardAround = (page, text, { pad = 16, minWidth = 280 } = {}) => page.evaluate(([text, pad, minWidth]) => {
+    const own = e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim();
+    const el = [...document.querySelectorAll("body *")].find(e => e.checkVisibility() && own(e) === text);
+    if (!el) throw new Error(`cardAround: no visible "${text}"`);
+    let c = el;
+    const sided = e => { const st = getComputedStyle(e); return parseFloat(st.borderLeftWidth) > 0 && parseFloat(st.borderRightWidth) > 0; };
+    while (c && !(c.getBoundingClientRect().width >= minWidth && sided(c))) c = c.parentElement;
+    if (!c) throw new Error(`cardAround: no bordered card around "${text}"`);
+    c.scrollIntoView({ block: "start" });
+    const r = c.getBoundingClientRect();
+    if (r.height + 2 * pad > innerHeight) throw new Error(`cardAround: "${text}"'s card is taller than the window`);
+    const x = Math.max(0, r.left - pad), y = Math.max(0, r.top - pad);
+    return { x, y, width: Math.min(innerWidth - x, r.width + 2 * pad), height: r.height + 2 * pad };
+  }, [text, pad, minWidth]);
+  const openPanel = async page => {
+    await openChat(page, "Billing retries", billing.prompt);
+    await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+    await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor();
+  };
+  // Home: the list with Billing retries' question open beside it; on a phone, the list.
+  const homeDrive = async (page, vp) => {
+    await openHome(page); await narrow(page, vp);
+    const row = await homeRow(page, "Billing retries");
+    if (vp.width >= 768) { await row.click(); await page.getByText("Only network failures").first().waitFor(); }
+  };
+  await both("home", homeDrive);
+  await pair("home", homeDrive);
+  if (F) await shoot("cover-home", DESKTOP, "light", page => homeDrive(page, DESKTOP));
+  // Slide sources: one element each, cropped tight at 6× so a slide can zoom it about 3× and it still reads in Paseo's
+  // 288×180 media tile. Phone width where the element has a narrow form.
+  const SLIDE = { scale: 6 };
+  // A tall phone window, so the whole element fits above the bottom dock.
+  const TALL = { width: PHONE.width, height: 1600 };
+  // The decision card as the agent's chat shows it: one bordered card, question, lettered options and the pick.
+  if (F) await shoot("slide-decision", { width: 900, height: 900 }, "light", async page => {
+    await narrow(page, { width: 900, height: 900 });
+    await openChat(page, "Billing retries", billing.prompt);
+    await page.getByText("Only network failures").first().waitFor();
+    return cardAround(page, "Should charges that fail with card_declined retry, or only network failures?", { minWidth: 360 });
+  }, SLIDE);
+  // Automatic repairs: Home's Sending group, each workspace's main agent already working on the repairs sent to it.
+  if (F) await shoot("slide-repairs", TALL, "light", async page => {
+    await openHome(page); await narrow(page, TALL); await homeRow(page, "Saved views");
+    return region(page, "Sending", "Main agent is working on", { minWidth: 360, padBottom: 38, last: true, lastBottom: true });
+  }, SLIDE);
+  // Automatic follow-ups: Invoice PDFs, whose failed check went back to its agent (the chat shows the repair it got,
+  // the panel what was sent) and whose next task waits on the deploy.
+  const invoices = WORKSPACES.find(w => w.key === "invoices");
+  // `task`: the task row to open; `billingPanel`: the slide's Billing retries panel instead of Invoice PDFs.
+  const tasksDrive = async (page, vp, { task, billingPanel = false }) => {
+    if (billingPanel) await openPanel(page);
+    else {
+      await openChat(page, "Invoice PDFs", invoices.prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await page.getByRole("button", { name: /^Pull request 188: / }).first().waitFor();
+    }
+    await narrow(page, vp);
+    // The Tasks card can start folded (invariant 89); open it if the task's own row (its "After #N deploys" line) is
+    // not showing yet, so the row shows, not just the header's line.
+    const rows = () => page.getByText(new RegExp(`^${task}`)).filter({ visible: true });
+    const open = () => page.getByText(/^After #\d+ deploys/).filter({ visible: true }).count();
+    if (!(await open())) await page.getByText("Agent's tasks", { exact: true }).last().click();
+    for (let i = 0; !(await open()); i++) { if (i > 20) throw new Error("deploy: the Tasks card didn't open"); await page.waitForTimeout(250); }
+    await rows().last().evaluate(el => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(400);
+  };
+  const deployDrive = async (page, vp) => {
+    await tasksDrive(page, vp, { task: "Send a test receipt from staging after the deploy" });
+    // The frame is about the repair: hide Follow-up's card for the first turn's end above it (signed off, no ask), so
+    // the chat reads prompt, reply, repair sent, agent on it.
+    await page.evaluate(() => {
+      const sent = [...document.querySelectorAll('[data-plugin-row="true"]')].find(r => r.textContent.includes("Follow-up sent a message"));
+      for (const r of document.querySelectorAll('[data-plugin-row="true"]')) if (r !== sent && /No ask stated/.test(r.textContent) && (r.compareDocumentPosition(sent) & Node.DOCUMENT_POSITION_FOLLOWING)) r.style.display = "none";
+    });
+    await page.waitForTimeout(300);
+  };
+  await pair("deploy", deployDrive);
+  if (F) await shoot("slide-deploy", DESKTOP, "light", async page => { await tasksDrive(page, DESKTOP, { task: "Check retries in staging after the deploy", billingPanel: true }); return region(page, "Agent's tasks", "Check retries in staging after the deploy", { minWidth: 280, padBottom: 40 }); }, SLIDE);
+  // The question as a decision card: Home's detail pane (desktop) and the phone's full-height detail.
+  await both("decision-card", async (page, vp) => {
+    await openHome(page); await narrow(page, vp);
+    await (await homeRow(page, "Billing retries")).click();
+    await page.getByText("Only network failures").first().waitFor();
+    if (vp.width < 768) await clearDock(page, "Only network failures", "Sign off");
+  }, { phoneDrive: async (page, vp) => { await openHome(page); await narrow(page, vp); await (await homeRow(page, "Billing retries")).click(); await page.getByText("Only network failures").first().waitFor(); await clearDock(page, "Only network failures", "Sign off"); } });
+  // The workspace panel beside the chat; phones read a workspace in the larger view.
+  await both("panel", async page => { await openPanel(page); }, { phoneDrive: async (page, vp) => {
+    await openPanel(page);
+    await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+    await page.getByRole("button", { name: /^Pull request 142: / }).last().waitFor();
+    await page.setViewportSize(vp); await page.waitForTimeout(500);
+  } });
+  // The composer pill opened: the question and the workspace's other asks.
+  await both("pill", async (page, vp) => {
+    await openChat(page, "Billing retries", billing.prompt); await narrow(page, vp);
+    await page.getByRole("button", { name: /^Follow-up · / }).last().click();
+    await page.getByText("fail with card_declined retry").last().waitFor();
+  });
+  // The PR sheet for #142 (failed checks).
+  await both("pr-sheet", async (page, vp) => {
+    await openPanel(page);
+    await page.getByRole("button", { name: /^Pull request 142: / }).first().click();
+    await page.getByText("Pull request #142").first().waitFor();
+    await narrow(page, vp); await page.waitForTimeout(400);
+    await page.getByText(/check.*failed.*test/i).first().waitFor();
+  });
+  // Catch up, on the question card.
+  const catchUp = async (page, vp) => {
+    await openHome(page); await narrow(page, vp);
+    await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+    await page.getByRole("heading", { name: /^Catch up/ }).filter({ visible: true }).first().waitFor();
+    const card = () => page.locator("[data-catch-up-card]").getByText("fail with card_declined retry").filter({ visible: true }).first();
+    for (let i = 0; !(await card().isVisible()); i++) {
+      if (i > 30) throw new Error("gallery catch-up: no card shows the billing question");
+      await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(1200);
+  };
+  await both("catch-up", catchUp);
+  // The README's Catch up phone image is a light/dark <picture> pair, and the cover's phone frame uses the light one.
+  if (F) for (const theme of ["light", "dark"]) await shoot(`catch-up-phone-${theme}`, PHONE, theme, page => catchUp(page, PHONE));
+  if (F) await shoot("slide-catch-up", PHONE, "light", page => catchUp(page, PHONE), { scale: 4 });
+  // Settings → General.
+  await both("settings", async (page, vp) => { await narrow(page, vp); await openSettingsAt(page, "general", vp); await page.waitForTimeout(600); });
+  // New, from Home: the Linear list and the first issue's preview.
+  await both("new", async (page, vp) => {
+    await openHome(page); await narrow(page, vp);
+    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    const dialog = page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: /^WEB-31 Invoice/ }).filter({ visible: true }).first().waitFor();
+    await page.waitForTimeout(600);
+  });
+  // The sidebar view (Paseo 0.16+): Follow-up's list as Paseo's sidebar, with a chat beside it.
+  const sidebarDrive = async (page, vp) => {
+    await page.goto(`${ORIGIN}/settings/sidebar`);
+    await page.getByText("Default view", { exact: true }).first().click();
+    await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+    await openHome(page);
+    const view = page.getByTestId("plugin-sidebar-view");
+    await view.getByText("Billing retries").first().waitFor();
+    await narrow(page, vp);
+    await view.getByText("Billing retries").first().click();
+    await page.getByText("Only network failures").first().waitFor();
+  };
+  if (!/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "")) {
+    if (G) await shoot("gallery-sidebar-desktop-light", SIDEBAR, "light", page => sidebarDrive(page, SIDEBAR));
+    await pair("sidebar", sidebarDrive);
+    // The slide: the sidebar view and the start of the chat beside it.
+    // The sidebar view's top: Needs you and Sending, beside the edge of the chat.
+    // A narrow desktop window, so the chat's decision card wraps whole beside the sidebar; down to the card's last line.
+    if (F) await shoot("slide-sidebar", { width: 960, height: 800 }, "light", async page => {
+      await sidebarDrive(page, { width: 960, height: 800 });
+      const end = await page.getByText("Something else", { exact: true }).last().boundingBox();
+      return { x: 0, y: 0, width: 960, height: Math.min(800, Math.round(end.y + end.height + 48)) };
+    }, SLIDE);
+  }
+  // The Overseer, asked from Home's search: the ask, its answer and the pinned row.
+  const started = await call("follow.overseer-start", {});
+  const answer = "Two workspaces wait on review. Billing retries: #142 failed its tests, so it needs a fix first. Onboarding email: #160 has a merge conflict and two open threads from Dana. Nothing else is blocked.";
+  const scripts = JSON.parse(await fs.readFile(join(home, "fixture-scripts.json"), "utf8").catch(() => "{}"));
+  scripts[`agent:${started.agentId}`] = [{ item: { type: "assistant_message", text: answer } }];
+  await fs.writeFile(join(home, "fixture-scripts.json"), JSON.stringify(scripts));
+  const question = "What's blocked on review?";
+  let asked = false;
+  // The harness's Overseer runs on the fixture provider (a test label) and adds its home ("overseer-home") to Paseo's
+  // sidebar. Show the model a developer would see and hide that one project, as scripts/demo-video.mjs does.
+  const tidyOverseer = page => page.evaluate(() => {
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (/Followup-fixture/i.test(n.data)) n.data = n.data.replace(/Followup-fixture · Fixture|Followup-fixture/gi, "Claude · Opus");
+    for (const row of document.querySelectorAll('[data-testid^="sidebar-project-row-"]')) {
+      if (!(row.textContent ?? "").includes("overseer-home")) continue;
+      const key = row.getAttribute("data-testid").slice("sidebar-project-row-".length);
+      let block = row;
+      for (let up = row.parentElement; up && up.querySelectorAll('[data-testid^="sidebar-project-row-"]').length === 1; up = up.parentElement) block = up;
+      block.style.display = "none";
+      for (const list of document.querySelectorAll(`[data-testid="sidebar-workspace-list-${key}"]`)) list.style.display = "none";
+    }
+  });
+  const overseerDrive = async (page, vp) => {
+    await openHome(page); await narrow(page, vp);
+    if (!asked) {
+      const search = page.getByPlaceholder(/^Search/).filter({ visible: true }).first();
+      await search.click(); await search.fill(question);
+      await page.getByRole("button", { name: `Ask the Overseer: ${question}` }).filter({ visible: true }).first().click();
+      asked = true;
+    } else await page.getByRole("button", { name: /^Overseer\. / }).filter({ visible: true }).first().click();
+    await page.getByText(/^Two workspaces wait on review/).filter({ visible: true }).first().waitFor({ timeout: 60000 });
+    await page.waitForTimeout(600);
+    await tidyOverseer(page); await page.waitForTimeout(200);
+  };
+  await both("overseer", overseerDrive);
+  await pair("overseer", overseerDrive);
+  if (F) await shoot("slide-overseer", PHONE, "light", async page => { await overseerDrive(page, PHONE); return region(page, question, "Two workspaces wait on review", { minWidth: 340, padTop: 44, padBottom: 28 }); }, SLIDE);
+}
+
 async function optimise(path, tool) {
   if (tool === "pngquant") await exec("pngquant", ["--force", "--skip-if-larger", "--quality", "70-95", "--strip", "--output", path, path]).catch(e => { if (e.code !== 98 && e.code !== 99) throw e; });
   if (tool === "oxipng") await exec("oxipng", ["-o", "4", "--strip", "safe", path]);
@@ -4666,7 +4913,7 @@ try {
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
-  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") ? newIssues() : []));
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") || only.includes("gallery") || only.includes("frames") ? newIssues() : []));
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
@@ -4677,7 +4924,7 @@ try {
   // sending only: a fake cgroup at 10% of memory.high from the start (the governor finds its cgroup once), raised later.
   if (only.includes("sending") || only.includes("pr-stats-settings")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
 
-  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") || PASTE_LIKE(only) ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), ...(PASTE_LIKE(only) ? { FOLLOW_UP_HARNESS_IMAGE_PROVIDERS: "followup-fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
+  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") || PASTE_LIKE(only) || only.includes("gallery") || only.includes("frames") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), ...(PASTE_LIKE(only) ? { FOLLOW_UP_HARNESS_IMAGE_PROVIDERS: "followup-fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 22 })).stdout);
   const daemonLog = openSync(join(root, "daemon.log"), "a");
   crashed = async () => daemonCrashes(await fs.readFile(join(root, "daemon.log"), "utf8").catch(() => ""))[0] ?? null;
@@ -4720,6 +4967,12 @@ try {
     // Under reduced motion (the context's) StepFade shows the step at once, so there is no fade to wait out.
     await page.getByRole("progressbar", { name: /^Step 1 of \d+$/ }).first().waitFor();
     await page.getByText("Follow-up keeps your agents' PRs moving").waitFor();
+  });
+  // The gallery's setup: the same first step, desktop light and phone dark.
+  if (only.includes("gallery")) for (const [surface, vp, theme] of [["desktop-light", DESKTOP, "light"], ["phone-dark", PHONE, "dark"]]) await shoot(`gallery-setup-${surface}`, vp, theme, async page => {
+    await openHome(page, { keepDialogs: true });
+    if (vp.width < 768) await page.setViewportSize(vp);
+    await page.getByRole("progressbar", { name: /^Step 1 of \d+$/ }).first().waitFor();
   });
   await call("follow.set-onboarding", { action: "finish" });
   const seeded = await seed({ call, home });
