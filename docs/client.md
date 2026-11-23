@@ -137,9 +137,12 @@ leaves the list (and shows under Archived in search), and for a worktree Paseo c
 deletes the folder with `git worktree remove --force`, so uncommitted changes there are lost; the branch and its
 commits stay and Paseo can restore it. The confirm step says so for this workspace (`archiveConfirm`), from what
 Paseo's workspace list already streams (`ArchiveFacts`: kind, `isPaseoOwnedWorktree`, `isDirty`, `diffStat`,
-`aheadOfOrigin`, a running status), never a new git read. A refusal shows the error toast with Paseo's reason and the
+`aheadOfOrigin`, a running status), never a new git read. Paseo's list streams `isDirty` only once something read the
+worktree's status, so while it's unknown (and no diff) the line says uncommitted changes, if any, are lost; it says
+the folder is clean only when Paseo says so. An Undo from Paseo's own app cancels the archive: the row stays and the
+toast says so. A refusal shows the error toast with Paseo's reason and the
 row stays. Agents archive with Paseo's own `archive_workspace` tool (the `ROW_ACTIONS` exemption). Follow-up never
-archives by itself (invariant 6, `tests/archive-on-click.test.ts`).
+archives by itself (invariants 6 and 86, `tests/archive-on-click.test.ts`).
 
 The same menu opens from the workspace panel header's More button (`client/panel-menu.tsx`, the workspace's own
 `ws:<id>` row) and from the rows of Follow-up's sidebar view (`client/sidebar-view.tsx`), so there is one menu

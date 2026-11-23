@@ -93,7 +93,11 @@ export function archiveConfirm(title: string, f: ArchiveFacts): string {
     const changed = !!f.diff && (f.diff.additions > 0 || f.diff.deletions > 0);
     dirty = f.dirty === true || (f.dirty == null && changed);
     const stat = changed ? [f.diff!.additions > 0 && lines(f.diff!.additions, "added"), f.diff!.deletions > 0 && lines(f.diff!.deletions, "deleted")].filter(Boolean).join(", ") : "";
-    out.push(dirty ? `Paseo deletes its worktree. Uncommitted changes${stat ? ` (${stat})` : ""} are lost.` : "Paseo deletes its worktree folder. The branch and its commits stay.");
+    // Paseo's list streams isDirty only once the row has read its git status; until then (null, no diff) nothing says
+    // the worktree is clean, so the line names the loss as possible rather than promising it's safe.
+    out.push(dirty ? `Paseo deletes its worktree. Uncommitted changes${stat ? ` (${stat})` : ""} are lost.`
+      : f.dirty === false ? "Paseo deletes its worktree folder. The branch and its commits stay."
+      : "Paseo deletes its worktree folder, with any uncommitted changes in it. The branch and its commits stay.");
     if ((f.ahead ?? 0) > 0) out.push(`${f.ahead} unpushed commit${f.ahead === 1 ? "" : "s"} stay only on the local branch.`);
   }
   out.push(dirty ? "Paseo can restore the workspace later, without those changes." : "Paseo can restore it later.");

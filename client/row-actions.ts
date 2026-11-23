@@ -32,7 +32,7 @@ export function useRowMenu(host: RowMenuHost) {
   useEffect(() => { bindToast(toast); }, [toast]);
   const cache = useQueryClient();
   // Archive is Paseo's own request (archive_workspace_request, what Paseo's Archive sends), on the host's API when it has it.
-  const paseoApi = usePaseo() as { workspaces?: { archive?: (id: string) => Promise<{ error: string | null }> } } | null;
+  const paseoApi = usePaseo() as { workspaces?: { archive?: (id: string) => Promise<{ error: string | null; canceled?: boolean }> } } | null;
   const send = useRpc(sendRpc); const control = useRpc(controlRpc); const about = useRpc(workspaceAboutRpc); const setFollow = useRpc(setFollowSettingsRpc);
   // Read through a ref so build and pick stay one stable pair: the list's memoised rows compare them by identity.
   const archiveWorkspace = typeof paseoApi?.workspaces?.archive === "function" ? (id: string) => paseoApi.workspaces!.archive!(id) : null;
@@ -97,9 +97,12 @@ export function useRowMenu(host: RowMenuHost) {
         case "archive": return runAction({ label: "Archive", failure: `Couldn't archive ${s.title}`, run: async () => {
           if (!archiveWorkspace) throw new Error("This Paseo can't archive from a plugin.");
           const r = await archiveWorkspace(workspaceId);
+          // An Undo from Paseo's own app cancels the archive mid-way: the workspace stays, which is no failure.
+          if (r.canceled) { after(); return "undone" as const; }
           if (r.error) throw new Error(r.error);
           after();
-        }, success: `Archived ${s.title}` }, `archive:${workspaceId}`);
+          return "archived" as const;
+        }, success: r => r === "undone" ? `${s.title} stays: its archive was undone` : `Archived ${s.title}` }, `archive:${workspaceId}`);
       }
     };
     return { build, pick: (s: Workstream, item: RowMenuItem) => { void pick(s, item); } };

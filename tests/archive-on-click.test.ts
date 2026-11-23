@@ -15,6 +15,7 @@ const ROOT = join(import.meta.dirname, "..");
 const ARCHIVE_CALL = /\b(?:workspaces|workspace)\.archive\(|\barchiveWorkspace\(|"archive_workspace_request"/;
 const ALLOWED: Record<string, string> = {
   "client/row-actions.ts": "The row menu's Archive pick, which RowMenu runs only from its confirm step.",
+  "server/dispatch.ts": "Archives only a workspace New created: rolled back when its agent can't start (a-failed-dispatch-leaves-nothing-behind), or the developer's Undo within 10 minutes.",
   "server/report-send.ts": "Rolls back the workspace Report an issue created in the same call when its agent can't start.",
 };
 

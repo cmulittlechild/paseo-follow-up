@@ -280,10 +280,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
 6. **Nothing irreversible on its own.**
-   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself. It archives a
-     workspace only from the row menu's Archive workspace…, after its confirm step names what Paseo's archive does
-     (`follow-up-archives-only-on-the-developer-s-click`, `tests/archive-on-click.test.ts`: every archive call in the
-     plugin is allowed by name). No automation archives merged or done work. The developer's
+   - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself (invariant 86). The developer's
      Merge is one click that names its whole scope first and merges exactly that at the heads it showed
      (`a-click-on-merge-merges`, `shared/merge-click.ts`); agent tools still dry-run, then run with `confirm: true`.
    - Completion checks never auto-send.
@@ -1056,6 +1053,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    No scans, no pairwise passes, no model; renames keep the id and are never checked; Follow-up's own writes (no caller)
    aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
    duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
+86. **Follow-up archives only on the developer's click** (`follow-up-archives-only-on-the-developer-s-click`). The row
+   menu's Archive workspace… (any row with a workspace; first in triage on a row ready to archive, else last in tidy)
+   sends Paseo's own archive request (`workspaces.archive`, the one Paseo's sidebar and agents' `archive_workspace`
+   send) and only from its confirm step, whose lines say what Paseo's archive does: agents stop, terminals close, a
+   worktree Paseo owns is deleted, uncommitted changes in it are lost (named as possible while its git status is
+   unread), unpushed commits stay only on the branch, and Paseo can restore it (`archiveConfirm`). No timer, rule or
+   tool archives merged or done work. The only other archive calls undo a workspace Follow-up itself just created
+   (Report an issue's and New's rollback, New's Undo). Guarded by `tests/archive-on-click.test.ts` (every archive call
+   in the plugin is allowed by name) and `tests/row-menu.test.ts`.
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
