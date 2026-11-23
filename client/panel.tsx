@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsCategory } from "../shared/settings-nav";
 import { recoveryActions } from "./recovery-actions";
-import { View } from "react-native";
+import { Platform, View, type ScrollView as NativeScrollView } from "react-native";
 import { Text } from "./text";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { useAgent, useRpc, useTabState, openExternalUrl, type PluginHostProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
@@ -354,6 +354,10 @@ export function WorkspaceView({ theme, layout, workspace: w, navigation, loadErr
   const now = useNow(30_000);
   const compact = layout.compact;
   const [width, setWidth] = useState(0);
+  // The tasks footer's "in Activity" link scrolls here (showActivity).
+  const scrollRef = useRef<NativeScrollView>(null);
+  const logRef = useRef<View>(null);
+  const logY = useRef(0);
   const wide = !compact && width >= WIDE_MIN;
   const [sheet, setSheet] = useState<{ key: string; intent: "merge" | "reviewers" | null } | null>(null);
   const [question, setQuestion] = useState<string | null>(null);
@@ -383,15 +387,22 @@ export function WorkspaceView({ theme, layout, workspace: w, navigation, loadErr
   </View>;
   const showWork = !done || isOpen("history");
   const stacks = showWork && <StacksCard workspace={w} theme={theme} compact={compact} open={isOpen} toggle={toggle} onOpen={openPr} wide={wide} />;
-  const tasks = showWork && <TasksCard workspace={w} theme={theme} compact={compact} open={isOpen} toggle={toggle} onOpenQuestion={setQuestion} openAgent={openAgent} now={now} />;
+  // The tasks footer's "in Activity" goes there: on the web the least scroll that shows it (it can sit in the other
+  // column), on a phone its offset in the one column.
+  const showActivity = () => {
+    const node = logRef.current as unknown as { scrollIntoView?(o: object): void } | null;
+    if (Platform.OS === "web" && node?.scrollIntoView) node.scrollIntoView({ block: "start", behavior: "smooth" });
+    else scrollRef.current?.scrollTo({ y: logY.current, animated: true });
+  };
+  const tasks = showWork && <TasksCard workspace={w} theme={theme} compact={compact} open={isOpen} toggle={toggle} onOpenQuestion={setQuestion} openAgent={openAgent} onShowActivity={showActivity} now={now} />;
   // The send queue (what Follow-up sends the main agent next, and the repairs in it) is Follow-up's, not the agent's to-do list.
   const messages = showWork && <MessagesCard workspace={w} theme={theme} compact={compact} openAgent={openAgent} now={now} />;
-  const log = <ActivityCard workspace={w} theme={theme} compact={compact} now={now} open={isOpen} toggle={toggle} onOpenQuestion={setQuestion} />;
+  const log = <View ref={logRef} onLayout={e => { logY.current = e.nativeEvent.layout.y; }}><ActivityCard workspace={w} theme={theme} compact={compact} now={now} open={isOpen} toggle={toggle} onOpenQuestion={setQuestion} /></View>;
   const extras = <WorkspaceCard workspace={w} theme={theme} compact={compact} open={isOpen} toggle={toggle} openAgent={openAgent} browserReady={browser.data ? browser.data.ready : null} openOverview={openOverview} editSpec={() => setSpecOpen(true)} />;
   return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
     {/* Phones fold the top bar into the header's own row. */}
     {!compact && top}
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20, ...(large ? { maxWidth: 1240, width: "100%", alignSelf: "center", paddingHorizontal: 12 } : null) }}>
+    <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20, ...(large ? { maxWidth: 1240, width: "100%", alignSelf: "center", paddingHorizontal: 12 } : null) }}>
       {header}
       {wide ? <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
         <View style={{ flex: 5, minWidth: 0 }}>{shipped}{needs}{history}{messages}{tasks}</View>

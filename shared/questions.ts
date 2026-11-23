@@ -194,7 +194,7 @@ export type AnswerDraft = {
 };
 export function answerDraft(q: { id: string; options: readonly { letter?: string; label?: string }[] }, s: { choice: string | null; words: string; noteOpen: boolean }): AnswerDraft {
   const words = s.words.trim();
-  if (!q.options.length) return { field: "answer", own: false, answer: words || null, words: undefined, placeholder: "Your answer", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
+  if (!q.options.length) return { field: "answer", own: false, answer: words || null, words: undefined, placeholder: "Write your answer for the agent…", heading: null, label: `Your answer to ${q.id}`, hint: null, canAddNote: false, canRemoveNote: false };
   const own = isOther(s.choice) || (!s.choice && !!words);
   if (own) return { field: "answer", own, answer: words ? OTHER : null, words: words || undefined, placeholder: "Your answer (required)", heading: "Your answer", label: `Your answer to ${q.id}, required`, hint: words ? null : OWN_ANSWER_HINT, canAddNote: false, canRemoveNote: false };
   // A lettered pick: the field is a note, shown once asked for (or once it holds words, e.g. Something else's words

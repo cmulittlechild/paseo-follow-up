@@ -8,10 +8,10 @@ import type { Obligation, Workspace } from "../shared/model";
 import type { TaskTrigger } from "../shared/task-trigger";
 import { taskTriggerRpc } from "../shared/contracts";
 import { linkedQuestion, type TaskStatus } from "../shared/task-status";
-import { finishedLine, summaryParts, taskSummary, taskViewRows, type TaskViewRow } from "../shared/task-view";
+import { finishedParts, summaryParts, taskSummary, taskViewRows, type TaskViewRow } from "../shared/task-view";
 import { Button, Card, text, type Theme, SubmitScope } from "./kit";
 import { Spinner } from "./motion";
-import type { Colors } from "./theme";
+import { staleColor, type Colors } from "./theme";
 import { RichText } from "./rich-text";
 import { runAction } from "./toasts";
 import { DeliveryGlyph } from "./messages";
@@ -85,7 +85,7 @@ function TaskGlyph({ row, w, colors }: { row: TaskViewRow; w: Workspace; colors:
   const muted = colors.foregroundMuted;
   switch (row.kind) {
     // Stale is the one mark with colour, and a size step so it never leans on hue alone; due is muted like the rest.
-    case "stale": return <Dot color={colors.statusWarning} size={8} />;
+    case "stale": return <Dot color={staleColor(colors)} size={8} />;
     case "due": return <Dot color={muted} size={7} />;
     case "working": return row.status.tone === "working" ? <Spinner color={colors.accent} size={13} /> : <Dot color={muted} />;
     case "blocked": return <Icon name="CirclePause" size={14} color={muted} />;
@@ -102,7 +102,7 @@ function MetaLine({ row, theme }: { row: TaskViewRow; theme: Theme }) {
   const c = theme.colors; const t = text(c);
   if (row.kind !== "stale") return <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{row.meta}</Text>;
   const [word, ...rest] = row.meta.split(" · ");
-  return <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}><Text style={{ color: c.statusWarning, fontWeight: "600" }}>{word}</Text>{rest.length ? ` · ${rest.join(" · ")}` : ""}</Text>;
+  return <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}><Text style={{ color: staleColor(c), fontWeight: "600" }}>{word}</Text>{rest.length ? ` · ${rest.join(" · ")}` : ""}</Text>;
 }
 
 /** The agent's own words under a stale or due row, two lines at most; the whole note opens with the row. */
@@ -162,7 +162,7 @@ function ScheduleSheet({ o, w, theme, compact, onClose }: { o: Obligation | null
   </Modal>;
 }
 
-export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQuestion, openAgent, now = Date.now() }: { workspace: Workspace; theme: Theme; compact: boolean; open: (key: string) => boolean; toggle: (key: string) => void; onOpenQuestion?: (id: string) => void; openAgent?: (agentId: string) => void; now?: number }) {
+export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQuestion, openAgent, onShowActivity, now = Date.now() }: { workspace: Workspace; theme: Theme; compact: boolean; open: (key: string) => boolean; toggle: (key: string) => void; onOpenQuestion?: (id: string) => void; openAgent?: (agentId: string) => void; /** The footer's "in Activity": scrolls to the Activity card, where finished tasks are. */ onShowActivity?: () => void; now?: number }) {
   const c = theme.colors; const t = text(c);
   const [schedule, setSchedule] = useState<string | null>(null);
   // Live state of the agents working tasks name: the engine stores it with runtimeBusy (directory metadata, wakes
@@ -173,10 +173,10 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
   // Collapsed by default, in every state: the tasks are the agent's, and the line says whether it keeps up.
   const shown = open("tasks");
   const parts = summaryParts(sum);
-  const footer = finishedLine(sum);
+  const footer = finishedParts(sum);
   const label = `${parts.neutral}${parts.stale ? ` · ${parts.stale}` : ""}`;
   return <Card theme={theme} compact={compact} icon="ListTodo" title="Agent's tasks" fold={{ open: shown, onToggle: () => toggle("tasks"), label }}
-    right={<Text numberOfLines={1} style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"] }}>{parts.neutral}{parts.stale ? <Text style={{ color: c.statusWarning, fontWeight: "600" }}>{` · ${parts.stale}`}</Text> : null}</Text>}>
+    right={<Text numberOfLines={1} style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"] }}>{parts.neutral}{parts.stale ? <Text style={{ color: staleColor(c), fontWeight: "600" }}>{` · ${parts.stale}`}</Text> : null}</Text>}>
     {shown && rows.map(r => {
       const q = linkedQuestion(r.o, w);
       return <TaskRow key={r.o.id} row={r} w={w} theme={theme} compact={compact} open={open(`task:${r.o.id}`)} openAgent={openAgent} onSchedule={() => setSchedule(r.o.id)}
@@ -186,7 +186,8 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
       <Text style={t.meta}>Nothing open. The agent records work that outlives a merge here, like a migration to run or a production check.</Text>
     </View>}
     {shown && footer && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c.border }}>
-      <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{footer}</Text>
+      {/* "in Activity" is a link: finished tasks are listed there (tasks-are-the-agent-s). */}
+      <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{footer.place && onShowActivity ? <>{`${footer.count} · `}<Text accessibilityRole="link" onPress={onShowActivity} style={{ color: c.foreground, textDecorationLine: "underline" }}>{footer.place}</Text></> : footer.text}</Text>
     </View>}
     <ScheduleSheet o={w.obligations.find(o => o.id === schedule) ?? null} w={w} theme={theme} compact={compact} onClose={() => setSchedule(null)} />
   </Card>;
