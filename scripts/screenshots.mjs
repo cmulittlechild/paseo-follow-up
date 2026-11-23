@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "compass"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -216,6 +216,21 @@ console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}),
  * A fake `claude` for the Ask shots only: Ask's plan call gets one read of the fictional tracker, its items call two
  * items from that read. Anything else fails at once, as an unlogged-in CLI does.
  */
+/** Compass's extraction (fictional): the notes a fast model would make from dana's message, quoting it word for word. */
+function fakeCompassClaude() {
+  return `#!/usr/bin/env node
+if (!process.argv.some(a => a.startsWith("You read messages for one developer"))) { process.stderr.write("not logged in"); process.exit(1); }
+let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
+  const item = (/\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
+  const value = { notes: [
+    { item, what: "APP-142 retries before the acme demo", keys: ["APP-142"], kind: "issue", strength: "high", untilWords: "Thursday", until: null, quote: "APP-142 retries are really important, the acme demo is Thursday" },
+    { item, what: "Search filters", keys: [], kind: "feature", strength: "low", untilWords: "next week", until: null, quote: "Search filters can wait until next week" },
+  ], retracts: [], nothing: false };
+  process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0003, usage: { input_tokens: 700, output_tokens: 90 } }));
+});
+`;
+}
+
 function fakeAskClaude() {
   return `#!/usr/bin/env node
 const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
@@ -302,6 +317,8 @@ if (process.argv[2] === "tools" && process.argv[3] === "list") {
     // An Ask source (no recipe fits): a ticket tracker, shown only in the Ask shots (over.ask).
     ...(over.ask ? [t("tracker", "search_tickets", ["query", "limit"], "Search tickets."), t("tracker", "get_ticket", ["id"], "One ticket.")] : []),
     ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
+    // Compass (--only compass): the chat's history read, by conversation id and oldest time.
+    ...(over.compass ? [t("team-chat", "read_channel", ["channel_id", "oldest", "limit", "cursor", "response_format"], "Reads a conversation's messages, newest first.")] : []),
   ]));
   process.exit(0);
 }
@@ -334,6 +351,15 @@ if (/search_public_and_private$/.test(tool)) {
   let chat = {}; try { chat = JSON.parse(require("fs").readFileSync(require("path").join(require("path").dirname(${JSON.stringify(file)}), "chat-fixture.json"), "utf8")); } catch {}
   if (chat.error) { console.error("Command failed: chat search timed out"); process.exit(1); }
   reply(JSON.stringify({ results: chat.messages || "No results found.", pagination_info: "" }));
+}
+// Compass's history read (fictional): what dana (product) said in her DM with alice, the developer.
+if (tool === "read_channel") {
+  const ago = h => new Date(Date.now() - h * 3600_000);
+  const m = (name, id, h, text) => "=== Message from " + name + " (" + id + ") at " + ago(h).toISOString().replace("T", " ").slice(0, 19) + " UTC === \\nMessage TS: " + (ago(h).getTime() / 1000).toFixed(6) + "\\n" + text;
+  reply(JSON.stringify({ messages: "Channel: DM (DDANA00001)\\n\\n" + [
+    m("alice", "UALICE0001", 1, "on it"),
+    m("dana", "UDANA00001", 2, "APP-142 retries are really important, the acme demo is Thursday. Search filters can wait until next week."),
+  ].join("\\n\\n"), pagination_info: "" }));
 }
 // The Ask shots' tracker (fictional): two tickets waiting on the developer.
 if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
@@ -1893,6 +1919,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
+  if (only.includes("compass")) await compassShots({ shoot, call, home, seeded });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
@@ -3556,6 +3583,55 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
  * last run in the future so no scheduled ranking calls a model.
  */
+/**
+ * Compass (docs/compass.md), desktop and phone, light and dark: the card with one source read (dana's DM, fictional),
+ * its editor open, a new source's presets, the one line when the Summaries provider has no guard, and Home's AI-priority
+ * reason line naming Compass. The fake mcpproxy's chat has a history read; the fake claude makes two notes quoting her.
+ */
+async function compassShots({ shoot, call, home, seeded }) {
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true }));
+  await call("follow.brief-sources", { check: true });
+  const states = async (name, drive, { phoneOnly = false } = {}) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      if (phoneOnly && device !== "phone") continue;
+      await shoot(`compass-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        const head = page.getByText("Compass", { exact: true }).first();
+        await head.waitFor();
+        await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+        await drive?.(page);
+        // The settings tab strip is wider than the column, so opening a tab can leave the page scrolled sideways.
+        await head.evaluate(e => { for (let n = e.parentElement; n; n = n.parentElement) n.scrollLeft = 0; });
+        await page.waitForTimeout(300);
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  await states("empty", page => page.getByText("Nobody sets your priorities here yet").first().waitFor());
+  await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "dana" }],
+    roles: ["priorities", "plan"], instructions: "P0 means today, P1 this week. A demo date is a deadline. Ignore hiring talk." } });
+  await call("follow.set-compass", { instructions: "'The retry work' is APP-142. Customer asks wait for the plan unless they name a date.", glossary: [{ words: "the retry work", means: { issue: "APP-142" } }] });
+  await call("follow.read-compass", {});
+  await states("card", page => page.getByText(/2 notes live/).first().waitFor({ timeout: 30_000 }));
+  await states("notes", async page => { await page.getByRole("button", { name: /Show 2 notes from Dana/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
+  await states("editor", async page => { await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
+  await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); }, { phoneOnly: true });
+  await call("follow.set-agent-setting", { role: "about", entry: { provider: "gemini", model: null } });
+  await states("blocked", page => page.getByText(/Compass doesn't read on Gemini/).first().waitFor());
+  await call("follow.set-agent-setting", { role: "about", entry: null });
+  // Home's AI-priority reason line naming Compass (the ranker is off in the shots; the priorities write is its store's).
+  const billing = seeded.workspaces.find(w => w.key === "billing");
+  await actPlanned(call, billing.agentId, "set_display", { values: { home_sort: "priority" } });
+  await actPlanned(call, billing.agentId, "set_priorities", { priorities: [{ workspace: billing.workspaceId, score: 96, reason: "Dana: acme demo Thu, APP-142 first", sources: [{ kind: "compass", label: "Dana · product" }] }], replace: false });
+  for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await shoot(`compass-reason-${device}-${theme}`, viewport, theme, async page => { await page.setViewportSize(viewport); await openHome(page); await page.getByText("Dana: acme demo Thu, APP-142 first").first().waitFor({ timeout: 20_000 }); });
+  }
+}
+
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
@@ -4208,6 +4284,7 @@ try {
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("compass")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

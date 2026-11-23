@@ -11,6 +11,7 @@ import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
 import { sourcesChangeSchema } from "../shared/brief-sources";
+import { compassChangeSchema } from "../shared/compass";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -175,6 +176,12 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "brief_sources", rpc: "follow.brief-sources", kind: "read", input: z.strictObject({ check: z.boolean().optional() }) },
   { name: "set_brief_sources", rpc: "follow.set-brief-sources", kind: "planned", before: { rpc: "follow.brief-sources", input: () => ({}) }, input: sourcesChangeSchema.extend(confirm) },
   { name: "brief_chat_search", rpc: "follow.brief-chat-search", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
+  // Compass (docs/compass.md): the sources that set the developer's priorities. compass_find is the only way an agent
+  // learns a place id; set_compass and read_compass are planned (the dry run shows Compass as it is now).
+  { name: "compass", rpc: "follow.compass", kind: "read", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }) },
+  { name: "compass_find", rpc: "follow.compass-find", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
+  { name: "set_compass", rpc: "follow.set-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: compassChangeSchema.extend(confirm) },
+  { name: "read_compass", rpc: "follow.read-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
   { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
 
@@ -224,6 +231,10 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.brief-chat-search": { tools: ["brief_chat_search"] },
   "follow.brief-sources": { tools: ["brief_sources"] },
   "follow.set-brief-sources": { tools: ["set_brief_sources"] },
+  "follow.compass": { tools: ["compass"] },
+  "follow.compass-find": { tools: ["compass_find"] },
+  "follow.set-compass": { tools: ["set_compass"] },
+  "follow.read-compass": { tools: ["read_compass"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },
