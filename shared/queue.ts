@@ -23,6 +23,28 @@ export type QueueKind = typeof QUEUE_KINDS[number];
 export const QUEUE_STATES = ["queued", "sending", "uncertain", "failed", "sent", "cancelled"] as const;
 export type QueueState = typeof QUEUE_STATES[number];
 
+/**
+ * Paseo 0.17.2+ (#10483): `sendMessage` returns an AgentMessageReceipt. `deliveryStatus: "queued"` means Paseo took the
+ * message but holds it until the agent's running turn ends; `activeTurnBehavior` is what Paseo did with a running
+ * turn (Follow-up asks to steer; a provider that can't fell back, e.g. to interrupt); `guidance` is Paseo's note.
+ * Older hosts return nothing, and nothing changes there.
+ */
+export const deliveryReceiptSchema = z.object({
+  deliveryStatus: z.string().max(40).optional(),
+  activeTurnBehavior: z.string().max(40).optional(),
+  guidance: z.string().max(400).optional(),
+});
+export type DeliveryReceipt = z.infer<typeof deliveryReceiptSchema>;
+/** The receipt a send returned, kept only when it says something (a 0.17.1 send returns undefined or {}). */
+export function deliveryReceipt(value: unknown): DeliveryReceipt | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const str = (x: unknown, n: number) => typeof x === "string" && x ? x.slice(0, n) : undefined;
+  const r: DeliveryReceipt = { deliveryStatus: str(v.deliveryStatus, 40), activeTurnBehavior: str(v.activeTurnBehavior, 40), guidance: str(v.guidance, 400) };
+  for (const k of Object.keys(r) as (keyof DeliveryReceipt)[]) if (r[k] === undefined) delete r[k];
+  return Object.keys(r).length ? r : null;
+}
+
 export const queueItemSchema = z.object({
   /** Stable per message: the same answer is always the same item (answer:<ws>:<Qn>:<messageId>, brief:<agent>:<answerId>). */
   id: z.string().min(1).max(400),
@@ -56,6 +78,8 @@ export const queueItemSchema = z.object({
   gone: z.string().nullable().default(null),
   /** Who got it, once sent. */
   to: z.string().nullable().default(null),
+  /** Paseo 0.17.2+: what Paseo did with the send (deliveryReceipt). Null on older hosts, or before it was sent. */
+  receipt: deliveryReceiptSchema.nullable().default(null),
   createdAt: z.string(),
   settledAt: z.string().nullable().default(null),
 });
@@ -137,7 +161,7 @@ export function deliveryOf(item: Pick<QueueItem, "state" | "nextAt" | "reason">)
   }
 }
 
-export type DeliveryView = { state: DeliveryState; reason?: string | null; nextAt?: string | null };
+export type DeliveryView = { state: DeliveryState; reason?: string | null; nextAt?: string | null; receipt?: DeliveryReceipt | null };
 export type DeliveryStatus = {
   /** A card corner's short word. */
   label: string;
@@ -154,6 +178,12 @@ const hhmm = (iso: string) => { const d = new Date(iso); return Number.isFinite(
 
 /** The one reason a queued message ends Failed: its target can't take messages (a-queued-message-never-stops-short). */
 export const GONE_REASON = "The agent's conversation is gone, so it can't take messages.";
+/** What a Paseo 0.17.2+ receipt adds to "Sent", one sentence, on every surface (null: nothing to add). */
+export function receiptNote(receipt: DeliveryReceipt | null | undefined): string | null {
+  if (receipt?.deliveryStatus === "queued") return "Paseo holds it until the agent's current turn ends.";
+  if (receipt?.activeTurnBehavior === "interrupt") return "The agent's turn was stopped so it could read it.";
+  return null;
+}
 export const RETRYING_DETAIL = "Not confirmed yet. Follow-up reads the agent's chat before sending again, so it never arrives twice.";
 export const FAILED_DETAIL = "Follow-up couldn't confirm the agent got it. Check the agent's chat, then Retry.";
 
@@ -165,7 +195,10 @@ export function deliveryStatus(d: DeliveryView, clock: (iso: string) => string =
     case "retrying": return { label: at ? `Next try at ${at}` : "Retrying", detail: at ? `Next try at ${at}. ${RETRYING_DETAIL}` : RETRYING_DETAIL, tone: "muted", action: "try-now", pending: true };
     case "failed": return { label: "Failed", detail: d.reason ? `${d.reason} Check the agent's chat, then Retry.` : FAILED_DETAIL, tone: "warning", action: "retry", pending: false };
     case "cancelled": return { label: "Not sent", detail: d.reason ?? "Follow-up didn't send it.", tone: "muted", action: null, pending: false };
-    case "sent": return { label: "Sent", detail: "Sent to the agent.", tone: "success", action: null, pending: false };
+    // Paseo 0.17.2+ says what it did: held until the agent's turn ends, or a turn stopped to take it.
+    case "sent":
+      if (d.receipt?.deliveryStatus === "queued") return { label: "Queued", detail: `Sent. ${receiptNote(d.receipt)}`, tone: "muted", action: null, pending: false };
+      return { label: "Sent", detail: ["Sent to the agent.", receiptNote(d.receipt)].filter(Boolean).join(" "), tone: "success", action: null, pending: false };
   }
 }
 
@@ -190,9 +223,11 @@ export const queueViewSchema = z.object({
   id: z.string(), kind: z.enum(QUEUE_KINDS), workspaceId: z.string().nullable(), agentId: z.string().nullable(),
   state: z.enum(DELIVERY_STATES), reason: z.string().nullable(), nextAt: z.string().nullable(), to: z.string().nullable(),
   createdAt: z.string(), settledAt: z.string().nullable(), preview: z.string(),
+  /** Paseo 0.17.2+: what Paseo did with the send (null on older hosts). */
+  receipt: deliveryReceiptSchema.nullable().default(null),
 });
 export type QueueView = z.infer<typeof queueViewSchema>;
 export function queueView(item: QueueItem): QueueView {
   return { id: item.id, kind: item.kind, workspaceId: item.ref.workspaceId ?? (item.key.startsWith("agent:") ? null : item.key), agentId: item.to ?? item.envelope?.to ?? item.ref.agentId ?? null,
-    state: deliveryOf(item), reason: item.reason, nextAt: item.nextAt, to: item.to, createdAt: item.createdAt, settledAt: item.settledAt, preview: item.text.split("\n")[0]!.slice(0, 160) };
+    state: deliveryOf(item), reason: item.reason, nextAt: item.nextAt, to: item.to, createdAt: item.createdAt, settledAt: item.settledAt, preview: item.text.split("\n")[0]!.slice(0, 160), receipt: item.receipt ?? null };
 }

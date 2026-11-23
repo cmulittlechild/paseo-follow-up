@@ -446,6 +446,16 @@ Kinds: Q answers (`Engine.answer`, `answer`), brief answers (`Inbox.briefAction`
 checks (`Engine.sendPending` and auto-send, `repair`), recovery (`recovery`, its agent made when it goes out), and
 Overseer forwards and reports handed to an agent (`message`).
 
+**Delivery receipts (Paseo 0.17.2+).** `sendMessage` there answers with a receipt (`deliveryStatus: "queued"` when
+Paseo holds the message until the agent's running turn ends, `activeTurnBehavior` for what it did with the turn: Follow-up
+asks to steer, a provider that can't falls back, `guidance`). `PaseoGateway.deliverTo` returns it with the recipient,
+and the queue keeps it on the item (`receipt`, shown by `queue_list`), the batch and the answer's delivery
+(`deliveryReceipt`, kept only when it says something). Every card words it one way: "Queued" with "Paseo holds it until
+the agent's current turn ends." for a held message, "Sent" plus "The agent's turn was stopped so it could read it." for
+a steer that fell back to interrupt (`deliveryStatus`, `receiptNote` in `shared/queue.ts`). Paseo 0.17.1 and older
+answer nothing, and nothing changes. A harness on an older host can render the wording with
+`FOLLOW_UP_HARNESS_RECEIPT` (`check-message-queue.mjs --receipt`), honoured only under the temp dir.
+
 - **One message per agent.** Everything due for one agent goes as one envelope, answers first, each part with its own
   header and contract, separated by a line holding only `---` (`ENVELOPE_SEPARATOR`, `envelopeParts` in
   `shared/queue.ts`). A lone part keeps its own messageId; several share one derived from their ids. The chat splits an
