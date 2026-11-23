@@ -1648,7 +1648,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await page.getByRole("button", { name: /^Pull request 142: / }).first().waitFor();
       await checkNeedDot(page);
     });
-    // Repairs are tasks (Q49): Onboarding email's PR #160 has a conflict and review threads. With Auto on, the strip
+    // Repairs (Q49, Q141): Onboarding email's PR #160 has a conflict and review threads. With Auto on, the strip
     // says who gets the next message, when and why; the crawling clock keeps it inside the settle, so nothing sends.
     if (name === "tasks" || name === "tasks-sheet" || name === "tasks-phone") {
       const email = seeded.workspaces.find(w => w.key === "email");
@@ -1664,7 +1664,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       if (name === "tasks") await shoot("tasks", DESKTOP, "dark", open);
       if (name === "tasks-sheet") await shoot("tasks-sheet", DESKTOP, "dark", async page => {
         await open(page);
-        await page.getByRole("button", { name: /^Task: Resolve merge conflicts/ }).first().click();
+        await page.getByRole("button", { name: /^Repair: Resolve merge conflicts/ }).first().click();
         await page.getByText("Next message", { exact: true }).last().waitFor();
       });
       // Phones see a workspace's Tasks in the larger view (a Paseo screen; Home's phone focus view has no Tasks):
@@ -3463,7 +3463,7 @@ async function sendingShots({ shoot, seeded, call, home }) {
     if (phone) { await page.setViewportSize(PHONE); await page.getByRole("button", { name: /^Sending, \d+\. Show only these/ }).first().click(); }
     for (const w of wait) await page.getByText(w).filter({ visible: true }).first().waitFor({ timeout: 90000 });
   };
-  await shoot("sending-home-light", DESKTOP, "light", shown([busyLine, "2 tasks ready · auto-send is off here"]));
+  await shoot("sending-home-light", DESKTOP, "light", shown([busyLine, "2 repairs ready · auto-send is off here"]));
   await shoot("sending-home-phone-light", PHONE, "light", shown([busyLine], true));
   // The phone strip on its own row, scrolled to its end: every chip reachable, nothing over it (the version moved to
   // the end of the list).
@@ -3491,11 +3491,11 @@ async function sendingShots({ shoot, seeded, call, home }) {
     // Home and a phone show the permission itself (Needs you) for this row; the panel's Tasks strip says the repair waits on it.
     ["permission", SENDING_STATES[1], /main agent's permission prompt is answered/, /Run the refund backfill on staging/],
     ["auto-off", WORKSPACES.find(w => w.key === "email"), /auto-send is off here/],
-    ["sent", WORKSPACES.find(w => w.key === "views"), /is working on \d+ tasks?/],
+    ["sent", WORKSPACES.find(w => w.key === "views"), /is working on \d+ repairs?/],
   ];
   const see = async (page, words) => { const el = page.getByText(words).filter({ visible: true }).first(); await el.waitFor({ timeout: 90000 }); await el.scrollIntoViewIfNeeded(); };
   // Every surface that shows the main agent's wait offers Send now (a-repair-goes-to-a-free-main-agent).
-  const sendNowShown = page => page.getByRole("button", { name: /^Send 2 tasks to Checkout copy now$/ }).filter({ visible: true }).first().waitFor({ timeout: 30000 });
+  const sendNowShown = page => page.getByRole("button", { name: /^Send 2 repairs to Checkout copy now$/ }).filter({ visible: true }).first().waitFor({ timeout: 30000 });
   const TALL_PANEL = { width: 1440, height: 1100 };
   for (const theme of ["light", "dark"]) for (const [state, spec, words, onHome = words] of mainWaits) {
     await shoot(`mw-${state}-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await (await homeRow(page, spec.title)).click(); await see(page, onHome); if (state === "busy") await sendNowShown(page); });

@@ -1,3 +1,4 @@
+import { sendButton } from "./send-words";
 import type { NeedItem } from "./attention";
 import { FINISH_ASK, FINISH_WORD } from "./status";
 import { briefAsks, briefCardShown, reviewersBriefPr, type BriefKind } from "./brief";
@@ -10,7 +11,7 @@ import { age, displayReason, reasonRank, type InboxRow, type Reason, type Reason
  * The agent's own flag (the Needs-you inbox entry and its open brief) always decides the headline. Workspace
  * items (PRs to merge, repairs to send, questions) only headline when the agent isn't flagged; otherwise they
  * sit inside the popover. A failed CI check is never the headline on its own: Paseo's own checks chip already
- * shows it, so it only surfaces as "Send N tasks" when Follow-up has tasks ready to send.
+ * shows it, so it only surfaces as "Send N repairs" when Follow-up has repairs ready to send.
  */
 export const HEADLINE_KEYS = ["permission", "error", "paused", "blocked", "decision", "question", "action", "repairs", "finish", "merge", "reviewers", "review", "finished", "flagged", "pr_closed", "pr_merged"] as const;
 export type HeadlineKey = typeof HEADLINE_KEYS[number];
@@ -90,7 +91,7 @@ export function flagHeadline(row: Pick<InboxRow, "needs" | "snooze" | "brief">, 
   }
   // A failed check or review thread headlines as the developer's action: tasks ready to send.
   const send = items.find((i): i is Extract<NeedItem, { kind: "send" }> => i.kind === "send" && !i.finish);
-  if ((key === "flagged" || key === "review") && send) return { key: "repairs", label: `Send ${plural(send.tasks.length, "task")}`, line: send.title, source: "flag" };
+  if ((key === "flagged" || key === "review") && send) return { key: "repairs", label: sendButton(send.what), line: send.title, source: "flag" };
   // "Add reviewers #1499": the PR number is the detail, so the pill names which PR. The line is only what's new:
   // whom Follow-up suggests, else the PR's title (a-headline-says-only-what-is-new).
   if (key === "reviewers") {
@@ -109,7 +110,7 @@ export function flagHeadline(row: Pick<InboxRow, "needs" | "snooze" | "brief">, 
   // a-brief-without-an-ask-never-sits-beside-needs-you: a brief that asks nothing ("No ask stated", "Nothing needed")
   // speaks only where its card would draw (briefCardShown) and only for the finish it came with. Beside drawn Needs-you
   // items the top item is the line; for another flag (a merged PR) the flag's own fact is (2026-11-13: Billing's row
-  // read "Merged · No ask stated" over "1 task ready" and "#143 is approved").
+  // read "Merged · No ask stated" over "1 repair ready" and "#143 is approved").
   const speaks = !!brief && briefCardShown(brief, row, items.length) && (briefAsks(brief, row) || key === "finished");
   const line = speaks ? (brief!.source === "none" ? "No ask stated" : brief!.ask)
     : brief && items.length ? items[0].title
@@ -176,14 +177,14 @@ export function workspaceHeadline(items: NeedItem[]): Headline | null {
   }
   switch (top.kind) {
     case "hold": return { key: "blocked", label: "On hold", line: top.detail || top.title, source: "workspace" };
-    case "retry": return { key: "blocked", label: "Tasks stuck", line: top.title, source: "workspace" };
-    case "capped": return { key: "blocked", label: "Task unchanged", line: top.title, source: "workspace" };
+    case "retry": return { key: "blocked", label: "Repairs stuck", line: top.title, source: "workspace" };
+    case "capped": return { key: "blocked", label: "Repair unchanged", line: top.title, source: "workspace" };
     case "person": return { key: "blocked", label: top.review ? "Waits on reviewer" : "Waits on a person", line: top.title, source: "workspace" };
     case "check": return { key: "blocked", label: "Check PR", line: top.title, source: "workspace" };
     case "message": return { key: "blocked", label: "Message not sent", line: top.title, source: "workspace" };
     case "answer": return top.waiting ? { key: "decision", label: "Send answer", line: top.title, source: "workspace" } : { key: "blocked", label: "Check answer", line: top.title, source: "workspace" };
     case "decision": return { key: "decision", label: "Decision", line: top.title, source: "workspace" };
-    case "send": return top.finish ? { key: "finish", label: FINISH_WORD, line: FINISH_ASK[0].toUpperCase() + FINISH_ASK.slice(1), source: "workspace" } : { key: "repairs", label: `Send ${plural(top.tasks.length, "task")}`, line: top.title, source: "workspace" };
+    case "send": return top.finish ? { key: "finish", label: FINISH_WORD, line: FINISH_ASK[0].toUpperCase() + FINISH_ASK.slice(1), source: "workspace" } : { key: "repairs", label: sendButton(top.what), line: top.title, source: "workspace" };
     // a-headline-says-only-what-is-new: the label names the PR, so the line is the PR's title or whom to ask.
     case "merge": return { key: "merge", label: `Merge #${top.number}`, line: top.detail || top.title, source: "workspace" };
     case "reviewers": return { key: "reviewers", label: `Add reviewers #${top.number}`, line: reviewersLine(top), source: "workspace" };

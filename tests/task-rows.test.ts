@@ -63,7 +63,7 @@ test("the panel header says who and what while a message is queued; the strip al
   for (const patch of [{}, { runtimeBusy: true }, { sendWait: "unloaded" as const }]) {
     const w = message("pending", patch);
     const head = headerLine(w, clock);
-    assert.equal(head.text, "5 tasks queued for Billing fix", JSON.stringify(patch));
+    assert.equal(head.text, "4 repairs and 1 task queued for Billing fix", JSON.stringify(patch));
     assert.equal(head.since, null, "never the time");
     assert.ok(!head.text.includes(sendDecision(w, clock).reason), "the reason lives in the strip");
     assert.ok(liveLine(w, clock).text.endsWith(sendDecision(w, clock).reason), "Home (no strip) keeps the full line");
@@ -76,11 +76,11 @@ test("the Needs-you Send says why it waits on you once, never the agent's or wor
   const send = needsYou(w, clock).find(i => i.kind === "send");
   assert.equal(send?.title, "The agent is idle; Follow-up doesn't wake it");
   assert.ok(!send!.title.includes("Billing fix"), "say it once: the row's title is the workspace's (usually the agent's) name");
-  assert.ok(!REPAIRS.some(r => send!.title.includes(r.title)), "the tasks are rows in Tasks, not repeated here");
-  assert.equal(liveLine(w, clock).text, "5 tasks queued · the agent is idle; Follow-up doesn't wake it", "Home says it in the same words");
-  assert.deepEqual([workspaceHeadline(needsYou(w, clock))?.label, workspaceHeadline(needsYou(w, clock))?.line], ["Send 5 tasks", send?.title], "the pill and inbox: tasks, the same line");
+  assert.ok(!REPAIRS.some(r => send!.title.includes(r.title)), "the repairs are rows in the Messages card, not repeated here");
+  assert.equal(liveLine(w, clock).text, "4 repairs and 1 task queued · the agent is idle; Follow-up doesn't wake it", "Home says it in the same words");
+  assert.deepEqual([workspaceHeadline(needsYou(w, clock))?.label, workspaceHeadline(needsYou(w, clock))?.line], ["Send message", send?.title], "the pill and inbox: repairs, the same line");
   const off = needsYou(message("pending", { enable_auto_sends: false }), clock).find(i => i.kind === "send");
-  assert.equal(off?.title, "5 tasks ready · auto-send is off here", "how much waits and why, never the title");
+  assert.equal(off?.title, "4 repairs and 1 task ready · auto-send is off here", "how much waits and why, never the title");
 });
 
 test("done rows say how they finished; a resolved-before-sent repair never shows", () => {

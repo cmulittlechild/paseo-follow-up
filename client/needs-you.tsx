@@ -1,3 +1,4 @@
+import { sendButton } from "../shared/send-words";
 import { FINISH_ASK } from "../shared/status";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
@@ -137,7 +138,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send your ${item.questionId} answer again`} loading={resendAnswer.isPending} disabled={busy} onPress={() => resendAnswer.mutate(item.questionId)} />
           {actions.openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" accessibilityLabel={`Open the agent's chat to check for your ${item.questionId} answer`} onPress={() => { const q = w.questions.find(x => x.id === item.questionId); actions.openAgent!(q?.askedBy ?? w.mainAgentId); }} />}
         </>;
-      case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : `Send ${item.tasks.length} task${item.tasks.length === 1 ? "" : "s"}`} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.tasks.length} task${item.tasks.length === 1 ? "" : "s"} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
+      case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : sendButton(item.what)} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.what} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
       // One click merges what the button names (a-click-on-merge-merges); the sheet's confirm only when the scope can't be known.
       case "merge": return mergeControl(item.prKey, { theme, compact, fallback: actions.openPr ? () => actions.openPr!(item.prKey, "merge") : undefined }).button;
       case "reviewers": return actions.openPr && <Button theme={theme} compact={compact} icon="UserPlus" title="Add reviewers" onPress={() => actions.openPr!(item.prKey, "reviewers")} />;
