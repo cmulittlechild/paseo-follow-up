@@ -1,3 +1,4 @@
+import { imageSupport, imagesLeftOff } from "./image-support";
 import { taskAgentStates } from "../shared/task-status";
 import { settleWithin, type Deadline } from "./teardown";
 import { isRecovery, RECOVERY_LABEL, RECOVERY_BATCH_LABEL, RECOVERY_TITLE, MCP_SERVER, MCP_SERVERS } from "../shared/legacy";
@@ -597,7 +598,7 @@ export class PaseoGateway implements Gateway {
    * active turn). Session Guard pauses and pending permission prompts defer it; an unavailable agent falls back to the
    * next. DeliveryDeferred means nothing was sent (safe to retry); any other error came after the message went out.
    */
-  async deliverTo(target: { workspaceId: string | null; recipients: string[] }, text: string, messageId: string, by?: string): Promise<Delivered> {
+  async deliverTo(target: { workspaceId: string | null; recipients: string[] }, text: string, messageId: string, by?: string, images?: { data: string; mimeType: string }[]): Promise<Delivered> {
     let attempted = false;
     return this.connect(async client => {
       for (const id of target.recipients) {
@@ -614,7 +615,10 @@ export class PaseoGateway implements Gateway {
         // Paseo 0.17.2+ answers with a receipt (queued behind the turn, or the behavior a provider fell back to); kept on
         // the queue item and its record. 0.17.1 and older answer nothing, and nothing changes.
         let receipt: unknown;
-        try { receipt = await client.sendMessage(id, text, { messageId, activeTurnBehavior: "steer" }); }
+        // A recipient that can't take images gets the words and a line saying so, never a send that fails on every try.
+        const support = images?.length ? imageSupport(a as { provider?: string | null }) : null;
+        const words = support && !support.ok ? text + imagesLeftOff(images!.length, support) : text;
+        try { receipt = await client.sendMessage(id, words, { messageId, activeTurnBehavior: "steer", ...(images?.length && support?.ok ? { images } : {}) }); }
         catch (error) { if (conversationGone(error)) throw new ConversationGone(id, error instanceof Error ? error.message : String(error)); throw error; }
         return { to: id, receipt: deliveryReceipt(receipt) };
       }
