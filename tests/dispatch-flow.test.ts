@@ -250,6 +250,7 @@ test("the agent reads the source itself: no issue body in the first message, a t
   assert.doesNotMatch(issue.instructions, /never retried/);
   const typed = await service.preview({ source: "Retry failed charges. Use exponential backoff, at most 5 tries.", projectId: "web" });
   assert.match(typed.instructions, /Use exponential backoff, at most 5 tries\./, "a typed task has no other home: its words stay");
+  assert.doesNotMatch(typed.instructions, /\bRead\b/, "no issue to read");
   assert.ok(!linearCalls.some(c => c.startsWith("get")), "no extra get_issue");
   // A developer's own action can still paste the description, for an agent without a tracker tool.
   await service.setActions({ op: "upsert", action: { id: "paste", name: "Paste it", icon: "search", description: "", instructions: "Fix {key}.\n\n{body}", agent: null, workspace: "worktree", branch: "title", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } });
@@ -260,7 +261,8 @@ test("the agent reads the source itself: no issue body in the first message, a t
 
 test("a saved built-in with the old pasted-body text reads as the current built-in; an edited one keeps its text", async t => {
   const { service, deps } = await setup(t);
-  const old = { ...builtinAction("pr"), instructions: builtinAction("pr").instructions.replace(/\{words\}$/, "{body}") };
+  // Create PR as 2.4.0-beta.4 shipped it, saved by a move or a hide.
+  const old = { ...builtinAction("pr"), instructions: "Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{body}" };
   const edited = { ...builtinAction("plan"), instructions: "My own plan for {key}.\n\n{body}" };
   await deps.store.mutate(f => { f.actions = [old, edited]; });
   const { actions } = await service.actions();

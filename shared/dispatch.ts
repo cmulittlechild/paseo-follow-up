@@ -87,28 +87,34 @@ const builtin = (a: Omit<DispatchAction, "builtin" | "by" | "agent" | "hidden" |
 /** The built-in set, in order. The first visible one is ↵, the second ⌥↵. Nothing here names a team, repo or person. */
 export const BUILTIN_ACTIONS: readonly DispatchAction[] = [
   builtin({ id: "pr", name: "Create PR", icon: "git-pull-request", description: "Build it and open a PR",
-    instructions: "Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{words}",
+    instructions: "Work on {key} “{title}” ({url}).\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nBuild it and open a PR from {branch} against {base} in {repo}; register it with Follow-up.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "plan", name: "Plan as artifact", icon: "file-text", description: "A detailed plan to read before any code",
-    instructions: "Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{words}",
+    instructions: "Plan {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nPublish the plan as an artifact and register it as the spec. Then ask the developer one question: build it as planned, or change something. No code before they answer.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: true, askWhenPlanReady: true } }),
   builtin({ id: "investigate", name: "Investigate", icon: "search", description: "Find the cause; no code changes",
-    instructions: "Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{words}",
+    instructions: "Find the cause of {key} “{title}” ({url}) in {repo}, without changing code.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nReport what you found and end with one question for the developer: which fix.\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "open", name: "Just open", icon: "folder-open", description: "The workspace and an agent with it loaded", hidden: true,
-    instructions: "Read {key} “{title}” ({url}) and wait for the developer.\n\n{words}",
+    instructions: "Open {key} “{title}” ({url}) and wait for the developer.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\n\n{words}",
     workspace: "local", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "checkout", name: "Check out PR", icon: "git-branch", description: "A worktree on the PR's branch", appliesTo: ["pr"],
-    instructions: "You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead the PR, its description and its review threads, then wait for the developer.",
+    instructions: "You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: description, review threads, linked docs.\nThen wait for the developer.",
     workspace: "worktree", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false } }),
 ];
 export const builtinAction = (id: BuiltinId) => BUILTIN_ACTIONS.find(a => a.id === id)!;
 /**
- * Instructions a built-in shipped with before (2.4.0-beta.4 pasted the issue's `{body}`). A saved copy still holding
- * one of these was never edited, so it reads as the current built-in; an edited copy keeps the developer's text.
+ * Instructions a built-in shipped with before (up to 2.4.0-beta.4: coaching plus the pasted issue `{body}`). A saved
+ * copy still holding one of these was never edited, so it reads as the current built-in; an edited copy keeps the
+ * developer's text.
  */
-const SHIPPED_BEFORE: Partial<Record<BuiltinId, readonly string[]>> = Object.fromEntries(
-  BUILTIN_ACTIONS.filter(a => a.instructions.endsWith("\n\n{words}")).map(a => [a.builtin!, [a.instructions.replace(/\{words\}$/, "{body}")]]));
+const SHIPPED_BEFORE: Partial<Record<BuiltinId, readonly string[]>> = {
+  pr: ["Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{body}"],
+  plan: ["Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{body}"],
+  investigate: ["Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{body}"],
+  open: ["Read {key} “{title}” ({url}) and wait for the developer.\n\n{body}"],
+  checkout: ["You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead the PR, its description and its review threads, then wait for the developer."],
+};
 /** A saved built-in with a formerly shipped text, upgraded to the current one. */
 export function currentBuiltin(a: DispatchAction): DispatchAction {
   return a.builtin && SHIPPED_BEFORE[a.builtin as BuiltinId]?.includes(a.instructions) ? { ...a, instructions: builtinAction(a.builtin as BuiltinId).instructions } : a;
@@ -162,7 +168,7 @@ export function utf8Length(text: string): number {
 export type RenderValues = Partial<Record<Placeholder, string | null>>;
 /**
  * The agent's first message: the action's template with each placeholder filled (`{body}` clipped to BODY_MAX_BYTES),
- * plus the developer's note. An empty placeholder renders as nothing; a line that held only empty placeholders is
+ * plus the developer's note. An empty placeholder renders as nothing; a line whose every placeholder is empty is
  * dropped, and what an empty value leaves behind (`()`, `“”`, doubled spaces) is tidied. Unknown placeholders are left
  * as written (saving refuses them, `validateAction`). One function for the preview, the dry run and the dispatch.
  */
@@ -176,8 +182,10 @@ export function renderAction(action: Pick<DispatchAction, "instructions">, value
   for (const line of action.instructions.split("\n")) {
     const names = [...line.matchAll(/\{([^{}\s]{1,40})\}/g)].map(m => m[1]);
     const rendered = line.replace(/\{([^{}\s]{1,40})\}/g, (whole, name: string) => value(name) ?? whole);
-    const onlyPlaceholders = names.length > 0 && !line.replace(/\{([^{}\s]{1,40})\}/g, "").trim();
-    if (onlyPlaceholders && !rendered.trim()) continue;
+    // A line whose every placeholder is empty is about a value this source doesn't have: "Read {key} yourself…"
+    // goes for typed words, which have no key.
+    const known = names.filter(n => (PLACEHOLDERS as readonly string[]).includes(n));
+    if (names.length > 0 && known.length === names.length && known.every(n => !value(n))) continue;
     lines.push(rendered.replace(/\(\s*\)|“\s*”|"\s*"/g, "").replace(/[ \t]{2,}/g, " ").replace(/ +([.,;:])/g, "$1").trimEnd());
   }
   let text = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
