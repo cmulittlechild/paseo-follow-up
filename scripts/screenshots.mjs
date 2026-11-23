@@ -3678,7 +3678,8 @@ async function compassShots({ shoot, call, home, seeded }) {
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
     }
     await why(page).waitFor({ timeout: 30_000 });
-    await why(page).evaluate(e => e.scrollIntoView({ block: "start" }));
+    // The panel's header is sticky: scroll the box's top just below it, never under it.
+    await why(page).evaluate(e => { e.scrollIntoView({ block: "start" }); for (let n = e.parentElement; n; n = n.parentElement) if (n.scrollHeight > n.clientHeight && getComputedStyle(n).overflowY !== "visible") { n.scrollTop = Math.max(0, n.scrollTop - 24); break; } });
     await page.waitForTimeout(400);
   };
   for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {

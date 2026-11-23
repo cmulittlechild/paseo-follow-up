@@ -48,6 +48,7 @@ export function WhyItMatters({ workspace, theme, compact, openAgent }: { workspa
   const notes = v?.notes ?? [];
   if (!v || (!v.priority && !notes.length)) return null;
   const shown = more ? notes : notes.slice(0, 1);
+  const echo = v.priority?.source?.kind === "compass" && notes.length > 0;
   return <View accessibilityRole="summary" accessibilityLabel="Why it matters" style={{ gap: 8, paddingVertical: 8, paddingHorizontal: compact ? 12 : 10, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
       <Icon name="Compass" size={12} color={c.foregroundMuted} />
@@ -56,8 +57,10 @@ export function WhyItMatters({ workspace, theme, compact, openAgent }: { workspa
     {v.priority && <Text style={[t.meta, { color: c.foreground }]}>
       {/* "1st of 1" says nothing: with one workspace ranked, it is simply the top. */}
       <Text style={{ fontWeight: "600", fontVariant: ["tabular-nums"] }}>{v.priority.of > 1 ? `${ordinal(v.priority.rank)} of ${v.priority.of}` : "Top"}</Text>
-      <Text style={{ color: c.foregroundMuted }}>{" in AI priority · "}</Text>
-      <Text style={{ fontStyle: "italic" }}>{v.priority.reason}</Text>
+      {/* A Compass reason restates the notes right below it, so the line keeps only the rank; another source's reason
+          is news here and stays. */}
+      <Text style={{ color: c.foregroundMuted }}>{echo ? " in AI priority" : " in AI priority · "}</Text>
+      {!echo && <Text style={{ fontStyle: "italic" }}>{v.priority.reason}</Text>}
       {v.priority.source && v.priority.source.kind !== "compass" ? <Text style={{ color: c.foregroundMuted }}>{` · ${PRIORITY_SOURCE_LABEL[v.priority.source.kind]}`}</Text> : null}
     </Text>}
     {shown.map(n => <NoteCard key={n.id} note={n} view={v} workspace={workspace} theme={theme} compact={compact} openAgent={openAgent} />)}
