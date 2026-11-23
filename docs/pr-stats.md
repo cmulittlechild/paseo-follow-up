@@ -4,8 +4,8 @@ PR statistics answer "who opened the most PRs this week" and "whose PRs wait lon
 repositories the developer turns on, one at a time. The team, the bots and the numbers all come from the repository's
 own data: nothing is built in (invariant 24, `public-code-carries-no-host-identifiers`).
 
-Status: the data layer, the metrics, the settings (Settings → Following → PR statistics) and the agent tools
-(`pr_stats`, `pr_stats_settings`, `set_pr_stats`). The page builds on them.
+The page is a leaderboard (Home's view `stats`); Settings → Following → PR statistics turns repositories on, and
+agents read and change the same through `pr_stats`, `pr_stats_settings` and `set_pr_stats`.
 
 ## Files
 
@@ -16,6 +16,8 @@ Status: the data layer, the metrics, the settings (Settings → Following → PR
 | `shared/pr-stats-settings.ts` | `stats.json`'s schema, `set_pr_stats`'s input, the RPC outputs and Settings' words (`statsRepoLine`, `statsRepoWait`, `estimateLines`). |
 | `server/pr-stats.ts` | `PrStats`: the settings file, the opt-in estimate, the model reads, and when syncs run. |
 | `client/pr-stats-settings.tsx` | Settings → Following → PR statistics and the opt-in sheet. |
+| `shared/pr-stats-page.ts` | The page's words and orders: the columns, sorting, the median cell ("-" below 3), the period's range, the sync line, a row's summary. |
+| `client/pr-stats.tsx` | The page (`StatsPage`): the leaderboard, the pickers, the person drill-down and every state. |
 | `server/pr-stats-gate.ts` | `StatsGate`: the one gate every stats request passes, and the rolling-hour ledger of what stats spent. |
 | `server/pr-stats-store.ts` | `StatsStore`: one file per repository, loaded only for a read (an LRU of two, dropped after five minutes), saved through `WriteBehind`. |
 | `server/pr-stats-sync.ts` | `StatsSync`: the incremental and backfill walks, page halving, review follow-ups and retention. |
@@ -51,6 +53,54 @@ numbers) and `set_pr_stats` changes it as a planned write whose dry run shows th
 `pr_stats` reads the model: a period's people and team numbers, a person's drill-down, the PRs waiting for a first
 review now with their urls (invariant 23, `a-row-that-names-a-pr-opens-it-in-one-click`), and `fresh: true` for one incremental sync first. Read tools go to the
 Overseer and untracked root agents with the other action tools.
+
+## The page
+
+### Where it opens from
+
+- **Home**: a PR stats icon (`ChartNoAxesColumn`) in Home's header (on phones, in the search row), shown only once a
+  repository has stats (on or paused; `prStats` on `follow.home-feed`). It opens Home's view `stats`, so the host's ←
+  returns to Home on phones. Follow-up keeps one mark (invariant 35, `follow-up-has-one-mark`); no new sidebar row.
+- **⌘K**: "Follow-up: PR stats" (statistics, review time, team, leaderboard, who), global.
+- **Settings → Following → PR statistics**: "Open PR stats" once a repository has stats.
+
+### The leaderboard
+
+The People table is the page: one row per person with PRs opened, merged, the median wait for a first review of their
+PRs (p75 and n on hover), reviews given and the median review turnaround. Every column sorts (largest first, a "-"
+last); the default is PRs opened. Above it: the repository (a picker when more than one has stats), the period (This
+week · Last week · 30 days · 90 days), what the period covers in the zone ("Sun, Jan 11 – now": the week's first day is
+the saved one, else the zone's usual one, invariant 75), the clock, the sync line and the team's numbers.
+
+- **Bars are neutral ink**, square at the baseline with a rounded end, on a faint track; nothing in the table is amber
+  (amber means "needs someone now", and the table is history). A median over fewer than 3 PRs shows "-" with "n = 2" on
+  hover, never a bar. The numbers are the text; bars are hidden from screen readers.
+- **A row opens the person**: a sheet on desktop, its own screen on a phone (the host's ← goes back): their numbers,
+  their PRs in the period with their waits, and the reviews they gave, each PR one click away (`PrLinkButton`,
+  invariant 23, `a-row-that-names-a-pr-opens-it-in-one-click`).
+- **Phones** (390): the pickers stack, the period control fills the width, each row shows the sorted column's value
+  with its bar and every column in one muted line; "Sorted by" opens the column list.
+- No "waiting longest now" panel and no sentence naming people: `pr_stats` still returns the waiting list for agents.
+
+### States
+
+- **Not on yet**: one line on what it is for, and Settings' PR statistics section in place (each repository's switch
+  opens the opt-in sheet). Nothing fake.
+- **First read**: while the period isn't read yet the sync line says "Reading · back to <date> · N PRs so far" and every team number says "so far"; once the period is read and only older history is loading, it says "This period is read · still reading older PRs (back to <date>)" in muted ink.
+- **Waiting**: GitHub's limit low (amber, "updates again at <time>"), the share used this hour (amber), the machine
+  busy (muted), in Settings' words (`statsWaitWords`).
+- **Error**: GitHub's refusal in red, with when the numbers are from; the data on screen stays.
+- **Empty period**: "No PRs opened or reviewed this week." with the pickers still there.
+- **One person**: their drill-down is the page.
+
+### Reads and the feed
+
+The page reads `follow.pr-stats` once for its repository and period (records load for that read only, invariant 68,
+`stats-are-computed-on-read`). While it is mounted it subscribes to `follow.pr-stats-feed` for that repository: the
+worker holds `PrStats.watching(repo)` for as long as one subscriber is open (the repository syncs every 5 minutes
+instead of hourly) and pushes the repository's status from `stats.json` when a run ends or a setting changes
+(`PrStats.onChange`), and the page re-reads. On a host without subscriptions the page re-reads every 5 minutes while
+it is on screen. Closing the page ends both: nothing polls and the repository goes back to hourly.
 
 ## When it syncs
 
@@ -178,6 +228,12 @@ one keeps the stored object.
   loop's tick, hourly, every 5 minutes while viewed; off keeps the data, delete removes it; the team filter.
 - `npm run test:scale` seeds one repository that is on with 3,250 records (`scripts/scale-seed.ts`, `STATS_SEED`):
   with the page closed the worker never loads it, and idle RSS and CPU stay inside the budgets.
+- `tests/pr-stats-page.test.ts`: the page's words: "-" below 3 with n on hover, every sort (a "-" last), the
+  period's range from the zone's week start, the sync line's states, and a team line that names no one.
+- `tests/pr-stats-service.test.ts` also covers the page's feed: a run's end and a settings write announce the
+  repository (`onChange`), its status comes from `stats.json` (`feedState`), and Home's icon flag (`anyOn`).
+- `scripts/screenshots.mjs --only pr-stats` renders the page, the drill-down and every state at 1440 and 390, light
+  and dark, on fictional data in a Sunday-to-Thursday zone; `--only pr-stats-off` the page before anything is on.
 - `tests/pr-stats-metrics.test.ts`: a table per metric: drafts, ready and ask times, bots, the ignore list, deleted
   users, the team filter, stack-aware starts and folding, removed requests, working hours across a weekend and both
   DST changes, periods in a zone, nearest-rank, and 10,000 records.

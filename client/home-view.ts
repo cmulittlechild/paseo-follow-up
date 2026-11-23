@@ -1,5 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { contextAskRpc, contextListRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
+import { contextAskRpc, contextListRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, prStatsSettingsRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { Priority } from "../shared/priorities";
@@ -44,6 +44,8 @@ export function createHomeExtras(client: PluginClientContext) {
   let rank: RpcOutput<typeof rankStatusRpc> | null = null;
   /** Catch up's More context asks: pushed on the home feed; read when Catch up opens or moves, never on a timer of their own. */
   let context: ContextRequest[] = [];
+  /** Whether any repository has PR statistics: Home's PR stats icon. Pushed on the home feed; on 0.15, read once at start. */
+  let prStatsOn = false;
   const setContext = (next: ContextRequest[]) => { if (JSON.stringify(next) === JSON.stringify(context)) return false; context = next; return true; };
   const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
   const agents = new Map<string, AgentLite>();
@@ -118,6 +120,7 @@ export function createHomeExtras(client: PluginClientContext) {
       if (stopped) return;
       priorities = event.priorities; rank = event.rank; overseer = event.overseer;
       if (event.context) setContext(event.context);
+      if (event.prStats !== undefined) prStatsOn = event.prStats;
       if (event.usage) usage = { ...event.usage, resources: usage.resources };
       if (!event.rank.running) { for (const done of rankWaiters) done(); rankWaiters.clear(); }
       // Smart Session's files can't be watched: read the meters once a minute instead.
@@ -137,7 +140,11 @@ export function createHomeExtras(client: PluginClientContext) {
   if (home) {
     void readSort().then(changed => { if (changed) emit(); }).catch(() => undefined);
     void client.rpc(usageRpc, {}).then(next => { usage = { ...next, accounts: usage.accounts.length ? usage.accounts : next.accounts }; emit(); }).catch(() => undefined);
-  } else { homePolls = pollHome(); sortPolls = pollSort(); }
+  } else {
+    homePolls = pollHome(); sortPolls = pollSort();
+    // 0.15 (no home feed): whether Home shows the PR stats icon, read once when the app starts (Settings' read; no poll).
+    void client.rpc(prStatsSettingsRpc, {}).then(v => { const on = v.repos.some(r => r.state !== "off"); if (on !== prStatsOn) { prStatsOn = on; emit(); } }).catch(() => undefined);
+  }
 
   const putAgent = (a: AgentEntry["agent"]) => {
     if (!a?.id) return;
@@ -231,6 +238,8 @@ export function createHomeExtras(client: PluginClientContext) {
     async restartOverseer() { overseer = await client.rpc(overseerRestartRpc, {}); emit(); return overseer; },
     /** Catch up's More context asks and their answers. */
     context: () => context,
+    /** Whether Home shows the PR stats icon (some repository has PR statistics). */
+    prStatsOn: () => prStatsOn,
     /** Reads the asks once (Catch up opening or moving on, so a 0.15 host or a dropped feed is never stale for long). */
     async refreshContext() { if (await readContext().catch(() => false)) emit(); },
     /** Asks the Overseer or the card's agent; the ask shows at once, its answer arrives on the feed. */
