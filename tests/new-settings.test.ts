@@ -90,6 +90,11 @@ test("the screen on a phone: reads New's own settings only, and Hide, Move and A
   assert.ok(make, "OPS's history is offered as a rule");
   await act(async () => { (make.props.onPress as () => void)(); }); await tick();
   assert.deepEqual(rpcCalls.at(-1), { name: "follow.set-dispatch-settings", input: { rules: { OPS: "p-app" } } });
+  // A name is never cut: Add a rule's project is its own row, never a select squeezed inside another row beside the key.
+  const its = r.root.findAll(n => n.props.label === "Its project")[0];
+  assert.ok(its, "Add a rule has its own project row");
+  for (let p = (its as unknown as { parent: Node | null }).parent; p; p = (p as unknown as { parent: Node | null }).parent) assert.notEqual(p.props.label, "Add a rule", "the project select isn't nested in the key's row");
+  assert.ok(r.root.findAll(n => n.props.actionLabel === "Add rule").length, "Add is a row's action, aligned with the fields");
   // A base for a project without a git repository isn't offered.
   assert.equal(byLabel(r, "Base for notes").length, 0);
   assert.equal(byLabel(r, "Base for acme/web").length, 1);

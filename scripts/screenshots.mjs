@@ -2685,6 +2685,9 @@ async function newShots({ shoot, call, out, home, billing }) {
         await page.getByText("Create PR", { exact: true }).filter({ visible: true }).first().waitFor();
         check(`${theme} ${device}: Settings → New work lists the actions with their keys`, await page.getByText("⌥↵", { exact: true }).filter({ visible: true }).count() > 0);
         check(`${theme} ${device}: an added action says so`, await page.getByText("Try elsewhere", { exact: true }).filter({ visible: true }).count() > 0 && await page.getByText("Added", { exact: true }).filter({ visible: true }).count() > 0);
+        // A name is never cut: Add a rule's "Pick a project" shows whole (it once rendered "Pi…" squeezed beside the key).
+        const pick = page.getByText("Pick a project", { exact: true }).filter({ visible: true }).first();
+        check(`${theme} ${device}: Add a rule's project select shows "Pick a project" whole`, await pick.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().width >= 60).catch(() => false));
         check(`${theme} ${device}: WEB's rule is listed`, await page.getByText("WEB issues", { exact: true }).filter({ visible: true }).count() > 0);
         check(`${theme} ${device}: the saved base shows`, await page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first().inputValue().catch(() => "") === "develop");
         await page.evaluate(() => window.scrollTo(0, 0));

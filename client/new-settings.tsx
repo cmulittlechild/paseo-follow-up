@@ -165,13 +165,13 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
           </View>
         </View>)}
         {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. New learns from where each team's work went; add a rule to fix one.</Text></View>}
-        <SettingsRow label="Add a rule" hint="A Linear team's key, like ACME, and its project.">
-          <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8 }}>
-            <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
-            <SettingsSelect label="Project" value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
-            <Button theme={theme} compact={compact} title="Add" icon="Plus" disabled={!key || project === PICK || change.isPending} onPress={add} />
-          </View>
+        {/* Three native rows, never one row of nested fields: a select squeezed beside an input cuts "Pick a project". */}
+        <SettingsRow label="Add a rule" hint="A Linear team's key, like ACME.">
+          <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
         </SettingsRow>
+        <SettingsSelect label="Its project" value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
+        <SettingsAction label={!key ? "Type a team key and pick its project" : project === PICK ? `Pick ${key}'s project` : `${key} issues → ${projectOptions.find(o => o.value === project)?.label ?? project}`}
+          actionLabel="Add rule" disabled={!key || project === PICK || change.isPending} onPress={add} />
       </SettingsCard>
       {learnedTeams(view).map(l => <SettingsCard key={l.team}>
         <SettingsAction label={`${l.team} → ${l.project}`} hint={`Learned: ${l.count} ${l.team} workspaces started there.`} actionLabel="Make it a rule" disabled={change.isPending}
