@@ -23,9 +23,17 @@ to do. Phase 1 shipped in three PRs: the core and the agent tools, the dialog an
 
 An action is data: a name, an icon, a description, instructions with placeholders, an agent (or New's default), a
 workspace kind (`worktree` or `local`), a branch rule and what Follow-up does after the start. The placeholders are
-`{title} {url} {key} {body} {kind} {team} {repo} {base} {branch}`; an unknown one is refused when the action is saved,
-by name. A line left holding only empty placeholders is dropped, so typed text without a key or URL still reads as a
-sentence. The developer's note goes after the instructions as "Note from the developer: …".
+`{title} {url} {key} {body} {words} {kind} {team} {repo} {base} {branch}`; an unknown one is refused when the action is
+saved, by name. The built-ins are short and plain: they name the source (key, title, url), add one line telling the
+agent to read all of it itself (comments, attachments, linked docs and threads), say what to do in a sentence or two,
+and keep only what Follow-up's flow needs (branch, base and repo, registering the PR, the spec, the one question). They
+never paste an issue's description, since the agent has the same tools. `{words}` is the developer's typed task, empty
+for an issue, PR or link. `{body}` is the source's text (an issue's description, clipped to 4 KB): put it in your own
+action, through Settings → New work or `set_dispatch_actions`, for an agent without a tracker tool. New reads an issue's
+description (one `get_issue`) only while some action uses `{body}`. A saved built-in still holding the text an earlier
+version shipped (which pasted `{body}`) reads as the current built-in; an edited one keeps the developer's text. A line
+whose every placeholder is empty is dropped, so typed text without a key or URL still reads as a sentence and gets no
+"Read {key} yourself" line. The developer's note goes after the instructions as "Note from the developer: …".
 
 Built-ins, in order: Create PR, Plan as artifact, Investigate, Just open (hidden by default; the project folder), and
 Check out PR (offered only for a PR link). A built-in can be edited, hidden, moved or reset, never deleted. The saved
@@ -71,6 +79,11 @@ never creates again blind, which could make a second workspace.
 - `dispatch-needs-a-click-or-a-confirmed-plan`: nothing is created except from the developer's click or an agent's
   confirmed plan. The agent tool `dispatch` dry-runs first (the same preview the dialog shows). Its plan freezes the
   resolved project and the instructions' hash, and confirm is refused if what it would send has changed.
+- `the-overseer-starts-what-the-developer-asked` (invariant 105): the Overseer's dispatch passes its start gate, which
+  hands the source's Linear key to `gate(actor, key)`. Only keys the developer's latest message approved pass: named in
+  a chat request, proposed by the Overseer before a "yes", or answered New workspace on its card. Its note is the
+  developer's own words (`developerNote`: their message minus the keys and the request), never the Overseer's summary
+  of the issue.
 - `a-failed-dispatch-leaves-nothing-behind`: see above.
 - `new-reads-nothing-while-closed`: Linear is read only when New asks; the one timer is a queued dispatch's retry.
   Settings → New work reads New's own settings once when the tab opens, never Linear.
