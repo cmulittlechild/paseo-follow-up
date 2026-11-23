@@ -105,13 +105,17 @@ test("a row ready to archive leads with Archive, first in triage, and not again 
 
 test("Archive's confirm says what Paseo's archive does to this workspace", () => {
   const item = flatItems(rowMenu({ ...base, archive: facts() })).find(i => i.action === "archive")!;
-  assert.equal(item.confirm, "Archive Migration rollout?\nIts agents stop, its terminals close and it leaves your list.\nPaseo deletes its worktree folder. The branch and its commits stay.\nPaseo can restore it later.");
+  assert.equal(item.confirm, "Archive Migration rollout?\nIts agents stop, its terminals close and it leaves your workspace list.\nPaseo deletes its worktree folder. The branch and its commits stay.\nPaseo can restore it later.");
   assert.equal(archiveConfirm("example-app", facts({ dirty: true, diff: { additions: 12, deletions: 1 }, ahead: 2 })),
-    "Archive example-app?\nIts agents stop, its terminals close and it leaves your list.\nPaseo deletes its worktree. Uncommitted changes (12 added lines, 1 deleted line) are lost.\n2 unpushed commits stay only on the local branch.\nPaseo can restore the workspace later, without those changes.");
+    "Archive example-app?\nIts agents stop, its terminals close and it leaves your workspace list.\nPaseo deletes its worktree folder.\nUncommitted changes (12 added lines, 1 deleted line) are lost.\n2 unpushed commits stay on the local branch.\nPaseo can restore the workspace later, without those changes.");
   assert.match(archiveConfirm("x", facts({ dirty: null, diff: { additions: 0, deletions: 4 } })), /Uncommitted changes \(4 deleted lines\) are lost/, "unknown dirty with a diff counts as dirty, as Paseo's warning does");
   assert.equal(archiveConfirm("x", facts({ dirty: null, diff: null })).split("\n")[2], "Paseo deletes its worktree folder, with any uncommitted changes in it. The branch and its commits stay.",
     "git status not read yet: the line never promises the worktree is clean");
-  assert.match(archiveConfirm("x", facts({ running: true })), /^Archive x\?\nAn agent is working in it now\. Archiving stops it/);
+  assert.match(archiveConfirm("x", facts({ running: true })), /^Archive x\?\nAn agent is working in it now\. Archiving stops it and the other agents/);
+  assert.equal(flatItems(rowMenu({ ...base, archive: facts({ dirty: true, diff: { additions: 3, deletions: 0 } }) })).find(i => i.action === "archive")!.confirmLoss,
+    "Uncommitted changes (3 added lines) are lost.", "the loss line is marked, so the confirm draws it in the danger colour");
+  assert.equal(flatItems(rowMenu({ ...base, archive: facts() })).find(i => i.action === "archive")!.confirmLoss, undefined, "nothing lost, nothing marked");
+  assert.match(archiveConfirm("x", facts({ kind: "directory" })), /\nIts folder stays, and Paseo can restore it later\.$/);
   for (const kind of ["directory", "checkout", "local_checkout"] as const)
     assert.doesNotMatch(archiveConfirm("x", facts({ kind, dirty: true, ahead: 3 })), /worktree|uncommitted|unpushed/, `${kind}: Paseo deletes no folder`);
   assert.doesNotMatch(archiveConfirm("x", facts({ ownedWorktree: false, dirty: true })), /deletes/, "a worktree Paseo can't prove it owns is left in place");

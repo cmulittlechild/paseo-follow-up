@@ -53,8 +53,10 @@ export type RowMenuItem = {
   hint?: string;
   /** A submenu that opens in place (Later). */
   children?: RowMenuItem[];
-  /** Destructive: asks first with this line. */
+  /** Destructive: asks first with this line. Several lines (`\n`): the first is the step's question, set as its title. */
   confirm?: string;
+  /** The confirm's one line about losing work, drawn in the danger colour (Archive's uncommitted changes). */
+  confirmLoss?: string;
 };
 export type RowMenuSection = { key: string; items: RowMenuItem[] };
 
@@ -84,24 +86,33 @@ const lines = (n: number, word: string) => `${n} ${word} line${n === 1 ? "" : "s
  * an agent working right now.
  */
 export function archiveConfirm(title: string, f: ArchiveFacts): string {
-  // The question, then one line per consequence, so the line about lost work stands on its own.
+  return archiveConfirmLines(title, f).lines.join("\n");
+}
+
+/** The confirm's lines (the question first, one consequence a line) and the one about losing work, if any. */
+export function archiveConfirmLines(title: string, f: ArchiveFacts): { lines: string[]; loss: string | null } {
   const out = [`Archive ${title}?`];
-  out.push(f.running ? "An agent is working in it now. Archiving stops it and every other agent, closes its terminals and takes it off your list."
-    : "Its agents stop, its terminals close and it leaves your list.");
-  let dirty = false;
+  out.push(f.running ? "An agent is working in it now. Archiving stops it and the other agents, closes its terminals and takes it off your workspace list."
+    : "Its agents stop, its terminals close and it leaves your workspace list.");
+  let loss: string | null = null;
   if (f.kind === "worktree" && f.ownedWorktree !== false) {
     const changed = !!f.diff && (f.diff.additions > 0 || f.diff.deletions > 0);
-    dirty = f.dirty === true || (f.dirty == null && changed);
+    const dirty = f.dirty === true || (f.dirty == null && changed);
     const stat = changed ? [f.diff!.additions > 0 && lines(f.diff!.additions, "added"), f.diff!.deletions > 0 && lines(f.diff!.deletions, "deleted")].filter(Boolean).join(", ") : "";
     // Paseo's list streams isDirty only once the row has read its git status; until then (null, no diff) nothing says
     // the worktree is clean, so the line names the loss as possible rather than promising it's safe.
-    out.push(dirty ? `Paseo deletes its worktree. Uncommitted changes${stat ? ` (${stat})` : ""} are lost.`
-      : f.dirty === false ? "Paseo deletes its worktree folder. The branch and its commits stay."
-      : "Paseo deletes its worktree folder, with any uncommitted changes in it. The branch and its commits stay.");
-    if ((f.ahead ?? 0) > 0) out.push(`${f.ahead} unpushed commit${f.ahead === 1 ? "" : "s"} stay only on the local branch.`);
-  }
-  out.push(dirty ? "Paseo can restore the workspace later, without those changes." : "Paseo can restore it later.");
-  return out.join("\n");
+    if (dirty) { out.push("Paseo deletes its worktree folder."); loss = `Uncommitted changes${stat ? ` (${stat})` : ""} are lost.`; out.push(loss); }
+    else if (f.dirty === false) out.push("Paseo deletes its worktree folder. The branch and its commits stay.");
+    else out.push("Paseo deletes its worktree folder, with any uncommitted changes in it. The branch and its commits stay.");
+    if ((f.ahead ?? 0) > 0) out.push(`${f.ahead} unpushed commit${f.ahead === 1 ? "" : "s"} stay on the local branch.`);
+    out.push(dirty ? "Paseo can restore the workspace later, without those changes." : "Paseo can restore it later.");
+  } else out.push("Its folder stays, and Paseo can restore it later.");
+  return { lines: out, loss };
+}
+
+function archiveConfirmItem(title: string, f: ArchiveFacts): Pick<RowMenuItem, "confirm" | "confirmLoss"> {
+  const { lines, loss } = archiveConfirmLines(title, f);
+  return { confirm: lines.join("\n"), ...(loss ? { confirmLoss: loss } : {}) };
 }
 
 export type RowMenuInput = {
@@ -149,7 +160,7 @@ export function rowMenu(input: RowMenuInput): RowMenuSection[] {
 
   // Archive, only on the developer's click and after the confirm (invariant 6). A row Follow-up calls ready to archive
   // (the "N to archive" cue) leads with it, first in triage; any other row has it last in tidy.
-  const archiveItem: RowMenuItem | null = s.workspaceId && archive ? { key: "archive", action: "archive", label: "Archive workspace…", icon: "Archive", confirm: archiveConfirm(s.title, archive) } : null;
+  const archiveItem: RowMenuItem | null = s.workspaceId && archive ? { key: "archive", action: "archive", label: "Archive workspace…", icon: "Archive", ...archiveConfirmItem(s.title, archive) } : null;
   const archiveFirst = !!s.readyToArchive && !!archiveItem;
 
   // 1. Triage, the moves made many times a day. Later first: it's the one Tom named.

@@ -41,6 +41,9 @@ export type ListKeysOptions = {
  * Not while typing, except the arrows in the list's own query field (`dataSet={{ listKeys: "1" }}`), which step into
  * the list. Web and desktop only; phones have no hardware-key walk.
  */
+/** A row menu, its confirm step or any dialog over the list: while one is open, it keeps every key. */
+const OVERLAYS = '[role="menu"],[role="alertdialog"],[role="dialog"],[aria-modal="true"]';
+
 export function useListKeys(options: ListKeysOptions): void {
   const ref = useRef(options); ref.current = options;
   useEffect(() => {
@@ -53,11 +56,11 @@ export function useListKeys(options: ListKeysOptions): void {
       if (typing && !target?.closest?.("[data-list-keys]")) return;
       // A row menu or a dialog over the list keeps its own keys, and so does a control whose keys move it (Home's
       // divider: arrows, Home and End resize the pane, never walk the list).
-      if (target?.closest?.('[role="menu"],[role="dialog"],[aria-modal="true"],[role="separator"],[role="slider"]')) return;
+      if (target?.closest?.(`${OVERLAYS},[role="separator"],[role="slider"]`)) return;
       const root = scope();
       const onBody = !target || target === doc.body;
       if (!ownsKey({ inside: !!target && !!root?.contains(target), onBody, claimBody: !!claimBody,
-        visible: !!claimBody && surfaceVisible(root, doc) })) return;
+        visible: !!claimBody && surfaceVisible(root, doc), overlayOpen: !!doc.querySelector?.(OVERLAYS) })) return;
       const move = listMove(e, typing);
       if (!move) return;
       const focused = !typing && target?.id ? order.find(k => rowDomId(k) === target.id) ?? null : null;

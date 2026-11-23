@@ -99,6 +99,18 @@ test("keys belong to the surface holding focus: Home never walks while focus is 
   assert.equal(ownsKey({ inside: false, onBody: true, claimBody: false, visible: true }), false);
 });
 
+test("an open row menu or its confirm step keeps every key, even while focus sits on the page", async () => {
+  // 2026-11-23 (Archive workspace… render): Esc from the confirm step back to the menu left focus on the page for a
+  // frame, and Enter there opened the selected workspace's chat behind the menu.
+  for (const inside of [false, true]) assert.equal(ownsKey({ inside, onBody: !inside, claimBody: true, visible: true, overlayOpen: true }), false);
+  const src = (f: string) => readFile(join(import.meta.dirname, "..", "client", f), "utf8");
+  const hook = await src("list-keys.ts");
+  const overlays = hook.match(/const OVERLAYS = '([^']+)'/)?.[1] ?? "";
+  for (const role of ['[role="menu"]', '[role="alertdialog"]', '[role="dialog"]', '[aria-modal="true"]']) assert.ok(overlays.includes(role), `${role} owns its keys`);
+  assert.match(hook, /overlayOpen: !!doc\.querySelector\?\.\(OVERLAYS\)/, "the walk asks whether one is open on every key");
+  assert.match(await src("row-menu.tsx"), /role=\{confirm \? "alertdialog" : "menu"\}/, "the row menu's two roles are the ones listed");
+});
+
 test("a mounted but hidden Home never takes a body key", async () => {
   // Paseo may keep a plugin screen mounted behind another tab or chat: a body key there scrolls the chat, not Home.
   assert.equal(ownsKey({ inside: false, onBody: true, claimBody: true, visible: false }), false);

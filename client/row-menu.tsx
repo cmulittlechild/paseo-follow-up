@@ -5,7 +5,7 @@ import { Icon, Modal } from "@getpaseo/plugin/client/ui";
 import { flatItems, isMenuKey, moveFocus, placeMenu, sheetArmed, type RowMenuItem, type RowMenuSection } from "../shared/row-menu";
 import type { Workstream } from "../shared/home";
 import { Button, text, type Theme } from "./kit";
-import { isLight, withAlpha, type Colors } from "./theme";
+import { isLight, readable, withAlpha, type Colors } from "./theme";
 import { MenuItemContent, menuItemRow } from "./menu-item";
 
 /**
@@ -226,11 +226,28 @@ function MenuRow({ item, theme, touch, child = false, open = false, active = fal
 function ConfirmBody({ theme, item, touch = false, onCancel, onConfirm, cancelRef }: { theme: Theme; item: RowMenuItem; touch?: boolean; onCancel: () => void; onConfirm: () => void; /** The body's node: the confirm step finds its two buttons in it (Cancel first). */ cancelRef?: { current: DomNode | null } }) {
   const c = theme.colors;
   return <View ref={cancelRef as never} style={{ gap: touch ? 14 : 10, paddingHorizontal: touch ? 0 : 12, paddingVertical: touch ? 8 : 8 }}>
-    <Text style={{ color: c.foreground, fontSize: touch ? 15 : 13, lineHeight: touch ? 21 : 18 }}>{item.confirm}</Text>
+    <ConfirmText theme={theme} item={item} touch={touch} />
     <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
       <Button theme={theme} compact={touch} kind="ghost" title="Cancel" onPress={onCancel} />
       <Button theme={theme} compact={touch} kind="danger" title={item.label.replace(/…$/, "")} onPress={onConfirm} />
     </View>
+  </View>;
+}
+
+/**
+ * The confirm's words. One line reads as it always has; several (Archive's) set the question as the step's title, then
+ * one consequence a line, the line about losing work in the danger colour (so it never hides among routine lines) and
+ * the closing reassurance muted.
+ */
+function ConfirmText({ theme, item, touch }: { theme: Theme; item: RowMenuItem; touch: boolean }) {
+  const c = theme.colors;
+  const size = { fontSize: touch ? 15 : 13, lineHeight: touch ? 21 : 18 };
+  const [question, ...rest] = (item.confirm ?? "").split("\n");
+  if (!rest.length) return <Text style={{ color: c.foreground, ...size }}>{question}</Text>;
+  return <View style={{ gap: touch ? 6 : 4 }}>
+    <Text accessibilityRole="header" style={{ color: c.foreground, ...size, fontWeight: "600", marginBottom: touch ? 4 : 2 }}>{question}</Text>
+    {rest.map((line, i) => <Text key={line} style={{ color: line === item.confirmLoss ? readable(c.statusDanger, c) : i === rest.length - 1 ? c.foregroundMuted : c.foreground, ...size,
+      ...(line === item.confirmLoss ? { fontWeight: "600" } : {}) }}>{line}</Text>)}
   </View>;
 }
 

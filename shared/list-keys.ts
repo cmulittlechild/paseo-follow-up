@@ -70,7 +70,10 @@ export function walkOrder(entries: readonly { type: string; key: string }[]): st
  * the sidebar view sit side by side, so focus in one never moves the other; and a Home kept mounted behind another tab
  * or chat never takes a body key, which there scrolls the chat in front.
  */
-export function ownsKey(input: { inside: boolean; onBody: boolean; claimBody: boolean; visible: boolean }): boolean {
+export function ownsKey(input: { inside: boolean; onBody: boolean; claimBody: boolean; visible: boolean; overlayOpen?: boolean }): boolean {
+  // An open menu or dialog owns every key, wherever focus is: while it swaps a step (the row menu's confirm), focus
+  // sits on the page for a frame, and Enter there must not open the selection behind it.
+  if (input.overlayOpen) return false;
   return input.inside || input.claimBody && input.onBody && input.visible;
 }
 

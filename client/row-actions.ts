@@ -102,7 +102,7 @@ export function useRowMenu(host: RowMenuHost) {
           if (r.error) throw new Error(r.error);
           after();
           return "archived" as const;
-        }, success: r => r === "undone" ? `${s.title} stays: its archive was undone` : `Archived ${s.title}` }, `archive:${workspaceId}`);
+        }, success: r => r === "undone" ? `${s.title} stays: its archive was undone` : `Archived ${s.title}. It's under Archived in search.` }, `archive:${workspaceId}`);
       }
     };
     return { build, pick: (s: Workstream, item: RowMenuItem) => { void pick(s, item); } };
