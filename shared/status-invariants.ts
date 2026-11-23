@@ -26,6 +26,7 @@ import { mergeScope } from "./merge-click";
 import { GONE_REASON } from "./queue";
 import { taskSchedule } from "./task-trigger";
 import { taskDue } from "./task-due";
+import { taskViewRows } from "./task-view";
 
 /**
  * Status invariants: what must hold for any workspace, whatever path changed it. Pure, no IO, and never throwing:
@@ -537,6 +538,20 @@ export const INVARIANTS: Invariant[] = [
         const d = taskDue(o, w, now);
         if (d?.due && !o.trigger && !/^(Due · |Due since |Stale · )/.test(label)) return `task ${o.id} is due (${d.fact}) but reads "${label}"`;
       }
+      return null;
+    },
+  },
+  {
+    id: "tasks-are-the-agent-s",
+    why: "2026-11-22 critique of the Tasks card: tasks are the agent's to-do list, yet the card mirrored Needs you (\"Q1 · waiting on your answer\"), sorted a due task last, and the header named a waiting task while the due one went unmentioned. A row points at Needs you without a question id, stale and due rows come first, and the live line names the task the agent owes.",
+    check(w, now) {
+      const rows = taskViewRows(w, w.taskAgents ?? {}, now);
+      for (const r of rows) if (/^Q\d+ · /.test(r.meta) || r.meta === "Manual") return `task ${r.o.id} reads "${r.meta}"`;
+      const firstOther = rows.findIndex(r => r.kind !== "stale" && r.kind !== "due");
+      if (firstOther >= 0 && rows.slice(firstOther).some(r => r.kind === "stale" || r.kind === "due")) return "a stale or due task sorts below one that isn't";
+      const owed = rows.find(r => r.kind === "stale" || r.kind === "due");
+      const live = liveLine(w, now);
+      if (owed && followUpObligations(w).some(o => o.status === "waiting" && live.text === o.title)) return `the live line names a waiting task while ${owed.o.id} is ${owed.kind}`;
       return null;
     },
   },

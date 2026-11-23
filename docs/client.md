@@ -74,13 +74,14 @@ Nothing polls while the app is hidden.
 | `client/large.tsx` | The panel as a two-column screen. |
 | `client/header.tsx` | The stack bar and the header status. |
 | `client/stacks.tsx` | Stacks drawn top to base. |
-| `client/section-search.tsx`, `shared/section-search.ts` | Section search in the panel's Pull requests, Tasks and Activity. See [Section search](#section-search). |
+| `client/section-search.tsx`, `shared/section-search.ts` | Section search in the panel's Pull requests and Activity. See [Section search](#section-search). |
 | `client/pr-sheet.tsx`, `client/pr-controls.tsx` | One PR's sheet, with merge and reviewer controls. |
 | `client/reviewers.tsx` | Reviewer lists and the picker. |
 | `client/needs-you.tsx` | The workspace's one Needs you block: the asks (question cards, the brief), then the decision rows (Send repairs, Merge, Resume, Retry, Check). |
 | `client/questions.tsx` | The question dialog and answer form (`QuestionBody`), the one answer flow every question surface draws; its field's role comes from `answerDraft` (`one-answer-flow-for-every-question`). Send, then Put in chat with Copy as an icon on Paseo 0.16 (Copy keeps its label on 0.15). |
 | `client/put-in-chat.ts` | Paseo 0.16's composer controls, feature-detected (`hasComposers`, `useChatComposer`); the insert rule is `shared/put-in-chat.ts`. |
-| `client/tasks.tsx` | Tasks and their triggers. Repairs are task rows too (Q49): the next-message strip first (Preview, Send now, Open agent while sent), PR-condition rows with their PR chip, the repair task sheet (per-task Auto-send, the message with its line highlighted). Rows come from `shared/task-rows.ts`. |
+| `client/tasks.tsx` | Agent's tasks (tasks-are-the-agent-s): one folded line ("6 open · 2 due · 1 stale"), opened a row per open task saying what moves it (`shared/task-view.ts`), stale and due first with the agent's note, a row opening in place, and the "Send on a schedule…" sheet (the trigger editor). |
+| `client/messages.tsx` | The Messages to the agent card: the send queue's strip (who, how many, when and why; Preview, Send now, Open agent while sent) and the open repairs with their PR chip and sheet (per-task Auto-send, the message with its line highlighted). Rows come from `shared/task-rows.ts`. |
 | `client/spec.tsx` | The spec link chip, row and sheet. The chip sits in the references line (`client/linked.tsx`). |
 | `client/linked.tsx`, `shared/linked-display.ts` | Linked items on screen: the references line (Spec and Linked chips), the Linked sheet, the disclosure row, and Home search's index. See [linked-items.md](linked-items.md#ui). |
 | `client/brand-icons.ts` | Monochrome brand marks (Simple Icons, CC0) for linked items, passed to the host `Icon` as inline SVG. |
@@ -194,18 +195,18 @@ Rules:
 
 ## Section search
 
-The panel's Pull requests, Tasks and Activity cards each have a search icon at the right of their header, always shown
+The panel's Pull requests and Activity cards each have a search icon at the right of their header, always shown
 (`useSectionSearch`, `client/section-search.tsx`). Pressing it turns the header into the shared `QueryField`
-("Search pull requests", "Search tasks", "Search activity") with focus in it, "n of N" inside the field and ✕ beside
+("Search pull requests", "Search activity") with focus in it, "n of N" inside the field and ✕ beside
 it. Esc or ✕ closes it, and focus returns to the icon. There's no key binding, so Ctrl/Cmd+F stays the browser's find.
 
 - **What each section searches** (`shared/section-search.ts`): Pull requests, the number and title (shown) and the
-  branch and failed check names (hidden); Tasks, the title (shown) and the evidence (hidden), plus repair rows' title
-  and PR chip; Activity, both tabs at once: a timeline entry's line and detail, a question's "Qn · title" and its
+  branch and failed check names (hidden); Activity, both tabs at once: a timeline entry's line and detail, a question's "Qn · title" and its
   status line. A match only in a hidden field replaces line 2 with "<Key> · excerpt", as on Home's rows.
 - **A filter, not a ranking.** `filterItems` (`shared/search.ts`) uses the matcher every workspace search uses
   (invariant 28) and keeps the list's own order. Matched words take the sidebar filter's hit style (`marks`).
-- **Folds are ignored while a query is typed**: done tasks, merged PRs, settled stacks and Activity's "Show all" show
+- **Agent's tasks has no search**: it is the agent's list, folded to one line, a handful of rows when open.
+- **Folds are ignored while a query is typed**: merged PRs, settled stacks and Activity's "Show all" show
   their matches in place, done ones muted as usual. The next-message strip, held merges and in-flight lines step
   aside. Activity's tab chips move under the field and count their matches, so a hit in the other tab is never hidden.
 - Nothing matches: "No tasks match ‘x’" (or pull requests, activity).

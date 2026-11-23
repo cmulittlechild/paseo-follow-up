@@ -282,13 +282,15 @@ function QuestionAsk({ workspace: w, questionId, context, theme, compact, now, o
         <Pressable accessibilityRole="button" aria-expanded accessibilityState={{ expanded: true }} accessibilityLabel={`Hide ${q.id}: ${q.title}`} onPress={onToggle} style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : undefined }}>{header}</Pressable>
         {x}
       </View>
-      {/* What the agent does meanwhile sits under the question, as in the dialog; under the buttons goes what they do. */}
-      <View style={{ flexDirection: "row", gap: 6 }}>
-        <View style={{ paddingTop: 2 }}><Icon name={state.icon} size={12} color={state.color(c)} /></View>
-        <Text style={[t.small, { flex: 1, color: state.color(c) }]}>{state.text}</Text>
-      </View>
-      {!!context && <RichText selectable linkColor={c.foreground} style={[t.body, { color: c.foregroundMuted }]}>{context}</RichText>}
-      <QuestionBody workspace={w} question={q} theme={theme} compact={compact} now={now} openAgent={openAgent} inline />
+      {/* The ask first (as in the chat's card), then the brief's context and what the agent does meanwhile under it;
+          under the buttons goes what they do. */}
+      <QuestionBody workspace={w} question={q} theme={theme} compact={compact} now={now} openAgent={openAgent} inline afterAsk={<>
+        {!!context && <RichText selectable linkColor={c.foreground} style={[t.body, { color: c.foregroundMuted }]}>{context}</RichText>}
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ paddingTop: 2 }}><Icon name={state.icon} size={12} color={state.color(c)} /></View>
+          <Text style={[t.small, { flex: 1, color: state.color(c) }]}>{state.text}</Text>
+        </View>
+      </>} />
     </RevealScope>
   </CardRow>;
 }

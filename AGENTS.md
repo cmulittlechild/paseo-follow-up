@@ -76,13 +76,13 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | --- | --- | --- |
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
-| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
+| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
-| The brief's sources: recipes matched by tools, discovery, health, switches, Retry; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts` | [morning-brief](docs/morning-brief.md#sources) |
+| The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -446,7 +446,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the row. Search breaks a tie by score; the filter keeps its groups and, inside each, the list's own order for a
    tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
    (`overseerMatches`). No surface ranks workspace matches its own way. One matcher everywhere (`tokenMatch`): the
-   workspace panel's section search (Pull requests, Tasks, Activity; `client/section-search.tsx`) filters with it
+   workspace panel's section search (Pull requests, Activity; `client/section-search.tsx`) filters with it
    through `filterItems`, and item lists keep their own order, since a section list is a filter, not a ranking.
    Guarded by `tests/filter-rank.test.ts`, `tests/home-beta2.test.ts` and `tests/section-search.test.ts`.
 29. **Sheet content scrolls with the sheet** (`sheet-content-scrolls-with-the-sheet`). Every client ScrollView and
@@ -1023,7 +1023,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
-
 83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
    reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
    its last update). A task blocked on a question the developer answered or closed is the agent's again
@@ -1035,6 +1034,27 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+
+84. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
+   `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
+   only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
+   ranker. The model only proposes: at most `ASK.calls` reads, each refused unless the tool is one of that server's
+   read tools and every argument is one its schema takes, of its type (`validateCall`, also re-run on a cached plan);
+   Follow-up runs them through `SourceDirectory.callTool` (`tool-read`, sources-are-read-only). Its items are at most
+   `ASK.items`, with a link only when a reply carries it (`validateItems`). It runs on the Summaries role's fast model,
+   once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
+   the stored items and never asks. Guarded by `tests/ask.test.ts`.
+
+89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
+   developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
+   neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
+   stale and due first; a task waiting on the developer says "In Needs you" with no question id and comes last; no
+   section search. Finished tasks are in Activity, the send queue and repairs in the Messages to the agent card
+   (`client/messages.tsx`), the schedule editor behind a row's "Send on a schedule…". The header's live line names a
+   due or stale task before a waiting one, and a waiting one says what moves it. 2026-11-22, two critiques: the card
+   mirrored Needs you ("Q1 · waiting on your answer"), sorted the due task last, carried the send queue and every
+   finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
+   `tests/tasks-view.test.ts` and `INVARIANTS`.
 
 ## Bugs
 

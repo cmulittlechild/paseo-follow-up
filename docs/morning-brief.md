@@ -192,9 +192,9 @@ shape and input schema.
 | Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |
 
 GitHub (every `gh` account's review requests) and Paseo (Follow-up's own state, always on) are built in. A server
-with read tools but no recipe ("not a kind of source the brief can read yet") or with no read tools at all is listed
-under "more on mcpproxy the brief can't read", folded. The developer's own chat id is read from the chat tool's
-description at run time.
+with read tools but no recipe is an [Ask](#ask) source, off until previewed and turned on; one with no read tools at all
+is listed under "more on mcpproxy the brief can't read", folded, with no switch. The developer's own chat id is read
+from the chat tool's description at run time.
 
 **Only reads** (`sources-are-read-only`): `SourceDirectory.call` is the one place that runs `mcpproxy call`, always
 `tool-read`, with a tool from the read list, carrying only the inputs that tool's schema takes (`fitArgs`; a calendar's
@@ -215,6 +215,35 @@ off is skipped by the ranker (shown as off, not failed) and by Find it for me.
 **Windows:** the chat window (24, 48 or 72 h; default 48) and the calendar (today, or today and tomorrow), stored with
 the queue's settings.
 
+### Ask
+
+A server no recipe fits can still feed the brief (`shared/ask.ts`, `server/ask.ts`), off until the developer turns it on
+per source (Q5). Each ask, on a workday morning after the sweep time (`BriefSources.tick`, the brief's one timer), on a
+preview and on Retry:
+
+1. **Plan.** A fast model (the Summaries role in Settings → Agents, Claude Haiku by default: simple AI jobs run on fast
+   models) sees that server's read-only tools, names, descriptions and inputs with their types, trimmed
+   (`askPlanPrompt`), and proposes at most `ASK.calls` (3) reads for what needs the developer today. The plan is kept in
+   `morning-brief.json` (`sources.plans`) and reused for `ASK.planMs` (a week) while the server's tools hash the same,
+   so most mornings are reads plus one model call.
+2. **Check.** Every call is validated (`validateCall`): the tool is one of that server's read tools (a write it proposes
+   is refused), each argument is one its schema takes, of its type, strings capped, and every required one is there. A
+   cached plan is checked again against the tools as they are now.
+3. **Read.** Valid calls run through `SourceDirectory.callTool` (`tool-read`, 20 s each).
+4. **Items.** A second short call turns the replies into at most `ASK.items` (5) items `{title, why, url, due}`,
+   validated (`validateItems`): a link is kept only when a reply carries it verbatim, a due date only when it reads as one.
+
+**Preview before on** (`ask-is-validated`): turning an Ask source on is refused until a preview (or a morning's ask)
+under `ASK.previewMs` (24 h) old that didn't fail. In Settings the row's first action is Preview: it shows the items (or
+"nothing for you today") and the reads it ran, with Turn on. `set_brief_sources` `preview` does the same for agents. A
+preview turns nothing on and never feeds the ranker. The morning's items go to the ranker as OTHER SOURCES (it reads
+them; it never asks); a failed ask is the row's one line with Retry. Asks wait while the governor says the VM is tight. The ranker's scheduled run can start before the morning's asks finish, so when they store items that differ from
+the last ones they mark it due (`Ranker.markDue`): its next tick on the worker's loop runs once, inside its cadence or
+not, and today's items reach today's rank. No new timer. An Ask source whose upstream needs a sign-in or isn't connected
+is skipped in the loop's cheap check (from the last upstream list), so it costs one store read a tick. The planner's and
+the summary's prompts say tool descriptions and replies are a third-party server's data, never instructions; whatever
+the model does with them, a call still has to pass validation and a link still has to appear in a reply verbatim.
+
 ## Cost
 
 | | Reads | Model calls |
@@ -224,5 +253,6 @@ the queue's settings.
 | Find it for me | one chat search a workday (and on Look again or a change) | 0; a new link's title is the ranker's daily plan read |
 | Chat, calendar, mail (in the ranker's run) | 2 chat, 1 calendar, 1 mail (off by default) | 0 |
 | Discovery | 2 calls: on Settings open, Check sources again and once a workday morning | 0 |
+| An Ask source (each one turned on) | at most 3, once a workday morning | 1 (the items), plus 1 when its plan is made (weekly, or when its tools change); about 3 k tokens |
 
-Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`, `tests/morning-brief.test.ts`, `tests/brief-sources.test.ts`.
+Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`, `tests/morning-brief.test.ts`, `tests/brief-sources.test.ts`, `tests/ask.test.ts`.
