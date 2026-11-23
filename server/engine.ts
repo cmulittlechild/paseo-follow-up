@@ -230,7 +230,15 @@ export class Engine {
     });
   }
   private async run(o: { background?: boolean; workspaceId?: string; affected?: Set<string> } = {}): Promise<void> {
-    if (this.paused()) { this.skipped++; return; }
+    if (this.paused()) {
+      // The governor holds background work (discovery, agent reads, auto-sends), never a read the developer starts
+      // (a-read-the-developer-starts-never-waits-on-the-governor, invariant 106): Refresh still reads that workspace's
+      // PRs, the dormant path's read (no agent observation, repairs or sends). 2026-11-23: Refresh did nothing at all
+      // while the machine was busy.
+      const asked = !o.background && !o.affected && o.workspaceId ? (await this.store.snapshot()).workspaces.find(w => w.id === o.workspaceId && w.enable_tracking && !w.archived) : undefined;
+      if (asked) await this.refreshPrs(asked); else this.skipped++;
+      return;
+    }
     this.gateway.tickStarted?.();
     const saved = await this.store.snapshot();
     if (this.stopped) return;

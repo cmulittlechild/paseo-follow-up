@@ -36,8 +36,11 @@ Nothing is on in a new install, and nothing is read until a repository is turned
   "All repositories". Adding a repository that's already listed says so instead of a dead Add.
 - **The opt-in sheet** (the switch turns on only from its Turn on): about N PRs changed in the last 90 days (one
   `search(issueCount)`, 1 point, through the gate), what reading them costs against the share of the hourly limit,
-  that stats pause under 40 %, and what is stored where. A repository the token can't read is refused there with the
-  reason, and Turn on stays off.
+  that stats pause under 40 %, and what is stored where. The count is the developer's read, so a busy machine never
+  holds it. Without a count the sheet never dead-ends (`estimateBlocked`): it leads with what Turn on does now (when
+  stats start reading), then why in plain words (under 40 % of GitHub's limit left until a time, the hour's share
+  spent, another read running, GitHub's error), keeps the pause and storage facts, and Turn on stays live; a count
+  held behind another read retries by itself, and one still going after 3 s doesn't hold Turn on. Only a repository the token can't read is refused, with the reason, and Turn on stays off.
 - **Turning off** asks in place: "Turn off, keep data" is the bordered default (the repository shows "Paused · data up
   to <date>", stays readable and isn't read); "Also delete the N PRs" is the quiet red extra and removes the file at
   once.
@@ -142,12 +145,15 @@ incremental pass reads it, and nothing else shifts. Each run drops records older
 Every request, pages and follow-ups alike, goes through `StatsGate.run` (invariant 67,
 `stats-never-spend-below-low`). It refuses, sending nothing, when:
 
-1. the governor holds background work (`allowsBackground()`);
+1. the governor holds background work (`allowsBackground()`), for background reads only. A read the developer starts
+   (`origin: "developer"`: the opt-in estimate, the page's Refresh, `pr_stats fresh`, `pr_stats_settings estimate`)
+   skips this step (invariant 106, `a-read-the-developer-starts-never-waits-on-the-governor`);
 2. the account's budget tier isn't `normal`, so stats stop with 40 % of GitHub's hourly limit left, far above the 20 %
    reserve the PR poller and agents' own `gh` calls depend on;
 3. the stats slice is spent: the cost of stats answers in the last rolling hour plus the next page's expected cost
    would pass `slice × limit` (5 % of 5000 = 250 points by default, 1–10 % allowed);
-4. another stats request is in flight.
+4. another stats request is in flight. A background read is refused (`busy`); a developer's read waits for it, up to
+   `DEVELOPER_SLOT_WAIT_MS` (15 s), and goes before the next background read.
 
 The ledger and the one-in-flight rule are worker-wide, stricter than per account. Every answer's `rateLimit` goes to
 `Github.noteRateLimit`, the same per-owner budget the PR poller reads, and a rate-limit refusal goes to

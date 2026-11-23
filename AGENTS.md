@@ -116,7 +116,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - One worker process, and no process per agent or per job.
    - No polling while the app is hidden.
    - Background work (scans, auto-sends, AI jobs) waits while the governor reports the VM constrained
-     (Paseo's cgroup working set ≥ 75 %, or pressure).
+     (Paseo's cgroup working set ≥ 75 %, or pressure). A read the developer starts is not background work (invariant 106).
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
      three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
@@ -905,7 +905,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 67. **PR statistics never spend below low** (`stats-never-spend-below-low`, `stats-stay-in-their-slice`,
    `stats-wait-for-the-governor`, `stats-take-one-slot`, `stats-feed-the-shared-budget`). PR statistics are the least
    important thing Follow-up reads from GitHub, so every stats request (page or follow-up) goes through one gate,
-   `StatsGate.run` (`server/pr-stats-gate.ts`), which sends nothing unless the governor allows background work, the
+   `StatsGate.run` (`server/pr-stats-gate.ts`), which sends nothing unless the governor allows background work (a read
+   the developer starts skips only this, invariant 106), the
    account's budget tier is `normal` (≥ 40 % of the limit left; stats stop at `low`, far above invariant 60's 20 %
    reserve), the stats spending of the rolling hour plus the next page's expected cost stays inside the slice (5 % of
    the limit by default), and no other stats request is in flight (worker-wide). Every answer's `rateLimit` moves the
@@ -1238,6 +1239,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    any key. The same day: "the overseer read the linear issues and wrote their contents in the requests to the agents…
    no need to chew their food for them". Guarded by `tests/start-approval-corpus.test.ts`, `tests/overseer-start-gate.test.ts` and
    `tests/dispatch-flow.test.ts`.
+
+106. **A read the developer starts never waits on the governor** (`a-read-the-developer-starts-never-waits-on-the-governor`).
+   The governor holds background work (invariant 2); a read the developer starts is not background work, so it goes
+   while the machine is busy: the PR stats turn-on estimate, the stats page's Refresh and an agent's `pr_stats fresh`
+   (`origin: "developer"` through `StatsGate.run`), and a workspace's Refresh or opening its panel (a paused `Engine.run`
+   still reads that workspace's PRs, with no discovery, agent reads or sends). GitHub's budget and stats' share still
+   bind it; a developer's stats read waits up to `DEVELOPER_SLOT_WAIT_MS` for one in flight and goes before the next
+   background read. The turn-on sheet never dead-ends: without a count it says why in plain words and when it can read
+   (`estimateBlocked`, `shared/pr-stats-settings.ts`), and Turn on stays live except for a repository the account can't
+   read. Every `governor.allowsBackground()` in the worker is listed with why no click goes through it. 2026-11-23: the
+   turn-on sheet showed only "Paused while this machine is busy" with Turn on off, and a workspace's Refresh did
+   nothing while the machine was busy. Guarded by `tests/developer-reads.test.ts`.
 
 ## Bugs
 
