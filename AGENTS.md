@@ -1023,31 +1023,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
-83. **Dispatch needs a click or a confirmed plan** (`dispatch-needs-a-click-or-a-confirmed-plan`). New creates a
-   workspace only from the developer's click (`follow.dispatch` from the dialog) or an agent's confirmed plan (the
-   `dispatch` tool: a dry run first, then confirm with its plan id). The plan freezes the resolved project and the
-   instructions' hash; a confirm whose project or instructions changed since is refused. Preview, sources and Settings →
-   New work only read. The Overseer's own dispatch also passes its new-workspace gate. Guarded by
-   `tests/dispatch-flow.test.ts` and `tests/overseer.test.ts`.
-84. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
-   icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
-   name when saved), a workspace kind, a branch rule and an agent. No action runs code, names a team, repo or person,
-   or reaches past its own fields; the body a source brings is clipped to 4 KB. Settings → New work and the agent tools
-   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts` and `tests/new-settings.test.ts`.
-85. **New never switches the project silently** (`new-never-switches-the-project-silently`). Every project New picks
-   comes with how and why (`resolveWhere`: the pick, the link's repository, the live workspace, the team's rule, learned,
-   last used as a guess, the only one), and a guess is drawn as one. When none of those holds, New asks ("Which
-   project?") and saves the answer as the team's rule; a rule naming a project that is gone asks again. Guarded by
-   `tests/dispatch-core.test.ts` and `tests/new-view.test.ts`.
-86. **A failed dispatch leaves nothing behind** (`a-failed-dispatch-leaves-nothing-behind`). A workspace Paseo refused
-   is not retried; an agent that can't start archives the workspace just created, and the record says what was left (or
-   where to look if the archive failed too). A worker restarted mid-create marks the dispatch failed and never creates
-   again blind. Guarded by `tests/dispatch-flow.test.ts`.
-87. **New reads nothing while closed** (`new-reads-nothing-while-closed`). Closed, New makes no request: no feed, no
-   timer, no mcpproxy call. Open, it reads the Linear list once (shared for 60 s), one issue per paste, and a search
-   only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
-   closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
-   queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
 
 83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
    reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
@@ -1060,6 +1035,31 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+84. **Dispatch needs a click or a confirmed plan** (`dispatch-needs-a-click-or-a-confirmed-plan`). New creates a
+   workspace only from the developer's click (`follow.dispatch` from the dialog) or an agent's confirmed plan (the
+   `dispatch` tool: a dry run first, then confirm with its plan id). The plan freezes the resolved project and the
+   instructions' hash; a confirm whose project or instructions changed since is refused. Preview, sources and Settings →
+   New work only read. The Overseer's own dispatch also passes its new-workspace gate. Guarded by
+   `tests/dispatch-flow.test.ts` and `tests/overseer.test.ts`.
+85. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
+   icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
+   name when saved), a workspace kind, a branch rule and an agent. No action runs code, names a team, repo or person,
+   or reaches past its own fields; the body a source brings is clipped to 4 KB. Settings → New work and the agent tools
+   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts` and `tests/new-settings.test.ts`.
+86. **New never switches the project silently** (`new-never-switches-the-project-silently`). Every project New picks
+   comes with how and why (`resolveWhere`: the pick, the link's repository, the live workspace, the team's rule, learned,
+   last used as a guess, the only one), and a guess is drawn as one. When none of those holds, New asks ("Which
+   project?") and saves the answer as the team's rule; a rule naming a project that is gone asks again. Guarded by
+   `tests/dispatch-core.test.ts` and `tests/new-view.test.ts`.
+87. **A failed dispatch leaves nothing behind** (`a-failed-dispatch-leaves-nothing-behind`). A workspace Paseo refused
+   is not retried; an agent that can't start archives the workspace just created, and the record says what was left (or
+   where to look if the archive failed too). A worker restarted mid-create marks the dispatch failed and never creates
+   again blind. Guarded by `tests/dispatch-flow.test.ts`.
+88. **New reads nothing while closed** (`new-reads-nothing-while-closed`). Closed, New makes no request: no feed, no
+   timer, no mcpproxy call. Open, it reads the Linear list once (shared for 60 s), one issue per paste, and a search
+   only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
+   closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
+   queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
 
 ## Bugs
 
