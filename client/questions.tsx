@@ -33,7 +33,7 @@ import { useChatComposer } from "./put-in-chat";
 import { Marked, NoMatchRow, useSectionSearch } from "./section-search";
 import { activityFields, questionFields, questionStatus } from "../shared/section-search";
 import type { Activity } from "../shared/activity";
-import { clearPendingAnswer, failPendingAnswer, pendingKey, setPendingAnswer, usePendingAnswer, usePendingAnswers, type PendingAnswer } from "./pending-answers";
+import { answerImagesKey, clearPendingAnswer, failPendingAnswer, pendingKey, setPendingAnswer, usePendingAnswer, usePendingAnswers, type PendingAnswer } from "./pending-answers";
 
 const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !agentId || agentId === w.mainAgentId ? "the main agent" : "a root session";
 
@@ -148,7 +148,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const asker = q.askedBy ?? w.mainAgentId ?? null;
   const composer = useChatComposer(open || q.answer?.delivery.state === "in-chat" ? asker : null);
   // Pasted images (every-agent-field-takes-images) ride the answer's message to the asking agent, on Send only.
-  const img = useImageAttachments({ target: asker ? { kind: "agent", agentId: asker } : { kind: "workspace", workspaceId: w.id } });
+  // A failed send keeps them under the answer's key (pending-answers), so the card's Retry sends them again.
+  const img = useImageAttachments({ target: asker ? { kind: "agent", agentId: asker } : { kind: "workspace", workspaceId: w.id }, keep: answerImagesKey(w.id, q.id) });
   const [choice, setChoice] = useState<string | null>(q.answer?.choice ?? null);
   const [words, setWords] = useState(q.answer?.words ?? "");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -216,7 +217,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     const input = { workspaceId: w.id, questionId: q.id, choice: chosen, words: said, action, ...(images ? { images } : {}) };
     if (action === "copy") void copyText(answerMessage(q, chosen, said)).catch(() => undefined);
     // The unsent copy keeps exactly what was sent, so Retry (which rebuilds the draft from it) sends it again.
-    setPendingAnswer(w.id, q.id, { choice: chosen, words: said });
+    setPendingAnswer(w.id, q.id, { choice: chosen, words: said, images });
     const agent = who(w, q.askedBy);
     void runAction({
       label: `Answer to ${q.id}`, toast, run: () => answerRpc(input),
@@ -229,7 +230,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
         // Recorded and queued: Follow-up sends it within seconds and retries on its own.
         return { message: `Sending to ${agent}` };
       },
-      onSuccess: () => { clearPendingAnswer(w.id, q.id); refresh(); },
+      onSuccess: () => { clearPendingAnswer(w.id, q.id); img.clear(); refresh(); },
       onError: error => { failPendingAnswer(w.id, q.id, errorText(error)); refresh(); },
       // Answered or withdrawn elsewhere first: nothing to retry. Drop the unsent copy; the card shows the recorded answer.
       reconcile: e => { clearPendingAnswer(w.id, q.id); refresh(); notice(mootNote(e, free || isOther(answer)), toast); },

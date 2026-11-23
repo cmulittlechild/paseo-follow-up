@@ -2,7 +2,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useS
 import { browserKey } from "./keys";
 import { Platform, TextInput, useWindowDimensions, View } from "react-native";
 import { ImageAttachmentsRow, ImageField, useImageAttachments } from "./image-attach";
-import type { ImageTarget } from "../shared/images";
+import { imageTargetKey, type ImageTarget } from "../shared/images";
+import { dropUnsent, keepUnsent, OVERSEER_ASK_KEY, unsent } from "./unsent-images";
 import { Pressable, Text } from "./text";
 import { usePaseo, useRpc, useSettings, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, Modal, useToast } from "@getpaseo/plugin/client/ui";
@@ -183,7 +184,10 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     if (asking) return;
     setAsking(true);
     // No toast: the conversation opens on the sent words, which says it more plainly.
-    try { await deps.sources.extras.askOverseer(item.ask, omnibox.images.uploads()); omnibox.images.clear(); omnibox.setQuery(""); omnibox.inputRef.current?.blur(); setPendingAsk(item.ask); if (route) route(OVERSEER_KEY); else setSelected(OVERSEER_KEY); inbox.refresh(); }
+    // Kept until Paseo takes the ask (client/unsent-images.ts): a failure leaves them on the search, and Home opened
+    // again after it shows them there.
+    const uploads = omnibox.images.uploads(); keepUnsent(OVERSEER_ASK_KEY, uploads);
+    try { await deps.sources.extras.askOverseer(item.ask, uploads); dropUnsent(OVERSEER_ASK_KEY); omnibox.images.clear(); omnibox.setQuery(""); omnibox.inputRef.current?.blur(); setPendingAsk(item.ask); if (route) route(OVERSEER_KEY); else setSelected(OVERSEER_KEY); inbox.refresh(); }
     catch (e) { toast.error(errorText(e)); } finally { setAsking(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
@@ -822,13 +826,16 @@ export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }:
 
 /** The reply box. Sending is the developer writing to the agent, which clears Needs you (binding rule). */
 const REPLY_HINT = "Sending clears Needs you. Sign off & next moves on without a reply.";
-function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in your own words", hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
+export function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in your own words", hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
   /** `images`: the pasted images (every-agent-field-takes-images), sent with the words through Paseo's own send. */
   onSend: (text: string, images?: { data: string; mimeType: string }[]) => Promise<void>; placeholder?: string; hint?: string | null; focus?: number; onFocusChange?: (focused: boolean) => void; docked?: boolean;
   /** Who reads it, so a recipient that can't take images says so before Send. */
   target: ImageTarget | null }) {
   const c = theme.colors;
-  const img = useImageAttachments({ target });
+  // A send under way keeps its words and images under the recipient's key until Paseo takes it (client/unsent-images.ts):
+  // after a failure the box shows them again, even if it was closed and opened again, and Send sends them again.
+  const keep = target ? `reply:${imageTargetKey(target)}` : undefined;
+  const img = useImageAttachments({ target, keep });
   const inputRef = useRef<TextInput | null>(null);
   // Focus when asked to (⌘K), never on a plain mount. The closing command palette hands focus back to where it was,
   // after us, so keep claiming it for a moment until it sticks.
@@ -842,15 +849,17 @@ function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in 
     return () => timers.forEach(clearTimeout);
   }, [focus]);
   const toast = useToast();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => (keep && unsent(keep)?.text) || "");
   const [sending, setSending] = useState(false);
   const send = async () => {
     const text = value.trim();
     if (!text || sending || img.blocked) return;
     setSending(true);
-    const images = img.uploads()?.map(i => ({ data: i.data, mimeType: i.mimeType }));
-    try { await onSend(text, images); setValue(""); img.clear(); toast.show("Sent", { variant: "success" }); }
-    catch (e) { toast.error(errorText(e)); } finally { setSending(false); }
+    const uploads = img.uploads();
+    if (keep) keepUnsent(keep, uploads, value);
+    const images = uploads?.map(i => ({ data: i.data, mimeType: i.mimeType }));
+    try { await onSend(text, images); if (keep) dropUnsent(keep); setValue(""); img.clear(); toast.show("Sent", { variant: "success" }); }
+    catch (e) { toast.error(`${errorText(e)}${images?.length ? ` Your ${images.length === 1 ? "image is" : "images are"} still attached.` : ""}`); } finally { setSending(false); }
   };
   // Phones: a 48-tall box (46 + hairline) with the placeholder on one centred line; it grows as you type.
   // In a dock (the detail pane), the dock draws the hairline; on its own it draws one. Phones keep the hint as the

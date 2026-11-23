@@ -333,6 +333,12 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
 - **New** keeps one set for the task field and the note; the thumbnails sit under the task field on desktop, and under
   the note on a phone-width web window, where the note's screen is the one showing.
   The source card ("Your words · 2 images") and the phone bar's line count them, so what goes is on screen before the click.
+- **A failed send keeps them** (`client/unsent-images.ts`): a field that sends puts its images (and a reply box its
+  words) under its key before the call, and only a confirmed send takes them out. The model (`useImageAttachments`
+  `keep`) starts with what is kept, so a reply box or Home's search opened again after a failure shows them, and a
+  question's Retry (pending-answers, `answerImagesKey`) sends them again. Memory only, since images don't fit in
+  localStorage: after a reload the unsent answer says how many images weren't kept. The brief card has one image set
+  for its answer and note fields and draws its thumbnails under the last open one.
 - **Phones (the native app)**: the plugin client has no image picker for plugin fields (`@getpaseo/plugin/client`'s
   attachment sources serve Paseo's own composer), so nothing is drawn and no space is kept.
 - `tests/every-agent-field-takes-images.test.ts` classifies every TextInput in `client/`: agent-bound fields must be

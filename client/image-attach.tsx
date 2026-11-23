@@ -14,7 +14,8 @@ import { text, type Theme } from "./kit";
 import { withAlpha } from "./theme";
 import { imageSupportRpc } from "../shared/contracts";
 import { ImageViewer, refocus, viewerInline, type ViewedImage } from "./image-viewer";
-import { imageRefusal, imageTargetKey, mb, type ImageSupport, type ImageTarget, type ImageUpload } from "../shared/images";
+import { base64Bytes, imageRefusal, imageTargetKey, mb, type ImageSupport, type ImageTarget, type ImageUpload } from "../shared/images";
+import { unsentImages, updateUnsentImages } from "./unsent-images";
 
 export const IMAGES_ON = Platform.OS === "web";
 
@@ -41,12 +42,24 @@ export type ImageAttachments = {
 const supportCache = new Map<string, Promise<ImageSupport>>();
 let seq = 0;
 
+const attached = (u: ImageUpload): AttachedImage => ({ id: `img${++seq}`, name: u.name, mimeType: u.mimeType, bytes: base64Bytes(u.data), data: u.data, uri: `data:${u.mimeType};base64,${u.data}` });
+const uploadsOf = (images: readonly AttachedImage[]): ImageUpload[] => images.map(i => ({ name: i.name, mimeType: i.mimeType as ImageUpload["mimeType"], data: i.data }));
+
 /**
  * The field's model. `target`: who the words go to (an agent, a workspace's main agent, the Overseer, New's provider);
  * null leaves support unknown, which never blocks (the server still refuses an image it can't keep).
+ * `keep`: the key a send under way keeps its images under (client/unsent-images.ts) until it is confirmed; a field
+ * that mounts again under that key starts with them, so a failed send's images come back with its Retry.
  */
-export function useImageAttachments({ target }: { target: ImageTarget | null }): ImageAttachments {
-  const [images, setImages] = useState<AttachedImage[]>([]);
+export function useImageAttachments({ target, keep }: { target: ImageTarget | null; keep?: string }): ImageAttachments {
+  const [images, setImages] = useState<AttachedImage[]>(() => keep ? unsentImages(keep).map(attached) : []);
+  const keptKey = useRef(keep);
+  useEffect(() => {
+    if (keptKey.current === keep) return;
+    keptKey.current = keep; setImages(keep ? unsentImages(keep).map(attached) : []);
+  }, [keep]);
+  // A send still unconfirmed follows the field: an image removed here isn't sent by its Retry.
+  useEffect(() => { if (keep) updateUnsentImages(keep, uploadsOf(images)); }, [keep, images]);
   const [refusal, setRefusal] = useState<string | null>(null);
   // Keyed by the target it answers, so a new pick (New's agent) never shows the last one's answer.
   const [support, setSupport] = useState<{ key: string; s: ImageSupport } | null>(null);
@@ -83,7 +96,7 @@ export function useImageAttachments({ target }: { target: ImageTarget | null }):
   const blocked = images.length && ready && !ready.ok ? ready.reason : null;
   return useMemo(() => ({
     images, refusal, blocked, add, remove, clear, target,
-    uploads: () => images.length ? images.map(i => ({ name: i.name, mimeType: i.mimeType as ImageUpload["mimeType"], data: i.data })) : undefined,
+    uploads: () => images.length ? uploadsOf(images) : undefined,
   }), [images, refusal, blocked, add, remove, clear, target]);
 }
 

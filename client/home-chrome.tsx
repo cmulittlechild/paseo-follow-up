@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, TextInput, View } from "react-native";
 import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
+import { OVERSEER_ASK_KEY } from "./unsent-images";
 import { Pressable, Text } from "./text";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { homeCounts, type HomeGroupId, type HomeModel } from "../shared/home";
@@ -58,7 +59,8 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const searching = query.trim().length > 0;
   const overseer = useSyncExternalStore(sources.extras.subscribe, sources.extras.overseer, sources.extras.overseer);
   const askOn = !!overseer?.enabled;
-  const images = useImageAttachments({ target: askOn ? { kind: "overseer" } : null });
+  // An ask Paseo hasn't taken yet keeps its images under OVERSEER_ASK_KEY (client/unsent-images.ts).
+  const images = useImageAttachments({ target: askOn ? { kind: "overseer" } : null, keep: OVERSEER_ASK_KEY });
   // Linked keys and titles: fetched only while there's a query (client/linked.tsx explains why).
   const linked = useLinkedIndex(searching);
   // Built lazily: nothing is indexed until the developer types.

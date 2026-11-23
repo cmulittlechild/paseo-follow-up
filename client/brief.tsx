@@ -147,8 +147,9 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
 
 /** "Add note" / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. QuestionBody uses it too. */
 /** The brief's answer or note field with the card's pasted images (client/image-attach.tsx); a read-only copy has none. */
-function WithImages({ img, c, compact, children }: { img?: ImageAttachments; c: Colors; compact: boolean; children: ReactNode }) {
-  return img ? <ImageField model={img} theme={{ colors: c }} compact={compact}>{children}</ImageField> : <>{children}</>;
+/** `row`: whether this field draws the card's thumbnails. One set per card, so only its last open field does. */
+function WithImages({ img, c, compact, row, children }: { img?: ImageAttachments; c: Colors; compact: boolean; row: boolean; children: ReactNode }) {
+  return img ? <ImageField model={img} theme={{ colors: c }} compact={compact} row={row}>{children}</ImageField> : <>{children}</>;
 }
 export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: { icon: string; label: string; a11y: string; disabled: boolean; onPress: () => void; c: Colors; compact: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={6}
@@ -162,7 +163,7 @@ export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: {
  * The card's body: decisions, error text, details, context, facts and links, and the agent's extra ask. Shared by the
  * open card and by a past card's read-only "Show full question", so a past question reads exactly as it was asked.
  */
-function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [], img }: {
+export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [], img }: {
   /** The card's pasted images (one model for its answer and note fields). Absent: read-only copies. */
   img?: ImageAttachments;
   /** one-done-button: decisions answered by the card's Done button (an action card), drawn without option rows. */
@@ -186,6 +187,9 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
   const extra = !!b.context || b.facts.length > 0 || b.links.length > 0;
   const showExtra = readonly || !tight || details || extrasFit(b, height);
   const numbered = b.decisions.length > 1;
+  // The card has one image set (its answer and note fields share it), so its thumbnails are drawn once: under the
+  // last decision whose answer or note field is open. Several open fields each drew them before.
+  const rowAt = readonly ? null : [...b.decisions].reverse().find(d => isOther(picks[d.id]) || !!notesOpen[d.id])?.id ?? null;
   return <>
     {b.decisions.map((d, i) => { const done = !readonly && doneIds.includes(d.id); return <View key={d.id} accessibilityRole={mode === "select" ? "radiogroup" : undefined} accessibilityLabel={mode === "select" ? d.question : undefined} style={{ gap: 8 }}>
       {(numbered || d.question.trim() !== b.ask.trim()) && <RichText style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: numbered ? "600" : "400" }}>{`${numbered ? `${i + 1}. ` : ""}${d.question}`}</RichText>}
@@ -200,7 +204,7 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
           onPress={() => onPick(d.id, OTHER)} c={c} compact={compact} />}
         {/* Something else's field with its Send answer, kept on screen together while typing (DockedPane). */}
         {!readonly && isOther(picks[d.id]) && <View {...PRIMARY_FORM} style={{ gap: 8 }}>
-          <WithImages img={img} c={c} compact={compact}><TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
@@ -211,7 +215,7 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}
         {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View {...PRIMARY_FORM} style={{ gap: 6, marginTop: 2 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Note</Text>
-          <WithImages img={img} c={c} compact={compact}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           <NoteLink icon="X" label="Remove note" a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
