@@ -86,7 +86,7 @@ the saved one, else the zone's usual one, invariant 75), the clock, the sync lin
 
 - **Not on yet**: one line on what it is for, and Settings' PR statistics section in place (each repository's switch
   opens the opt-in sheet). Nothing fake.
-- **First read**: while the period isn't read yet the sync line says "Reading · back to <date> · N PRs so far" and every team number says "so far"; once the period is read and only older history is loading, it says "This period is read · still reading older PRs (back to <date>)" in muted ink.
+- **First read**: while the period isn't read yet the sync line says "Partly read: from <date>" and every team number says "so far"; once the period is read and only older history is loading, it says "This period is read · still reading older PRs (back to <date>)" in muted ink.
 - **Waiting**: GitHub's limit low (amber, "updates again at <time>"), the share used this hour (amber), the machine
   busy (muted), in Settings' words (`statsWaitWords`).
 - **Error**: GitHub's refusal in red, with when the numbers are from; the data on screen stays.

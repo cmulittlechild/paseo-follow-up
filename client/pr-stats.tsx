@@ -86,7 +86,7 @@ export function StatsPage({ theme, compact, params, deps }: { theme: Theme; comp
     if (out.empty || !out.model) return <NotOnYet theme={theme} compact={compact} />;
     if (person) return <PersonView theme={theme} compact={compact} out={out} login={person} />;
     return <Leaderboard theme={theme} compact={compact} out={out} now={now} period={period} sort={sort} onSort={setSort}
-      onPeriod={setPeriod} onRepo={setRepo} onPerson={openPerson} />;
+      onPeriod={setPeriod} onRepo={setRepo} onPerson={openPerson} onSettings={deps.openSettings} />;
   })();
 
   return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
@@ -107,9 +107,9 @@ function NotOnYet({ theme, compact }: { theme: Theme; compact: boolean }) {
   </View>;
 }
 
-export function Leaderboard({ theme, compact, out, now, period, sort, onSort, onPeriod, onRepo, onPerson }: {
+export function Leaderboard({ theme, compact, out, now, period, sort, onSort, onPeriod, onRepo, onPerson, onSettings }: {
   theme: Theme; compact: boolean; out: PrStatsOutput; now: number; period: Period; sort: SortKey;
-  onSort: (k: SortKey) => void; onPeriod: (p: Period) => void; onRepo: (r: string) => void; onPerson: (login: string) => void;
+  onSort: (k: SortKey) => void; onPeriod: (p: Period) => void; onRepo: (r: string) => void; onPerson: (login: string) => void; onSettings?: () => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const model = out.model!;
@@ -138,7 +138,9 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
     {!model.people.length
       ? <View style={{ gap: 10, paddingVertical: 20, alignItems: "flex-start" }}>
         <Text style={[t.body, { color: c.foregroundMuted }]}>{`No PRs opened or reviewed ${period === "week" ? "this week" : period === "last-week" ? "last week" : `in the last ${period === "30d" ? 30 : 90} days`}.`}</Text>
-        {period !== "90d" && <Button theme={theme} compact={compact} title={period === "30d" ? "Show 90 days" : "Show 30 days"} onPress={() => onPeriod(period === "30d" ? "90d" : "30d")} />}
+        {out.sync?.error
+          ? onSettings && <Button theme={theme} compact={compact} title="Open settings" onPress={onSettings} />
+          : period !== "90d" && <Button theme={theme} compact={compact} title={period === "30d" ? "Show 90 days" : "Show 30 days"} onPress={() => onPeriod(period === "30d" ? "90d" : "30d")} />}
       </View>
       : model.people.length === 1
       ? <View style={{ gap: 10 }}><Text style={[t.body, { fontWeight: "600" }]}>{model.people[0]!.login}</Text><PersonLoader theme={theme} compact={compact} repo={out.repo!} period={period} login={model.people[0]!.login} /></View>
@@ -276,7 +278,7 @@ function PhoneTable({ theme, rows, max, sort, onSort, onPerson }: { theme: Theme
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <Text numberOfLines={1} style={[t.body, { flex: 1 }]}>{p.login}</Text>
             {cell.value !== null && <Bar theme={theme} value={cell.value} max={max[sort]} width={64} />}
-            <Text style={[t.body, { minWidth: 52, textAlign: "right", fontVariant: ["tabular-nums"], fontWeight: "600", color: cell.value === null ? c.foregroundMuted : c.foreground }]}>{cell.text}</Text>
+            <Text style={[t.body, { minWidth: 72, textAlign: "right", fontVariant: ["tabular-nums"], fontWeight: "600", color: cell.value === null ? c.foregroundMuted : c.foreground }]}>{cell.text}</Text>
           </View>
           <Text style={t.meta}>{personLine(p, sort)}</Text>
         </View>
@@ -297,7 +299,7 @@ function PhoneTable({ theme, rows, max, sort, onSort, onPerson }: { theme: Theme
 
 /** Desktop: the person over the table. Reads the same model with `person`. */
 function PersonSheet({ theme, compact, repo, period, login, onClose }: { theme: Theme; compact: boolean; repo: string; period: Period; login: string; onClose: () => void }) {
-  return <Modal title={`${login} · ${PERIOD_LABELS[period].toLowerCase()}`} open onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={`${login} · ${PERIOD_LABELS[period]}`} open onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: 20, gap: 14 }}>
       <PersonLoader theme={theme} compact={compact} repo={repo} period={period} login={login} />
     </Modal.Content>
@@ -329,8 +331,8 @@ export function PersonView({ theme, compact, out, login }: { theme: Theme; compa
   return <View style={{ gap: 14 }}>
     {row && <View style={{ gap: 4 }}>
       <Text style={t.body}>{`${row.opened} PR${row.opened === 1 ? "" : "s"} opened${row.openedStacks && row.openedStacks < row.opened ? ` in ${row.openedStacks} stacks` : ""} · ${row.merged} merged`}</Text>
-      <Text style={t.meta}>{`Median wait for a first review ${wait!.text === "-" ? tooFew(row.wait.n) : `${wait!.text} (p75 ${row.wait.p75 === null ? "-" : durationWords(row.wait.p75)}, n ${row.wait.n})`}`}</Text>
-      <Text style={t.meta}>{`${row.reviews} review${row.reviews === 1 ? "" : "s"} given · median turnaround ${turn!.text === "-" ? tooFew(row.turnaround.n) : `${turn!.text} from the request (n ${row.turnaround.n})`}`}</Text>
+      <Text style={t.meta}>{`Median wait for a first review ${wait!.text === "-" ? tooFew(row.wait.n) : `${wait!.text}, over the ${row.wait.n} first reviews in this period${row.wait.p75 === null ? "" : `; 3 in 4 within ${durationWords(row.wait.p75)}`}`}`}</Text>
+      <Text style={t.meta}>{`${row.reviews} review${row.reviews === 1 ? "" : "s"} given · median turnaround ${turn!.text === "-" ? tooFew(row.turnaround.n) : `${turn!.text} from the request, over ${row.turnaround.n}`}`}</Text>
     </View>}
     {!d && <ActivityIndicator color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} />}
     {d && <>

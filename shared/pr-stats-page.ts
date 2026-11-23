@@ -77,7 +77,7 @@ export function syncLine(out: Pick<PrStatsOutput, "sync" | "timeZone">, now: num
   const back = s.coveredTo ? ` back to ${day(s.coveredTo, out.timeZone, { month: "short", day: "numeric" })}` : "";
   // Said from the period's side: once the period is read, an unfinished backfill is only older history.
   const reading = s.backfillDone ? null : s.coversPeriod ? `This period is read · still reading older PRs${back ? ` (${back.trim()})` : ""}`
-    : `Reading${back ? ` ·${back}` : ""} · ${s.records.toLocaleString("en-US")} PRs so far`;
+    : `Partly read${back ? `: from${back.replace(" back to", "")}` : ""}`;
   const wait = statsWaitWords(s);
   if (s.error) return { text: `${wait} Showing the last good read${s.lastSyncAt ? `, from ${ago(now - s.lastSyncAt)}` : ""}.`, tone: "danger", soFar };
   if (wait) return { text: [reading, wait].filter(Boolean).join(" · "), tone: s.waiting?.reason === "governor" || s.coversPeriod ? "muted" : "warning", soFar };
@@ -87,7 +87,7 @@ export function syncLine(out: Pick<PrStatsOutput, "sync" | "timeZone">, now: num
 export function teamFacts(model: NonNullable<PrStatsOutput["model"]>): { value: string; label: string; hover?: string }[] {
   const t = model.team; const wait = medianCell(t.wait);
   return [
-    { value: t.opened.toLocaleString("en-US"), label: t.openedStacks && t.openedStacks < t.opened ? `opened in ${t.openedStacks} stacks` : "opened" },
+    { value: t.opened.toLocaleString("en-US"), label: "opened", ...(t.openedStacks && t.openedStacks < t.opened ? { hover: `in ${t.openedStacks} stacks` } : {}) },
     { value: t.merged.toLocaleString("en-US"), label: "merged" },
     { value: wait.text, label: "median wait for a first review", hover: wait.hover },
     { value: t.reviews.toLocaleString("en-US"), label: t.reviews === 1 ? "review given" : "reviews given" },

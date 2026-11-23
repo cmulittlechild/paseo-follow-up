@@ -53,7 +53,7 @@ test("stats page: the sync line says so far while reading, why it waits, and a r
   const now = 1_800_000_000;
   const base = { records: 1240, coveredTo: Date.parse("2026-01-23T00:00:00Z") / 1000, backfillDone: false, coversPeriod: false, lastSyncAt: now - 120, waiting: null, error: null, cappedTo: null };
   const at = (sync: PrStatsOutput["sync"]) => syncLine({ sync, timeZone: "UTC" }, now);
-  assert.deepEqual(at(base), { text: "Reading · back to Jan 23 · 1,240 PRs so far", tone: "muted", soFar: true });
+  assert.deepEqual(at(base), { text: "Partly read: from Jan 23", tone: "muted", soFar: true });
   assert.equal(at({ ...base, waiting: { reason: "budget", until: null } })!.tone, "warning");
   assert.match(at({ ...base, waiting: { reason: "budget", until: null } })!.text, /GitHub limit low/);
   assert.equal(at({ ...base, waiting: { reason: "governor", until: null } })!.tone, "muted");
@@ -67,5 +67,6 @@ test("stats page: the sync line says so far while reading, why it waits, and a r
 
 test("stats page: the team line names no one", () => {
   const facts = teamFacts({ team: { opened: 31, openedStacks: 24, merged: 24, wait: sum(20, 5 * 3600 + 2400), timeToMerge: sum(0, null), reviewToMerge: sum(0, null), waitingNow: 5, reviews: 52, mergedWithoutReview: 0, deletedUsers: 0, bots: 0, sizes: {} }, people: [], waiting: [], stale: 0 });
-  assert.deepEqual(facts.map(f => `${f.value} ${f.label}`), ["31 opened in 24 stacks", "24 merged", "5h 40m median wait for a first review", "52 reviews given"]);
+  assert.deepEqual(facts.map(f => `${f.value} ${f.label}`), ["31 opened", "24 merged", "5h 40m median wait for a first review", "52 reviews given"]);
+  assert.equal(facts[0]!.hover, "in 24 stacks", "stacks live in the hover, so the label is the same with or without them");
 });

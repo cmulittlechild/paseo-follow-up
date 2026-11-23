@@ -2042,7 +2042,7 @@ async function prStatsShots({ shoot }) {
       await page.getByText("Opened by alice").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
       await page.setViewportSize(phone ? PHONE : DESKTOP); await page.waitForTimeout(400); await healthy(page, phone ? PHONE : DESKTOP);
     });
-    await shoot(`pst-reading-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/web/, /PRs so far/); });
+    await shoot(`pst-reading-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/web/, /Partly read/); });
     await shoot(`pst-refused-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/docs/, /GitHub returned 404/); await page.getByText(/No PRs opened or reviewed this week/).first().waitFor(); });
     await shoot(`pst-solo-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/solo/, /Opened by alice/); });
   }
