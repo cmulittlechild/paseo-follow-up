@@ -10,7 +10,9 @@ import type { LinearIssue } from "./linear-issues";
 
 export type RowTone = "plain" | "warn" | "open";
 export type NewRow =
-  | { kind: "issue"; id: string; key: string; title: string; icon: string; state: string; age: string; route: { text: string; tone: RowTone }; tag: string | null }
+  | { kind: "issue"; id: string; key: string; title: string; icon: string; state: string; age: string; route: { text: string; tone: RowTone }; tag: string | null; taken: boolean }
+  /** The last row while some listed issues already have a workspace: "N issues already have a workspace", opens in place. */
+  | { kind: "fold"; id: "taken"; count: number; open: boolean; title: string }
   | { kind: "pasted"; id: "pasted"; key: string; title: string; icon: string; sourceKind: SourceKind; raw: string }
   | { kind: "words"; id: "words"; title: string; raw: string }
   | { kind: "search"; id: "search"; query: string };
@@ -53,7 +55,16 @@ export function routeText(route: SourceRoute | undefined): { text: string; tone:
 }
 
 function issueRow(issue: LinearIssue, routes: Record<string, SourceRoute>, now: number, tag: string | null = null): NewRow {
-  return { kind: "issue", id: issue.key, key: issue.key, title: issue.title, icon: stateIcon(issue.stateType), state: issue.state ?? "", age: shortAge(issue.updatedAt, now), route: routeText(routes[issue.key]), tag };
+  return { kind: "issue", id: issue.key, key: issue.key, title: issue.title, icon: stateIcon(issue.stateType), state: issue.state ?? "", age: shortAge(issue.updatedAt, now), route: routeText(routes[issue.key]), tag, taken: !!routes[issue.key]?.existing };
+}
+
+/** "1 issue already has a workspace", "3 issues already have a workspace": the fold's words. */
+export const takenWords = (n: number) => n === 1 ? "1 issue already has a workspace" : `${n} issues already have a workspace`;
+
+/** Startable rows, then (when some are taken) the fold, then the taken rows once it's open. */
+function withFold(rows: NewRow[], taken: NewRow[], open: boolean): NewRow[] {
+  if (!taken.length) return rows;
+  return [...rows, { kind: "fold", id: "taken", count: taken.length, open, title: takenWords(taken.length) }, ...(open ? taken : [])];
 }
 
 /** Every word of the query in the key or title (case-insensitive). */
@@ -63,31 +74,43 @@ export function matchesQuery(issue: Pick<LinearIssue, "key" | "title">, query: s
 }
 
 /**
- * The left list and its default selection for what's in the field.
- * - Empty: My issues, the first preselected (the right pane is never empty while Linear is there).
+ * The left list and its default selection for what's in the field (a-taken-issue-is-not-a-suggestion): My issues lists
+ * only issues you could start. One a live workspace already has (`routes[key].existing`, the server's one predicate)
+ * folds into a last row, "N issues already have a workspace", that opens in place (`foldOpen`); preselection and ↑/↓ reach a
+ * taken row only once it's open. `empty`: the line above the fold when nothing is left to start (the fold right
+ * under it says how many).
+ * - Empty: My issues, the first startable preselected (the right pane is never empty while Linear is there).
  * - A Linear key or link that is in the list: that row, tagged "From your link" (no duplicate row).
  * - Any other link or key: a Pasted row on top, selected, then My issues.
  * - Words: the issues they match (the best preselected), "Start from your words" second (so ↵ on a half-typed word never
  *   starts a PR on that word unless nothing matches), then "Search all of Linear for “…”" last.
  */
-export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | null, query: string, now: number): { rows: NewRow[]; selected: string | null } {
+export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | null, query: string, now: number, foldOpen = false): { rows: NewRow[]; selected: string | null; empty: string | null } {
   const issues = sources?.linear.issues ?? [];
   const routes = sources?.routes ?? {};
+  const isTaken = (i: LinearIssue) => !!routes[i.key]?.existing;
+  const split = (list: readonly LinearIssue[]) => ({ free: list.filter(i => !isTaken(i)).map(i => issueRow(i, routes, now)), taken: list.filter(isTaken).map(i => issueRow(i, routes, now)) });
   const q = query.trim();
-  // With nothing typed, the first issue that can start (no live workspace of its own) is preselected.
-  if (!q) { const rows = issues.map(i => issueRow(i, routes, now)); return { rows, selected: (issues.find(i => !routes[i.key]?.existing) ?? issues[0])?.key ?? null }; }
+  if (!q) {
+    const { free, taken } = split(issues);
+    // All taken: the fold is selected, so ↵ opens it.
+    return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? (taken.length ? "taken" : null), empty: !free.length && taken.length ? "Nothing new to start." : null };
+  }
   const parsed = parseSource(q);
   if (parsed.kind !== "text") {
+    // A pasted link is never a suggestion: its row comes first and selected, taken or not (Open is then ↵).
     const listed = parsed.kind === "linear" ? issues.find(i => i.key === parsed.key) : undefined;
-    if (listed) return { rows: issues.map(i => issueRow(i, routes, now, i === listed ? "From your link" : null)), selected: listed.key };
+    const { free, taken } = split(issues.filter(i => i !== listed));
+    if (listed) return { rows: [issueRow(listed, routes, now, "From your link"), ...withFold(free, taken, foldOpen)], selected: listed.key, empty: null };
     const pasted: NewRow = { kind: "pasted", id: "pasted", key: parsed.key ?? q, title: parsed.kind === "link" ? q : parsed.key ?? q, icon: kindIcon(parsed.kind), sourceKind: parsed.kind, raw: q };
-    return { rows: [pasted, ...issues.map(i => issueRow(i, routes, now))], selected: "pasted" };
+    return { rows: [pasted, ...withFold(free, taken, foldOpen)], selected: "pasted", empty: null };
   }
-  const matches = issues.filter(i => matchesQuery(i, q)).map(i => issueRow(i, routes, now));
+  const { free: matches, taken } = split(issues.filter(i => matchesQuery(i, q)));
   const words: NewRow = { kind: "words", id: "words", title: parsed.title, raw: q };
   const search: NewRow = { kind: "search", id: "search", query: q };
-  const rows = matches.length ? [matches[0], words, ...matches.slice(1), search] : [words, search];
-  return { rows, selected: rows[0].id };
+  // Search all of Linear (⇧↵) stays above the fold, so opening it never pushes the search down.
+  const rows = withFold(matches.length ? [matches[0], words, ...matches.slice(1), search] : [words, search], taken, foldOpen);
+  return { rows, selected: rows[0].id, empty: null };
 }
 
 /** What a row sends to the preview (`source`); null for the search row, which runs a search instead. */

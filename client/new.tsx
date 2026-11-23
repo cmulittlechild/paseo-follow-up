@@ -288,14 +288,22 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
     </View>
     {chevron && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
   </Pressable>;
-  const routeColor = row.route.tone === "warn" ? c.statusWarning : row.route.tone === "open" ? c.foreground : c.foregroundMuted;
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${row.key} ${row.title}, ${row.state}, ${row.route.text}`} onPress={onPress} style={base}>
-    <View style={{ paddingTop: 2 }}><Icon name={row.icon} size={15} color={row.icon === "Contrast" ? c.statusWarning : c.foregroundMuted} /></View>
+  // a-taken-issue-is-not-a-suggestion: the issues a live workspace already has, folded into one quiet last row.
+  if (row.kind === "fold") return <Pressable accessibilityRole="button" accessibilityState={{ expanded: row.open, selected }} accessibilityLabel={`${row.title}. ${row.open ? "Hide them" : "Show them"}`} onPress={onPress}
+    style={(s: Hover) => ({ ...base(s), alignItems: "center", marginTop: compact ? 0 : 6 })}>
+    <Icon name={row.open ? "ChevronDown" : "ChevronRight"} size={15} color={c.foregroundMuted} />
+    <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: compact ? 14 : 12, flex: 1 }}>{row.title}</Text>
+  </Pressable>;
+  const routeColor = row.route.tone === "warn" ? c.statusWarning : row.route.tone === "open" && !row.taken ? c.foreground : c.foregroundMuted;
+  // A taken issue (inside the open fold) is muted: it's somebody's work already, and ↵ opens its workspace.
+  const ink = row.taken && !selected ? c.foregroundMuted : c.foreground;
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${row.key} ${row.title}, ${row.state}, ${row.taken ? `already in ${row.route.text}` : row.route.text}`} onPress={onPress} style={base}>
+    <View style={{ paddingTop: 2 }}><Icon name={row.icon} size={15} color={row.icon === "Contrast" && !row.taken ? c.statusWarning : c.foregroundMuted} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-      <Text numberOfLines={compact ? 2 : 1} style={{ color: c.foreground, fontSize: compact ? 15 : 13 }}><Text style={{ color: c.foregroundMuted }}>{row.key}  </Text>{row.title}</Text>
+      <Text numberOfLines={compact ? 2 : 1} style={{ color: ink, fontSize: compact ? 15 : 13 }}><Text style={{ color: c.foregroundMuted }}>{row.key}  </Text>{row.title}</Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
         <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{[row.state, row.age].filter(Boolean).join(" · ")} · </Text>
-        {row.route.tone === "open" && <Icon name="ExternalLink" size={12} color={c.foreground} />}
+        {row.route.tone === "open" && <Icon name="ExternalLink" size={12} color={routeColor} />}
         <Text numberOfLines={1} style={{ color: routeColor, fontSize: 12, flexShrink: 1 }}>{row.route.text}</Text>
         {row.tag && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}> · {row.tag}</Text>}
       </View>
@@ -304,8 +312,8 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   </Pressable>;
 }
 
-function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons }: {
-  sources: DispatchSources | null; rows: NewRow[]; selected: string | null; query: string; setQuery: (q: string) => void; onRow: (row: NewRow) => void; onRefresh: () => void;
+function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty }: {
+  sources: DispatchSources | null; rows: NewRow[]; selected: string | null; query: string; setQuery: (q: string) => void; onRow: (row: NewRow) => void; onRefresh: () => void; empty: string | null;
   c: Colors; compact: boolean; error: string | null; searching: string | null; chevrons: boolean;
 }) {
   const status = sources?.linear.status;
@@ -340,6 +348,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
           <Text style={{ color: c.foreground, fontSize: 13 }}>Start from a link or your words: paste a GitHub issue or PR link, or describe the task.</Text>
           <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Your Linear issues show here once Linear is connected in mcpproxy, as for the Summary.</Text>
         </View>}
+        {!!empty && <Text style={{ color: c.foreground, fontSize: 13, paddingHorizontal: compact ? 16 : 12, paddingTop: 4, paddingBottom: 8 }}>{empty}</Text>}
         {rows.map((row, i) => <View key={row.id} style={compact && i ? { borderTopWidth: 1, borderTopColor: c.border, marginHorizontal: 16 } : undefined}>
           <View style={compact && i ? { marginHorizontal: -16 } : undefined}><ListRow row={row} selected={row.id === selected} c={c} compact={compact} chevron={chevrons} onPress={() => onRow(row)} /></View>
         </View>)}
@@ -349,6 +358,20 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
           {sources.recent.map(r => <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{r.title} · {r.actionName} · {r.state === "created" ? "started" : r.state}</Text>)}
         </View>}
       </ScrollView>}
+  </View>;
+}
+
+/**
+ * The fold selected (a-taken-issue-is-not-a-suggestion): what it holds and what ↵ does, never a blank pane. Each taken
+ * issue names the workspace that has it; picking one there shows Open it.
+ */
+function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; rows: NewRow[]; c: Colors }) {
+  return <View style={{ padding: 24, gap: 10 }}>
+    <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>{row.title}</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so New doesn't suggest them. Pick one to open its workspace.</Text>
+    {row.open && <View style={{ gap: 4 }}>{rows.filter((r): r is Extract<NewRow, { kind: "issue" }> => r.kind === "issue" && r.taken).map(r =>
+      <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}><Text style={{ color: c.foreground }}>{r.key}</Text>  {r.route.text}</Text>)}</View>}
+    {Platform.OS === "web" && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Kbd c={c} label="↵" /><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{row.open ? "hides them" : "shows them"}</Text></View>}
   </View>;
 }
 
@@ -400,7 +423,8 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = searched && searched.query === query.trim() ? searched.sources : sources;
-  const { rows, selected: preselected } = useMemo(() => newRows(shown, query, now), [shown, query, now]);
+  const [foldOpen, setFoldOpen] = useState(false);
+  const { rows, selected: preselected, empty } = useMemo(() => newRows(shown, query, now, foldOpen), [shown, query, now, foldOpen]);
   const selected = picked && rows.some(r => r.id === picked) ? picked : preselected;
   const row = rows.find(r => r.id === selected) ?? null;
   const source = rowSource(row);
@@ -484,6 +508,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       if (k === "down" || k === "up") setPicked(moveSelection(s.rows, s.selected, k === "down" ? 1 : -1));
       else if (k === "instructions") setInstructions(v => !v);
       else if (k === "search" || (k === "primary" && s.row?.kind === "search")) search();
+      else if (k === "primary" && s.row?.kind === "fold") setFoldOpen(v => !v);
       else if (k === "primary") { if (s.bar.kind === "existing") openWorkspace(s.bar.workspaceId); else if (s.bar.primary && !s.bar.disabled) void start(s.bar.primary.id); }
       else if (k === "second" && s.bar.kind === "actions" && s.bar.second && !s.bar.disabled) void start(s.bar.second.id);
     };
@@ -498,6 +523,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
 
   const onRow = (r: NewRow) => {
     if (r.kind === "search") { search(); return; }
+    if (r.kind === "fold") { setFoldOpen(v => !v); setPicked(r.id); return; }
     setPicked(r.id);
     if (compact) setScreen("preview");
   };
@@ -505,6 +531,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const right = phase.kind === "record" && record ? <RecordPane record={record} c={c} compact={compact} now={now} />
     : planNow ? <Preview plan={planNow} overrides={overrides} setOverrides={setOverrides} c={c} compact={compact} busy={busy} catalog={catalog} loadCatalog={loadCatalog} projects={projects} loadProjects={loadProjects} saveBase={saveBase} instructions={instructions} setInstructions={setInstructions} reopen={reopen} />
     : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
+    : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
       <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>Paste a link or describe the task</Text>
       <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>A Linear key or link, a GitHub issue or pull request, any link, or a sentence. The preview shows here before anything starts.</Text>
@@ -534,7 +561,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
       </View>
       {onPreview ? <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
-        : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons />}
+        : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons empty={empty} />}
       {(recordBar || planNow || planError) && <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1, padding: 16, paddingBottom: Platform.OS === "ios" ? 34 : 16, gap: 8 }}>
         {recordBar ?? <>
           {planNow && <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
@@ -560,7 +587,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     </View>
     <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
       <View style={{ width: 400, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} />
+        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} />
       </View>
       <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
     </View>

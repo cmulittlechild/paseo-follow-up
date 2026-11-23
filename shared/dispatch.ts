@@ -434,7 +434,11 @@ export type DispatchPlan = {
   blockers: string[];
 };
 /** What New lists when it opens (follow.dispatch-sources). */
-export type DispatchSources = { linear: LinearList; routes: Record<string, SourceRoute>; recent: DispatchRecord[] };
+/**
+ * What New lists. `taken`: the listed keys a live workspace already has (their `routes[key].existing`); New folds them
+ * and agents read them as "open it, don't start it again" (a-taken-issue-is-not-a-suggestion).
+ */
+export type DispatchSources = { linear: LinearList; routes: Record<string, SourceRoute>; taken?: string[]; recent: DispatchRecord[] };
 
 // ---------- RPC inputs (shared/contracts.ts, the agent tools) ----------
 

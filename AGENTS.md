@@ -79,7 +79,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/send-words.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/task-dup.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
-| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
+| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
@@ -1136,6 +1136,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
    closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
    queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
+95. **A taken issue is not a suggestion** (`a-taken-issue-is-not-a-suggestion`). One predicate decides whether an issue
+   already has a workspace, `issueWorkspaces` (`shared/issue-workspace.ts`): a live (unarchived) workspace that links it,
+   or one tracking a PR whose branch or title names its key as a whole token, the PR's workspace first, then the most
+   recently active. The worker builds it once per read from state it already holds (`issueHolders`, `takenIssues`), so
+   invariant 94 still holds. Every surface that offers to start work from an issue reads it: New's list and its
+   preselection (a taken issue folds into "N issues already have a workspace" and ↵ opens its workspace), dispatch's
+   `existing` (paste, preview, the `dispatch` dry run), `dispatch_sources`' `taken`, Needs you's raised issues
+   (`raisedNeeds`) and the brief's Since block. 2026-11-23, on 2.4.0-beta.3: 8 of New's first 9 issues were ones a
+   planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a
+   workspace" was two rules that counted only links and New listed every issue anyway. Guarded by
+   `tests/taken-issues.test.ts` and `tests/new-view.test.ts`.
 
 ## Bugs
 

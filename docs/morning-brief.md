@@ -92,7 +92,9 @@ elsewhere) unless Settings picks the days. The ranker's automatic runs use the s
 - **Agents:** `linear_queue` (read: the queue by priority, filtered all / no-workspace / changed, each issue's workspace
   or none and its change, the changes since, the sweep's health) and `sweep_queue` (planned). The Overseer, untracked
   root agents and main agents get them; contributors, recovery agents and subagents don't (invariant 4).
-- An issue "has a workspace" when an unarchived workspace has its key linked (New's rule).
+- An issue "has a workspace" by New's one predicate (`issueWorkspaces`, `shared/issue-workspace.ts`,
+  a-taken-issue-is-not-a-suggestion): an unarchived workspace links it, or tracks a PR whose branch or title names its
+  key. A raised issue a tracked PR names is no Needs-you item.
 
 ## In the brief
 
