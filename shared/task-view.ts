@@ -56,6 +56,29 @@ export function taskViewRow(o: Obligation, w: Workspace, agents: TaskAgents = w.
   return row("open", status.text);
 }
 
+/**
+ * The task the agent owes next (stale first, then the longest due), or null: the header's live line. liveLine runs per
+ * workspace on every Home build and several times per invariant sweep, so this reads only taskDue, and only for tasks
+ * that can be due by now; building every row (taskStatus and its strings) there grew the idle worker's heap by ~14 MB
+ * at 140 workspaces (2026-11-23, scale check). Same rules as taskViewRow's stale and due kinds.
+ */
+export function owedTask(w: Workspace, now = Date.now()): { o: Obligation; stale: boolean } | null {
+  let best: { o: Obligation; stale: boolean; at: number } | null = null;
+  for (const o of followUpObligations(w)) {
+    if (finishedTask(o)) continue;
+    if (!o.afterPrs.length && !o.coveredBy && !(o.recheckAt && Date.parse(o.recheckAt) <= now)) continue;
+    const d = taskDue(o, w, now);
+    if (!d?.due) continue;
+    const q = linkedQuestion(o, w);
+    if (q && !q.answer && !q.closed) continue;
+    if (blockedOnDeveloper(o) && !q) continue;
+    const stale = isStale(o, d);
+    const at = d.dueAt ? Date.parse(d.dueAt) : Number.POSITIVE_INFINITY;
+    if (!best || (stale && !best.stale) || (stale === best.stale && at < best.at)) best = { o, stale, at };
+  }
+  return best && { o: best.o, stale: best.stale };
+}
+
 /** The open tasks the developer sees, in the card's order: stale and due first (oldest first), Needs you's last. */
 export function taskViewRows(w: Workspace, agents: TaskAgents = w.taskAgents ?? {}, now = Date.now()): TaskViewRow[] {
   return followUpObligations(w).filter(o => !finishedTask(o)).map(o => taskViewRow(o, w, agents, now))

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { taskViewRows, taskSummary, summaryParts, finishedLine } from "../shared/task-view";
+import { taskViewRows, taskSummary, summaryParts, finishedLine, owedTask } from "../shared/task-view";
 import { taskStatus } from "../shared/task-status";
 import { activity } from "../shared/activity";
 import { liveLine } from "../shared/attention";
@@ -79,6 +79,17 @@ test("tasks-are-the-agent-s: the live line names the task the agent owes, and a 
   const inv = INVARIANTS.find(i => i.id === "tasks-are-the-agent-s")!;
   assert.equal(inv.check(fixture(), NOW), null);
   assert.equal(inv.check(waiting, NOW), null);
+});
+
+test("tasks-are-the-agent-s: the live line reads only what's due, never the whole card (scale: liveLine runs per workspace per Home build)", async () => {
+  for (const w of [fixture(), workspace({ prs: [pr()], obligations: [task("due", { recheckAt: iso(NOW - DAY) }), task("older", { recheckAt: iso(NOW - 2 * DAY) })] })]) {
+    const first = taskViewRows(w, {}, NOW).find(r => r.kind === "stale" || r.kind === "due")!;
+    const owed = owedTask(w, NOW)!;
+    assert.deepEqual([owed.o.id, owed.stale], [first.o.id, first.kind === "stale"], "the same task the card puts first");
+  }
+  assert.equal(owedTask(workspace({ prs: [pr()], obligations: [task("later", { recheckAt: iso(NOW + DAY) })] }), NOW), null);
+  const attention = await readFile(join(import.meta.dirname, "..", "shared/attention.ts"), "utf8");
+  assert.doesNotMatch(attention, /taskViewRows?\(/, "2026-11-23: building every row in liveLine grew the idle worker's heap ~14 MB at 140 workspaces");
 });
 
 test("tasks-are-the-agent-s: the card folds by default, has no search, and the send queue is its own card", async () => {

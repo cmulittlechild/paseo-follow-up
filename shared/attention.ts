@@ -5,7 +5,8 @@ import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summ
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from "./send-decision";
 import { workingLine } from "./task-status";
-import { taskViewRow, taskViewRows } from "./task-view";
+import { owedTask } from "./task-view";
+import { taskDue } from "./task-due";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { orderedStacks, prLink, settledForDisplay, type PrLink } from "./presentation";
 import { downstackScan, githubApproved, graphiteReady, isGithubFlow, mergeBlockers, prActionBlocks } from "./pr-actions";
@@ -476,15 +477,15 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   if (live) return { icon: "spinner", text: live.title, since: null };
   // A due task is what the agent owes next, so the line names it, not whichever task comes first (a waiting one whose
   // PR is still in review). Stale says so: the agent was told twice and didn't answer.
-  const owed = taskViewRows(w, undefined, now).find(r => r.kind === "stale" || r.kind === "due");
-  if (owed) return { icon: "waiting", text: `${owed.kind === "stale" ? "Stale" : "Due"}: ${owed.o.title}`, since: null };
+  const owed = owedTask(w, now);
+  if (owed) return { icon: "waiting", text: `${owed.stale ? "Stale" : "Due"}: ${owed.o.title}`, since: null };
   const working = followUpObligations(w).find(o => o.status === "working");
   if (working) return { icon: "waiting", text: `${working.title} · ${workingLine(working, w.taskAgents ?? {}).text}`, since: null };
   // A wait the agent declared (a waiting task: a release, a reload window, a detached job) says what it waits on. The
   // waiting icon, Home's Waiting group and the brief's "Waiting on others" already say it waits, so the line doesn't.
   // With what moves it ("· after #232 merges"), so the line never reads as if that task were happening now.
   const waiting = followUpObligations(w).find(o => o.status === "waiting");
-  if (waiting) { const moves = taskViewRow(waiting, w, undefined, now); return { icon: "waiting", text: moves.kind === "after-pr" || moves.kind === "recheck" ? `${waiting.title} · ${moves.meta[0].toLowerCase()}${moves.meta.slice(1)}` : waiting.title, since: null }; }
+  if (waiting) { const d = taskDue(waiting, w, now); const moves = d && !d.due ? d.label : null; return { icon: "waiting", text: moves ? `${waiting.title} · ${moves[0].toLowerCase()}${moves.slice(1)}` : waiting.title, since: null }; }
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
   // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
   const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);
