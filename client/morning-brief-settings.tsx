@@ -7,7 +7,8 @@ import { Pressable, Text } from "./text";
 import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
 import { raised, tint, withAlpha } from "./theme";
 import { briefChatSearchRpc, briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
-import type { BriefSource, SourcesChange, SourcesView } from "../shared/brief-sources";
+import { ASK_COST, type BriefSource, type SourcesChange, type SourcesView } from "../shared/brief-sources";
+import { ASK } from "../shared/ask";
 import { QUEUE_STATE_TYPES, WEEKDAYS, defaultWorkdays, isZone, type Weekday } from "../shared/linear-queue";
 import {
   PLAN_MODES, planCard, queueStateLabel, type BriefSettingsView, type ChatRef, type PlanChange, type PlanMode, type PlanView, type QueueChange,
@@ -45,7 +46,7 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
   const cache = useQueryClient(); const toast = useToast();
   const checked = useRef(false);
   // While mcpproxy is being asked or a source read again, look again soon; otherwise every 15 s.
-  const query = useQuery({ queryKey: briefSourcesKey, refetchInterval: q => q.state.data?.checking || q.state.data?.retrying.length ? 1_500 : 15_000,
+  const query = useQuery({ queryKey: briefSourcesKey, refetchInterval: q => q.state.data?.checking || q.state.data?.retrying.length || q.state.data?.previewing?.length ? 1_500 : 15_000,
     queryFn: async () => { const check = !checked.current; checked.current = true; return await read({ check }) as SourcesView; } });
   const change = useMutation({
     mutationFn: async (input: SourcesChange) => await write(input) as SourcesView,
@@ -58,13 +59,15 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
     onError: error => toast.error(errorText(error)),
   });
   const data = query.data;
-  const used = (data?.sources ?? []).filter(r => r.kind === "recipe" || r.kind === "builtin");
-  const notRead = (data?.sources ?? []).filter(r => r.kind === "unknown" || r.kind === "skipped");
+  // What the brief reads first; servers it could Ask (off) after them, under their own label.
+  const used = (data?.sources ?? []).filter(r => r.kind !== "skipped" && !(r.kind === "ask" && !r.on));
+  const askable = (data?.sources ?? []).filter(r => r.kind === "ask" && !r.on);
+  const notRead = (data?.sources ?? []).filter(r => r.kind === "skipped");
   const pending = change.isPending ? change.variables : null;
   const [showNotRead, setShowNotRead] = useState(false);
   const checking = !!data?.checking || !!pending?.check;
   const copy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
-  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. A lookup is one read-only call. Agents can turn sources on and off too.">
+  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. A lookup is one read-only call. A server no recipe fits can be Asked: a fast model picks up to 3 read-only lookups and sums up what needs you. Preview one before turning it on. Agents can turn sources on and off too.">
     {query.isPending && <ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label="Couldn't read the sources" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {/* The section's one line: "5 sources read", or what failed, so a broken source shows above the fold. On desktop the
@@ -73,9 +76,17 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
       ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} />
       : <Text style={t.meta}>{data.line.text}</Text>)}
     {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
-      {used.map((row, i) => <SourceRow key={row.id} row={row} first={i === 0} theme={theme} compact={compact} checking={checking}
-        busy={data.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
-        onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} onCheck={() => change.mutate({ check: true })} onCopy={copy} />)}
+      {[...used, ...askable].map((row, i) => <View key={row.id}>
+        {i === used.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border, gap: 2 }}>
+          <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Other servers on mcpproxy</Text>
+          <Text style={t.meta}>No recipe fits these. Preview one to see what a fast model would pick out for you.</Text>
+        </View>}
+        <SourceRow row={row} first={i === 0 || i === used.length} theme={theme} compact={compact} checking={checking} sweepAt={view.queue.sweepAt}
+          busy={data.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
+          previewing={data.previewing.includes(row.id) || pending?.preview === row.id}
+          onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} onCheck={() => change.mutate({ check: true })} onCopy={copy}
+          onPreview={() => change.mutate({ preview: row.id })} />
+      </View>)}
     </View>}
     <SettingsCard>
       <SettingsSelect label="Chat window" hint="How far back the brief reads DMs and mentions." value={String(view.queue.chatHours)} disabled={windows.isPending}
@@ -121,21 +132,27 @@ function Warning({ text: line, action, theme, compact }: { text: string; action?
  * One source: healthy ones show no colour; one that failed says why in amber with Retry, one that needs a sign-in
  * gives the command to copy and Check again.
  */
-function SourceRow({ row, first, busy, checking, onToggle, onRetry, onCheck, onCopy, theme, compact }: {
-  row: BriefSource; first: boolean; busy: boolean; checking: boolean; onToggle: (on: boolean) => void; onRetry: () => void; onCheck: () => void; onCopy: (command: string) => void; theme: Theme; compact: boolean;
+function SourceRow({ row, first, busy, checking, previewing, sweepAt, onToggle, onRetry, onCheck, onCopy, onPreview, theme, compact }: {
+  row: BriefSource; first: boolean; busy: boolean; checking: boolean; previewing: boolean; sweepAt: string; onToggle: (on: boolean) => void; onRetry: () => void; onCheck: () => void; onCopy: (command: string) => void; onPreview: () => void; theme: Theme; compact: boolean;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const bad = row.on && (row.health === "failed" || row.health === "sign-in");
   const meta = [row.adds, row.cost, row.on && row.health === "ok" && row.readAt ? `read ${clock(row.readAt)}` : null].filter(Boolean).join(" · ");
-  const action = (title: string, onPress: () => void, loading: boolean) => <Pressable accessibilityRole="button" onPress={onPress} disabled={loading} hitSlop={compact ? 0 : 6}
-    style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: compact ? 44 : 18, opacity: loading ? 0.6 : 1 }}>
-    {loading ? <ActivityIndicator size="small" color={c.accent} /> : <Icon name="RotateCcw" size={12} color={c.accent} />}
+  // An Ask source that's off turns on only after a fresh preview that didn't fail (the server refuses otherwise).
+  const ask = row.kind === "ask";
+  const fresh = !!row.asked?.canTurnOn;
+  // Never previewed: Preview sits where the switch would. After a preview, its card carries Turn on and Preview again.
+  const needsPreview = ask && !row.on && !row.asked && !previewing;
+  const action = (title: string, onPress: () => void, loading: boolean, icon = "RotateCcw", label?: string) => <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={loading} hitSlop={compact ? 0 : 6}
+    style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 18, opacity: loading ? 0.6 : 1 }}>
+    {loading ? <ActivityIndicator size="small" color={c.accent} /> : <Icon name={icon} size={12} color={c.accent} />}
     <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>{title}</Text>
   </Pressable>;
   return <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: compact ? 14 : 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
-        <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }]}>{row.label}</Text>
+        {/* An Ask source's label is its server's own name: set as an identifier, like the server tags. */}
+        <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }, ask ? { fontFamily: MONO.fontFamily } : null]}>{row.label}</Text>
         {/* The mcpproxy server it reads, unless it says the same as the label. */}
         {row.server && row.server.toLowerCase() !== row.label.toLowerCase() && <Text style={[t.meta, MONO]}>{row.server}</Text>}
       </View>
@@ -147,10 +164,65 @@ function SourceRow({ row, first, busy, checking, onToggle, onRetry, onCheck, onC
         <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.command}`} onPress={() => onCopy(row.command!)} />
       </View>}
       {!row.on && row.detail && <Text style={t.meta}>{row.detail}</Text>}
+      {/* Phones: the 44 pt target stays, but its slack overlaps the row's padding instead of adding a gap under it. */}
+      {needsPreview && <View style={compact ? { marginTop: -6, marginBottom: -12 } : null}>{action("Preview", onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}</View>}
+      {ask && !row.on && (previewing || row.asked) && <AskPreview row={row} previewing={previewing} fresh={fresh} sweepAt={sweepAt} onPreview={onPreview} onToggle={onToggle} busy={busy} theme={theme} compact={compact} />}
+      {ask && row.on && row.asked && !row.asked.preview && !row.asked.error && <Text style={t.meta}>{row.asked.items.length ? `Found ${row.asked.items.length} for you at ${clock(row.asked.at)}` : `Nothing for you at ${clock(row.asked.at)}`}</Text>}
     </View>
-    {row.canToggle
+    {ask && !row.on
+      ? <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Off</Text>
+      : row.canToggle
       ? <Switch theme={theme} compact={compact} label={compact ? "" : row.on ? "On" : "Off"} accessibilityLabel={`Read ${row.label} in the brief`} value={row.on} disabled={busy} onChange={onToggle} />
       : <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Always</Text>}
+  </View>;
+}
+
+/** A due date in the screen's voice: today, tomorrow, else "Tue 3 Mar". */
+function dueText(due: string): string {
+  const d = new Date(due.length <= 10 ? `${due}T12:00:00` : due);
+  if (Number.isNaN(d.getTime())) return due.slice(0, 10);
+  const day = (x: Date) => x.toDateString();
+  const now = new Date(); const tomorrow = new Date(now.getTime() + 86_400_000);
+  return day(d) === day(now) ? "today" : day(d) === day(tomorrow) ? "tomorrow" : d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+}
+
+/**
+ * An Ask source's preview: what one ask found (or why it failed), the tools it read, and Turn on. Nothing is on until
+ * the developer turns it on here. A preview over a day old says so and asks for a new one.
+ */
+function AskPreview({ row, previewing, fresh, sweepAt, onPreview, onToggle, busy, theme, compact }: { row: BriefSource; previewing: boolean; fresh: boolean; sweepAt: string; onPreview: () => void; onToggle: (on: boolean) => void; busy: boolean; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const a = row.asked;
+  const stale = !!a && !a.error && !fresh;
+  const n = a?.items.length ?? 0;
+  return <View style={{ marginTop: 8, gap: 8, padding: compact ? 12 : 10, borderRadius: 6, backgroundColor: c.surface2 }}>
+    {previewing
+      ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ActivityIndicator size="small" color={c.foregroundMuted} /><Text style={[t.meta, { flexShrink: 1 }]}>{`Asking ${row.label}… a fast model picks up to ${ASK.calls} read-only lookups.`}</Text></View>
+      : a?.error
+        ? <Warning text={`The preview failed: ${a.error}`} theme={theme} compact={compact} />
+        : a && <>
+          <Text style={t.label}>{n ? `${row.label} would add ${n === 1 ? "this" : `these ${n}`} to today's brief` : `Nothing from ${row.label} for you today`}</Text>
+          {a.items.map((it, i) => {
+            const due = it.due && !/\bdue\b/i.test(it.why) ? `Due ${dueText(it.due)}` : null;
+            const second = [due, it.why].filter(Boolean).join(" · ");
+            const body = <>
+              <Text style={t.body} numberOfLines={2}>{it.title}{it.url ? "  " : ""}{it.url ? <Icon name="ExternalLink" size={12} color={c.foregroundMuted} /> : null}</Text>
+              {!!second && <Text style={t.meta} numberOfLines={2}>{second}</Text>}
+            </>;
+            return it.url
+              ? <Pressable key={i} accessibilityRole="link" accessibilityLabel={`Open ${it.title} in ${row.label}`} onPress={() => void openExternalUrl(it.url!).catch(() => undefined)} style={{ gap: 1, minHeight: compact ? 44 : undefined, justifyContent: "center" }}>{body}</Pressable>
+              : <View key={i} style={{ gap: 1 }}>{body}</View>;
+          })}
+          <Text style={t.meta}>{a.tools.length ? <>Read with <Text style={[t.meta, MONO]}>{a.tools.slice(0, 3).join(", ")}</Text>{` · read-only · previewed ${clock(a.at)}`}</> : `No lookups fit · previewed ${clock(a.at)}`}</Text>
+          {stale && <Text style={t.meta}>{`This preview is over a day old. Preview again to turn ${row.label} on.`}</Text>}
+        </>}
+    {!previewing && <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        {a && !a.error && fresh && <Button title="Turn on" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onToggle(true)} accessibilityLabel={`Turn on Ask for ${row.label}`} />}
+        <Button title={a ? "Preview again" : "Preview"} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
+      </View>
+      {a && !a.error && fresh && <Text style={t.meta}>{`Then asked once each workday morning, after the ${sweepAt} sweep, with ${ASK_COST}.`}</Text>}
+    </View>}
   </View>;
 }
 

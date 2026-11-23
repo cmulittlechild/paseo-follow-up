@@ -110,6 +110,17 @@ test("ranker: unchanged rankings are re-stamped before Home's 6-hour freshness r
   assert.ok((await f.priorities.read())[0].at > first); assert.equal(f.calls.length, 1);
 });
 
+test("ranker: markDue (the morning's Ask items changed) lets the next scheduled tick run once inside the cadence", async t => {
+  let n = 0;
+  const f = await fixture(t, { role: { cadenceMinutes: 60 }, sources: { async linear() { n++; return [{ ...LINEAR[0], title: `changed ${n}` }]; } } });
+  assert.equal((await f.ranker.tick())?.skipped, null);
+  f.setNow(NOW + 10 * 60_000); assert.equal(await f.ranker.tick(), null, "within the cadence");
+  f.ranker.markDue();
+  f.setNow(NOW + 11 * 60_000); assert.equal((await f.ranker.tick())?.skipped, null, "due once: today's items reach today's rank");
+  f.setNow(NOW + 12 * 60_000); assert.equal(await f.ranker.tick(), null, "once, then the cadence again");
+  assert.equal(f.calls.length, 2);
+});
+
 test("ranker: the daily cap and the cadence bound scheduled runs; Re-rank now still runs", async t => {
   let n = 0;
   const f = await fixture(t, { role: { dailyCap: 1, cadenceMinutes: 60 }, sources: { async linear() { n++; return [{ ...LINEAR[0], title: `changed ${n}` }]; } } });

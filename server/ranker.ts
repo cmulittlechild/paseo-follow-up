@@ -12,7 +12,7 @@ import { NoSourceError, sourceDirectory, type SourceDirectory } from "./source-t
 import { parseEvents, parseMail, rangeArgs } from "../shared/brief-sources";
 import {
   damped, emptyReasons, fillReasons, workspaceInputs, healthLine, inRankWindow, RANK_STRICT, REASON_SYSTEM, reasonInputs, reasonReplySchema, stableInputs, rankPrompt, rankReplySchema, RANK_SYSTEM, rankWorkstream, toPriorities,
-  type NotStarted, type RankEvent, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
+  type NotStarted, type RankAsked, type RankEvent, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
 } from "../shared/ranker";
 import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
@@ -49,6 +49,8 @@ export type RankSources = {
   slack(since: number): Promise<RankMessage[]>;
   /** Today's meetings (`days` from the start of today), when a calendar source is on. */
   calendar?(day: { start: string; end: string; timeZone: string }): Promise<RankEvent[]>;
+  /** What the Ask sources that are on found this morning (stored by the morning's asks; the ranker never asks). */
+  asks?(): Promise<RankAsked[]>;
   /** Unread mail since `since` (ms), when the mail source is on (off until turned on); `now` is the ranker's clock. */
   mail?(since: number, now: number): Promise<RankMessage[]>;
   github(): Promise<RankReview[]>;
@@ -292,12 +294,17 @@ export class Ranker {
   }
   async state(): Promise<RankerState> { try { return rankerStateSchema.parse(JSON.parse(await readFile(this.path, "utf8"))); } catch { return { ...EMPTY }; } }
 
-  /** The scheduled run: in the window, at the role's cadence, only with room to spare. */
+  /** New input that should reach today's rank (the morning's Ask items): the next scheduled tick runs once, cadence or not. */
+  private dueNow = false;
+  markDue(): void { this.dueNow = true; }
+
+  /** The scheduled run: in the window, at the role's cadence (or once after markDue), only with room to spare. */
   async tick(): Promise<RankResult | null> {
     if (this.running || !inRankWindow(this.now(), await this.clock()) || !await this.d.enabled()) return null;
     const [s, role] = await Promise.all([this.state(), this.d.role()]);
-    if (s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
+    if (!this.dueNow && s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
     if (await this.d.tight?.()) return null;
+    this.dueNow = false;
     return this.run({ trigger: "schedule" });
   }
 
@@ -343,6 +350,7 @@ export class Ranker {
     // The whole chat window every run, so equal inputs hash equal; the read time is kept for the log.
     const slackSince = started;
     const chatSince = started - windows.chatHours * 3_600_000;
+    const asks = await this.d.sources.asks?.().catch(() => [] as RankAsked[]) ?? [];
     const [rows, linear, slack, github, calendar, mail] = await Promise.all([
       this.d.workstreams(),
       read("linear", () => this.d.sources.linear(), []),
@@ -360,7 +368,7 @@ export class Ranker {
       if (planning) planCache = { url, at: new Date(started).toISOString(), value: planning };
       else if (s.planning?.url === url) planning = s.planning.value; // keep yesterday's plan over none
     }
-    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning, ...(calendar.length ? { calendar } : {}), ...(mail.length ? { mail } : {}), ...(windows.chatHours !== 48 ? { chatHours: windows.chatHours } : {}) };
+    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning, ...(calendar.length ? { calendar } : {}), ...(mail.length ? { mail } : {}), ...(asks.length ? { asks } : {}), ...(windows.chatHours !== 48 ? { chatHours: windows.chatHours } : {}) };
     const hash = rankKey(inputs, role);
     const inputsMs = this.now() - started;
     const last = (l: Partial<NonNullable<RankerState["last"]>> & { ok: boolean }): NonNullable<RankerState["last"]> => ({ trigger, costUsd: null, durationMs: this.now() - started, skipped: null, error: null, provider: role.provider, inputTokens: null, outputTokens: null, top: null, retried: false, timing: null, ...l });
