@@ -20,7 +20,11 @@ export const PR_STATS_INFO = "PR statistics show who opens PRs and whose PRs wai
  * deleting it as the quiet extra. Options per repository (window, team, hidden people) fold under it; the clock and
  * GitHub share are host-wide.
  */
-export function PrStatsSettings({ theme, compact }: { theme: Theme; compact: boolean }) {
+let openStatsPage: (() => void) | null = null;
+/** index.client.tsx: how Settings opens the PR stats page ("Open PR stats"). */
+export function setOpenStats(open: () => void): void { openStatsPage = open; }
+
+export function PrStatsSettings({ theme, compact, onPage = false }: { theme: Theme; compact: boolean; /** Drawn on the page itself (no "Open PR stats"). */ onPage?: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const read = useRpc(prStatsSettingsRpc); const write = useRpc(setPrStatsRpc); const cache = useQueryClient(); const toast = useToast();
   const query = useQuery({ queryKey: prStatsSettingsKey, queryFn: () => read({}), staleTime: 30_000, refetchInterval: 60_000 });
@@ -67,6 +71,7 @@ export function PrStatsSettings({ theme, compact }: { theme: Theme; compact: boo
         {alreadyOn && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>{`${alreadyOn.repo} is already ${alreadyOn.state === "on" ? "on" : "listed above (paused): turn its switch on"}.`}</Text>}
       </SettingsCard>
       {!data.repos.length && <Text style={t.meta}>Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote, or add one above.</Text>}
+      {withStats.length > 0 && !onPage && openStatsPage && <SettingsCard><SettingsAction label="PR stats" hint="Who opens PRs and whose PRs wait longest, per repository." actionLabel="Open PR stats" onPress={() => openStatsPage?.()} /></SettingsCard>}
       {withStats.length > 0 && <Text style={[t.meta, { marginTop: 4, paddingHorizontal: compact ? 6 : 5 }]}>All repositories</Text>}
       {withStats.length > 0 && <SettingsCard>
         <SettingsSelect label="GitHub share for stats" hint="At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left." value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
