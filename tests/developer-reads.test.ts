@@ -143,23 +143,23 @@ test("106: the turn-on sheet never dead-ends", () => {
   assert.equal(estimateBlocked(estimate({ prs: 10, points: 1 }), null, time), null, "a count shows the numbers instead");
   const low = estimateBlocked(estimate({ error: "GitHub limit low", wait: { reason: "budget", until: at } }), null, time)!;
   assert.equal(low.canTurnOn, true);
-  assert.match(low.why, /GitHub limit is under 40% until 14:30/);
-  assert.match(low.next, /start reading at 14:30/);
+  assert.match(low.lead, /^You can turn stats on now\. They start reading at 14:30\.$/, "what Turn on does comes first");
+  assert.match(low.reason, /Less than 40% of your GitHub limit is left until 14:30/);
   const slice = estimateBlocked(estimate({ error: "x", wait: { reason: "slice", until: at } }), null, time)!;
   assert.equal(slice.canTurnOn, true);
-  assert.match(slice.why, /share of GitHub's limit/);
+  assert.match(slice.reason, /share of your GitHub limit/);
   const busy = estimateBlocked(estimate({ error: "x", wait: { reason: "busy", until: null } }), null, time)!;
-  assert.equal(busy.canTurnOn, true);
-  assert.match(busy.next, /try again in a moment/);
+  assert.deepEqual([busy.canTurnOn, busy.retry], [true, true], "held behind another read: the sheet counts again by itself");
   const failed = estimateBlocked(null, "The request timed out.", time)!;
   assert.equal(failed.canTurnOn, true);
-  assert.match(failed.why, /timed out/);
+  assert.match(failed.reason, /timed out/);
   const http = estimateBlocked(estimate({ error: "Can't read acme/app (HTTP 502: Bad gateway)." }), null, time)!;
   assert.equal(http.canTurnOn, true);
   const unreadable = estimateBlocked(estimate({ error: "Can't read acme/app with this GitHub account (not found or no access).", unreadable: true }), null, time)!;
-  assert.equal(unreadable.canTurnOn, false, "only a repository the account can't read refuses Turn on");
-  assert.match(unreadable.next, /access/);
-  for (const b of [low, slice, busy, failed, http, unreadable]) assert.doesNotMatch(`${b.why} ${b.next}`, /machine is busy|governor/i);
+  assert.deepEqual([unreadable.canTurnOn, unreadable.tone], [false, "danger"], "only a repository the account can't read refuses Turn on");
+  assert.match(unreadable.reason, /access/);
+  for (const b of [low, slice, busy, failed, http]) assert.equal(b.tone, "neutral", "a wait isn't an error");
+  for (const b of [low, slice, busy, failed, http, unreadable]) assert.doesNotMatch(`${b.lead} ${b.reason}`, /machine is busy|governor/i);
 });
 
 test("106: a workspace's Refresh reads its PRs while the governor pauses the engine; nothing else runs", async t => {

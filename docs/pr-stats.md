@@ -37,9 +37,10 @@ Nothing is on in a new install, and nothing is read until a repository is turned
 - **The opt-in sheet** (the switch turns on only from its Turn on): about N PRs changed in the last 90 days (one
   `search(issueCount)`, 1 point, through the gate), what reading them costs against the share of the hourly limit,
   that stats pause under 40 %, and what is stored where. The count is the developer's read, so a busy machine never
-  holds it. Without a count the sheet never dead-ends (`estimateBlocked`): it says why in plain words (GitHub's limit
-  under 40 % until a time, the hour's share spent, another read running, GitHub's error) and when stats can read,
-  and Turn on stays live. Only a repository the token can't read is refused, with the reason, and Turn on stays off.
+  holds it. Without a count the sheet never dead-ends (`estimateBlocked`): it leads with what Turn on does now (when
+  stats start reading), then why in plain words (under 40 % of GitHub's limit left until a time, the hour's share
+  spent, another read running, GitHub's error), keeps the pause and storage facts, and Turn on stays live; a count
+  held behind another read retries by itself, and one still going after 3 s doesn't hold Turn on. Only a repository the token can't read is refused, with the reason, and Turn on stays off.
 - **Turning off** asks in place: "Turn off, keep data" is the bordered default (the repository shows "Paused · data up
   to <date>", stays readable and isn't read); "Also delete the N PRs" is the quiet red extra and removes the file at
   once.

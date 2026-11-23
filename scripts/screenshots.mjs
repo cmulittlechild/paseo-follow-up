@@ -2457,7 +2457,7 @@ async function prStatsSettingsShots({ shoot, call, home }) {
   const resetAt = new Date(c.fake + (Date.now() - c.real) * c.rate + 40 * 60_000).toISOString();
   await fs.writeFile(fixture, JSON.stringify({ ...d, _rate: { cost: 1, remaining: 640, limit: 5000, resetAt } }));
   await until("stats see GitHub's limit low", async () => (await call("follow.pr-stats-settings", { repo: "example/mobile", estimate: true })).estimate?.wait?.reason === "budget", { tries: 120, every: 1000 });
-  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-low-${size}-${theme}`, vp, theme, async page => { await sheet(page, vp, "example/mobile", /GitHub limit is under 40%/); });
+  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-low-${size}-${theme}`, vp, theme, async page => { await sheet(page, vp, "example/mobile", /Less than 40% of your GitHub limit is left/); });
   await fs.writeFile(fixture, JSON.stringify(d));
 }
 async function prScaleShots({ shoot }) {

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -194,17 +194,28 @@ function RepoOptions({ row, theme, compact, busy, set }: { row: Row; theme: Them
  * The opt-in sheet: what turning stats on reads, costs and stores, from the repository's own count (1 GitHub point),
  * before anything is read. The switch turns on only from its Turn on; a repository the token can't read is refused here.
  */
+/** A time in the developer's zone, with the weekday when it isn't today (a reset tomorrow never reads as today). */
+function clockTime(ms: number): string {
+  const d = new Date(ms), now = new Date();
+  const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === now.toDateString() ? hm : `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+}
 export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: string; theme: Theme; compact: boolean; onClose: () => void; onTurnOn: () => void }) {
   const c = theme.colors; const t = text(c, compact);
   const read = useRpc(prStatsSettingsRpc);
-  const query = useQuery({ queryKey: [...prStatsSettingsKey, "estimate", repo], queryFn: () => read({ repo, estimate: true }), staleTime: 5 * 60_000, retry: false });
+  // A count held by the gate is never cached: reopening counts again, and one held behind another read retries by itself.
+  const query = useQuery({ queryKey: [...prStatsSettingsKey, "estimate", repo], queryFn: () => read({ repo, estimate: true }), retry: false,
+    staleTime: q => q.state.data?.estimate?.wait ? 0 : 5 * 60_000, refetchInterval: q => q.state.data?.estimate?.wait?.reason === "busy" ? 5000 : false });
   const e = query.data?.estimate ?? null;
   const slice = query.data?.settings.slice ?? 0.05;
   const lines = e ? estimateLines(e, slice) : null;
-  // No count never means no way forward (invariant 106): the sheet says why in plain words and Turn on stays live,
-  // except for a repository this account can't read.
-  const blocked = query.isPending ? null : estimateBlocked(e, query.error ? errorText(query.error) : null, ms => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-  const canTurnOn = !!lines || !!blocked?.canTurnOn;
+  // No count never means no way forward (invariant 106): the sheet says what Turn on does and why, in plain words, and
+  // Turn on stays live, except for a repository this account can't read. A count still going after 3 s doesn't hold it.
+  const blocked = query.isPending ? null : estimateBlocked(e, query.error ? errorText(query.error) : null, clockTime);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { if (!query.isPending) return; const t = setTimeout(() => setSlow(true), 3000); return () => clearTimeout(t); }, [query.isPending]);
+  const canTurnOn = !!lines || !!blocked?.canTurnOn || (query.isPending && slow);
+  const facts = !!lines || (!!blocked && !e?.unreadable);
   const point = (icon: string, main: ReactNode, sub?: string) => <View style={{ flexDirection: "row", gap: 10 }}>
     <View style={{ paddingTop: compact ? 2 : 1 }}><Icon name={icon} size={16} color={c.foregroundMuted} /></View>
     <View style={{ flex: 1, gap: 2 }}><Text style={t.body}>{main}</Text>{sub && <Text style={t.meta}>{sub}</Text>}</View>
@@ -212,17 +223,23 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
   return <Modal title={`Turn on PR stats for ${repo}?`} open onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
       <SubmitScope enabled={canTurnOn} onSubmit={onTurnOn} style={{ gap: compact ? 16 : 14, maxWidth: 560 }}>
-        {query.isPending && <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><ActivityIndicator color={c.foregroundMuted} /><Text style={t.meta}>Counting PRs changed in the last 90 days…</Text></View>}
+        {query.isPending && <View style={{ gap: 4 }}>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><ActivityIndicator color={c.foregroundMuted} /><Text style={t.meta}>Counting PRs changed in the last 90 days…</Text></View>
+          {slow && <Text style={t.meta}>Still counting. You can turn stats on now; they show their progress here.</Text>}
+        </View>}
         {blocked && <View style={{ gap: 4 }}>
-          <Text accessibilityRole="alert" style={[t.body, { color: blocked.tone === "danger" ? c.statusDanger : c.foreground }]}>{blocked.why}</Text>
-          <Text style={[t.meta]}>{blocked.next}</Text>
+          <Text accessibilityRole={blocked.tone === "danger" ? "alert" : undefined} style={[t.body, { color: blocked.tone === "danger" ? c.statusDanger : c.foreground }]}>{blocked.lead}</Text>
+          <Text style={t.meta}>{blocked.reason}</Text>
         </View>}
         {lines && e && <>
           <Text style={[t.body, { color: c.foregroundMuted }]}>About <Text style={[t.body, { fontWeight: "600" }]}>{`${e.prs!.toLocaleString("en-US")} PRs`}</Text> changed in the last 90 days.</Text>
-          {point("Gauge", <>Reading them costs about <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.charAt(0).toLowerCase()}${lines.time.slice(1)}`}</>,
+          {point("Gauge", <>Reading them costs about <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.replace(/^About /, "").toLowerCase()}`}</>,
             `Never more than ${Math.round(slice * 100)}% of your hourly limit (${e.slicePoints.toLocaleString("en-US")} points). Staying current: about 1–15 points an hour.`)}
-          {point("CirclePause", "Stats pause whenever GitHub's limit drops under 40%, so your agents and PR checks always come first.")}
-          {point("Lock", `Stored on this machine only, about ${sizeWords(e.bytes ?? 0)}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
+        </>}
+        {/* What turning on means doesn't depend on the count: shown whenever Turn on is offered. */}
+        {facts && <>
+          {point("CirclePause", "Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first.")}
+          {point("Lock", `Stored on this machine only${e?.bytes ? `, about ${sizeWords(e.bytes)}` : ""}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
           <Text style={t.meta}>90 days · everyone · calendar time. Change these in the repository's options.</Text>
         </>}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>

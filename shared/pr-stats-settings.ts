@@ -215,23 +215,24 @@ export function statsRepoWaitTone(row: z.infer<typeof statsRepoRowSchema>): "dan
   return st.waiting.reason === "budget" || st.waiting.reason === "slice" ? "warning" : st.waiting.reason === "governor" ? "muted" : null;
 }
 /**
- * The opt-in sheet's lines when there is no count (a-read-the-developer-starts-never-waits-on-the-governor): why, in plain
- * words, and what Turn on does then. `canTurnOn` is false only for a repository the account can't read; the sheet never
- * dead-ends otherwise. `time` formats an epoch-ms time in the developer's zone.
+ * The opt-in sheet's lines when there is no count (a-read-the-developer-starts-never-waits-on-the-governor): what Turn on
+ * does now first (`lead`), then why there is no count, in plain words (`reason`). `canTurnOn` is false only for a
+ * repository the account can't read; the sheet never dead-ends otherwise. `retry` asks the sheet to count again by
+ * itself (another stats read was running). `time` formats an epoch-ms time in the developer's zone, with the day when
+ * it isn't today.
  */
-export function estimateBlocked(e: StatsEstimate | null, failure: string | null, time: (ms: number) => string): { why: string; next: string; canTurnOn: boolean; tone: "danger" | "warning" } | null {
+export function estimateBlocked(e: StatsEstimate | null, failure: string | null, time: (ms: number) => string): { lead: string; reason: string; canTurnOn: boolean; tone: "danger" | "neutral"; retry: boolean } | null {
   if (e && e.prs !== null && e.points !== null) return null;
-  if (!e) return failure ? { why: `Couldn't count the PRs: ${failure}`, next: "You can still turn stats on. They start reading on the next sync and show their progress here.", canTurnOn: true, tone: "warning" } : null;
-  if (e.unreadable) return { why: e.error ?? `Can't read ${e.repo} with this GitHub account.`, next: "Check the account has access to the repository, then try again.", canTurnOn: false, tone: "danger" };
+  const later = "You can turn stats on now. They start reading on the next sync and show their progress here.";
+  if (!e) return failure ? { lead: later, reason: `Couldn't count the PRs: ${failure}`, canTurnOn: true, tone: "neutral", retry: false } : null;
+  if (e.unreadable) return { lead: e.error ?? `Can't read ${e.repo} with this GitHub account.`, reason: "Check the account has access to the repository, then try again.", canTurnOn: false, tone: "danger", retry: false };
   const at = e.wait?.until ? time(e.wait.until) : null;
-  const why = e.wait?.reason === "budget" ? `Can't count the PRs right now: your GitHub limit is under 40%${at ? ` until ${at}` : " until GitHub resets it"}, and stats wait so your agents and PR checks come first.`
-    : e.wait?.reason === "slice" ? `Can't count the PRs right now: stats used their share of GitHub's limit this hour${at ? `. The next read can go at ${at}` : ""}.`
-    : e.wait?.reason === "busy" ? "Can't count the PRs right now: another stats read is still running."
-    : `Couldn't count the PRs: ${e.error ?? "GitHub didn't answer"}`;
-  const next = e.wait?.reason === "busy" ? "Close this and try again in a moment, or turn stats on now and they start reading when it's done."
-    : at ? `You can turn stats on now. They start reading at ${at}, never past their share.`
-    : "You can still turn stats on. They start reading on the next sync and show their progress here.";
-  return { why, next, canTurnOn: true, tone: "warning" };
+  if (e.wait?.reason === "budget") return { lead: at ? `You can turn stats on now. They start reading at ${at}.` : later,
+    reason: `Less than 40% of your GitHub limit is left${at ? ` until ${at}` : ""}.`, canTurnOn: true, tone: "neutral", retry: false };
+  if (e.wait?.reason === "slice") return { lead: at ? `You can turn stats on now. They start reading at ${at}.` : later,
+    reason: "Stats used their share of your GitHub limit this hour.", canTurnOn: true, tone: "neutral", retry: false };
+  if (e.wait?.reason === "busy") return { lead: "Counting as soon as the other stats read finishes. You can turn stats on now.", reason: "Another stats read is running.", canTurnOn: true, tone: "neutral", retry: true };
+  return { lead: later, reason: `Couldn't count the PRs: ${e.error ?? "GitHub didn't answer."}`, canTurnOn: true, tone: "neutral", retry: false };
 }
 /** The opt-in sheet's cost line. */
 export function estimateLines(e: StatsEstimate, slice: number): { cost: string; time: string } | null {
