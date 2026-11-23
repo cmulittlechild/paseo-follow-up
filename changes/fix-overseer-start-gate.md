@@ -1,0 +1,2 @@
+- Asking the Overseer to start workspaces in chat works again, including "create workspaces for these" with several issues. It no longer asks you again on a card.
+- The Overseer starts only the issues you approved: picking Skip for one decision on its card keeps that issue from starting.

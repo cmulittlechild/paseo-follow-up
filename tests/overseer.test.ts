@@ -260,7 +260,7 @@ test("a new workspace waits for the developer's approval", async t => {
   f.paseo.agents.ref = (id: string) => { const h = original(id); h.timeline.refetch = async () => ({ entries: (tails[id] ?? []).map((item, i) => ({ seqStart: i, item })) }); return h; };
   tails[f.ov] = [{ type: "user_message", text: "the export is broken, someone should look" }];
   const blocked = await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: "ACME-1400 fix the CSV export" }) as { planId: string | null; blockers: string[]; plan: { title: string; branch: string; project: string } };
-  assert.equal(blocked.planId, null); assert.match(blocked.blockers.join(), /hasn't asked for or approved/);
+  assert.equal(blocked.planId, null); assert.match(blocked.blockers.join(), /doesn't ask for a workspace for ACME-1400/);
   assert.equal(f.created.filter(c => c.kind === "workspace").length, 1, "nothing but the Overseer's own workspace");
   // The answer is the developer's click on the Overseer's card: the brief action records it in the ledger first.
   f.ledger.push({ agentId: f.ov, messageId: "answer-1", at: new Date(NOW).toISOString(), by: "developer" });

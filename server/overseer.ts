@@ -12,7 +12,7 @@ import { tailSteps, HOME_GROUPS, type PaseoWorkspaceLite, type TailStep } from "
 import { isOpen as questionOpen } from "../shared/questions";
 import { classify, latestPrompt, ledgerSender, type Sources } from "./inbox-classifier";
 import {
-  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvesNewWorkspace, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
+  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvalCovers, startApproval, startRefusal, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
   overseerStateSchema, pageRows, type DigestFile, routeDecision, scoreCandidates, workspaceTitleFor, workstreams, type OverseerState, type WorkstreamRow,
 } from "../shared/overseer";
 import { overseerPrompt } from "./overseer-prompt-source";
@@ -49,7 +49,6 @@ export type OverseerDispatch = {
   projects(): Promise<{ id: string; name: string }[]>;
 };
 
-const NOT_APPROVED = "The developer hasn't asked for or approved a new workspace. Ask them first (needs_you kind=decision with \"New workspace\" as an option).";
 
 export type OverseerDeps = {
   directory: string;
@@ -359,30 +358,49 @@ export class Overseer {
    * The Overseer is mid-turn when it calls a tool, so it is loaded; the transcript covers the rare other case.
    */
   private async lastDeveloperMessage(paseo: OverseerPaseo, agentId: string): Promise<string | null> {
+    return (await this.developerTurn(paseo, agentId)).message;
+  }
+
+  /**
+   * The developer's latest message (see lastDeveloperMessage) and what the Overseer said since their previous one:
+   * its reply text and its tool calls (a needs_you card), which a bare "yes" approves.
+   */
+  private async developerTurn(paseo: OverseerPaseo, agentId: string): Promise<{ message: string | null; proposal: string }> {
     const agent = (await paseo.agents.ref(agentId).refresh().catch(() => null))?.agent ?? null;
     if (agent && isLoaded(agent)) {
       const page = await paseo.agents.ref(agentId).timeline.refetch({ direction: "tail", limit: 40, projection: "canonical" }).catch(() => null);
-      const prompt = page ? latestPrompt([...page.entries].sort((a, b) => a.seqStart - b.seqStart).map(e => e.item)) : null;
-      if (!prompt?.message || typeof prompt.sender === "string") return null;
+      const items = page ? [...page.entries].sort((a, b) => a.seqStart - b.seqStart).map(e => e.item) : [];
+      const prompt = page ? latestPrompt(items) : null;
+      if (!prompt?.message || typeof prompt.sender === "string") return { message: null, proposal: "" };
+      const proposal = proposalBefore(items, prompt.message.text);
       const sources = this.d.sources ?? NO_SOURCES;
-      if (prompt.sender.kind === "follow-up" && prompt.sender.what === "answer") return await ledgerSender(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.message.text : null;
-      if (prompt.sender.kind !== "developer") return null;
-      return await classify(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.sender.text : null;
+      if (prompt.sender.kind === "follow-up" && prompt.sender.what === "answer") return { message: await ledgerSender(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.message.text : null, proposal };
+      if (prompt.sender.kind !== "developer") return { message: null, proposal };
+      return { message: await classify(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.sender.text : null, proposal };
     }
     // Transcript steps say "you" only for the developer's own message (shared/message-sender.ts).
     const read = await this.steps(paseo, agentId, 20, agent).catch(() => null);
-    const last = [...(read?.steps ?? [])].reverse().find(x => x.kind === "you" || x.kind === "message");
-    return last?.kind === "you" ? last.text : null;
+    const steps = read?.steps ?? [];
+    const at = steps.map(x => x.kind === "you" || x.kind === "message").lastIndexOf(true);
+    if (at < 0 || steps[at].kind !== "you") return { message: null, proposal: "" };
+    const before = steps.slice(0, at);
+    const since = before.map(x => x.kind === "you" || x.kind === "message").lastIndexOf(true);
+    return { message: steps[at].text, proposal: before.slice(since + 1).filter(x => x.kind === "agent").map(x => x.text).join("\n") };
   }
 
   /** Set by the worker once New's dispatch exists: start_workspace then runs as `dispatch` with Create PR. */
   dispatcher: OverseerDispatch | null = null;
 
-  /** The new-workspace gate for the Overseer's own dispatch: a blocker, or null when the developer asked or approved. */
-  async newWorkspaceGate(paseo: OverseerPaseo): Promise<string | null> {
+  /**
+   * The new-workspace gate for the Overseer's own dispatch (the-overseer-starts-what-the-developer-asked): a blocker,
+   * or null when the developer's latest message asked for or approved a workspace for this key (null: no key).
+   */
+  async newWorkspaceGate(paseo: OverseerPaseo, key: string | null): Promise<string | null> {
     const s = await this.state();
     if (!s.agentId) return null;
-    return approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId)) ? null : NOT_APPROVED;
+    const turn = await this.developerTurn(paseo, s.agentId);
+    const approval = startApproval(turn.message, turn.proposal);
+    return approval && approvalCovers(approval, key) ? null : startRefusal(approval, key);
   }
 
   /**
@@ -425,7 +443,8 @@ export class Overseer {
     const base = args.base ?? "main";
     const blockers: string[] = [];
     if (!project) blockers.push(projects.length ? `Pick a project: ${projects.slice(0, 8).map(p => p.name).join(", ")}.` : "No Paseo project is available.");
-    if (!approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId!))) blockers.push(NOT_APPROVED);
+    const gate = await this.newWorkspaceGate(paseo, key);
+    if (gate) blockers.push(gate);
     const plan = { title, branch, base, project: project?.name ?? null, firstMessage: forwardText(args.task) };
     const planId = blockers.length ? null : randomUUID();
     if (planId) this.plans.set(planId, { expiresAt: this.now() + 10 * 60_000, run: async () => {
@@ -451,6 +470,23 @@ export type OverseerAgentSetting = { provider: string; model: string | null; thi
 export const DEFAULT_OVERSEER_AGENT: OverseerAgentSetting = { provider: "claude", model: null, thinking: null, mode: "bypassPermissions" };
 /** Identifies a setting: the default is plain "claude", so older Overseers (no recorded agent) match it. */
 export const settingKey = (s: OverseerAgentSetting) => s.provider === "claude" && !s.model && !s.thinking && s.mode === "bypassPermissions" ? "claude" : [s.provider, s.model ?? "", s.thinking ?? "", s.mode ?? ""].join("|");
+
+/**
+ * What the Overseer said between the developer's previous message and `prompt` (newest last): its reply text and
+ * its tool calls' input (a needs_you card's ask and decisions), as one text whose keys a bare "yes" approves.
+ */
+export function proposalBefore(items: unknown[], prompt: string): string {
+  const at = items.map(i => (i as { type?: string; text?: unknown })?.type === "user_message" && (i as { text?: unknown }).text === prompt).lastIndexOf(true);
+  const out: string[] = [];
+  for (let i = (at < 0 ? items.length : at) - 1; i >= 0; i--) {
+    const it = items[i] as { type?: string; text?: unknown; detail?: unknown; input?: unknown; arguments?: unknown } | null;
+    if (!it || typeof it !== "object") continue;
+    if (it.type === "user_message") break;
+    if (it.type === "assistant_message" && typeof it.text === "string") out.unshift(it.text);
+    else if (it.type === "tool_call") { const body = it.detail ?? it.input ?? it.arguments; if (body) out.unshift(typeof body === "string" ? body : JSON.stringify(body)); }
+  }
+  return out.join("\n");
+}
 
 const NO_SOURCES: Sources = { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false };
 

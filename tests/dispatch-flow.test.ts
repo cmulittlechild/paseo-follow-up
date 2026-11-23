@@ -241,6 +241,15 @@ test("the Overseer's gate blocks its dispatch with the gate's reason", async t =
   assert.equal(fake.creates.length, 0);
 });
 
+test("the gate sees the source's Linear key, so the Overseer's dispatch is scoped to what the developer approved", async t => {
+  const seen: (string | null)[] = [];
+  const { service } = await setup(t, { gate: async (actor, key) => { seen.push(key); return actor.kind === "agent" && key !== "ACME-142" ? `The developer approved ACME-142, not ${key ?? "this"}.` : null; } });
+  const overseer = { kind: "agent" as const, agentId: "overseer-1", title: null };
+  assert.deepEqual((await service.preview({ source: "ACME-142", projectId: "web" }, overseer)).blockers, []);
+  assert.match((await service.preview({ source: "fix the flaky login test", projectId: "web" }, overseer)).blockers.join(), /not this/);
+  assert.deepEqual(seen, ["ACME-142", null]);
+});
+
 test("actions: a written action is validated; a built-in hides but isn't deleted; reset-all restores", async t => {
   const { service } = await setup(t);
   await assert.rejects(service.setActions({ op: "upsert", action: { id: "triage", name: "Triage", icon: "search", description: "", instructions: "Triage {assignee}", agent: null, workspace: "worktree", branch: "title", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } }), /\{assignee\}/);

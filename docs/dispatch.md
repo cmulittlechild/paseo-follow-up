@@ -71,6 +71,9 @@ never creates again blind, which could make a second workspace.
 - `dispatch-needs-a-click-or-a-confirmed-plan`: nothing is created except from the developer's click or an agent's
   confirmed plan. The agent tool `dispatch` dry-runs first (the same preview the dialog shows). Its plan freezes the
   resolved project and the instructions' hash, and confirm is refused if what it would send has changed.
+- `the-overseer-starts-what-the-developer-asked` (invariant 105): the Overseer's dispatch passes its start gate, which
+  hands the source's Linear key to `gate(actor, key)`. Only keys the developer's latest message approved pass: named in
+  a chat request, proposed by the Overseer before a "yes", or answered New workspace on its card.
 - `a-failed-dispatch-leaves-nothing-behind`: see above.
 - `new-reads-nothing-while-closed`: Linear is read only when New asks; the one timer is a queued dispatch's retry.
   Settings → New work reads New's own settings once when the tab opens, never Linear.

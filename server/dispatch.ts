@@ -68,8 +68,11 @@ export type DispatchDeps = {
   multiplicity(): Promise<boolean>;
   /** The Paseo API, or null while it can't be reached. */
   paseo(): Promise<DispatchPaseo | null>;
-  /** A blocker for this caller (the Overseer's new-workspace gate), or null. */
-  gate?(actor: Actor): Promise<string | null>;
+  /**
+   * A blocker for this caller and source (the Overseer's new-workspace gate: the developer approved this key), or
+   * null. `key`: the source's Linear key, null for any other source.
+   */
+  gate?(actor: Actor, key: string | null): Promise<string | null>;
   /** After the agent starts: link the source, set the goal. Best effort. */
   afterCreate?(record: DispatchRecord, source: DispatchSource, action: DispatchAction): Promise<void>;
   /** A record changed (Home's row, the dialog). */
@@ -195,7 +198,7 @@ export class DispatchService {
       title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, kind: KIND_WORD[source.kind],
       team: source.team, repo, base: base?.name ?? "", branch: branch ?? (pr ? `the PR's branch` : ""),
     }, input.note) : "";
-    const gate = await this.d.gate?.(actor).catch(() => null);
+    const gate = await this.d.gate?.(actor, source.kind === "linear" ? source.key ?? null : null).catch(() => null);
     if (gate) blockers.push(gate);
     const agent: AgentChoice = action ? await this.d.agent(withAgent(action, input.agent)).catch(() => ({ label: "New's default agent", config: {} })) : { label: "", config: {} };
     return {

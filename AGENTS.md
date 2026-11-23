@@ -1115,7 +1115,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    workspace only from the developer's click (`follow.dispatch` from the dialog) or an agent's confirmed plan (the
    `dispatch` tool: a dry run first, then confirm with its plan id). The plan freezes the resolved project and the
    instructions' hash; a confirm whose project or instructions changed since is refused. Preview, sources and Settings →
-   New work only read. The Overseer's own dispatch also passes its new-workspace gate. Guarded by
+   New work only read. The Overseer's own dispatch also passes its new-workspace gate (invariant 105). Guarded by
    `tests/dispatch-flow.test.ts` and `tests/overseer.test.ts`.
 91. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
    icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
@@ -1160,6 +1160,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    that's it". New from a chat opened Home as `?new=1`; opening Home again (the sidebar's Follow-up, ⌘K Home) pushed a
    second Home and Paseo kept the first mounted, hidden; the first mounted host drew every later New in it. Guarded by
    `tests/new-opens-where-you-are.test.ts`.
+105. **The Overseer starts what the developer asked** (`the-overseer-starts-what-the-developer-asked`). The Overseer's
+   `start_workspace`, and New's `dispatch` when the Overseer calls it, start a workspace only for what the developer's
+   latest message approves (`startApproval`, `shared/overseer.ts`): a request in chat in any grammar (plurals,
+   imperatives, polite questions, keys on their own lines) approves the keys it names; "yes", "go ahead" or "do both"
+   approves the keys the Overseer proposed since the developer's previous message (its reply and its card); a card
+   answer approves exactly the decisions answered New workspace. A key the developer didn't approve, or declined (Skip,
+   "not ACME-14"), is refused by name; questions ("which open workspaces need me?") and refusals ("don't start a
+   workspace yet") approve nothing. The refusal says what counts and suggests one plain ask, never that only the card
+   counts. Deterministic: no model call. 2026-11-23, the developer on 2.4.0-beta.4: "Can you create workspaces for
+   these" with two keys was refused (the gate's regex needed `\bworkspace\b`, which "workspaces" fails), and the
+   Overseer put up a card asking again; the same regex said yes to "which open workspace…" and let any approval start
+   any key. Guarded by `tests/start-approval-corpus.test.ts`, `tests/overseer-start-gate.test.ts` and
+   `tests/dispatch-flow.test.ts`.
 
 ## Bugs
 

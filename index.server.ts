@@ -1341,11 +1341,11 @@ export default function contribute(server: PluginServerContext) {
       },
     } : null,
     // The Overseer's own dispatch needs the developer's ask or approval, as start_workspace always did.
-    gate: async actor => {
+    gate: async (actor, key) => {
       if (actor.kind !== "agent" || !overseer) return null;
       const s = await overseer.state().catch(() => null);
       if (!s?.agentId || s.agentId !== actor.agentId || !api) return null;
-      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo);
+      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo, key);
     },
     afterCreate: async (record, source) => {
       if (!record.workspaceId) return;
