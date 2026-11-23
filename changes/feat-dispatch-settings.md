@@ -1,0 +1,3 @@
+- Settings → New work: reorder, hide or reset New's actions, pick which project each Linear team's work goes to, and set the base branch per project.
+- Settings → Agents → New work picks the agent New starts; it's the Overseer's until you choose one.
+- On a phone, New's other actions wrap instead of cutting off their names.

@@ -4,7 +4,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, SettingsAction, SettingsCard, SettingsRow, SettingsSection, SettingsSelect, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Text } from "./text";
-import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
+import { Button, IconButton, SubmitScope, Switch, errorText, text, type Theme } from "./kit";
 import { raised } from "./theme";
 import { focusRing } from "./action-row";
 import { dispatchActionsRpc, dispatchSettingsRpc, setDispatchActionsRpc, setDispatchSettingsRpc } from "../shared/contracts";
@@ -190,11 +190,11 @@ function BaseRow({ theme, compact, name, saved, busy, onSave }: { theme: Theme; 
   const dirty = draft !== null && draft.trim() !== saved;
   const save = () => { if (dirty) onSave(draft!.trim()); setDraft(null); };
   return <SettingsRow label={name} hint={saved ? undefined : "Repository default"}>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <SubmitScope enabled={dirty && !busy} onSubmit={save} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <TextInput value={value} onChangeText={setDraft} placeholder="default branch" placeholderTextColor={c.foregroundMuted} accessibilityLabel={`Base for ${name}`} autoCapitalize="none" autoCorrect={false}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onSubmitEditing={save}
         style={{ minWidth: compact ? 140 : 180, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: focused ? c.accent : c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: compact ? 15 : 13, fontFamily: "ui-monospace, Menlo, monospace" }} />
-      {dirty && <Button theme={theme} compact={compact} kind="primary" title="Save" disabled={busy} onPress={save} />}
-    </View>
+      {dirty && <Button theme={theme} compact={compact} kind="primary" shortcut title="Save" disabled={busy} onPress={save} />}
+    </SubmitScope>
   </SettingsRow>;
 }

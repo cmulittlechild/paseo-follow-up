@@ -267,8 +267,10 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.dispatch": { tools: ["dispatch"], note: "confirm=true with the dry run's plan id starts exactly what the preview showed." },
   "follow.dispatch-records": { tools: ["dispatch_records"], note: "The dialog's progress while a dispatch starts; Home's row reads the same records from the home feed." },
   "follow.dispatch-undo": { tools: ["dispatch_undo"], note: "Undo in the dialog, the toast and Home's row: cancel a queued dispatch or archive what it created, inside the window." },
-  "follow.dispatch-settings": { tools: ["dispatch_settings"], note: "The Project picker's list of projects." },
-  "follow.set-dispatch-settings": { tools: ["set_dispatch_settings"], note: "Changing From saves the base for that project, as set_dispatch_settings bases does." },
+  "follow.dispatch-settings": { tools: ["dispatch_settings"], note: "The Project picker's list of projects, and Settings → New work's rules, bases and no-team rule." },
+  "follow.set-dispatch-settings": { tools: ["set_dispatch_settings"], note: "Changing From saves the base for that project; Settings → New work adds, changes and removes team rules, bases and the no-team rule, as set_dispatch_settings does." },
+  "follow.dispatch-actions": { tools: ["dispatch_actions"], note: "Settings → New work's Actions list: every action in New's order, shown or hidden." },
+  "follow.set-dispatch-actions": { tools: ["set_dispatch_actions"], note: "Settings → New work's move, show/hide, reset, delete and reset-all, the same changes set_dispatch_actions makes." },
 };
 
 /**

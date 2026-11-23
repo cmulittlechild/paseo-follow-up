@@ -7,10 +7,11 @@
 | Display (header button, sidebar item, composer pill, inbox, closed-PR flags, brief nudge, Overseer, ranker, trust bypass, Home's order) | Paseo host settings document `display` (`displayPreferences`). It's host-scoped and keeps older saved sidebar values. | `shared/display.ts`, `client/display.tsx` |
 | Question mode | host settings `questionPreferences` | `shared/questions.ts` |
 | Following, projects, per-workspace exceptions, active window | `state.json` | `shared/settings.ts`; RPCs `follow.follow-settings`, `follow.set-follow-settings`, `follow.project-settings`, `follow.set-project-tracking` |
-| Agents and Wait | `agents.json` | [ai-roles.md](ai-roles.md), [wait.md](wait.md) |
+| Agents (incl. New work, role `dispatch`) and Wait | `agents.json` | [ai-roles.md](ai-roles.md), [wait.md](wait.md) |
 | Shipping PRs | `pr-workflow.json` | [prs.md](prs.md) |
 | PR statistics (which repositories are on, window, team filter, hidden people, clock, GitHub share) | `stats.json` | [pr-stats.md](pr-stats.md), `client/pr-stats-settings.tsx` |
 | Reviewers | `reviewers.json` | [prs.md](prs.md) |
+| New work: New's actions (order, shown, edits), team rules, bases per project, the no-team rule | `dispatch.json` (with New's records) | [dispatch.md](dispatch.md#settings), `client/new-settings.tsx` |
 | Morning brief: this week's plan link and the Linear queue (states, sweep time, since, time zone, workdays) | `morning-brief.json` | [morning-brief.md](morning-brief.md#settings) |
 | View state: settings category, settings folds, Home group folds, What's new "seen" | Paseo 0.16 device settings document `follow-up-view`, with localStorage as the first-paint cache; on 0.15, localStorage (memory on the phone) | `client/view-store.ts`, `shared/settings-nav.ts` |
 
