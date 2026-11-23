@@ -44,7 +44,9 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "compass", "batch-churn"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn"];
+/** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
+const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -67,7 +69,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") || only.includes("new") || only.includes("paste-images") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") || PASTE_LIKE(only) ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -616,7 +618,7 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || only.includes("paste-images") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || PASTE_LIKE(only) ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -2074,6 +2076,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
   if (only.includes("more-context")) await moreContextShots({ shoot, call });
   if (only.includes("paste-images")) await pasteImagesShots({ shoot, call });
+  if (only.includes("attach-images")) await attachImagesShots({ shoot, call });
   if (only.includes("dismiss")) await dismissShots({ shoot, call });
   if (only.includes("dock-in-view")) await dockInViewShots({ shoot });
   if (only.includes("pick-notes")) {
@@ -4197,6 +4200,99 @@ async function moreContextShots({ shoot, call }) {
  * the machine; each paste is a real ClipboardEvent on the field. The fixture provider counts as taking images here
  * (FOLLOW_UP_HARNESS_IMAGE_PROVIDERS, honoured only under the temp dir). Writes paste-images.json with every check.
  */
+/**
+ * attach-images (every-agent-field-takes-images): the Add image button on every kind of field, desktop light and
+ * 390×844 dark. New's task field (inline, before ⌘V), a question's own answer (under the field), then a real pick
+ * through the browser's file chooser (Playwright answers it with a canvas-drawn screenshot) showing its thumbnail, and
+ * the Overseer's reply box (beside Send) with Home's search asking the Overseer (at its end), six pasted and Add image
+ * pressed at the cap. Checks: the chooser takes only image types, several at once; a pick adds a thumbnail to its own
+ * field; at the cap no picker opens and the line says why; no horizontal overflow. Writes `attach-images.json`.
+ */
+async function attachImagesShots({ shoot, call }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`attach-images: ${name}`); log(`attach-images check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const visible = l => l.filter({ visible: true }).first();
+  const lone = pick("ny-lone");
+  const thumbs = page => page.getByRole("button", { name: /^Remove .+\.png$/ }).filter({ visible: true });
+  const noOverflow = async (page, name) => { const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth); check(`${name}: no horizontal overflow`, o <= 1, { overflow: o }); };
+  /** A fake app screenshot, drawn on a canvas in the page, as the file the chooser hands over. */
+  const screenshotFile = async (page, name) => ({ name, mimeType: "image/png", buffer: Buffer.from(await page.evaluate(() => {
+    const c = document.createElement("canvas"); c.width = 640; c.height = 400; const g = c.getContext("2d");
+    g.fillStyle = "#f6f7f9"; g.fillRect(0, 0, 640, 400); g.fillStyle = "hsl(152 45% 28%)"; g.fillRect(0, 0, 640, 44);
+    g.fillStyle = "#fff"; g.font = "600 18px sans-serif"; g.fillText("acme · staging keys", 18, 28);
+    for (let b = 0; b < 12; b++) { const h = 30 + ((b * 37) % 150); g.fillStyle = `hsl(152 60% ${50 + (b % 3) * 8}%)`; g.fillRect(180 + b * 35, 356 - h, 22, h); }
+    return c.toDataURL("image/png").split(",")[1];
+  }), "base64") });
+  /** Clicks the Add image button and answers the browser's chooser; returns what the chooser asked for. */
+  const pickThrough = async (page, button, name) => {
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), button.click()]);
+    const accept = await chooser.element().evaluate(el => el.getAttribute("accept"));
+    await chooser.setFiles(await screenshotFile(page, name));
+    return { accept, multiple: chooser.isMultiple() };
+  };
+  await call("follow.overseer-start", {});
+  for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) {
+    const phone = vp.width < 768;
+    const name = state => `ai-${state}-${device}-${theme}`;
+    await shoot(name("new"), vp, theme, async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+      const dialog = visible(page.locator('[role="dialog"][aria-label="New"]'));
+      await dialog.waitFor();
+      check(`${device} ${theme}: New's task field has Add image`, await dialog.getByRole("button", { name: "Add image" }).filter({ visible: true }).count() === 1);
+      await page.waitForTimeout(400); await noOverflow(page, name("new"));
+    });
+    await shoot(name("question"), vp, theme, async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await (await homeRow(page, lone.title)).click(); await visible(page.getByText("Missing keys")).waitFor();
+      await visible(page.getByRole("radio", { name: /^Something else/ })).click();
+      const field = visible(page.getByLabel("Your answer to Q1, required"));
+      await field.fill("Show the key, like this screenshot from staging.");
+      // The answer's own Add image (Home's search has one too while it asks the Overseer): the one in the field's form.
+      const form = field.locator("xpath=ancestor::*[.//*[@role='button' and @aria-label='Add image']][1]");
+      const add = form.getByRole("button", { name: "Add image" }).first();
+      const asked = await pickThrough(page, add, "staging-keys.png");
+      check(`${device} ${theme}: the chooser takes image types only, several at once`, asked.accept === "image/png,image/jpeg,image/gif,image/webp" && asked.multiple, asked);
+      const x = form.getByRole("button", { name: "Remove staging-keys.png" });
+      await x.waitFor();
+      check(`${device} ${theme}: a pick adds its thumbnail to that field, and nowhere else`, await thumbs(page).count() === 1 && await form.getByRole("button", { name: /^Remove / }).count() === 1);
+      await x.evaluate(el => el.scrollIntoView({ block: "center" }));
+      await page.waitForTimeout(400); await noOverflow(page, name("question"));
+    });
+    await shoot(name("overseer"), vp, theme, async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await visible(page.getByRole("button", { name: /^Overseer\. / })).click();
+      const reply = visible(page.getByRole("textbox", { name: "Reply to the Overseer" }));
+      await reply.waitFor();
+      const box = reply.locator("xpath=ancestor::*[.//*[@aria-label='Send']][1]");
+      check(`${device} ${theme}: the Overseer's reply box has Add image beside Send`, await box.getByRole("button", { name: "Add image", exact: true }).count() === 1);
+      if (!phone) check(`${device} ${theme}: Home's search asking the Overseer has Add image for the Overseer`, await page.getByRole("button", { name: "Add image for the Overseer" }).filter({ visible: true }).count() === 1);
+      // At the cap: six pasted, then Add image opens no picker and says why on the box's line.
+      await reply.fill("Six screenshots of the billing chart");
+      await reply.evaluate(async el => {
+        const data = new DataTransfer();
+        for (let i = 0; i < 6; i++) {
+          const c = document.createElement("canvas"); c.width = 320; c.height = 200; const g = c.getContext("2d");
+          g.fillStyle = "#f6f7f9"; g.fillRect(0, 0, 320, 200); g.fillStyle = `hsl(${[214, 152, 28, 280, 350, 190][i]} 50% 45%)`; g.fillRect(0, 0, 320, 28);
+          for (let b = 0; b < 8; b++) g.fillRect(40 + b * 32, 180 - (20 + ((b * 29 + i * 17) % 110)), 18, 20 + ((b * 29 + i * 17) % 110));
+          data.items.add(new File([await new Promise(r => c.toBlob(r, "image/png"))], `billing-${i + 1}.png`, { type: "image/png" }));
+        }
+        el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+      });
+      // The thumbnails and the line sit in the composer above the field's row (box is that row).
+      await visible(page.getByRole("button", { name: "Remove billing-6.png" })).waitFor();
+      let opened = false; page.once("filechooser", () => { opened = true; });
+      await box.getByRole("button", { name: "Add image", exact: true }).click();
+      const line = visible(page.getByText("6 images is the most one message takes. Nothing was added."));
+      await line.waitFor();
+      await page.waitForTimeout(300);
+      check(`${device} ${theme}: Add image at the cap opens no picker and says why`, !opened && await line.isVisible());
+      await page.waitForTimeout(400); await noOverflow(page, name("overseer"));
+    });
+  }
+  await fs.writeFile(join(out, "attach-images.json"), JSON.stringify({ checks }, null, 2));
+}
+
 async function pasteImagesShots({ shoot, call }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`paste-images: ${name}`); log(`paste-images check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
@@ -4581,7 +4677,7 @@ try {
   // sending only: a fake cgroup at 10% of memory.high from the start (the governor finds its cgroup once), raised later.
   if (only.includes("sending") || only.includes("pr-stats-settings")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
 
-  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") || only.includes("paste-images") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), ...(only.includes("paste-images") ? { FOLLOW_UP_HARNESS_IMAGE_PROVIDERS: "followup-fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
+  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") || PASTE_LIKE(only) ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), ...(PASTE_LIKE(only) ? { FOLLOW_UP_HARNESS_IMAGE_PROVIDERS: "followup-fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 22 })).stdout);
   const daemonLog = openSync(join(root, "daemon.log"), "a");
   crashed = async () => daemonCrashes(await fs.readFile(join(root, "daemon.log"), "utf8").catch(() => ""))[0] ?? null;

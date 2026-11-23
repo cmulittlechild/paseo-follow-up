@@ -14,10 +14,38 @@ import { text, type Theme } from "./kit";
 import { withAlpha } from "./theme";
 import { imageSupportRpc } from "../shared/contracts";
 import { ImageViewer, refocus, viewerInline, type ViewedImage } from "./image-viewer";
-import { base64Bytes, imageRefusal, imageTargetKey, mb, type ImageSupport, type ImageTarget, type ImageUpload } from "../shared/images";
+import { base64Bytes, IMAGE_TYPES, imageRefusal, MAX_IMAGES, imageTargetKey, mb, type ImageSupport, type ImageTarget, type ImageUpload } from "../shared/images";
 import { unsentImages, updateUnsentImages } from "./unsent-images";
 
 export const IMAGES_ON = Platform.OS === "web";
+
+/**
+ * Whether this platform has a file picker for a plugin field: web (a browser, or Paseo's desktop app, whose Chromium
+ * opens the system's file dialog for a file input). Paseo's own composer reaches the picker through Expo's image
+ * picker, which on web is the same hidden `<input type="file">`, and through its desktop dialog bridge, which plugins
+ * don't get. The phone app has no picker for plugin fields (`@getpaseo/plugin/client` has none), so no button.
+ */
+export const PICKER_ON = IMAGES_ON && typeof (globalThis as { document?: { createElement?: unknown } }).document?.createElement === "function";
+
+/** Opens the system file picker for images; resolves with what was chosen, or nothing on cancel. */
+export function pickImageFiles(): Promise<File[]> {
+  return new Promise(resolve => {
+    type Input = { type: string; accept: string; multiple: boolean; style: { display: string }; files: ArrayLike<File> | null; addEventListener(t: string, f: () => void): void; click(): void; remove(): void };
+    const doc = (globalThis as unknown as { document: { createElement(t: string): Input; body: { appendChild(n: Input): void } } }).document;
+    const input = doc.createElement("input");
+    input.type = "file"; input.accept = IMAGE_TYPES.join(","); input.multiple = true; input.style.display = "none";
+    let done = false;
+    const finish = (files: File[]) => { if (done) return; done = true; input.remove(); resolve(files); };
+    input.addEventListener("change", () => finish(Array.from(input.files ?? [])));
+    input.addEventListener("cancel", () => finish([]));
+    // A browser that fires neither (older WebKit, some desktop dialogs): the window gets focus back when the picker
+    // closes; with no change soon after, it was cancelled, so the button never stays stuck.
+    const win = globalThis as unknown as { addEventListener?(t: string, f: () => void, o?: { once: boolean }): void };
+    win.addEventListener?.("focus", () => setTimeout(() => finish(Array.from(input.files ?? [])), 800), { once: true });
+    doc.body.appendChild(input);
+    input.click();
+  });
+}
 
 export type AttachedImage = { id: string; name: string; mimeType: string; bytes: number; data: string; uri: string };
 /** What a paste or drop hands the model: enough to refuse before reading, and how to read it. */
@@ -30,6 +58,8 @@ export type ImageAttachments = {
   /** Set while images are attached and the recipient can't take them: the field shows it and Send is disabled. */
   blocked: string | null;
   add(incoming: IncomingImage[]): Promise<void>;
+  /** Shows a refusal on the field's line (Add image pressed at the cap), as a refused paste does. */
+  refuse(why: string): void;
   remove(id: string): void;
   clear(): void;
   /** The RPC field: undefined with no images, so nothing changes for a send without them. */
@@ -90,14 +120,15 @@ export function useImageAttachments({ target, keep }: { target: ImageTarget | nu
     if (again) { setRefusal(again); return; }
     setImages(list => [...list, ...read]);
   }, []);
+  const refuse = useCallback((why: string) => setRefusal(why), []);
   const remove = useCallback((id: string) => { setRefusal(null); setImages(list => list.filter(i => i.id !== id)); }, []);
   const clear = useCallback(() => { setRefusal(null); setImages([]); }, []);
   const ready = support && support.key === key ? support.s : null;
   const blocked = images.length && ready && !ready.ok ? ready.reason : null;
   return useMemo(() => ({
-    images, refusal, blocked, add, remove, clear, target,
+    images, refusal, blocked, add, refuse, remove, clear, target,
     uploads: () => images.length ? uploadsOf(images) : undefined,
-  }), [images, refusal, blocked, add, remove, clear, target]);
+  }), [images, refusal, blocked, add, refuse, remove, clear, target]);
 }
 
 /** Image items of a paste's clipboardData or a drop's dataTransfer, as the model takes them. */
@@ -152,9 +183,15 @@ export function useImagePaste(ref: { current: unknown }, model: ImageAttachments
  * The field with its images: wraps the field (paste and drop land on it), then draws the thumbnails, the refusal and
  * the support line under it. Native: the field alone, nothing else and no space.
  */
-export function ImageField({ model, theme, compact = false, children, style, row = true }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean; children: ReactNode; style?: StyleProp<ViewStyle>;
+export function ImageField({ model, theme, compact = false, children, style, row = true, attach = "below" }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean; children: ReactNode; style?: StyleProp<ViewStyle>;
   /** False: takes pastes and drops only; another field of the same model draws the thumbnails (New's note on desktop). */
-  row?: boolean }) {
+  row?: boolean;
+  /**
+   * Where its Add image button is: "below" draws it under the field and its thumbnails (its own quiet line);
+   * "inline": the field draws `AttachImageButton` among its own controls (a reply box beside Send, a search or New's
+   * task field at its end), so a one-line field stays one line.
+   */
+  attach?: "below" | "inline" }) {
   const ref = useRef<View>(null);
   const over = useImagePaste(ref, model);
   if (!IMAGES_ON) return <View style={style}>{children}</View>;
@@ -162,7 +199,44 @@ export function ImageField({ model, theme, compact = false, children, style, row
   return <View ref={ref} style={[{ gap: 6 }, style]}>
     <View style={over ? { borderRadius: 8, outlineStyle: "dashed", outlineWidth: 2, outlineColor: c.accent, outlineOffset: 2 } as ViewStyle : undefined}>{children}</View>
     {row && <ImageAttachmentsRow model={model} theme={theme} compact={compact} />}
+    {attach === "below" && PICKER_ON && <View style={{ flexDirection: "row" }}><AttachImageButton model={model} theme={theme} compact={compact} labelled /></View>}
   </View>;
+}
+
+/**
+ * Add image: the system file picker for this field's images (Paseo's composer words it the same). Icon-only inside a
+ * field's own controls; `labelled` under a field. At the cap it is disabled and says why (invariant 8). Nothing on a
+ * platform without a picker.
+ */
+export function AttachImageButton({ model, theme, compact = false, labelled = false, label = "Add image" }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean; labelled?: boolean;
+  /** Its name where the field doesn't say who gets the image (Home's search: "Add image for the Overseer"). */
+  label?: string }) {
+  const [picking, setPicking] = useState(false);
+  if (!PICKER_ON) return null;
+  const c = theme.colors; const t = text(c, compact);
+  const full = model.images.length >= MAX_IMAGES;
+  const why = `${MAX_IMAGES} images is the most one message takes.`;
+  // At the cap a press says why on the field's own line, as a refused paste does (invariant 8), never a dead button.
+  const pick = async () => {
+    if (picking) return;
+    if (full) { model.refuse(why); return; }
+    setPicking(true);
+    try { const files = await pickImageFiles(); if (files.length) await model.add(incomingFrom({ files })); } finally { setPicking(false); }
+  };
+  // Idle it is a step stronger than a disabled Send beside it, so the two never read as twins.
+  const idle = withAlpha(c.foreground, 0.62);
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={full ? why : undefined} accessibilityState={{ busy: picking }} onPress={() => void pick()} hitSlop={labelled ? 6 : 2}
+    {...({ title: full ? why : `${label} (or paste or drop one)` } as object)}
+    style={(state) => { const { hovered, focused, pressed } = state as { hovered?: boolean; focused?: boolean; pressed?: boolean }; return {
+      flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 6, opacity: full ? 0.5 : 1,
+      ...(labelled ? { paddingVertical: compact ? 10 : 3, paddingHorizontal: 4, marginLeft: -4 } : { width: compact ? 44 : 28, height: compact ? 44 : 28, justifyContent: "center" }),
+      backgroundColor: picking || (!full && (hovered || pressed)) ? c.surface2 : "transparent",
+      ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: c.accent } : {}) } as ViewStyle; }}>
+    {(state) => { const hot = picking || (!full && !!(state as { hovered?: boolean }).hovered); return <>
+      <Icon name="ImagePlus" size={compact ? 18 : labelled ? 14 : 16} color={hot ? c.foreground : labelled ? c.foregroundMuted : idle} />
+      {labelled && <Text style={[t.meta, { color: hot ? c.foreground : c.foregroundMuted }]}>{label}</Text>}
+    </>; }}
+  </Pressable>;
 }
 
 /**
@@ -182,7 +256,7 @@ export function ImageAttachmentsRow({ model, theme, compact = false }: { model: 
   };
   const size = compact ? 56 : 48;
   return <View style={{ gap: 6 }}>
-    {!!images.length && <View role="list" accessibilityLabel={`${images.length} image${images.length === 1 ? "" : "s"} attached`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, paddingTop: 6, paddingRight: 6 }}>
+    {!!images.length && <View role="list" aria-live="polite" accessibilityLabel={`${images.length} image${images.length === 1 ? "" : "s"} attached`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, paddingTop: 6, paddingRight: 6 }}>
       {images.map(i => <View key={i.id} role="listitem" style={{ width: size, height: size }}>
         <Pressable accessibilityRole="button" accessibilityLabel={`View ${i.name}, ${mb(i.bytes)}`} onPress={e => view(i, e?.currentTarget)} {...({ title: `${i.name} · ${mb(i.bytes)}` } as object)}>
           <Image source={{ uri: i.uri }} accessibilityIgnoresInvertColors resizeMode="cover"

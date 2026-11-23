@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, TextInput, View } from "react-native";
-import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
+import { AttachImageButton, ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
 import { OVERSEER_ASK_KEY } from "./unsent-images";
 import { Pressable, Text } from "./text";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
@@ -103,7 +103,9 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape, onLayoutQuery }: {
+export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape, onLayoutQuery, trailing }: {
+  /** A control at the field's end, before its ✕ (Home's search asking the Overseer: Add image). */
+  trailing?: ReactNode;
   /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
   listKeys?: boolean;
   onLayoutQuery?: (q: string | null) => void;
@@ -159,6 +161,7 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
         else if (key === "Escape") { if (onEscape) onEscape(); else if (value) onChange(""); else inputRef.current?.blur(); }
       }}
       style={{ flex: 1, minWidth: 0, color: c.foreground, fontSize: dense ? 15 : 13, paddingVertical: 0, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
+    {trailing}
     {count !== undefined ? !!count && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: dense ? 13 : 12, fontVariant: ["tabular-nums"] }}>{count}</Text>
       : !!value && <Pressable accessibilityRole="button" accessibilityLabel={`Clear ${placeholder.toLowerCase()}`} hitSlop={dense ? 14 : 8} onPress={() => { onChange(""); inputRef.current?.focus(); }}>
       <Icon name="X" size={dense ? 16 : 13} color={c.foregroundMuted} />
@@ -178,7 +181,8 @@ export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { t
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
   // The bar stays one line: a paste or drop lands here, and Home draws the thumbnails on their own line under it.
-  if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+  if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} attach="inline" style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+    trailing={<AttachImageButton model={omnibox.images} theme={theme} compact={dense} label="Add image for the Overseer" />}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></ImageField>;
   return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
