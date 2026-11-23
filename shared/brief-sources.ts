@@ -109,6 +109,9 @@ export const RECIPES: readonly Recipe[] = [
       channels: { name: /search_?channels|channels_?search/ },
       people: { name: /search_?users|users_?search|search_?people/ },
       thread: { name: /read_?thread/ },
+      // A conversation's history by time (Compass reads by cursor, never by a relevance search): a conversation id and
+      // an oldest time.
+      history: { name: /(read|get|fetch)_?(channel|conversation|messages?)|history/, not: /thread|search|user|file/, anyProps: ["channel_id", "channel", "conversation_id", "conversation"] },
     },
     required: ["messages", "channels"],
   },

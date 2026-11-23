@@ -15,6 +15,7 @@ import {
   type NotStarted, type RankAsked, type RankEvent, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
 } from "../shared/ranker";
 import type { Priority } from "../shared/priorities";
+import type { RankCompassNote } from "../shared/compass";
 import type { WorkstreamRow } from "../shared/overseer";
 import { truncated } from "../shared/scale";
 import { canonicalArtifactUrl } from "../shared/morning-brief";
@@ -52,6 +53,8 @@ export type RankSources = {
   calendar?(day: { start: string; end: string; timeZone: string }): Promise<RankEvent[]>;
   /** What the Ask sources that are on found this morning (stored by the morning's asks; the ranker never asks). */
   asks?(): Promise<RankAsked[]>;
+  /** Compass's live notes (server/compass.ts): stored by its reads; the ranker never reads a source for them. */
+  compass?(): Promise<RankCompassNote[]>;
   /** Unread mail since `since` (ms), when the mail source is on (off until turned on); `now` is the ranker's clock. */
   mail?(since: number, now: number): Promise<RankMessage[]>;
   github(): Promise<RankReview[]>;
@@ -357,6 +360,7 @@ export class Ranker {
     const slackSince = started;
     const chatSince = started - windows.chatHours * 3_600_000;
     const asks = await this.d.sources.asks?.().catch(() => [] as RankAsked[]) ?? [];
+    const compass = await this.d.sources.compass?.().catch(() => [] as RankCompassNote[]) ?? [];
     const [rows, linear, slack, github, calendar, mail] = await Promise.all([
       this.d.workstreams(),
       read("linear", () => this.d.sources.linear(), []),
@@ -374,7 +378,7 @@ export class Ranker {
       if (planning) planCache = { url, at: new Date(started).toISOString(), value: planning };
       else if (s.planning?.url === url) planning = s.planning.value; // keep yesterday's plan over none
     }
-    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning, ...(calendar.length ? { calendar } : {}), ...(mail.length ? { mail } : {}), ...(asks.length ? { asks } : {}), ...(windows.chatHours !== 48 ? { chatHours: windows.chatHours } : {}) };
+    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning, ...(calendar.length ? { calendar } : {}), ...(mail.length ? { mail } : {}), ...(asks.length ? { asks } : {}), ...(compass.length ? { compass } : {}), ...(windows.chatHours !== 48 ? { chatHours: windows.chatHours } : {}) };
     const hash = rankKey(inputs, role);
     const inputsMs = this.now() - started;
     const last = (l: Partial<NonNullable<RankerState["last"]>> & { ok: boolean }): NonNullable<RankerState["last"]> => ({ trigger, costUsd: null, durationMs: this.now() - started, skipped: null, error: null, provider: role.provider, inputTokens: null, outputTokens: null, top: null, retried: false, timing: null, ...l });
