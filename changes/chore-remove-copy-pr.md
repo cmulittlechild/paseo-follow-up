@@ -1,0 +1,1 @@
+- The row menu no longer offers Copy PR link.

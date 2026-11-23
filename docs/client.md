@@ -127,7 +127,7 @@ row) for quick moves without opening it. `rowMenu()` in `shared/row-menu.ts` lis
 2. Answer Q<n> for up to two open questions.
 3. Resume follow-up, Send N repairs and Retry repairs, each shown only when it applies.
 4. Open chat, and Ask the Overseer about this (it pre-fills the omnibox and doesn't send).
-5. Copy branch name, Copy PR link(s), Rename title with AI…, Rewrite summary, Make <agent> the main agent, Stop
+5. Copy branch name, Rename title with AI…, Rewrite summary, Make <agent> the main agent, Stop
    following… (which asks first), and Archive workspace….
 
 Archive workspace… is on any row whose workspace Paseo lists (tracked or not) when the host's Paseo API has
