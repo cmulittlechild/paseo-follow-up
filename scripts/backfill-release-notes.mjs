@@ -19,8 +19,8 @@ const VERSION_TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
  * What to do with each release: `{ tag, action: "write" | "keep", reason, body?, replaced? }`. Pure apart from `src`,
- * so tests can drive it. Only version releases (`vX.Y.Z[-pre]`) are pages to frame: a release under any other tag (the
- * `media-assets` release that hosts the demo video) isn't a version and is left alone.
+ * so tests can drive it. Only version releases (`vX.Y.Z[-pre]`) are pages to frame: a release under any other tag isn't
+ * a version and is left alone.
  */
 export function plan(releases, src, { only = null, except = [] } = {}) {
   return releases

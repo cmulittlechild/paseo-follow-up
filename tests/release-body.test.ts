@@ -135,7 +135,7 @@ test("backfill-keeps-curated-notes: a stable or rc page with its own notes is ne
   assert.ok(steps.every(s => s.body === undefined), "nothing to write");
   // A beta's hand-written page is still framed (its text kept), and a curated page with no notes at all still gets them.
   assert.equal(plan([{ tagName: "v2.0.1-beta.0", body: "Faster.\n\n- Fewer reads." }], src)[0]!.action, "write");
-  // A release that isn't a version (the media-assets release hosting the demo video) is never planned, so it can't
-  // abort the run with "Not a version tag" or be rewritten as a version page.
+  // A release under any other tag isn't a version: it's never planned, so it can't abort the run with "Not a version
+  // tag" or be rewritten as a version page.
   assert.deepEqual(plan([{ tagName: "media-assets", body: "" }, { tagName: "v2.0.1-beta.0", body: "Faster.\n\n- Fewer reads." }], src).map(s => s.tag), ["v2.0.1-beta.0"]);
 });
