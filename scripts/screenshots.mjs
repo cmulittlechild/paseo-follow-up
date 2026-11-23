@@ -2664,6 +2664,8 @@ async function newShots({ shoot, call, out, home, billing }) {
     for (const [device, vp] of [["desktop", { width: 1440, height: 1700 }], ["phone", { width: 390, height: 2300 }]]) {
       await shoot(`new-work-settings-${device}-${theme}`, vp, theme, async page => {
         if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: "develop" } });
+        // Frames open at desktop size: size the window first (tall, so every section is in one frame).
+        await page.setViewportSize(vp);
         await openSettingsAt(page, "new", vp);
         await page.getByText("Where work goes", { exact: true }).filter({ visible: true }).first().waitFor();
         await page.getByText("Create PR", { exact: true }).filter({ visible: true }).first().waitFor();
@@ -2674,8 +2676,10 @@ async function newShots({ shoot, call, out, home, billing }) {
         await page.evaluate(() => window.scrollTo(0, 0));
       });
       await shoot(`new-work-agent-${device}-${theme}`, device === "phone" ? PHONE : DESKTOP, theme, async page => {
+        await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
         await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);
-        const r = page.getByText("New work", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+        // The row's title, not the tab of the same name.
+        const r = page.getByText("The agent New starts for an action", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
         check(`${theme} ${device}: Agents → New work copies the Overseer by default`, await page.getByText("Same as the Overseer").filter({ visible: true }).count() > 0);
       });
     }
