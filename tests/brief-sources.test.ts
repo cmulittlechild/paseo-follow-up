@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import {
   applySourcesChange, briefSources, matchServers, parseEvents, parseMail, parseReadTools, parseUpstreams, rangeArgs, sourcesLine, toolFor, upstreamHealth, type SourceRead,
 } from "../shared/brief-sources";
-import { SourceDirectory } from "../server/source-tools";
+import { FAILED_DISCOVERY_MS, MISS_REDISCOVER_MS, NoSourceError, SourceDirectory } from "../server/source-tools";
 import { BriefSources } from "../server/brief-sources";
 import { MorningBriefStore } from "../server/morning-brief";
 import { liveRankSources } from "../server/ranker";
@@ -118,7 +118,7 @@ test("the ranker's chat, calendar and mail reads: the discovered servers, the se
   assert.deepEqual(calls.filter(c => c.server === FAKE_SERVERS.chat).map(c => c.args.keywords), [undefined, [`<@${FAKE_SELF_ID}>`]], "DMs, then mentions of the id the tool describes");
   assert.deepEqual(await src.calendar!({ start: "2026-11-24T00:00:00Z", end: "2026-11-25T00:00:00Z", timeZone: "UTC" }), [{ title: "Planning", start: "2026-11-24T10:00:00Z", url: null }]);
   assert.deepEqual(calls.find(c => c.tool === "list-events")!.args, { timeMin: "2026-11-24T00:00:00Z", timeMax: "2026-11-25T00:00:00Z", timeZone: "UTC" });
-  assert.deepEqual((await src.mail!(Date.now() - 86_400_000)).map(m => m.text), ["Quick question"]);
+  assert.deepEqual((await src.mail!(Date.parse("2026-11-23T08:00:00Z"), Date.parse("2026-11-24T08:00:00Z"))).map(m => m.text), ["Quick question"]);
   // Off in the brief: the read says so (the ranker shows it as off, not failed), and makes no call.
   const before = calls.length;
   const off = liveRankSources(new AiJobs(), { run, tools: new SourceDirectory(run), gate: async id => ({ on: id !== "calendar" }) });
@@ -170,4 +170,44 @@ test("BriefSources: the card answers at once and asks mcpproxy after; switches, 
   now += 3_600_000; await sources.tick();
   assert.equal((await store.read()).sources.checkedAt, morning, "once a day");
   await rm(dir, { recursive: true, force: true });
+});
+
+test("discovery heals itself: a recipe missing at the first discovery is found once its upstream is back; a down mcpproxy is asked once a minute", async () => {
+  let now = Date.parse("2026-11-24T05:00:00Z");
+  let linearUp = false; let proxyUp = true; let lists = 0;
+  const run = async (_c: string, args: string[]) => {
+    if (args[0] === "tools") {
+      lists++;
+      if (!proxyUp) throw new Error("connect: connection refused");
+      return JSON.stringify(fakeTools().filter(t => linearUp || t.server_name !== FAKE_SERVERS.issues));
+    }
+    return wrap("{}");
+  };
+  const dir = new SourceDirectory(run, () => now);
+  // Linear's upstream was still connecting at the first discovery: a miss, and inside MISS_REDISCOVER_MS reads don't re-ask.
+  await assert.rejects(dir.call("linear", "get_issue", { id: "ACME-142" }, { reason: "test", timeoutMs: 1000 }), NoSourceError);
+  for (let i = 0; i < 5; i++) await assert.rejects(dir.call("linear", "get_issue", { id: "ACME-142" }, { reason: "test", timeoutMs: 1000 }), NoSourceError);
+  assert.equal(lists, 1, "N misses inside the window make one discovery");
+  // The upstream comes back; after the window the next read asks again and finds it.
+  linearUp = true; now += MISS_REDISCOVER_MS;
+  assert.equal(await dir.call("linear", "get_issue", { id: "ACME-142" }, { reason: "test", timeoutMs: 1000 }), "{}");
+  assert.equal(lists, 2);
+  assert.equal(await dir.tool("linear", "get_issue"), `${FAKE_SERVERS.issues}:get_issue`);
+  assert.equal(lists, 2, "a hit never re-asks");
+  // A source switched off (allowed says no) is not a miss: no re-discovery for it.
+  now += MISS_REDISCOVER_MS;
+  assert.equal(await dir.tool("linear", "get_issue", () => false), null);
+  assert.equal(lists, 2);
+
+  // mcpproxy down before any discovery: one call, then its error answers every read for FAILED_DISCOVERY_MS.
+  proxyUp = false; lists = 0;
+  const cold = new SourceDirectory(run, () => now);
+  for (let i = 0; i < 5; i++) await assert.rejects(cold.tool("chat", "messages"), /connection refused/);
+  assert.equal(lists, 1, "N reads inside the TTL make one discovery");
+  proxyUp = true; now += FAILED_DISCOVERY_MS;
+  assert.equal(await cold.tool("chat", "messages"), `${FAKE_SERVERS.chat}:search_public_and_private`);
+  assert.equal(lists, 2);
+  // Check sources again asks even inside a failure's TTL.
+  proxyUp = false; await assert.rejects(cold.discover(true)); proxyUp = true;
+  assert.equal((await cold.discover("always")).matched.length > 0, true);
 });

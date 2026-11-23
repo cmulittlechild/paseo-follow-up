@@ -1407,7 +1407,7 @@ export default function contribute(server: PluginServerContext) {
       if (id === "linear") { const r = await linearQueue!.sweepNow("manual"); if ("ok" in r && !r.ok) throw new Error(r.error ?? "The sweep failed."); return; }
       if (id === "github") { await rankSources.github(); return; }
       if (id === "chat") { await rankSources.slack(Date.now() - 3_600_000); return; }
-      if (id === "mail") { await rankSources.mail!(Date.now() - 86_400_000); return; }
+      if (id === "mail") { const now = Date.now(); await rankSources.mail!(now - 86_400_000, now); return; }
       const now = Date.now();
       await rankSources.calendar!({ start: new Date(now).toISOString(), end: new Date(now + 86_400_000).toISOString(), timeZone: (await briefClock()).timeZone });
     },

@@ -46,7 +46,7 @@ export class BriefSources {
   check(): Promise<void> {
     return this.checking ??= (async () => {
       try {
-        const [upstreams] = await Promise.all([this.d.tools.upstreams(), this.d.tools.discover(true)]);
+        const [upstreams] = await Promise.all([this.d.tools.upstreams(), this.d.tools.discover("always")]);
         this.upstreamList = upstreams; this.lastError = null;
       } catch (e) { this.lastError = `mcpproxy couldn't list its servers: ${oneLine(e)}`; this.d.log?.(`[follow-up] morning brief: ${this.lastError}`); }
       await this.d.store.mutate(f => { f.sources.checkedAt = new Date(this.now()).toISOString(); });

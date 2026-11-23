@@ -171,6 +171,11 @@ description at run time.
 range goes into whatever inputs it has: `rangeArgs`). Replies are parsed tolerantly (`parseEvents`, `parseMail`: JSON at
 any depth, else text lines).
 
+**Discovery heals itself** (`discovery-heals-itself`): `SourceDirectory` keeps one discovery, but a reader whose recipe
+no server has asks again before it gets `NoSourceError` (at most once per `MISS_REDISCOVER_MS`, 10 min), so an upstream
+that was down when the worker first asked is found once it's back. A failed discovery (mcpproxy down) is the answer for
+`FAILED_DISCOVERY_MS` (60 s); Settings' check and Check sources again always ask.
+
 **Health per source:** `ok`; `sign-in` (the server waits for an OAuth sign-in: sign in through mcpproxy or the claude.ai
 connector, since a headless host can't open a browser); `failed` (not connected, quarantined, or the last read's one
 line, with Retry; a sign-in row has Check again and the command to copy); `off` (turned off here, or in mcpproxy). The last read is the newest of the ranker's run (chat,

@@ -49,8 +49,8 @@ export type RankSources = {
   slack(since: number): Promise<RankMessage[]>;
   /** Today's meetings (`days` from the start of today), when a calendar source is on. */
   calendar?(day: { start: string; end: string; timeZone: string }): Promise<RankEvent[]>;
-  /** Unread mail since `since` (ms), when the mail source is on (off until turned on). */
-  mail?(since: number): Promise<RankMessage[]>;
+  /** Unread mail since `since` (ms), when the mail source is on (off until turned on); `now` is the ranker's clock. */
+  mail?(since: number, now: number): Promise<RankMessage[]>;
   github(): Promise<RankReview[]>;
   /** The CPO's plan, read once a day at most (the caller caches). Null when there's no plan to read. */
   planning(url: string): Promise<RankPlanning | null>;
@@ -166,9 +166,9 @@ export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceD
       const args = rangeArgs(await tools.props(tool), day.start, day.end, day.timeZone);
       return parseEvents(await tools.call("calendar", "events", args, { reason, timeoutMs: 30_000, allowed }));
     },
-    async mail(since) {
+    async mail(since, now) {
       const allowed = await gate("mail", "Mail");
-      const days = Math.max(1, Math.ceil((Date.now() - since) / 86_400_000));
+      const days = Math.max(1, Math.ceil((now - since) / 86_400_000));
       return parseMail(await tools.call("mail", "messages", { query: `is:unread to:me newer_than:${days}d`, q: `is:unread to:me newer_than:${days}d`, limit: 20, maxResults: 20 }, { reason, timeoutMs: 30_000, allowed }))
         .map(m => ({ where: "mail", who: m.from, text: m.subject, at: m.at }));
     },
@@ -349,7 +349,7 @@ export class Ranker {
       read("slack", () => this.d.sources.slack(chatSince), []),
       read("github", () => this.d.sources.github(), []),
       this.d.sources.calendar ? read("calendar", () => this.d.sources.calendar!(calendarDay), [] as RankEvent[]) : Promise.resolve([] as RankEvent[]),
-      this.d.sources.mail ? read("mail", () => this.d.sources.mail!(chatSince), [] as RankMessage[]) : Promise.resolve([] as RankMessage[]),
+      this.d.sources.mail ? read("mail", () => this.d.sources.mail!(chatSince, started), [] as RankMessage[]) : Promise.resolve([] as RankMessage[]),
     ]);
     const url = await this.d.planningUrl?.().catch(() => null) ?? null;
     let planning: RankPlanning | null = null; let planCache = s.planning;

@@ -1009,7 +1009,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
    even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
    when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
-   the morning run (the-brief-has-one-timer); never on its own timer. Guarded by `tests/brief-sources.test.ts`.
+   the morning run (the-brief-has-one-timer); never on its own timer. **Discovery heals itself**
+   (`discovery-heals-itself`): a reader whose recipe no server has asks again first, at most once per
+   `MISS_REDISCOVER_MS` (10 min), so an upstream down or still connecting at the first discovery (an mcpproxy restart,
+   an OAuth refresh, a worker started right after an install) is found once it's back, never a day later; a source
+   switched off is not a miss. A failed discovery answers every read with its error for `FAILED_DISCOVERY_MS` (60 s),
+   so a down mcpproxy isn't asked on every read; Check sources again always asks. Guarded by
+   `tests/brief-sources.test.ts`.
 82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
    channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
    shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,

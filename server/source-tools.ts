@@ -9,8 +9,11 @@ import { fitArgs, matchServers, parseReadTools, parseUpstreams, recipe, selfIdFr
  * reads, Linked's team list) asks this for its tool, and calls it only through `mcpproxy call tool-read` with a tool
  * mcpproxy listed as read-only (sources-are-read-only).
  *
- * Discovery is one `mcpproxy tools list --risk read` call, made the first time a reader needs a tool and again only
- * when asked (Settings → Morning brief opening, Check sources again, the morning run): never on its own timer.
+ * Discovery is one `mcpproxy tools list --risk read` call, made the first time a reader needs a tool and again when
+ * asked (Settings → Morning brief opening, Check sources again, the morning run): never on its own timer. It heals
+ * itself: a reader that finds no server for its recipe asks again first (at most once per `MISS_REDISCOVER_MS`), so an
+ * upstream that was down or still connecting at the first discovery is found once it's back; a failed discovery is
+ * remembered for `FAILED_DISCOVERY_MS`, so a down mcpproxy isn't asked on every read.
  */
 /** The text of an `mcpproxy call … -o json` reply; a tool error throws its first line. */
 export function mcpproxyText(stdout: string): string {
@@ -35,21 +38,37 @@ export class NoSourceError extends Error {
 
 export type Discovery = { at: number; tools: ReadTool[]; matched: Matched[] };
 
+/** A recipe no server has: discovery older than this is asked again before the reader gets NoSourceError. */
+export const MISS_REDISCOVER_MS = 10 * 60_000;
+/** A discovery that failed (mcpproxy down): its error is the answer for this long. */
+export const FAILED_DISCOVERY_MS = 60_000;
+
 export class SourceDirectory {
   private found: Discovery | null = null;
   private pending: Promise<Discovery> | null = null;
+  private failed: { at: number; error: unknown } | null = null;
   /** Discovery calls made, for tests and the scale check. */
   discoveries = 0;
   constructor(private run: Run = liveRun, private now: () => number = Date.now) {}
 
-  /** The read tools and their recipes: cached; `fresh` asks mcpproxy again. A failed discovery isn't cached. */
-  discover(fresh = false): Promise<Discovery> {
+  /**
+   * The read tools and their recipes: cached; `fresh` asks mcpproxy again (`always`: even inside a failure's
+   * `FAILED_DISCOVERY_MS`, for a developer's Check sources again). A failed discovery keeps the last good one for
+   * readers that have it; without one, its error answers every read for `FAILED_DISCOVERY_MS`.
+   */
+  discover(fresh: boolean | "always" = false): Promise<Discovery> {
     if (this.found && !fresh) return Promise.resolve(this.found);
+    if (fresh !== "always" && this.failed && this.now() - this.failed.at < FAILED_DISCOVERY_MS) {
+      return this.found ? Promise.resolve(this.found) : Promise.reject(this.failed.error);
+    }
     return this.pending ??= (async () => {
       this.discoveries++;
-      const tools = parseReadTools(await this.run("mcpproxy", ["tools", "list", "--risk", "read", "-o", "json", "--log-level=error"], 30_000));
-      this.found = { at: this.now(), tools, matched: matchServers(tools) };
-      return this.found;
+      try {
+        const tools = parseReadTools(await this.run("mcpproxy", ["tools", "list", "--risk", "read", "-o", "json", "--log-level=error"], 30_000));
+        this.found = { at: this.now(), tools, matched: matchServers(tools) };
+        this.failed = null;
+        return this.found;
+      } catch (error) { this.failed = { at: this.now(), error }; throw error; }
     })().finally(() => { this.pending = null; });
   }
 
@@ -63,7 +82,11 @@ export class SourceDirectory {
 
   /** `server:tool` for a recipe's role, or null when no server has it. `allowed` narrows the servers (the brief's switches). */
   async tool(id: RecipeId, role: string, allowed?: (server: string) => boolean): Promise<string | null> {
-    return toolFor((await this.discover()).matched, id, role, allowed);
+    let d = await this.discover();
+    // No server has it at all (not merely switched off): the first discovery may have run while its upstream was
+    // down, so ask again, at most once per MISS_REDISCOVER_MS.
+    if (!toolFor(d.matched, id, role) && this.now() - d.at >= MISS_REDISCOVER_MS) d = await this.discover(true).catch(() => d);
+    return toolFor(d.matched, id, role, allowed);
   }
   /** The tool's inputs, so a call carries only what it takes. */
   async props(qualified: string): Promise<string[]> {

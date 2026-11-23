@@ -67,8 +67,9 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
   return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. A lookup is one read-only call. Agents can turn sources on and off too.">
     {query.isPending && <ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label="Couldn't read the sources" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
-    {/* The section's one line: "5 sources read", or what failed, so a broken source shows above the fold. */}
-    {data && (data.error || data.line.tone === "warn"
+    {/* The section's one line: "5 sources read", or what failed, so a broken source shows above the fold. On desktop the
+        tab's line right above says it already (briefSummary), so only a phone, whose category screen has no such line, draws it. */}
+    {data && (compact || data.error) && (data.error || data.line.tone === "warn"
       ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} />
       : <Text style={t.meta}>{data.line.text}</Text>)}
     {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
