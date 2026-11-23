@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
+import { imageRefSchema, MAX_IMAGES } from "./images";
 
 /**
  * The message queue (server/message-queue.ts): every message Follow-up sends to an agent is saved here before anything
@@ -56,6 +57,8 @@ export const queueItemSchema = z.object({
   /** The message's own id: the envelope's messageId when it goes out alone. */
   messageId: z.string().min(1).max(100),
   text: z.string().max(40_000),
+  /** Pasted images (server/image-store.ts): refs only, never the bytes. They go with this part's envelope. */
+  images: z.array(imageRefSchema).max(MAX_IMAGES).default([]),
   /** Ledger sender for this part: "developer" or "agent:<id>"; absent is Follow-up's own. */
   by: z.string().max(100).optional(),
   priority: z.enum(["now", "idle"]).default("now"),

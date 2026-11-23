@@ -97,6 +97,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
 | UI | `index.client.tsx`, `client/`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
+| Pasted images in every field whose words reach an agent (caps, the store, who takes them, the one component) | `shared/images.ts`, `server/image-store.ts`, `server/image-support.ts`, `client/image-attach.tsx`, `client/unsent-images.ts` | [client](docs/client.md#pasted-images), [rpcs-and-tools](docs/rpcs-and-tools.md#pasted-images) |
 | Shared copy and errors, scale bounds | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts`, `shared/scale.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
 | Report an issue (shared module, Follow-up's adapter, the sheet) | `server/report-issue/index.ts`, `server/report-issue/redact.ts`, `server/report-issue/render.ts`, `server/report-issue/github.ts`, `server/report-issue/diagnostics.ts`, `server/report-issue-adapter.ts`, `server/report-send.ts`, `shared/report-send.ts`, `client/report-issue.tsx`, `scripts/fake-github.d.mts` | [report-issue](docs/report-issue.md) |
@@ -1162,6 +1163,28 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    that's it". New from a chat opened Home as `?new=1`; opening Home again (the sidebar's Follow-up, ⌘K Home) pushed a
    second Home and Paseo kept the first mounted, hidden; the first mounted host drew every later New in it. Guarded by
    `tests/new-opens-where-you-are.test.ts`.
+97. **Every agent field takes images** (`every-agent-field-takes-images`). Every field whose words reach an agent (New's
+   task and note, the Overseer's reply box, Home's search when it asks the Overseer, an agent's reply box, More context,
+   a question's answer and note, the brief card's answer and note, Catch up's note) takes pasted or dropped images on
+   desktop web through one component (`client/image-attach.tsx`: `useImageAttachments`, `ImageField`), never a
+   per-surface copy; a phone draws nothing (no image picker for plugin fields) and keeps no space. One set of caps
+   (`shared/images.ts`: PNG, JPEG, GIF, WebP; 6 a message, 5 MB each, 20 MB in all) refuses past a cap up front with the
+   reason (invariant 8). One rule says who takes them (`imageSupport`, `server/image-support.ts`), asked once per
+   recipient when the first image is added (`follow.image-support`), and a recipient that can't says so on the field
+   with Send held, never after Send. Images ride their message under invariant 36: stored as files under
+   `plugin-data/follow-up/images/` (0600), referenced from `queue.json` (or `dispatch.json`) and never inlined, read
+   again on a resend, and removed once the item is delivered or cancelled (a worker start sweeps any file nothing
+   references); New's go with the new agent's first message (`agents.create`). The Overseer's ask and the reply boxes
+   send straight through Paseo, as their words do. Until a send is confirmed its images stay kept under the field's
+   key (`client/unsent-images.ts`, memory only), so a failure never drops them: the box (closed and opened again
+   included) shows them, a question's Retry sends them again (pending-answers counts them, and after a reload says
+   they weren't kept), and only a confirmed send clears them. A card with several fields and one image set draws its
+   thumbnails once. Agent tools behind those actions take `images: [<local path>]`,
+   each a readable regular file, an image by its first bytes, under the cap, named with its size in the dry run's plan.
+   2026-11-23, the developer: "also make sure the 'New' panel can receive images pasted, and also the other
+   conversations you have implemented like the overseer". Guarded by `tests/every-agent-field-takes-images.test.ts`
+   (every client TextInput classified: agent-bound inside ImageField, or why not), `tests/pasted-images.test.ts`,
+   `tests/unsent-images.test.ts` and `tests/native-render.test.ts`.
 
 98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
    only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`

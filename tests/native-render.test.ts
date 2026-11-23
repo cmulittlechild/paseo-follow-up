@@ -95,3 +95,22 @@ test("the PR stats page on a phone renders under the phone's rules: the leaderbo
     assert.equal(error, null, `${name} crashed on a phone: ${(error as Error)?.message}`);
   }
 });
+
+// every-agent-field-takes-images: the plugin client has no image picker for plugin fields, so a phone draws no image
+// control and keeps no space; the fields around the one component render as before.
+test("pasted images on a phone: the component draws nothing, and the fields it wraps still render", async () => {
+  const { ImageField, ImageAttachmentsRow, IMAGES_ON } = await import("../client/image-attach");
+  assert.equal(IMAGES_ON, false, "no paste or drop on a phone");
+  const model = { images: [{ id: "i1", name: "acme.png", mimeType: "image/png", bytes: 10, data: "AAAA", uri: "data:image/png;base64,AAAA" }], refusal: "6 images is the most one message takes.", blocked: null,
+    add: async () => {}, remove: () => {}, clear: () => {}, uploads: () => undefined, target: null };
+  const row = await render(createElement(ImageAttachmentsRow, { model, theme, compact: true }));
+  assert.equal(row.error, null);
+  assert.equal(row.r!.root.findAll(n => typeof n.type === "string").length, 0, "no thumbnail, no refusal line, no empty space");
+  const field = await render(createElement(ImageField, { model, theme, compact: true }, createElement("TextInput", { accessibilityLabel: "Reply to Dana" })));
+  assert.equal(field.error, null, `crashed on a phone: ${(field.error as Error)?.message}`);
+  assert.ok(field.r!.root.findAll(n => n.props.accessibilityLabel === "Reply to Dana").length, "the field itself");
+  assert.equal(field.r!.root.findAll(n => n.props.accessibilityLabel === "Remove acme.png").length, 0);
+  const more = await render(createElement(MorePanel, { theme, compact: true, onClose: () => {}, onAsk: async () => {}, target: { kind: "workspace", workspaceId: "w1" } }));
+  assert.equal(more.error, null, `More context crashed on a phone: ${(more.error as Error)?.message}`);
+  assert.ok(more.r!.root.findAll(n => n.props.accessibilityLabel === "What do you want to know?").length);
+});

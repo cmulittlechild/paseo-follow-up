@@ -19,7 +19,9 @@ import type { InboxAction } from "./inbox";
 import { priorityInputSchema, type Priority } from "../shared/priorities";
 import type { AboutView } from "../shared/about";
 import { ROLE_INFO, roleSummary, type RoleConfig } from "../shared/agent-settings";
-import { DISPLAY_TOOLS, RPC_TOOLS, type RpcTool } from "./agent-parity";
+import { DISPLAY_TOOLS, RPC_TOOLS, imagePaths, type RpcTool } from "./agent-parity";
+import { readImageFiles } from "./image-store";
+import { base64Bytes, imagesPlanLine } from "../shared/images";
 import { waitNote, type WaitStatus } from "../shared/wait";
 import { reportInputSchema } from "./report-issue";
 import type { RenameStatus } from "../shared/rename";
@@ -30,7 +32,7 @@ import { SCALE } from "../shared/scale";
 import { dispatchInputSchema } from "../shared/dispatch";
 import type { DispatchInput, DispatchPlan } from "./dispatch";
 
-type DispatchToolInput = Partial<DispatchInput> & { dry_run?: boolean; planId?: string; confirm?: boolean };
+type DispatchToolInput = Partial<Omit<DispatchInput, "images">> & { images?: string[]; dry_run?: boolean; planId?: string; confirm?: boolean };
 type DispatchPreview = DispatchPlan;
 
 /**
@@ -178,7 +180,7 @@ export const TOOL_INPUT = {
   agent_settings: z.strictObject({}),
   sign_off: z.strictObject({ agentIds: agentIds.optional(), ...confirm }),
   snooze: z.strictObject({ agentIds: agentIds.optional(), until: z.string().trim().min(1).max(200).optional(), ...confirm }),
-  dispatch: dispatchInputSchema.partial().extend({ dry_run: z.boolean().optional(), ...confirm }),
+  dispatch: dispatchInputSchema.partial().extend({ images: imagePaths, dry_run: z.boolean().optional(), ...confirm }),
   ai_rename: z.strictObject({ workspaceId: id.optional(), title: z.string().trim().min(1).max(300).optional(), undo: z.boolean().optional(), ...confirm }),
   snooze_workspace: z.strictObject({ workspace: id.optional(), until: z.string().trim().min(1).max(200).optional(), bring_back: z.boolean().optional(), ...confirm }),
   set_finish_flags: z.strictObject({ agentIds: agentIds.optional(), value: z.boolean().optional(), ...confirm }),
@@ -290,6 +292,9 @@ export class AgentActions {
     const refusal = t.guard?.(args, caller);
     if (refusal) throw new Error(refusal);
     const { planId: _p, confirm: _c, ...given } = args;
+    // Image paths become the uploads the RPC takes, checked now (the whole call is refused on a bad file).
+    const images = await readImageFiles(given.images).catch((error: unknown) => { throw new Error(`${t.name}: ${error instanceof Error ? error.message : String(error)}`); });
+    if (images) given.images = images;
     const input = t.toRpc ? t.toRpc(given) : given;
     // Every RPC an agent tool runs carries the acting agent, so its handler never records the developer.
     const actor = agentActor(caller, await this.d.agentTitle?.(caller).catch(() => null));
@@ -299,7 +304,9 @@ export class AgentActions {
     const checked = await this.d.rpc.validate(t.rpc, input).catch((error: unknown) => { throw new Error(`${t.name}: ${error instanceof Error ? error.message : String(error)}`); });
     const before = t.before ? await this.d.rpc.call(t.before.rpc, t.before.input ? t.before.input(given) : {}).catch(() => null) : undefined;
     const planId = this.plan(caller, t.name as AgentTool, async () => { const out = await this.d.rpc!.call(t.rpc, checked, actor); await this.note(caller, caller, t.name); return out; });
-    return { dryRun: true, planId, tool: t.name, change: checked, ...(before !== undefined ? { before } : {}),
+    // The plan names the images by name and size, never their bytes.
+    const shown = images ? { ...(checked as Record<string, unknown>), images: images.map(i => ({ name: i.name, mimeType: i.mimeType, bytes: base64Bytes(i.data) })) } : checked;
+    return { dryRun: true, planId, tool: t.name, change: shown, ...(images ? { images: imagesPlanLine(images.map(i => ({ name: i.name, bytes: base64Bytes(i.data) }))) } : {}), ...(before !== undefined ? { before } : {}),
       next: `Only when the developer asked for this: call ${t.name} with confirm=true and planId=${planId} within 5 minutes.` };
   }
 
@@ -479,9 +486,11 @@ export class AgentActions {
     if (!this.d.rpc) throw new Error("dispatch isn't available in this Follow-up.");
     if (!args.source?.trim()) throw new Error("dispatch: give source (a Linear key or link, a GitHub issue or PR link, another link, or the developer's words for the work).");
     const actor = agentActor(caller, await this.d.agentTitle?.(caller).catch(() => null));
-    const { dry_run: _dry, planId: _p, confirm: _c, ...input } = args;
+    const { dry_run: _dry, planId: _p, confirm: _c, images: paths, ...input } = args;
+    // The images go with the new agent's first message; checked now, named with their sizes in the plan.
+    const images = await readImageFiles(paths).catch((error: unknown) => { throw new Error(`dispatch: ${error instanceof Error ? error.message : String(error)}`); });
     const plan = await this.d.rpc.call("follow.dispatch-preview", input, actor) as DispatchPreview;
-    const frozen = { ...input, ...(plan.where.projectId ? { projectId: plan.where.projectId } : {}), expectHash: plan.hash };
+    const frozen = { ...input, ...(plan.where.projectId ? { projectId: plan.where.projectId } : {}), ...(images ? { images } : {}), expectHash: plan.hash };
     const planId = plan.blockers.length ? null : this.plan(caller, "dispatch", async () => { const out = await this.d.rpc!.call("follow.dispatch", frozen, actor); await this.note(caller, caller, "dispatch"); return out; }, 10 * 60_000);
     return {
       dryRun: true, planId, blockers: plan.blockers,
@@ -489,6 +498,7 @@ export class AgentActions {
       action: plan.action, actions: plan.actions.map(a => a.id), project: plan.where.projectName, projectId: plan.where.projectId, why: plan.where.reason,
       ...(plan.where.how === "ambiguous" ? { candidates: plan.where.candidates } : {}),
       workspace: plan.workspace, base: plan.base, branch: plan.branch, title: plan.title, agent: plan.agent, instructions: plan.instructions,
+      ...(images ? { images: imagesPlanLine(images.map(i => ({ name: i.name, bytes: base64Bytes(i.data) }))) } : {}),
       ...(plan.existing ? { existing: plan.existing, note: `${plan.existing.title} already has this. Open it instead unless the developer wants a second workspace.` } : {}),
       next: planId ? `Only when the developer asked for this: call dispatch with confirm=true and planId=${planId} within 10 minutes. It starts in the background; dispatch_records shows how it went, and dispatch_undo can undo it for 10 minutes.` : "Blocked: resolve the blockers (a projectId, an actionId) and run the dry run again.",
     };
