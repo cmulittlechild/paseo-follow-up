@@ -35,7 +35,7 @@ test("one-decision-one-card: the reported sequence (Q1 answered, then the task b
   assert.deepEqual(taskCards(w), [], "no card from the task");
   assert.equal(w.obligations[0].coveredBy, "Q1");
   assert.deepEqual(needsYou(w, clock).filter(i => i.kind === "question" || i.kind === "decision"), [], "nothing left in Needs you: the developer decided");
-  assert.equal(taskStatus(o, w).text, "Q1 · answered, waiting on the agent", "the answer shows on the task");
+  assert.equal(taskStatus(o, w).text, "Answered · waits on the agent", "the answer shows on the task");
   assert.notEqual(summary(w, clock).status, "needs-you", "the agent's move now, not the developer's");
   assert.match(coverNote(w, o.id)!, /^Already answered as Q1/);
   assert.equal(syncTaskQuestions(w, clock), false, "a second sync changes nothing");
@@ -50,7 +50,7 @@ test("one-decision-one-card: a task blocked while its question is open waits on 
   block(w, { id: o.id, ask: "Need the developer's call on dropping the old table" });
   syncTaskQuestions(w, clock);
   assert.deepEqual(cards(w).map(q => q.id), [q1.id], "one card: the question asked with task set");
-  assert.equal(taskStatus(w.obligations[0], w).text, "Q1 · waiting on your answer");
+  assert.equal(taskStatus(w.obligations[0], w).text, "In Needs you");
   assert.match(coverNote(w, o.id)!, /^Already asked as Q1/);
   assert.equal(needsYou(w, clock).filter(i => i.kind === "question" || i.kind === "decision").length, 1);
   oneCard(w);

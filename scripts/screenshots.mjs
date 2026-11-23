@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -483,7 +483,11 @@ const NEEDS_YOU_STATES = [
       rpc("follow.obligation", { title: "Check alert emails in staging", status: "waiting", afterPrs: ["example/app#232"] }),
       // due-by-fact: a task with no PRs says its re-check date (3 days out by default), and one past it reads Due.
       rpc("follow.obligation", { title: "Watch the next nightly usage roll-up", status: "pending" }),
-      rpc("follow.obligation", { title: "Confirm the usage export with billing", status: "waiting", recheck: "2026-01-01" }),
+      rpc("follow.obligation", { title: "Confirm the usage export with billing", status: "waiting", recheck: "2026-01-01", evidence: "Ask billing whether the CSV matches their ledger, then close this with their reply." }),
+      // tasks-are-the-agent-s: one due task with the agent's note, and finished ones (they live in Activity).
+      rpc("follow.obligation", { title: "Backfill alert history for existing plans", status: "pending", recheck: "2026-02-28", evidence: "Run the backfill once billing confirms the plan list; it takes about ten minutes." }),
+      rpc("follow.obligation", { title: "Add the usage alert email template", status: "done", evidence: "The template is live in staging." }),
+      rpc("follow.obligation", { title: "Drop the old usage banner", status: "waived", evidence: "Superseded by the alert emails." }),
       msg("Thresholds are in #232. One task needs your call on who gets the alerts.")], flag: false },
   // one-ask-one-item: a task blocked on something the developer does and reports back, and the turn's Action brief
   // about it: one Done card, carrying the brief's context, never a brief beside a "write the decision" card.
@@ -570,7 +574,7 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1904,7 +1908,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       { state: "two-qs", ...pick("ny-two"), wait: "Limit scope" },
       { state: "q-no-brief", ...pick("ny-lone"), wait: "Missing keys" },
       { state: "just-answered", ...pick("ny-answered"), wait: null },
-      { state: "tasks", ...pick("ny-tasks"), wait: "Wire alert thresholds", homeToo: false },
+      { state: "tasks", ...pick("ny-tasks"), wait: "Agent's tasks", homeToo: false },
       { state: "person", ...pick("ny-person"), wait: "#262 waits on its reviewer" },
       { state: "task-action", ...pick("ny-action"), wait: "A task waits on this. The agent works on the rest" },
     ];
@@ -1922,6 +1926,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await openChat(page, s.title, s.prompt);
         await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
         await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+        await page.getByRole("button", { name: /^Agent's tasks: .*Show them$/ }).last().click();
         const due = page.getByText(/^Due since /).last();
         await due.waitFor({ timeout: 60000 });
         await page.setViewportSize(PHONE);
@@ -1952,6 +1957,68 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await shoot(`older-briefs-home-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).waitFor({ timeout: 60_000 }); });
       await shoot(`older-briefs-home-open-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).click(); await page.getByRole("button", { name: /^Older, \d+\. Collapse$/ }).first().waitFor(); });
       await shoot(`older-briefs-home-phone-${theme}`, PHONE, theme, async page => { await home(page); await page.setViewportSize(PHONE); await older(page).waitFor(); await page.waitForTimeout(500); await older(page).click(); await page.getByText("Closed agents with nothing new").first().scrollIntoViewIfNeeded(); });
+    }
+  }
+  if (only.includes("tasks-view")) {
+    // tasks-are-the-agent-s: Agent's tasks folded to one line ("6 open · 2 due · 1 stale", stale alone amber), then
+    // open (stale and due first, each with the agent's note; a row says what moves it), a row opened in place, the
+    // phone's larger view, and the action card (ask first; Tasks says "In Needs you", Activity "Action · …").
+    // Stale needs two nudges the agent didn't answer: the hook's receipt says so, and the worker reads it at start.
+    const usage = seeded.workspaces.find(w => w.key === "ny-tasks");
+    const { workspace } = await call("follow.get", { workspaceId: usage.workspaceId });
+    const billing = workspace.obligations.find(o => o.title === "Confirm the usage export with billing");
+    const nudged = { key: `recheck:${billing.recheckAt}`, revision: billing.revision, count: 2, at: new Date(BASE).toISOString() };
+    await fs.mkdir(join(home, "plugin-data", "follow-up", "hook-state"), { recursive: true });
+    await fs.writeFile(join(home, "plugin-data", "follow-up", "hook-state", `task-nudges-${usage.workspaceId}.json`), JSON.stringify({ [billing.id]: nudged }));
+    daemon.kill("SIGTERM");
+    for (let i = 0; i < 100 && daemon.exitCode === null; i++) await new Promise(r => setTimeout(r, 100));
+    if (daemon.exitCode === null) daemon.kill("SIGKILL");
+    await respawnDaemon();
+    for (let i = 0; ; i++) { try { await call("follow.inbox-list", {}); break; } catch { if (i > 240) throw new Error("the worker did not come back"); await new Promise(r => setTimeout(r, 250)); } }
+    for (let i = 0; ; i++) {
+      const read = await call("follow.get", { workspaceId: usage.workspaceId }).catch(() => null);
+      if (read?.workspace?.obligations.find(o => o.id === billing.id)?.nudged?.count === 2) break;
+      if (i > 240) throw new Error("the worker didn't read the nudge receipt"); await new Promise(r => setTimeout(r, 250));
+    }
+    const spec = NEEDS_YOU_STATES.find(w => w.key === "ny-tasks");
+    const action = NEEDS_YOU_STATES.find(w => w.key === "ny-action");
+    const TALL = { width: DESKTOP.width, height: 1300 };
+    const fold = page => page.getByRole("button", { name: /^Agent's tasks: / }).filter({ visible: true }).last();
+    const panel = async page => {
+      await page.setViewportSize(TALL);
+      await openChat(page, spec.title, spec.prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await fold(page).waitFor({ timeout: 60_000 });
+    };
+    const expand = async page => { await fold(page).click(); await page.getByText(/^Stale/).filter({ visible: true }).first().waitFor({ timeout: 30_000 }); };
+    for (const theme of ["light", "dark"]) {
+      await shoot(`tv-panel-${theme}`, TALL, theme, panel);
+      await shoot(`tv-panel-open-${theme}`, TALL, theme, async page => { await panel(page); await expand(page); });
+      await shoot(`tv-row-open-${theme}`, TALL, theme, async page => {
+        await panel(page); await expand(page);
+        await page.getByRole("button", { name: /^Task: Backfill alert history/ }).first().click();
+        await page.getByText("Send on a schedule…").filter({ visible: true }).first().waitFor();
+      });
+      await shoot(`tv-phone-${theme}`, PHONE, theme, async page => {
+        await openChat(page, spec.title, spec.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+        await fold(page).waitFor({ timeout: 60_000 });
+        await page.setViewportSize(PHONE);
+        await fold(page).click();
+        const stale = page.getByText(/^Stale/).filter({ visible: true }).last();
+        await stale.waitFor({ timeout: 30_000 });
+        await fold(page).evaluate(el => el.scrollIntoView({ block: "start" }));
+        if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("tv-phone scrolls sideways");
+      });
+      await shoot(`tv-action-panel-${theme}`, TALL, theme, async page => {
+        await page.setViewportSize(TALL);
+        await openChat(page, action.title, action.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByText("A task waits on this. The agent works on the rest").filter({ visible: true }).first().waitFor({ timeout: 60_000 });
+        await fold(page).click();
+        await page.getByText("In Needs you").filter({ visible: true }).first().waitFor();
+      });
     }
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
