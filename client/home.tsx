@@ -24,6 +24,7 @@ import type { DockState } from "./dock";
 import { NeedsYouBlock } from "./needs-you";
 import { HeldMerges } from "./merge-button";
 import { PrSheet } from "./pr-sheet";
+import { StatsPage, type StatsParams } from "./pr-stats";
 import { QuestionSheet } from "./questions";
 import { isDoneOnly } from "../shared/questions";
 import { DismissReveal } from "./dismiss";
@@ -73,6 +74,8 @@ export type HomeDeps = {
   openLog(): void;
   /** Catch up: Needs you one card at a time (`?view=catchup`). */
   openCatchUp?(): void;
+  /** The PR stats page (`?view=stats`, docs/pr-stats.md#the-page); a phone's person opens as its own screen. */
+  openStats?(params?: StatsParams): void;
   openHome(): void;
   /** Phones: open one Home item as its own screen, so the host's ← (and Android back) returns to the list. */
   openItem?(key: string, extra?: { question?: string }): void;
@@ -109,7 +112,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
-  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup");
+  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup" && params.view !== "stats");
   const [filter, setFilter] = useState<HomeGroupId | null>(null);
   const [selected, setSelected] = useState<string | null>(() => params.item ?? (params.select ? `agent:${params.select}` : null));
   const openAgentRow = useMemo(() => navigation ? (row: InboxRow) => navigation.openAgent({ agentId: row.agentId }) : undefined, [navigation]);
@@ -138,6 +141,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const pane = useMemo(() => briefPane({ model, rows, tracked: deps.sources.live.all(), now: Date.now() }), [model, rows, tracked, deps.sources.live]);
   const rank = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.rank, deps.sources.extras.rank);
   const overseerStatus = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.overseer, deps.sources.extras.overseer);
+  const prStatsOn = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.prStatsOn, deps.sources.extras.prStatsOn);
+  const openStats = prStatsOn && deps.openStats ? () => deps.openStats!() : undefined;
   const overseerInbox = useInbox(inbox, () => inbox.overseer());
   const overseer = overseerRowState(overseerStatus, overseerInbox);
   const toast = useToast();
@@ -227,6 +232,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     <CatchUp theme={theme} compact={compact} deps={{ sources: deps.sources, briefDeps: deps.briefDeps, openHome: deps.openHome, openPanel: deps.openPanel }} navigation={navigation as never} onExit={deps.openHome} />
     {updateSheets}
   </View>;
+  if (params.view === "stats") return <View style={{ flex: 1 }}>
+    <StatsPage key={params.n ?? "stats"} theme={theme} compact={compact} params={{ repo: params.repo, period: params.period, person: params.person, sort: params.sort }}
+      deps={{ onHome: deps.openHome, openSettings: () => deps.openSettings("following"), openStats: p => deps.openStats?.(p) }} />
+    {updateSheets}
+  </View>;
   if (params.view === "log") return <LogView theme={theme} compact={compact} sources={deps.sources} onHome={deps.openHome} onOpen={key => { setSelected(key); deps.openHome(); }} />;
 
   const detail = selected === OVERSEER_KEY && overseer
@@ -257,13 +267,14 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
     afterNeeds={compact && model.needs > 0 ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
-    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onNew={() => openNew()} newLabel={newLabel} />}>
+    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
         <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} anywhereKey={anywhereKey} />
         {compact && <IconButton theme={theme} compact icon="Plus" label="New" onPress={() => openNew()} />}
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
+        {compact && openStats && <IconButton theme={theme} compact icon="ChartNoAxesColumn" label="PR stats" onPress={openStats} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>
       <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
@@ -341,7 +352,7 @@ export function DisplaySplit({ theme, main, side, field, defaultFraction, range,
 const HOME_DETAIL_MIN_PX = 360;
 const HOME_LIST_MIN_PX = 480;
 
-function ListHeader({ theme, compact, onSettings, onKeys, onNew, newLabel }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void; onNew?: () => void; newLabel?: string | null }) {
+function ListHeader({ theme, compact, onSettings, onKeys, onStats, onNew, newLabel }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void; onStats?: () => void; onNew?: () => void; newLabel?: string | null }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16 }}>
     {/* Home first, the version second: a muted caption on the title's line, never a control beside the cog. */}
@@ -353,6 +364,8 @@ function ListHeader({ theme, compact, onSettings, onKeys, onNew, newLabel }: { t
     {onNew && <Button theme={theme} compact={compact} kind="secondary" icon="Plus" title="New" keyHint={newLabel ?? undefined} accessibilityLabel={newLabel ? `New (${newLabel})` : "New"} onPress={onNew} />}
     {/* The keys sheet's way in for the mouse (S from the keyboard); desktop web, where the keys are. */}
     {onKeys && Platform.OS === "web" && <IconButton theme={theme} compact={compact} icon="Keyboard" label="Keys (S)" tooltip onPress={onKeys} />}
+    {/* Shown once a repository has PR statistics (docs/pr-stats.md#where-it-opens-from). */}
+    {onStats && <IconButton theme={theme} compact={compact} icon="ChartNoAxesColumn" label="PR stats" tooltip onPress={onStats} />}
     <IconButton theme={theme} compact={compact} icon="Settings" label="Follow-up settings" onPress={onSettings} />
   </View>;
 }

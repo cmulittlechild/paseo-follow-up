@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { mcpproxyText } from "./about";
+import { liveRun, sourceDirectory } from "./source-tools";
 import { ISSUE_FIELDS, LEFT_FIELDS, LIST_FIELDS, PAGE_SIZE, QUEUE_FIELDS, openIssues, parseIssue, parseIssuePage, parseViewerId, type LinearIssue } from "../shared/linear-issues";
 
-const exec = promisify(execFile);
 export type Run = (command: string, args: string[], timeoutMs: number) => Promise<string>;
-const runFile: Run = async (command, args, timeout) => (await exec(command, args, { timeout, maxBuffer: 4 * 1024 * 1024 })).stdout;
+const runFile: Run = liveRun;
 
 /** How long a list read is reused, shared by every reader (concurrent-readers-share-one-request). */
 export const LIST_TTL_MS = 60_000;
@@ -43,7 +40,8 @@ export class LinearIssues {
 
   private async call(tool: string, args: unknown, reason: string, timeoutMs = CALL_TIMEOUT_MS): Promise<string> {
     this.calls++;
-    return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=linear:${tool}`, `--json_args=${JSON.stringify(args)}`, `--reason=Follow-up: ${reason}`, "--log-level=error", "-o", "json"], timeoutMs));
+    // Whichever server has Linear's tools (found by their shape, never by a server name), through tool-read.
+    return sourceDirectory(this.run).call("linear", tool, args as Record<string, unknown>, { reason, timeoutMs, fit: false });
   }
 
   /**

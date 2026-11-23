@@ -10,6 +10,7 @@ import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
 import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
+import { sourcesChangeSchema } from "../shared/brief-sources";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -170,6 +171,9 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "set_brief_settings", rpc: "follow.set-brief-settings", kind: "planned", before: { rpc: "follow.brief-settings", input: () => ({}) }, input: queueChangeSchema.extend(confirm) },
   { name: "brief_plan", rpc: "follow.brief-plan", kind: "read", input: briefPlanInputSchema },
   { name: "set_brief_plan", rpc: "follow.set-brief-plan", kind: "planned", before: { rpc: "follow.brief-plan", input: a => (typeof a.link === "string" && a.link ? { link: a.link } : {}) }, input: planChangeSchema.extend(confirm) },
+  // The brief's sources: on/off, Retry, check again (set_brief_sources is planned: the dry run shows the sources now).
+  { name: "brief_sources", rpc: "follow.brief-sources", kind: "read", input: z.strictObject({ check: z.boolean().optional() }) },
+  { name: "set_brief_sources", rpc: "follow.set-brief-sources", kind: "planned", before: { rpc: "follow.brief-sources", input: () => ({}) }, input: sourcesChangeSchema.extend(confirm) },
   { name: "brief_chat_search", rpc: "follow.brief-chat-search", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
   { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
@@ -200,6 +204,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-project-tracking": { tools: ["set_project_tracking"] },
   "follow.pr-workflow": { tools: ["pr_workflow", "agent_settings"] },
   "follow.set-pr-workflow": { tools: ["set_pr_workflow"] },
+  "follow.pr-stats": { tools: ["pr_stats"], note: "The page's leaderboard, a person's drill-down (person) and a refresh (fresh); pr_stats also returns the waiting-now list the page leaves out." },
   "follow.pr-stats-settings": { tools: ["pr_stats_settings"], note: "With estimate: true it is the opt-in sheet's numbers; set_pr_stats enable shows them as its dry run." },
   "follow.set-pr-stats": { tools: ["set_pr_stats"] },
   "follow.reviewer-settings": { tools: ["reviewer_settings"] },
@@ -217,6 +222,8 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-brief-settings": { tools: ["set_brief_settings"] },
   "follow.set-brief-plan": { tools: ["set_brief_plan"] },
   "follow.brief-chat-search": { tools: ["brief_chat_search"] },
+  "follow.brief-sources": { tools: ["brief_sources"] },
+  "follow.set-brief-sources": { tools: ["set_brief_sources"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },

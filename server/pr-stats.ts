@@ -55,6 +55,11 @@ export class PrStats {
   private running: Promise<void> | null = null;
   /** Repositories whose page is on screen now (the feed's subscribers), with how many. */
   private viewing = new Map<string, number>();
+  /**
+   * Something the page shows may have changed: a repository's run ended (its status summary moved) or a setting was
+   * written (null: host-wide or which repositories are on). The worker pushes the page's feed and Home's from it; no timer.
+   */
+  onChange: ((repo: string | null) => void) | null = null;
   private now: () => number;
   constructor(private d: PrStatsDeps) {
     this.now = d.now ?? Date.now;
@@ -166,6 +171,7 @@ export class PrStats {
         this.store.save(stats);
       }
     }
+    this.onChange?.(repo ?? null);
     return settings;
   }
   /** Records the estimate the developer (or an agent) saw when turning a repository on. */
@@ -218,6 +224,14 @@ export class PrStats {
 
   // ── Sync ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  /** What the page's feed pushes for a repository: its status summary from stats.json (never its records). */
+  async feedState(repo: string): Promise<{ repo: string; state: "on" | "paused" | "off"; lastSyncAt: number | null; records: number; coveredTo: number | null; waiting: StatsStatus["waiting"]; error: StatsStatus["error"] }> {
+    const own = (await this.settings()).repos[repo];
+    const st = own?.status ?? null;
+    return { repo, state: !own ? "off" : own.enable_stats ? "on" : "paused", lastSyncAt: st?.lastSyncAt ?? null, records: st?.records ?? 0, coveredTo: st?.coveredTo ?? null, waiting: st?.waiting ?? null, error: st?.error ?? null };
+  }
+  /** Whether any repository has stats (on or paused): Home shows the PR stats icon only then. */
+  async anyOn(): Promise<boolean> { return Object.keys((await this.settings()).repos).length > 0; }
   /** The page's feed: a repository on screen syncs every SYNC_VIEWING_MS instead of every hour. Returns the release. */
   watching(repo: string): () => void {
     this.viewing.set(repo, (this.viewing.get(repo) ?? 0) + 1);
@@ -254,6 +268,7 @@ export class PrStats {
     await this.sync.run(repo, o.backfillPages !== undefined ? { backfillPages: o.backfillPages } : {});
     const teamMembers = await this.readTeam(repo, own);
     await this.mutate(s => { const r = s.repos[repo]; if (r) r.status = { ...summary(stats), teamMembers: teamMembers === undefined ? r.status?.teamMembers ?? null : teamMembers }; });
+    this.onChange?.(repo);
   }
   /** The GitHub team's members, read once a day (1 point) through the gate; undefined when not due. */
   private async readTeam(repo: string, own: StatsRepoSettings): Promise<StatsStatus["teamMembers"] | undefined> {

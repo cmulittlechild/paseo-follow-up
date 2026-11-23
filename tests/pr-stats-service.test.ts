@@ -175,6 +175,27 @@ test("stats-learn-the-team-from-the-data: the week is the zone's usual one unles
   } finally { await rm(s.directory, { recursive: true, force: true }); }
 });
 
+test("pr stats: the page's feed and Home's icon: a run's end and a settings write announce the repository; the status comes from stats.json", async () => {
+  const s = await service();
+  try {
+    const changed: (string | null)[] = [];
+    s.stats.onChange = repo => changed.push(repo);
+    assert.equal(await s.stats.anyOn(), false, "nothing on: Home shows no PR stats icon");
+    await s.stats.set({ repo: "example/app", enable: true });
+    assert.deepEqual(changed, ["example/app"]);
+    assert.equal(await s.stats.anyOn(), true);
+    await s.idle();
+    assert.ok(changed.filter(r => r === "example/app").length >= 2, "the first run's end pushes the page");
+    const state = await s.stats.feedState("example/app");
+    assert.equal(state.state, "on"); assert.equal(state.records, s.fake.inWindow(90).length); assert.ok(state.lastSyncAt);
+    await s.stats.set({ slice: 0.02 });
+    assert.equal(changed.at(-1), null, "a host-wide setting pushes every open page");
+    await s.stats.set({ repo: "example/app", enable: false });
+    assert.equal((await s.stats.feedState("example/app")).state, "paused");
+    assert.equal(await s.stats.anyOn(), true, "paused still has data to show");
+  } finally { await rm(s.directory, { recursive: true, force: true }); }
+});
+
 test("pr stats: Settings' lines say why a repository isn't reading", () => {
   const base = { repo: "example/app", state: "on" as const, settings: { enable_stats: true, windowDays: 90 as const, team: { kind: "everyone" as const }, ignore: [], enabledAt: 1, estimate: { prs: 3250, points: 143, at: 1 },
     status: { records: 1240, coveredTo: Date.parse("2026-10-03T12:00:00Z") / 1000, backfillDone: false, lastSyncAt: 2, lastCost: 20, waiting: null, error: null, cappedTo: null } } };

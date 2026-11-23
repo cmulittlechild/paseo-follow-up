@@ -129,21 +129,61 @@ Settings is closed otherwise.
 registry (`~/.codex/skills/morning-brief/references/sources.json`) is read at run time. Its `claude_artifact`
 source's discovery block (author and channels) becomes Find it for me and its verified link the first find; with no
 discovery block, its link becomes Use a link. It runs once, found or not, never replaces a choice already made, and
-never copies, logs or edits the file. The chat search is the chat server the ranker already reads; finding the chat
-source by its tools' shape is the next phase's.
+never copies, logs or edits the file. The chat search is whichever server has the chat recipe's tools
+([Sources](#sources)), never a server named in code.
 
 **Linear queue:** which states count (Triage, Backlog, Todo, In Progress; at least one), the sweep time, "changes
 since" (your last read, or always your last workday: both stored points, invariant 77, so there is no "last 24 h"),
 the time zone (blank: automatic) and the workdays (the zone's usual week until changed).
 
-**Agents** read and change all of it through `brief_settings` / `set_brief_settings` and `brief_plan` /
-`set_brief_plan` (planned; the dry run reads the new link's title first through `brief_plan {link}`).
+**Agents** read and change all of it through `brief_settings` / `set_brief_settings`, `brief_plan` /
+`set_brief_plan` (planned; the dry run reads the new link's title first through `brief_plan {link}`) and
+`brief_sources` / `set_brief_sources` (planned).
 
-## Known gaps
+## Sources
 
-- **The chat search's tool names are hard-wired.** `CHAT_TOOLS` in `server/morning-brief.ts` names one chat server's
-  message, people and channel search tools. Phase 3 (discovery and recipes) removes it: the chat source is found by
-  its tools' shape through mcpproxy, and the three names come from that recipe, not from a constant.
+Every source the brief reads is found by the tools mcpproxy offers, never by a server's name
+(`nothing-built-in-about-a-workplace`; `shared/brief-sources.ts`, `server/source-tools.ts`, `server/brief-sources.ts`).
+
+**Discovery:** `mcpproxy tools list --risk read -o json` (every read-only tool: its server, name, description and input
+schema) and `mcpproxy upstream list -o json` (each server's own state). The tool list is read the first time any reader
+needs a tool, and again only when Settings → Morning brief opens, on Check sources again and once on a workday morning
+after the sweep time (`BriefSources.tick`, from the worker's loop: `the-brief-has-one-timer`). The RPCs answer at once
+from what is known; a check or a Retry runs after the reply and the card polls every 1.5 s until it's done.
+
+**Recipes, as data** (`RECIPES`): a server takes the first recipe whose required tools it has, matched by tool-name
+shape and input schema.
+
+| Recipe | Required tools | Adds | Default |
+| --- | --- | --- | --- |
+| Linear | `list_issues`, `get_issue` (plus `get_user`, `list_teams`) | the queue (the sweep), New, the Summary, Linked | on |
+| Chat | a message search taking `filters` and a query (the one that also reaches private channels and DMs, when there are several), a channel search (plus people search, read thread) | DMs and mentions over the chat window, Find it for me | on |
+| Calendar | an events list taking a time range | today's meetings (or today and tomorrow) | on |
+| Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |
+
+GitHub (every `gh` account's review requests) and Paseo (Follow-up's own state, always on) are built in. A server
+with read tools but no recipe ("not a kind of source the brief can read yet") or with no read tools at all is listed
+under "more on mcpproxy the brief can't read", folded. The developer's own chat id is read from the chat tool's
+description at run time.
+
+**Only reads** (`sources-are-read-only`): `SourceDirectory.call` is the one place that runs `mcpproxy call`, always
+`tool-read`, with a tool from the read list, carrying only the inputs that tool's schema takes (`fitArgs`; a calendar's
+range goes into whatever inputs it has: `rangeArgs`). Replies are parsed tolerantly (`parseEvents`, `parseMail`: JSON at
+any depth, else text lines).
+
+**Discovery heals itself** (`discovery-heals-itself`): `SourceDirectory` keeps one discovery, but a reader whose recipe
+no server has asks again before it gets `NoSourceError` (at most once per `MISS_REDISCOVER_MS`, 10 min), so an upstream
+that was down when the worker first asked is found once it's back. A failed discovery (mcpproxy down) is the answer for
+`FAILED_DISCOVERY_MS` (60 s); Settings' check and Check sources again always ask.
+
+**Health per source:** `ok`; `sign-in` (the server waits for an OAuth sign-in: sign in through mcpproxy or the claude.ai
+connector, since a headless host can't open a browser); `failed` (not connected, quarantined, or the last read's one
+line, with Retry; a sign-in row has Check again and the command to copy); `off` (turned off here, or in mcpproxy). The last read is the newest of the ranker's run (chat,
+calendar, mail, GitHub; `ranker.json` keeps each failed source's line), the sweep (Linear) and a Retry. A source turned
+off is skipped by the ranker (shown as off, not failed) and by Find it for me.
+
+**Windows:** the chat window (24, 48 or 72 h; default 48) and the calendar (today, or today and tomorrow), stored with
+the queue's settings.
 
 ## Cost
 
@@ -152,5 +192,7 @@ the time zone (blank: automatic) and the workdays (the zone's usual week until c
 | A morning sweep of 150 issues | about 7, plus up to 20 for issues that left (and one `get_user`, once ever) | 0 |
 | The ranker | none of its own (it reads the snapshot) | unchanged |
 | Find it for me | one chat search a workday (and on Look again or a change) | 0; a new link's title is the ranker's daily plan read |
+| Chat, calendar, mail (in the ranker's run) | 2 chat, 1 calendar, 1 mail (off by default) | 0 |
+| Discovery | 2 calls: on Settings open, Check sources again and once a workday morning | 0 |
 
-Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`, `tests/morning-brief.test.ts`.
+Idle, the queue costs one file stat per 15 s tick. Tests: `tests/linear-queue.test.ts`, `tests/ranker.test.ts`, `tests/morning-brief.test.ts`, `tests/brief-sources.test.ts`.

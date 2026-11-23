@@ -1,5 +1,6 @@
 import { queueViewSchema } from "./queue";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
+import { sourcesChangeSchema } from "./brief-sources";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -9,7 +10,7 @@ import { usageSchema } from "./usage";
 import { aboutViewSchema } from "./about";
 import { LINKED_KINDS, linkedItemSchema } from "./linked";
 import { AGENT_ROLES, agentSettingsViewSchema, savedRoleSchema } from "./agent-settings";
-import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema } from "./pr-stats-settings";
+import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema, statsStatusSchema } from "./pr-stats-settings";
 import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
 import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
@@ -342,6 +343,10 @@ export const briefSettingsRpc = defineRpc({ name: "follow.brief-settings", input
 export const setBriefSettingsRpc = defineRpc({ name: "follow.set-brief-settings", input: queueChangeSchema, output: z.unknown() });
 export const briefPlanRpc = defineRpc({ name: "follow.brief-plan", input: briefPlanInputSchema, output: z.unknown() });
 export const setBriefPlanRpc = defineRpc({ name: "follow.set-brief-plan", input: planChangeSchema, output: z.unknown() });
+// The brief's sources (shared/brief-sources.ts, server/brief-sources.ts): `check` asks mcpproxy what it has now (Settings
+// sends it on open).
+export const briefSourcesRpc = defineRpc({ name: "follow.brief-sources", input: z.strictObject({ check: z.boolean().optional() }), output: z.unknown() });
+export const setBriefSourcesRpc = defineRpc({ name: "follow.set-brief-sources", input: sourcesChangeSchema, output: z.unknown() });
 export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),
@@ -369,6 +374,17 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   context: z.array(contextRequestSchema).optional(),
   /** New's recent dispatches (Home's row: in progress, failed, Undo); absent from an older worker. */
   dispatches: z.array(dispatchRecordSchema).optional(),
+  /** Whether any repository has PR statistics (on or paused): Home's PR stats icon shows only then. Absent from an older worker. */
+  prStats: z.boolean().optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
-export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed] as const;
+/**
+ * The PR stats page's feed for one repository: its sync status, pushed when a run ends or a setting changes. While it
+ * is open the repository syncs every 5 minutes instead of hourly (`PrStats.watching`); the page re-reads its model
+ * when the status moves. Only the page subscribes, and only while it is on screen.
+ */
+export const prStatsFeed = subscription("follow.pr-stats-feed", z.object({ repo: statsRepoName }), z.object({
+  repo: z.string(), state: z.enum(["on", "paused", "off"]), lastSyncAt: z.number().nullable(), records: z.number().int(), coveredTo: z.number().nullable(),
+  waiting: statsStatusSchema.shape.waiting, error: statsStatusSchema.shape.error,
+}));
+export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed, prStatsFeed] as const;

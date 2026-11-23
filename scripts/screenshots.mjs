@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new"];
+const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -229,7 +229,7 @@ let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end
 
 /**
  * What the fake `mcpproxy` knows of Linear. Linked items only show a Linear key once Linear confirms it, and the worker
- * asks through `mcpproxy call tool-read --tool-name=linear:get_issue`; these answer it. Any other key is "not found",
+ * asks through `mcpproxy call tool-read` for the server whose tools look like Linear's; these answer it. Any other key is "not found",
  * so keys extracted from the other workspaces' goals are rejected and never render (whenever the linked loop runs).
  */
 function linearIssues() {
@@ -255,27 +255,51 @@ function newIssues() {
   ];
 }
 /**
- * A fake `mcpproxy`: Linear's get_issue, list_issues and list_teams from the fixture files, a tool error for everything
- * else. `<file>.mode` set to "error" or "missing" makes every call fail the way a down or absent Linear does.
+ * A fake `mcpproxy` with fictional servers (found by their tools, as on a real host): an issue tracker, a chat, a
+ * calendar and a database with no recipe. Linear's get_issue and list_teams come from the fixture file;
+ * `sources-fixture.json` beside it can change a server's state (a sign-in needed, turned off) for the Sources renders.
  */
 function fakeMcpproxy(file, listFile) {
   return `#!/usr/bin/env node
-const fs = require("fs");
+const fs = require("fs"), path = require("path");
 const issues = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, "utf8"));
 let list = []; try { list = JSON.parse(fs.readFileSync(${JSON.stringify(listFile)}, "utf8")); } catch {}
 let mode = "ok"; try { mode = fs.readFileSync(${JSON.stringify(file + ".mode")}, "utf8").trim(); } catch {}
 const flag = name => (process.argv.find(a => a.startsWith("--" + name + "=")) || "").slice(name.length + 3);
-const tool = flag("tool-name"); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
+const qualified = flag("tool-name"); const tool = qualified.slice(qualified.indexOf(":") + 1); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
 const reply = (text, isError = false) => { console.log(JSON.stringify({ content: [{ type: "text", text }], isError })); process.exit(0); };
+let over = {}; try { over = JSON.parse(fs.readFileSync(path.join(path.dirname(${JSON.stringify(file)}), "sources-fixture.json"), "utf8")); } catch {}
+const t = (server_name, name, props, description = "") => ({ server_name, name, description, annotations: { readOnlyHint: true }, schema: { type: "object", properties: Object.fromEntries(props.map(p => [p, { type: "string" }])) } });
+if (process.argv[2] === "tools" && process.argv[3] === "list") {
+  console.log(JSON.stringify([
+    t("issues", "list_issues", ["assignee", "state", "orderBy", "limit", "fields", "cursor", "query"]), t("issues", "get_issue", ["id", "fields"]), t("issues", "get_user", ["query"]), t("issues", "list_teams", []),
+    t("team-chat", "search_public_and_private", ["keywords", "filters", "natural_language_query", "sort", "sort_dir", "limit", "include_context", "response_format"], "Search messages. Current logged in user's user_id is UALICE0001."),
+    t("team-chat", "search_users", ["keywords", "natural_language_query", "limit", "response_format"]), t("team-chat", "search_channels", ["keywords", "natural_language_query", "limit", "channel_types", "response_format"]),
+    t("calendar", "list-events", ["timeMin", "timeMax", "timeZone"], "List the user's events."),
+    t("warehouse", "run_query", ["sql"]), t("warehouse", "list_tables", []),
+    ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
+  ]));
+  process.exit(0);
+}
+if (process.argv[2] === "upstream" && process.argv[3] === "list") {
+  const up = name => ({ name, enabled: true, connected: true, authenticated: true, oauth: null, quarantined: false, tool_count: 4, health: { level: "healthy", summary: "Connected", action: null }, ...(over.upstreams || {})[name] });
+  console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : [])].map(up)));
+  process.exit(0);
+}
+// The morning sweep, only for the Sources shots (over.linear): an empty queue, so the card reads Linear as fine. Other
+// shots seed their queue and must not have it replaced by a sweep.
+if (over.linear && tool === "list_issues") reply(JSON.stringify({ issues: [], hasNextPage: false }));
+if (over.linear && tool === "get_user") reply(JSON.stringify({ id: "user-alice", name: "alice" }));
+if (tool === "list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
+// New's list (--only new): the fixture list, filtered by the search words; .mode makes Linear down or absent.
 if (mode === "missing") { console.error("server linear not found"); process.exit(1); }
 if (mode === "error") { console.error("Linear API timed out"); process.exit(1); }
-if (tool === "linear:list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
-if (tool === "linear:list_issues") {
+if (tool === "list_issues") {
   const q = (args.query || "").toLowerCase();
   const found = q ? list.filter(i => (i.id + " " + i.title).toLowerCase().includes(q)) : list;
   reply(JSON.stringify({ issues: found, hasNextPage: false, cursor: null }));
 }
-if (tool === "linear:get_issue") {
+if (tool === "get_issue") {
   const listed = list.find(i => i.id === args.id);
   if (listed) reply(JSON.stringify(listed));
   const i = issues[args.id];
@@ -1837,6 +1861,8 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
   if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
+  if (only.includes("pr-stats")) await prStatsShots({ shoot });
+  if (only.includes("pr-stats-off")) await prStatsOffShots({ shoot });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
   if (only.includes("needs-you-states")) {
@@ -1984,6 +2010,119 @@ async function seedPrStatsSettings(dir) {
       status: status({ records: 96, coveredTo: s(BASE - 30 * day), error: { message: "not found or no access", status: 404, at: s(BASE - 3600_000) }, teamMembers: { team: "example/writers", logins: null, error: "not visible to this token", at: s(BASE - 3600_000) } }) },
   }, slice: 0.05, clock: "calendar", enable_stack_aware: true, // A Friday–Saturday-weekend zone, no saved schedule: the Clock row says Sun–Thu.
     timeZone: "Africa/Cairo", hours: null, weekStart: null }));
+}
+/**
+ * pr-stats only: four fictional repositories' records and stats.json in a Friday–Saturday-weekend zone (Africa/Cairo),
+ * so This week starts on Sunday. example/app: 8 people over 90 days; example/web: its first read, two days in, waiting
+ * on GitHub's limit; example/docs: GitHub refused it and nothing happened this week; example/solo: one person. Every
+ * repository synced two minutes before the browser's time, so nothing is due while the shots run.
+ */
+async function seedPrStats(dir) {
+  const s = ms => Math.floor(ms / 1000), H = 3600, D = 86_400, now = s(BASE + VIEW), synced = now - 120;
+  const PEOPLE = ["alice", "bob", "carol", "dan", "erin", "frank", "grace", "heidi"];
+  const WEIGHT = [7, 5, 4, 3, 2, 2, 1, 1];
+  const WAIT_H = [2.5, 9, 20, 1.5, 6, 14, 4, 3];
+  const TITLES = ["Add audit events for role changes", "Split the roles migration", "Rename the permissions table", "Add a role column to members", "Move invoice exports to the background queue",
+    "Cache the plan lookup", "Fix the empty state on invoices", "Retry webhook deliveries once", "Show the billing contact in settings", "Drop the old export endpoint", "Batch the usage writes", "Tidy the onboarding copy"];
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pick = () => { let r = rnd() * WEIGHT.reduce((a, b) => a + b, 0); for (let i = 0; i < WEIGHT.length; i++) { r -= WEIGHT[i]; if (r < 0) return i; } return 0; };
+  const make = ({ count, from, to, first, people = PEOPLE.length, reviews = true }) => {
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      const ai = Math.min(pick(), people - 1), a = PEOPLE[ai];
+      const c = Math.round(to - (k + rnd() * 0.6) * (to - from) / count);
+      const ask = c + 600;
+      const ri = reviews ? (ai + 1 + Math.floor(rnd() * (PEOPLE.length - 1))) % PEOPLE.length : -1;
+      const wait = Math.round(WAIT_H[ai] * H * (0.4 + rnd() * 1.3));
+      const reviewed = reviews && ask + wait < now - 300;
+      const at = reviewed ? ask + wait : null;
+      const merged = at && at + 4 * H < now && rnd() < 0.85 ? at + Math.round((2 + rnd() * 20) * H) : null;
+      const m = merged && merged < now ? merged : null;
+      const n = first + count - k;
+      const stacked = k > 0 && k % 9 === 0;
+      const rv = at ? [[PEOPLE[ri], "A", at]] : [];
+      const fc = [];
+      out.push({ n, a, t: TITLES[n % TITLES.length], c, u: Math.min(now - 60, Math.max(c, at ?? c, m ?? c)), r: c, k: ask, m, x: m, s: m ? "M" : "O", d: false,
+        add: Math.round(20 + rnd() * 400), del: Math.round(rnd() * 120), f: 1 + Math.floor(rnd() * 9), b: stacked ? `${a}/change-${n + 1}` : "main", h: `${a}/change-${n}`,
+        rq: ri >= 0 ? [[PEOPLE[ri], ask]] : [], rv, fc });
+    }
+    return out;
+  };
+  const meta = (repo, o = {}) => ({ repo, defaultBranch: "main", highWater: synced, incremental: null, backfill: { after: null, done: true, coveredTo: now - 90 * D }, page: 25, windowDays: 90, pendingReviews: [],
+    lastSyncAt: synced, lastCost: 1, lastPages: 1, waiting: null, error: null, cappedTo: null, ...o });
+  const repos = {
+    "example/app": { records: make({ count: 720, from: now - 90 * D, to: now - 1800, first: 1000 }), meta: meta("example/app") },
+    "example/web": { records: make({ count: 40, from: now - 2 * D, to: now - 3600, first: 4000 }), meta: meta("example/web", { backfill: { after: "cursor-70", done: false, coveredTo: now - 2 * D }, waiting: { reason: "budget", until: now + 40 * 60 } }) },
+    "example/docs": { records: make({ count: 14, from: now - 60 * D, to: now - 40 * D, first: 200 }), meta: meta("example/docs", { error: { message: "not found or no access", status: 404, at: now - H } }) },
+    "example/solo": { records: make({ count: 6, from: now - 3 * D, to: now - 2 * H, first: 30, people: 1, reviews: false }), meta: meta("example/solo") },
+  };
+  await fs.mkdir(join(dir, "stats", "example"), { recursive: true });
+  for (const [repo, { records, meta: m }] of Object.entries(repos)) await fs.writeFile(join(dir, "stats", `${repo}.json`), JSON.stringify({ v: 1, meta: m, records }));
+  const status = (repo, o = {}) => { const { records, meta: m } = repos[repo]; return { records: records.length, coveredTo: m.backfill.coveredTo, backfillDone: m.backfill.done, lastSyncAt: m.lastSyncAt, lastCost: 1, waiting: m.waiting, error: m.error, cappedTo: null, ...o }; };
+  const on = (repo, o = {}) => ({ enable_stats: true, windowDays: 90, team: { kind: "everyone" }, ignore: [], enabledAt: now - 30 * D, estimate: null, status: status(repo), ...o });
+  await fs.writeFile(join(dir, "stats.json"), JSON.stringify({ repos: {
+    "example/app": on("example/app"), "example/web": on("example/web", { estimate: { prs: 280, points: 13, at: now - 2 * D } }),
+    "example/docs": on("example/docs"), "example/solo": on("example/solo"),
+  }, slice: 0.05, clock: "calendar", enable_stack_aware: true, timeZone: "Africa/Cairo", hours: null, weekStart: null }));
+}
+/** pr-stats only: the page from Home's icon (and ⌘K), its sort, a person, and each state, both sizes and themes. */
+async function prStatsShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1100 }, PHONE_TALL = { width: PHONE.width, height: 1500 };
+  const healthy = async (page, vp) => {
+    const body = await page.evaluate(() => document.body.innerText);
+    const bad = body.match(/Something went wrong|Invalid input|Couldn't read PR stats|expected/i);
+    if (bad) throw new Error(`pr-stats: the page shows "${bad[0]}"`);
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats: the phone page scrolls sideways");
+    return body;
+  };
+  const open = async (page, vp) => {
+    await page.setViewportSize(vp); await openHome(page);
+    await page.getByRole("button", { name: "PR stats", exact: true }).filter({ visible: true }).first().click({ timeout: 30_000 });
+    await page.getByText("alice", { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    const body = await healthy(page, vp);
+    // Africa/Cairo's week (Friday–Saturday weekend, nothing saved) starts on Sunday: invariant 75.
+    if (!body.includes("Sun, Mar 1 – now")) throw new Error("pr-stats: This week doesn't start on the zone's Sunday");
+  };
+  const repo = async (page, vp, name, wait) => {
+    await open(page, vp);
+    await page.getByRole("button", { name: /^Repository example\/app, change/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name }).filter({ visible: true }).last().click();
+    await page.getByText(wait).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    await healthy(page, vp);
+  };
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", TALL], ["phone", PHONE_TALL]]) {
+    const phone = size === "phone";
+    await shoot(`pst-board-${size}-${theme}`, vp, theme, async page => { await open(page, vp); });
+    await shoot(`pst-sort-wait-${size}-${theme}`, vp, theme, async page => {
+      await open(page, vp);
+      if (phone) { await page.getByRole("button", { name: /^Sorted by PRs opened/ }).filter({ visible: true }).first().click(); await page.getByRole("radio", { name: /Median wait for a first review/ }).filter({ visible: true }).last().click(); }
+      else await page.getByRole("button", { name: /^Sort by Median wait for a first review/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(400); await healthy(page, vp);
+    });
+    await shoot(`pst-person-${size}-${theme}`, phone ? PHONE : DESKTOP, theme, async page => {
+      await open(page, vp);
+      await page.getByRole("button", { name: /^alice: / }).filter({ visible: true }).first().click();
+      await page.getByText("Opened by alice").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+      await page.setViewportSize(phone ? PHONE : DESKTOP); await page.waitForTimeout(400); await healthy(page, phone ? PHONE : DESKTOP);
+    });
+    await shoot(`pst-reading-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/web/, /Partly read/); });
+    await shoot(`pst-refused-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/docs/, /GitHub returned 404/); await page.getByText(/No PRs opened or reviewed this week/).first().waitFor(); });
+    await shoot(`pst-solo-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/solo/, /Opened by alice/); });
+  }
+}
+/** pr-stats-off only (no stats seeded): the page from ⌘K before any repository is on; Home shows no icon. */
+async function prStatsOffShots({ shoot }) {
+  // Desktop only: with nothing on, a phone has no way in (no command palette, no Home icon, no Settings link). On a
+  // phone the same section is Settings' PR statistics, rendered by pr-stats-settings.
+  for (const theme of ["light", "dark"]) {
+    await shoot(`pst-off-desktop-${theme}`, DESKTOP, theme, async page => {
+      await page.setViewportSize(DESKTOP); await openHome(page);
+      if (await page.getByRole("button", { name: "PR stats", exact: true }).filter({ visible: true }).count()) throw new Error("pr-stats-off: Home shows the PR stats icon with nothing on");
+      await page.keyboard.press("Control+k"); await page.waitForTimeout(400);
+      await page.keyboard.type("Follow-up: PR stats"); await page.waitForTimeout(500); await page.keyboard.press("Enter");
+      await page.getByText(/See who opens, merges/).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    });
+  }
 }
 /** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
 async function prStatsSettingsShots({ shoot }) {
@@ -3102,23 +3241,29 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * PATH. Writes settings-tabs.json; any failed check fails the run.
  */
 /**
- * Settings → Morning brief (docs/morning-brief.md#settings), every plan state, desktop and phone, light and dark:
- * found, the channel picker open, not found (amber, keeps last week's), a failed search, a pasted link, and the Linear
- * queue section. Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
+ * Settings → Morning brief (docs/morning-brief.md#settings), every state, desktop and phone, light and dark: the
+ * Sources card (all read; one failed with Retry, one waiting for a sign-in, mail off until turned on), every plan state
+ * (found, the channel picker open, not found, a failed search, a pasted link, off, nothing picked) and the Linear queue
+ * section. The fake mcpproxy's servers are fictional and found by their tools (sources-fixture.json changes their state). Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
  * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
  * last run in the future so no scheduled ranking calls a model.
  */
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
-  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null,
+  const setSources = v => fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify(v));
+  let ranHealth = { health: {}, errors: {} };
+  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, ...ranHealth, notStarted: [], last: null, slackSince: null,
     planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
-  const states = async (name, drive) => {
+  // Sources sit above the plan: the plan's states scroll to it; the Sources states stay at the top.
+  const states = async (name, drive, { top = false } = {}) => {
     for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
       await shoot(`mb-${name}-${device}-${theme}`, viewport, theme, async page => {
         await page.setViewportSize(viewport);
         await openSettingsAt(page, "brief", viewport);
-        await page.getByText("This week's plan", { exact: true }).first().waitFor();
+        const plan = page.getByText("This week's plan", { exact: true }).first();
+        await plan.waitFor();
+        if (!top) await plan.evaluate(e => e.scrollIntoView({ block: "start" }));
         await drive?.(page);
         await page.waitForTimeout(300);
         // Desktop: only Follow-up's pane, from "Back to plugins" (the host's settings sidebar beside it isn't ours).
@@ -3133,6 +3278,21 @@ async function morningBriefShots({ shoot, call, home }) {
   await seedRead(A1, "Week of Mar 2", 18);
   await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
   await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
+  // Sources: every source read (opening Settings asks the fake mcpproxy again; wait for its answer).
+  const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
+  ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true });
+  await call("follow.sweep-queue", {});
+  await states("sources", sourcesReady, { top: true });
+  // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
+  ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  await setSources({});
+  ranHealth = { health: {}, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
   await states("picker", async page => {
     await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
     await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");
@@ -3633,6 +3793,7 @@ try {
   await fs.writeFile(join(root, "clock.cjs"), CLOCK_PRELOAD);
   await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}), ...(only.includes("pr-stats-settings") ? { _statsSearch: 1840 } : {}) }));
   if (only.includes("pr-stats-settings")) await seedPrStatsSettings(join(home, "plugin-data", "follow-up"));
+  if (only.includes("pr-stats")) await seedPrStats(join(home, "plugin-data", "follow-up"));
   await fs.writeFile(join(bin, "gh"), fakeGh(join(home, "gh-fixture.json"))); await fs.chmod(join(bin, "gh"), 0o700);
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });

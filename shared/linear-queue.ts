@@ -34,7 +34,12 @@ export const briefSettingsSchema = z.object({
   timeZone: z.string().min(1).max(64).nullable().default(null),
   workdays: z.array(z.enum(WEEKDAYS)).min(1).max(7).nullable().default(null),
   since: z.enum(SINCE_MODES).default("read"),
+  /** The brief's windows: chat DMs and mentions over the last N hours; meetings from the start of today for N days. */
+  chatHours: z.union([z.literal(24), z.literal(48), z.literal(72)]).default(48),
+  calendarDays: z.union([z.literal(1), z.literal(2)]).default(1),
 });
+export const CHAT_HOURS = [24, 48, 72] as const;
+export const CALENDAR_DAYS = [1, 2] as const;
 export type BriefSettings = z.infer<typeof briefSettingsSchema>;
 export const BRIEF_SETTINGS_DEFAULT: BriefSettings = briefSettingsSchema.parse({});
 

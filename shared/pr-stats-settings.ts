@@ -187,6 +187,10 @@ export function statsRepoLine(row: z.infer<typeof statsRepoRowSchema>, timeZone:
 export function statsRepoWait(row: z.infer<typeof statsRepoRowSchema>): string | null {
   const st = row.settings?.status;
   if (!st || row.state !== "on") return null;
+  return statsWaitWords(st);
+}
+/** The same words from a sync status (the page's sync line): a GitHub refusal, or why reading waits; null when nothing holds it. */
+export function statsWaitWords(st: Pick<StatsStatus, "waiting" | "error">): string | null {
   if (st.error) return st.error.status ? `GitHub returned ${st.error.status}: ${st.error.message}.` : `GitHub refused the read: ${st.error.message}.`;
   if (!st.waiting) return null;
   const at = st.waiting.until ? new Date(st.waiting.until * 1000).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : null;
