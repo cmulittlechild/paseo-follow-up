@@ -32,7 +32,6 @@ export const ROW_ACTIONS = {
   open_chat: { exempt: "Navigation: shows the agent's chat and changes nothing." },
   ask_overseer: { tool: "overseer_ask", note: "Pre-fills the omnibox; the developer's Enter sends it through follow.overseer-ask." },
   copy_branch: { exempt: "Copies text to the clipboard and changes nothing." },
-  copy_pr: { exempt: "Copies text to the clipboard and changes nothing." },
   rewrite_summary: { tool: "workspace_about" },
   rename_ai: { tool: "ai_rename" },
   make_main: { tool: "make_main_agent" },
@@ -47,7 +46,7 @@ export type RowMenuItem = {
   action: RowActionId;
   label: string;
   icon: string;
-  /** The action's argument: a Later choice, a question or batch id, a branch, PR links. */
+  /** The action's argument: a Later choice, a question or batch id, a branch. */
   arg?: string;
   /** Supporting text under the label (a question's title). */
   hint?: string;
@@ -199,12 +198,9 @@ export function rowMenu(input: RowMenuInput): RowMenuSection[] {
   ]);
 
   // 5. Copy and tidy.
-  const open = (w?.prs ?? []).filter(p => p.snapshot?.url && p.snapshot.state === "OPEN");
-  const links = (open.length ? open : (w?.prs ?? []).filter(p => p.snapshot?.url).slice(-1)).map(p => p.snapshot!.url);
   const multiRootOther = !!w && !!s.agent && !!s.agentId && s.agentId !== w.mainAgentId;
   add("tidy", [
     !!branch && { key: "copy_branch", action: "copy_branch", label: "Copy branch name", icon: "GitBranch", arg: branch },
-    links.length > 0 && { key: "copy_pr", action: "copy_pr", label: links.length === 1 ? "Copy PR link" : `Copy ${links.length} PR links`, icon: "Link", arg: links.join("\n") },
     !!s.workspaceId && { key: "rename_ai", action: "rename_ai", label: "Rename title with AI…", icon: "Sparkles" },
     !!w && { key: "rewrite_summary", action: "rewrite_summary", label: "Rewrite summary", icon: "RefreshCw" },
     multiRootOther && { key: "make_main", action: "make_main", label: `Make ${s.agent} the main agent…`, icon: "Crown", arg: s.agentId!,
