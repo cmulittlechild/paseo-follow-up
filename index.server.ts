@@ -93,7 +93,6 @@ import { RenameService, RenameStore, renameDaemon } from "./server/rename";
 import { DispatchService, DispatchStore, type ActionChange, type DispatchPaseo, type DispatchProject } from "./server/dispatch";
 import { LinearIssues } from "./server/linear-issues";
 import { LinearQueue, LinearQueueStore } from "./server/linear-queue";
-import { BRIEF_SETTINGS_DEFAULT, clockFor } from "./shared/linear-queue";
 import { teamOf } from "./shared/linked";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
@@ -105,7 +104,8 @@ import { CheckWatches } from "./server/check-watches";
 import { waitForChecksAnswer } from "./server/wait-for-checks";
 import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
-import { liveRankSources, planningUrl, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
+import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
+import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
 import { workspaceRefs } from "./shared/linked-extract";
@@ -292,6 +292,7 @@ export default function contribute(server: PluginServerContext) {
   let overseer: Overseer | null = null;
   let ranker: Ranker | null = null;
   let linearQueue: LinearQueue | null = null;
+  let morningBrief: MorningBrief | null = null;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -407,6 +408,8 @@ export default function contribute(server: PluginServerContext) {
     if (ranker) void ranker.tick().catch(() => undefined);
     // The Morning brief's sweep, once a workday at its time (the-brief-has-one-timer: this loop, no timer of its own).
     if (linearQueue) void linearQueue.tick().catch(() => undefined);
+    // This week's plan: Find it for me looks again once a workday after the sweep time (same loop, same rule).
+    if (morningBrief) void morningBrief.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
     feeds.inbox(); feeds.home();
@@ -1299,13 +1302,22 @@ export default function contribute(server: PluginServerContext) {
     log: line => console.warn(`[follow-up] ${line}`),
   });
   void ready.then(() => { if (!stopped && !loadError) return dispatcher.start(); }).catch(() => undefined);
+  // Settings → Morning brief (server/morning-brief.ts): the queue's settings, the brief's clock and this week's plan
+  // link. The plan reader is the ranker's (built below); the skill registry is imported once.
+  morningBrief = new MorningBrief({
+    store: new MorningBriefStore(directory), chat: mcpproxyChat(), env: () => process.env.FOLLOW_UP_PLAN_URL, deviceZone: () => clientTimeZone,
+    readPlan: url => ranker!.readPlan(url),
+    lastRead: async () => { const p = (await ranker!.state()).planning; return p ? { url: p.url, at: p.at, title: p.value.title, items: p.value.items.length } : null; },
+    onChange: () => feeds.home(), log: line => console.warn(line),
+  });
   // The Morning brief's Linear queue (server/linear-queue.ts, docs/morning-brief.md): the whole queue swept each workday
-  // morning through the same Linear reader, diffed against the last complete sweep. Its clock is the developer's zone
-  // (their device's, else the host's), never a fixed one; Settings → Morning brief adds its own setting.
-  const briefClock = async () => clockFor(BRIEF_SETTINGS_DEFAULT, clientTimeZone);
+  // morning through the same Linear reader, diffed against the last complete sweep. Its clock is the setting's zone,
+  // else the developer's device's, else the host's; never a fixed one.
+  const briefClock = () => morningBrief!.clock();
   linearQueue = new LinearQueue({
     store: new LinearQueueStore(directory),
     linear: linearIssues,
+    settings: () => morningBrief!.settings(),
     clock: briefClock,
     // Unarchived workspaces with the key linked: "has a workspace" in the queue (dispatcher.existing's rule).
     workspaces: async () => {
@@ -1325,6 +1337,18 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.linearQueueRpc, async ({ filter, since, limit, open }) => { await requireReady(); return open ? linearQueue!.open() : linearQueue!.view({ filter, since, limit }); });
   handle(rpc.sweepQueueRpc, async (_input, context) => { await requireReady(); return linearQueue!.sweepNow(actorOf(context).kind === "agent" ? "agent" : "manual"); });
+  handle(rpc.briefSettingsRpc, async () => { await requireReady(); return morningBrief!.view(); });
+  handle(rpc.setBriefSettingsRpc, async input => { await requireReady(); return morningBrief!.setQueue(input); });
+  handle(rpc.briefPlanRpc, async ({ link }) => { await requireReady(); return link ? { ...await morningBrief!.planView(), preview: await morningBrief!.preview(link) } : morningBrief!.planView(); });
+  handle(rpc.setBriefPlanRpc, async input => {
+    await requireReady();
+    const before = await morningBrief!.planUrl();
+    const view = await morningBrief!.setPlan(input);
+    // A new link: read it now in the background, so Settings shows its title and the next ranking has it.
+    if (view.url && view.url !== before) void ranker!.readPlan(view.url).then(() => feeds.home(), () => undefined);
+    return view;
+  });
+  handle(rpc.briefChatSearchRpc, async ({ kind, query }) => { await requireReady(); return morningBrief!.searchChat(kind, query); });
   handle(rpc.dispatchSourcesRpc, async ({ fresh, query }) => { await requireReady(); return dispatcher.sources({ fresh, query }); });
   handle(rpc.dispatchPreviewRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.preview(input, actorOf(context)); });
   handle(rpc.dispatchRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.dispatch(input, actorOf(context)); });
@@ -1349,7 +1373,7 @@ export default function contribute(server: PluginServerContext) {
     return { provider: r.provider, model: r.model, thinking: r.thinking, dailyCap: r.dailyCap ?? RANKER_ROLE_DEFAULT.dailyCap, maxPromptChars: r.maxPromptChars ?? RANKER_ROLE_DEFAULT.maxPromptChars, cadenceMinutes: r.cadenceMinutes ?? RANKER_ROLE_DEFAULT.cadenceMinutes };
   };
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
-    workstreams: () => overseer!.workstreams(), planningUrl: () => planningUrl(process.env.FOLLOW_UP_PLAN_URL), clock: briefClock,
+    workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
     sources: liveRankSources(aiJobs, { queue: linearQueue, model: async () => { const r = await rankerRole(); return r.provider === "claude" ? r.model : null; } }) });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });
   // Returns at once: the run can take minutes on a slow model; Home polls rank-status and shows "Ranking…".
@@ -1644,7 +1668,7 @@ export default function contribute(server: PluginServerContext) {
       const mode = await questionMode();
       const linked = await store.mutate(state => {
         const w = findWorkspace(state, tracked.id);
-        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null);
+        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null, turn?.at ?? null);
         if (result.createdIds.length) syncTaskQuestions(w, Date.now());
         if (result.questionIds.length || sameTurn) changed(w);
         return { ...result, ask: foldedAsk(call.ask, result.questionIds, w.questions) };

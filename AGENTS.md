@@ -81,6 +81,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `server/dispatch.ts`, `server/linear-issues.ts` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it) | `shared/linear-queue.ts`, `server/linear-queue.ts` | [morning-brief](docs/morning-brief.md) |
+| Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -935,7 +936,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `task`, then `update_obligation` blocked with `question`. 2026-11-22, Tom: "a lot of the time, 2 questions are
    created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
    Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
-
 74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
    waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
    from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
@@ -976,6 +976,32 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
+79. **One ask, one item** (`one-ask-one-item`). Whatever makes an ask (`ask_question`, a `needs_you` decision or
+   action, a blocked task), Needs you shows it once. A blocked task's card is shaped by what it asks (`taskNeed`): an
+   action the developer takes and reports back gets a Done option (`TASK_DONE`), never "Write the decision". An action
+   or decision `needs_you` points at the task cards it reports (named, or restated, with a lower bar for a card made during its turn:
+   `taskCardsFor`), so the brief folds into the card (`needsYouBlock`) instead of standing beside it. A brief's ask is
+   never hidden by a card it doesn't name or restate: an unrelated brief and a card made in the same turn are two items. The fold is the
+   server's: `update_obligation` says nothing about the task's own card, so the agent reads zero extra words. An action
+   card is answered by one Done button on every surface (`isDoneOnly`: no option to pick and then Send; Add note and
+   Reply instead stay quiet), and a brief's Done on it answers the card, never a second "Done: …" message.
+   2026-11-22, the developer: an Action brief and its task's card asked the same thing, the card as "Write the
+   decision"; live, 7 of 9 open task cards sat beside an open brief from the same agent, none pointed at, and Done
+   took two clicks. In review, a first draft folded the brief into any card made in the turn, so an unrelated
+   "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
+   ([docs/workspaces.md](docs/workspaces.md)).
+
+80. **Briefs from closed agents** (`briefs-from-closed-agents`). Needs you lists what someone can still act on. At
+   render, from facts Follow-up already holds (`flagFate`), a flag whose workspace is archived or gone from Paseo's
+   list (agent not running) drops, and so does a closed agent's flag that asks nothing (no asking brief, no question,
+   only finished or PR-closed/merged flags). A closed agent's real ask with nothing new for 3 days folds into Home's
+   Older group, out of the count, and comes back when the agent runs again or a new flag comes. Nothing is stored or
+   deleted. Never hidden: a running or idle agent's ask, an ask under 3 days old, and a workspace's live item (an Older
+   row whose workspace has one stays in Needs you; a dropped row's workspace row carries it). Every reader of Needs you
+   follows the same rule: "next" (`nextAfter`: Sign off & next, `/ok next`, the Command Center's Next needs-you) opens
+   only a row `flagFate` shows, never a dropped or Older one. 2026-11-22, live: 49
+   flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
+   old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
 
 ## Bugs
 

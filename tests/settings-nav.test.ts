@@ -8,8 +8,8 @@ import {
 
 const store = (): KeyValue & { data: Map<string, string> } => { const data = new Map<string, string>(); return { data, get: k => data.get(k) ?? null, set: (k, v) => { data.set(k, v); } }; };
 
-test("categories: five, General first, in order; every setting the old page had is still rendered (moved, not dropped)", async () => {
-  assert.deepEqual(SETTINGS_CATEGORIES.map(c => c.id), ["general", "following", "reviewers", "agents", "display"]);
+test("categories: six, General first, in order; every setting the old page had is still rendered (moved, not dropped)", async () => {
+  assert.deepEqual(SETTINGS_CATEGORIES.map(c => c.id), ["general", "following", "reviewers", "agents", "display", "brief"]);
   const source = (await Promise.all(["client/settings.tsx", "client/display.tsx", "client/reviewers.tsx", "client/agents.tsx", "client/job-rows.tsx"].map(f => readFile(f, "utf8")))).join("\n");
   for (const label of ["Follow every workspace", "Send tasks automatically", "Rest workspaces after", "Follow this workspace", "While a question is open", "Sidebar item", "Workspace header button", "Composer pill",
     "Needs-you inbox", "Flag merged and closed PRs", "Ask agents to state what they need", "Default for all repos", "Add reviewer", "Trust bypass agents"]) assert.ok(source.includes(label), label);

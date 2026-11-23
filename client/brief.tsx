@@ -16,7 +16,7 @@ const word = (kind: Brief["kind"]) => HEADLINE_WORD[briefKey(kind)];
 import { answerQuestionRpc, briefActionRpc, browserStatusRpc, inboxBriefRpc } from "../shared/contracts";
 import { errorText, mootNote } from "../shared/errors";
 import { PRIMARY_FORM } from "./dock";
-import { OTHER, OTHER_LABEL, OWN_ANSWER_HINT, briefAnswerStatus, isOther, type Question } from "../shared/questions";
+import { OTHER, OTHER_LABEL, OWN_ANSWER_HINT, briefAnswerStatus, isDoneOnly, isOpen, isOther, TASK_DONE, type Question } from "../shared/questions";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { useDetailGate, useWorkspace } from "./workspace-data";
 import { SubmitScope, focusRing, submitHint, text, useNow } from "./kit";
@@ -157,7 +157,9 @@ export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: {
  * The card's body: decisions, error text, details, context, facts and links, and the agent's extra ask. Shared by the
  * open card and by a past card's read-only "Show full question", so a past question reads exactly as it was asked.
  */
-function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen }: {
+function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [] }: {
+  /** one-done-button: decisions answered by the card's Done button (an action card), drawn without option rows. */
+  doneIds?: readonly string[];
   b: Brief; c: Colors; compact: boolean; tight: boolean; embedded: boolean; height: number;
   mode: "send" | "select" | "readonly"; picks: Record<string, string>; onPick: (decisionId: string, letter: string) => void; busy: string | null; onSend?: (key: string) => void;
   words?: Record<string, string>; onWords?: (decisionId: string, text: string) => void; onSendOther?: (decisionId: string) => void;
@@ -178,15 +180,15 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
   const showExtra = readonly || !tight || details || extrasFit(b, height);
   const numbered = b.decisions.length > 1;
   return <>
-    {b.decisions.map((d, i) => <View key={d.id} accessibilityRole={mode === "select" ? "radiogroup" : undefined} accessibilityLabel={mode === "select" ? d.question : undefined} style={{ gap: 8 }}>
+    {b.decisions.map((d, i) => { const done = !readonly && doneIds.includes(d.id); return <View key={d.id} accessibilityRole={mode === "select" ? "radiogroup" : undefined} accessibilityLabel={mode === "select" ? d.question : undefined} style={{ gap: 8 }}>
       {(numbered || d.question.trim() !== b.ask.trim()) && <RichText style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: numbered ? "600" : "400" }}>{`${numbered ? `${i + 1}. ` : ""}${d.question}`}</RichText>}
       {d.options.length > 0 && <View style={{ gap: 6 }}>
-        {d.options.map(o => <OptionRow key={o.letter} option={o} recommended={d.recommend === o.letter} mode={mode} answerLabel={answerLabel} selected={readonly ? d.chosen === o.letter : picks[d.id] === o.letter} answered={readonly && !!d.chosen}
+        {!done && d.options.map(o => <OptionRow key={o.letter} option={o} recommended={d.recommend === o.letter} mode={mode} answerLabel={answerLabel} selected={readonly ? d.chosen === o.letter : picks[d.id] === o.letter} answered={readonly && !!d.chosen}
           sending={busy === `${d.id}:${o.letter}`} disabled={!!busy} tight={tight && !readonly} withNote={!!notesOpen[d.id] && !!notes[d.id]?.trim()}
           open={!!open[`${d.id}:${o.letter}`]} onToggle={() => setOpen(v => ({ ...v, [`${d.id}:${o.letter}`]: !v[`${d.id}:${o.letter}`] }))}
           onPress={() => mode === "send" ? onSend?.(`${d.id}:${o.letter}`) : onPick(d.id, o.letter)} c={c} compact={compact} />)}
         {/* Built in after the agent's options on every decision: the developer's own answer. */}
-        {(!readonly || isOther(d.chosen)) && <OptionRow other option={{ letter: "", label: OTHER_LABEL, consequence: readonly ? `"${d.words ?? ""}"` : null }} recommended={false} mode={mode} answerLabel={answerLabel}
+        {!done && (!readonly || isOther(d.chosen)) && <OptionRow other option={{ letter: "", label: OTHER_LABEL, consequence: readonly ? `"${d.words ?? ""}"` : null }} recommended={false} mode={mode} answerLabel={answerLabel}
           selected={readonly ? isOther(d.chosen) : isOther(picks[d.id])} answered={readonly && !!d.chosen} sending={busy === `${d.id}:${OTHER}`} disabled={!!busy} tight={false} open={false} onToggle={() => undefined}
           onPress={() => onPick(d.id, OTHER)} c={c} compact={compact} />}
         {/* Something else's field with its Send answer, kept on screen together while typing (DockedPane). */}
@@ -206,16 +208,16 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} />
           <NoteLink icon="X" label="Remove note" a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
-        </View> : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14 }}>
+        </View> : done ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14 }}>
           <NoteLink icon="MessageSquarePlus" label="Add note" a11y={numbered ? `Add note to decision ${i + 1}` : "Add note"} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
-          {mode === "send" && !tight && !embedded && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{`Or type ${letters(d)} in the composer.`}</Text>}
+          {mode === "send" && !tight && !embedded && !done && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{`Or type ${letters(d)} in the composer.`}</Text>}
         </View>)}
       </View>}
       {readonly && !!d.chosen && !isOther(d.chosen) && !!d.words && <RichText selectable linkColor={c.foreground} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{`Note: ${d.words}`}</RichText>}
       {readonly && b.state === "answered" && d.options.length > 0 && !d.chosen && numbered && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>Skipped</Text>}
       {!readonly && mode === "send" && !tight && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
       {!readonly && (mode === "select" || tight) && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
-    </View>)}
+    </View>; })}
 
     {!!b.mono && !b.ask.endsWith(b.mono) && <View style={{ borderRadius: 8, backgroundColor: withAlpha(c.statusDanger, isLight(c) ? 0.07 : 0.1), paddingHorizontal: 10, paddingVertical: 8 }}>
       <RichText selectable numberOfLines={tight && !readonly ? 3 : undefined} style={{ color: c.foreground, fontFamily: mono(), fontSize: 12, lineHeight: 18 }}>{b.mono}</RichText>
@@ -441,11 +443,15 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   };
   // Done: "Done: <ask>" can't be unsent, so it goes out when the toast's Undo window ends (runUndoable). A failure
   // reopens the card with the reason; the toast keeps Retry, and Open brings the agent's chat back.
+  // one-done-button: the brief points at a task's action card, so its Done answers that card (A), the one answer path
+  // (a-question-is-answered-once); "Done: <ask>" goes out only for an action brief with no card behind it.
+  const doneQ = b.decisions.length === 1 && workspace ? workspace.questions.find(q => q.id === b.decisions[0].id && b.questionIds.includes(q.id) && isOpen(q) && isDoneOnly(q)) ?? null : null;
   const markDone = () => {
     if (busy || marked) return;
     setError(null); setSent(false); setMarked(new Date().toISOString());
     const doneId = newAnswerId();
-    const id = runUndoable("Telling the agent it's done", { label: "Done", toast, run: () => act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: "Marked done. The agent has it.",
+    const id = runUndoable("Telling the agent it's done", { label: "Done", toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), action: "send" })
+      : act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: "Marked done. The agent has it.",
       failure: "Done not sent", open: () => deps.openAgent(agentId), onSuccess: () => setSent(true), onError: e => { setMarked(null); setError(errorText(e)); }, reconcile: e => { setMarked(null); reconcile(e); } }, () => setMarked(null), `done:${b.id}`, () => deps.endDone?.(agentId));
     // The pill's Undo is this toast's Undo: it closes the toast (so nothing is sent) and reopens the card.
     if (id !== null) deps.noteDone?.(agentId, () => { dismissToast(id); setMarked(null); });
@@ -466,7 +472,9 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     else if (m.kind === "open_subagent" && m.agentId) deps.openAgent(m.agentId);
   };
   // A merge runs Follow-up's own merge flow, so it needs the tracked workspace; without one it isn't offered.
-  const moves = b.moves.filter(m => (m.kind !== "merge" && m.kind !== "add_reviewers") || !!b.workspaceId);
+  const tracked = b.moves.filter(m => (m.kind !== "merge" && m.kind !== "add_reviewers") || !!b.workspaceId);
+  // A decision brief that folded into an action card still gets the card's one Done, first.
+  const moves: BriefMove[] = doneQ && !tracked.some(m => m.kind === "done") ? [{ kind: "done", label: "Done", prKey: null, url: null, agentId: null }, ...tracked] : tracked;
 
   // F7: "Nothing needed" is one muted line, no buttons. Paseo's own running and idle state says the rest.
   if (b.kind === "done" && b.source === "agent" && !b.flagged) return <View accessibilityRole="summary" accessibilityLabel={nothingNeededLine(b.ask)}
@@ -519,7 +527,9 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const sendAll = () => void run("answers", async answerId => { await answer(cardPicks(sendable, words, openNotes), answerId); clearCard(b.id); });
   // The keyboard's Send: every pick on a multi-decision card, or a single card's Something else once it has words.
   const otherId = !multi ? askedDecisions(b).find(d => isOther(picks[d.id]))?.id : undefined;
-  const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : null;
+  // one-done-button: on an action card the keyboard sends Done (with its note), as the panel's card does.
+  const doneMove = doneQ && !multi && !isOther(picks[doneQ.id]) && moves[0]?.kind === "done" ? moves[0] : null;
+  const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : doneMove ? () => press(doneMove) : null;
   const sendOther = (decisionId: string) => { const text = words[decisionId]?.trim(); if (text) void run(`${decisionId}:${OTHER}`, async answerId => { await answer([{ decisionId, choice: OTHER, words: text }], answerId); clearCard(b.id); }); };
   return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you" : flaggedAct ? "Later" : word(b.kind)}: ${askText}`}
     style={[{ marginVertical: embedded ? 0 : 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: c.surface1, overflow: "hidden" }, bare && BARE]}>
@@ -549,12 +559,15 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       <BriefBody b={b} c={c} compact={compact} tight={tight} embedded={embedded} height={height} mode={multi ? "select" : "send"} picks={picks}
         onPick={(decisionId, letter) => { if (!busy) pickStore.set(b.id, decisionId, letter); }} busy={busy} onSend={sendOne}
         words={words} onWords={(decisionId, t) => wordStore.set(b.id, decisionId, t)} onSendOther={sendOther}
-        notes={notes} notesOpen={notesOpen} onNote={(decisionId, t) => noteStore.set(b.id, decisionId, t)} onNoteOpen={(decisionId, open) => noteOpenStore.set(b.id, decisionId, open ? "1" : "")} />
+        notes={notes} notesOpen={notesOpen} onNote={(decisionId, t) => noteStore.set(b.id, decisionId, t)} onNoteOpen={(decisionId, open) => noteOpenStore.set(b.id, decisionId, open ? "1" : "")} doneIds={doneQ ? [doneQ.id] : []} />
 
       {multi && <SendBar b={b} picks={sendable} noted={notedCount(sendable, openNotes)} busy={busy} error={error} onSend={sendAll} c={c} compact={compact} />}
 
-      {!embedded && moves.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {moves.map((m, i) => <Btn key={m.kind} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} primary={i === 0 && !multi} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
+      {!embedded && moves.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, columnGap: 14 }}>
+        {moves.map((m, i) => <Btn key={m.kind} shortcut={m === doneMove} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} primary={i === 0 && !multi} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
+        {/* one-done-button: the quiet choices sit beside Done, never above the context, away from it. */}
+        {doneQ && !notesOpen[doneQ.id] && !isOther(picks[doneQ.id]) && <NoteLink icon="MessageSquarePlus" label="Add note" a11y="Add a note, sent with Done" disabled={!!busy} onPress={() => noteOpenStore.set(b.id, doneQ.id, "1")} c={c} compact={compact} />}
+        {doneQ && !isOther(picks[doneQ.id]) && <NoteLink icon="Reply" label="Reply instead" a11y="Write a reply instead of Done" disabled={!!busy} onPress={() => pickStore.set(b.id, doneQ.id, OTHER)} c={c} compact={compact} />}
       </View>}
 
       {!!error && !multi && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13, lineHeight: 18 }}>{error}</Text>}

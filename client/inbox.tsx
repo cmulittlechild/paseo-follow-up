@@ -100,8 +100,8 @@ export function contributeInboxCommands(client: PluginClientContext, store: Inbo
 }
 
 /** "Sign off & next" target, honouring D9 and skipping the agent just signed off. */
-export function nextTarget(store: InboxStore, from: string | null): InboxRow | null {
-  return nextAfter(store.rows(), from, Date.now());
+export function nextTarget(store: InboxStore, from: string | null, archived?: ReadonlySet<string>): InboxRow | null {
+  return nextAfter(store.rows(), from, Date.now(), archived);
 }
 
 /**
@@ -109,7 +109,7 @@ export function nextTarget(store: InboxStore, from: string | null): InboxRow | n
  * items get no navigation, so the brief card and the created-agent card relay "open this agent" (`open`) and the
  * created-workspace card "open this workspace" (`openWorkspace`, which lands on that workspace's Follow-up panel).
  */
-export function useNextRelay(store: InboxStore, params: Record<string, string>, openAgent: ((row: InboxRow) => void) | undefined, openWorkspace?: (workspaceId: string) => void) {
+export function useNextRelay(store: InboxStore, params: Record<string, string>, openAgent: ((row: InboxRow) => void) | undefined, openWorkspace?: (workspaceId: string) => void, archived?: () => ReadonlySet<string>) {
   const done = useRef<string | null>(null);
   const ready = useInbox(store, () => !!store.data());
   useEffect(() => {
@@ -119,7 +119,7 @@ export function useNextRelay(store: InboxStore, params: Record<string, string>, 
     if (!openAgent || !ready) return;
     done.current = token;
     if (params.open) { openAgent({ agentId: params.open } as InboxRow); return; }
-    const target = nextTarget(store, params.from ?? null);
+    const target = nextTarget(store, params.from ?? null, archived?.());
     if (target) openAgent(target);
-  }, [params.next, params.from, params.open, params.openWorkspace, ready, openAgent, openWorkspace, store]);
+  }, [params.next, params.from, params.open, params.openWorkspace, ready, openAgent, openWorkspace, archived, store]);
 }

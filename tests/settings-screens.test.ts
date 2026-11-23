@@ -37,7 +37,7 @@ test("Paseo 0.16: one settings screen per category, in today's order, General fi
   createSettings(client as never, Screen as never, store());
   assert.deepEqual(screens.map(s => s.title), SETTINGS_CATEGORIES.map(c => c.title));
   assert.equal(screens[0].id, SETTINGS_SCREEN, "saved links to the old screen land on General, the first tab");
-  assert.equal(new Set(screens.map(s => s.id)).size, 5);
+  assert.equal(new Set(screens.map(s => s.id)).size, SETTINGS_CATEGORIES.length);
   screens.forEach((s, i) => {
     assert.equal(s.icon, SETTINGS_CATEGORIES[i].icon);
     assert.equal(s.Component({}).props.category, SETTINGS_CATEGORIES[i].id, `${s.title} renders only its own category`);

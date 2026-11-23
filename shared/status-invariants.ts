@@ -4,10 +4,10 @@ import type { Actor } from "./actor";
 import { ANY_HOOK_TEXT_PREFIXES } from "./message-sender";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 import type { ListWorkspace as Workspace } from "./list";
-import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
+import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, TASK_DONE, taskCardsFor, taskNeed, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
-import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
+import { flagFate, newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, summary } from "./model";
 import { liveLine, needsYou, reviewersAskStands, type NeedItem } from "./attention";
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
@@ -437,6 +437,27 @@ export const INVARIANTS: Invariant[] = [
     },
   },
   {
+    id: "one-ask-one-item",
+    why: "2026-11-22, the developer, on 2.4.0-beta.0: one ask showed twice in Needs you, the agent's Action brief and its blocked task's card, and the card framed an action (\"share the page and tell me when they've picked\") as \"Write the decision\". A task card is shaped by what it asks (taskNeed: an action gets Done), and a brief that restates or reports a task card points at it, so it folds into that one card (taskCardsFor, needsYouBlock).",
+    check(w, now) {
+      const items = needsYou(w, now);
+      for (const q of w.questions ?? []) {
+        if (q.via !== "task" || !isOpen(q)) continue;
+        const o = w.obligations.find(o => o.id === q.taskId);
+        if (!o?.ask) continue;
+        const need = taskNeed(o.ask, o.need);
+        if ((q.need ?? "decision") !== need) return `${q.id} is shaped as a ${q.need ?? "decision"} but its task asks for a${need === "action" ? "n action" : " decision"}`;
+        if (need === "action" && !(q.options.length === 1 && q.options[0].label === TASK_DONE.label)) return `${q.id} asks for an action without its Done`;
+        // A brief restating the card points at it and folds into it: one item.
+        const brief = { kind: "action", ask: q.question };
+        if (!taskCardsFor(brief, w.questions ?? [], null).includes(q)) return `a brief restating ${q.id} wouldn't point at it`;
+        const block = needsYouBlock(items, { questionIds: [q.id], kind: "action" }, w.questions);
+        if (block.cards.some(c => c.kind === "brief")) return `a brief pointing at ${q.id} still draws its own card`;
+      }
+      return null;
+    },
+  },
+  {
     id: "one-decision-one-card",
     why: "2026-11-22, the developer: \"a lot of the time, 2 questions are created for the same thing\". An agent asked Q1 with options and marked its task blocked with ask \"Q1: may I …?\"; Follow-up made Q2 from the task, the same decision with no options (live: 33 of 96 task-made questions). A blocked task covered by a question (it names it, it was asked with task set, or it reads the same) makes no card and no decision item (shared/questions.ts findTaskCover, server/questions.ts syncTaskQuestions).",
     check(w, now) {
@@ -645,6 +666,28 @@ export function homeViolations(model: Pick<HomeModel, "byKey"> & Partial<Pick<Ho
     else if (model.byKey.get(keys[0])!.priority!.reason !== p.reason) out.push({ id: "row-lines-own-row", detail: `${keys[0]} shows another reason than ${workspaceId}'s` });
   }
   return [...counted, ...out];
+}
+
+/**
+ * `briefs-from-closed-agents` (AGENTS.md 80): Home against the inbox rows it was built from. A dropped flag has no
+ * row, an Older row is a closed agent's with nothing new for 3 days and no live workspace item, and every other
+ * flagged row (a running or idle agent's above all) is in Needs you. 2026-11-22: 49 flagged rows, 42 of them closed.
+ */
+export function closedFlagViolations(model: Pick<HomeModel, "byKey">, rows: readonly InboxRow[], tracked: readonly Workspace[], now: number): { id: string; detail: string }[] {
+  const out: { id: string; detail: string }[] = [];
+  const archived = new Set(tracked.filter(w => w.archived).map(w => w.id));
+  for (const row of rows) {
+    if (!row.needs || row.snooze) continue;
+    const s = model.byKey.get(`agent:${row.agentId}`);
+    const fate = flagFate(row, now, !!row.workspaceId && archived.has(row.workspaceId));
+    const w = tracked.find(w => w.id === row.workspaceId && !w.archived);
+    const live = !!w && needsYou(w, now).length > 0;
+    if (!s) continue;
+    if (fate === "drop") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} asks nothing anyone can act on but shows in ${s.group}` });
+    else if (s.group === "older" && (fate !== "older" || live)) out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} is in Older but ${live ? "its workspace has a live item" : `is ${row.status} with a flag from the last 3 days`}` });
+    else if (fate === "show" && s.group !== "needs") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId}'s live ask is in ${s.group}, not Needs you` });
+  }
+  return out;
 }
 
 /**
