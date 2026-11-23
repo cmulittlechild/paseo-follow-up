@@ -156,7 +156,7 @@ retargeting instead of Graphite restacks.
 ## Repairs are tasks (Q49)
 
 A PR condition Follow-up finds (a conflict, review feedback, a failing required check, a restack) is a task row in the
-panel's Next message card, with the message it rides (`shared/task-rows.ts`, `client/messages.tsx`); the agent's own
+panel's Messages to the agent card, with the message it rides (`shared/task-rows.ts`, `client/messages.tsx`); the agent's own
 tasks are a separate card (tasks-are-the-agent-s). Nothing
 is stored per repair: a row comes from the message it rides (the pending or sent batch), the tasks `reconcile` held
 back (`heldTasks`), or a settled message (Done). The batch is the internal delivery record and never shows.
@@ -164,7 +164,7 @@ back (`heldTasks`), or a settled message (Done). The batch is the internal deliv
 - **One rule for every task in a message.** Repairs and Auto tasks (obligations with Auto and a due trigger) ride the
   same message and get the same states: Queued, Sent, Needs you (capped), Done. The Done check isn't a task: it stays
   "Ready to finish" in Needs you.
-- **Say it once.** The strip at the top of the Next message card ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
+- **Say it once.** The strip at the top of the Messages to the agent card ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
   minute so new changes join the same message", with Preview and Send now) carries when and why, from `sendDecision`.
   A row in the message says only Queued or Sent (invariant `message-rows-say-it-once`). Send now shows only where the
   server takes it (`canSendNow`) and the send doesn't wait on the developer (then Send lives in Needs you only). While
@@ -237,7 +237,7 @@ one line saying what moves it (`taskViewRows`). Stale and due come first, oldest
 it; a task waiting on the developer reads "In Needs you" (no question id) and opens it there, and comes last. A row
 opens in place: the whole note, its agent, and "Send on a schedule…", the developer's override (`update_obligation`
 `trigger` is the agent's way). Finished tasks leave the card for Activity ("Task done · …", with the evidence); the
-footer says "3 finished this week · in Activity". The send queue and the repairs are the Next message card
+footer says "3 finished this week · in Activity". The send queue and the repairs are the Messages to the agent card
 (`client/messages.tsx`). The header's live line names the task the agent owes ("Due: …", "Stale: …") before any
 waiting one, and a waiting one says what moves it ("Check alert emails in staging · after #232 deploys").
 

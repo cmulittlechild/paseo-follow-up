@@ -443,7 +443,7 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
 export type LiveIcon = "spinner" | "sent" | "done" | "paused" | "waiting" | "alert" | "failing" | "idle";
 /** What is happening right now, in one line, with the time it started when known. */
 /**
- * The panel header's live line. Say it once (Q49): while a message is queued, the Next message card below carries when
+ * The panel header's live line. Say it once (Q49): while a message is queued, the Messages to the agent card below carries when
  * and why, so the header says only who and what. Home has no strip and keeps liveLine's full line.
  */
 export function headerLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text: string; since: string | null } {

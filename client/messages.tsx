@@ -53,7 +53,6 @@ function StripRow({ strip, w, theme, compact, onPreview, openAgent }: { strip: M
   // The why is the point of the row (a-repair-goes-to-a-free-main-agent): it keeps a readable width, and the buttons
   // wrap under it in a narrow panel instead of squeezing it into a column.
   return <View accessibilityRole="summary" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, rowGap: 8, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 12 : 8, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
-    <Icon name="Send" size={13} color={c.foregroundMuted} />
     <Text style={[t.meta, { flexGrow: 1, flexShrink: 1, flexBasis: compact ? "80%" : 240, minWidth: 0 }]}><Text style={{ color: c.foreground, fontWeight: "500" }}>{line.lead}</Text>{line.rest}</Text>
     <View style={{ flexDirection: "row", gap: 8, marginLeft: "auto" }}>
       {strip.phase === "queued" && <Button theme={theme} compact={compact} title="Preview" accessibilityLabel={`Preview the next message to ${strip.to}`} onPress={onPreview} />}
@@ -149,7 +148,7 @@ function RepairSheet({ row, w, strip, theme, compact, onClose }: { row: RepairRo
   </Modal>;
 }
 
-/** The Next message card: the strip (who, how many, when and why; Preview, Send now, Open agent) and the open repairs. */
+/** The Messages to the agent card: the strip (who, how many, when and why; Preview, Send now, Open agent) and the open repairs. */
 export function MessagesCard({ workspace: w, theme, compact, openAgent, now = Date.now() }: { workspace: Workspace; theme: Theme; compact: boolean; openAgent?: (agentId: string) => void; now?: number }) {
   const [repair, setRepair] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
@@ -157,7 +156,8 @@ export function MessagesCard({ workspace: w, theme, compact, openAgent, now = Da
   const repairs = repairRows(w);
   if (!strip && !repairs.open.length) return null;
   const repairRow = repairs.open.find(r => r.task.key === repair) ?? null;
-  return <Card theme={theme} compact={compact} icon="Send" title={strip?.phase === "sent" ? "Sent to the agent" : "Next message"}>
+  // The card's title and icon say what it is; the strip under it says to whom, how many, when and why.
+  return <Card theme={theme} compact={compact} icon="Send" title="Messages to the agent">
     {strip && <StripRow strip={strip} w={w} theme={theme} compact={compact} onPreview={() => setPreview(true)} openAgent={openAgent} />}
     {repairs.open.map(r => <RepairTaskRow key={r.task.key} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} />)}
     <RepairSheet row={repairRow} w={w} strip={strip} theme={theme} compact={compact} onClose={() => setRepair(null)} />

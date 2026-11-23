@@ -1040,7 +1040,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 1 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
    stale and due first; a task waiting on the developer says "In Needs you" with no question id and comes last; no
-   section search. Finished tasks are in Activity, the send queue and repairs in the Next message card
+   section search. Finished tasks are in Activity, the send queue and repairs in the Messages to the agent card
    (`client/messages.tsx`), the schedule editor behind a row's "Send on a schedule…". The header's live line names a
    due or stale task before a waiting one, and a waiting one says what moves it. 2026-11-22, two critiques: the card
    mirrored Needs you ("Q1 · waiting on your answer"), sorted the due task last, carried the send queue and every
