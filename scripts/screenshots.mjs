@@ -3329,6 +3329,86 @@ async function morningBriefShots({ shoot, call, home }) {
   await states("plan-pick-first", page => page.getByText("Pick who posts it and where").first().waitFor());
   await states("queue", async page => { const h = page.getByText("Linear queue", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 200); });
   await states("queue-bottom", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
+  await briefSinceShots({ shoot, call, home });
+}
+
+/**
+ * The brief's Since block, the queue screen and decision Q8's raised item (docs/morning-brief.md#in-the-brief), desktop
+ * and phone, light and dark. The queue is seeded as linear-queue.json (the store reads a changed file again): a sweep
+ * last Friday and one this morning, with the log between them, so "since" is Friday's sweep. Fictional keys only.
+ */
+function briefSinceQueue() {
+  const now = BASE + VIEW, fri = now - 5 * 86_400_000, today = now - 3600_000;
+  const iso = t => new Date(t).toISOString();
+  const day = t => new Intl.DateTimeFormat("en-CA", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+  const due = d => day(now + d * 86_400_000);
+  const i = (key, title, priority, state, stateType, dueOn = null) => ({ key, title, priority, state, stateType, due: dueOn, team: "Acme", project: null, milestone: null, url: `https://linear.example/acme/issue/${key}`, updatedAt: iso(today) });
+  const filler = Array.from({ length: 9 }, (_, n) => i(`ACME-${190 + n}`, ["Empty state for the reports list", "Sort invoices by due date", "Typo in the billing settings help text", "Export filters to CSV", "Keyboard focus ring on the date picker", "Paginate the audit log", "Trim whitespace in coupon codes", "Show the plan's renewal date", "Dark mode for the receipts page"][n], 4, "Backlog", "backlog"));
+  const now_ = [
+    i("ACME-177", "Webhook retries ignore the per-endpoint limit", 1, "Todo", "unstarted", due(2)),
+    i("ACME-142", "Retry failed charges with exponential backoff", 2, "Todo", "unstarted"),
+    i("ACME-151", "Export the audit log as CSV from the admin page", 2, "In Progress", "started", due(1)),
+    i("ACME-158", "Search filters lose their state after Back", 3, "In Progress", "started"),
+    i("APP-151", "Dunning email copy for failed renewals", 3, "Todo", "unstarted"),
+    i("APP-139", "Rate-limit webhook retries per endpoint", 4, "Backlog", "backlog"),
+    i("ACME-181", "Typo in the coupon help text", 4, "Backlog", "backlog"), i("ACME-182", "Empty state for the payouts list", 4, "Backlog", "backlog"), i("ACME-183", "Sort refunds by date", 4, "Backlog", "backlog"),
+    ...filler,
+    i("ACME-201", "Tidy the old billing feature flags", 0, "Backlog", "backlog"), i("ACME-202", "Rename the invoices table columns", 0, "Backlog", "backlog"),
+  ];
+  const facts = x => ({ priority: x.priority, due: x.due, state: x.state });
+  const before = now_.filter(x => !["ACME-177", "ACME-181", "ACME-182", "ACME-183"].includes(x.key)).map(x => x.key === "ACME-142" ? { ...x, priority: 4 } : x.key === "APP-139" ? { ...x, priority: 3 } : x.key === "ACME-151" ? { ...x, due: due(-1) } : x);
+  before.push(i("ACME-120", "Retry receipts for refunded charges", 3, "In Progress", "started"), i("ACME-131", "Move the tax table to settings", 4, "Todo", "unstarted"));
+  const byKey = list => Object.fromEntries(list.map(x => [x.key, x]));
+  const prev = byKey(before);
+  const log = [];
+  for (const x of now_) { const b = prev[x.key]; if (!b) log.push({ at: iso(today), key: x.key, title: x.title, url: x.url, before: null, after: facts(x), left: null }); else if (JSON.stringify(facts(b)) !== JSON.stringify(facts(x))) log.push({ at: iso(today), key: x.key, title: x.title, url: x.url, before: facts(b), after: facts(x), left: null }); }
+  log.push({ at: iso(today), key: "ACME-120", title: prev["ACME-120"].title, url: prev["ACME-120"].url, before: facts(prev["ACME-120"]), after: null, left: { cause: "done", state: "Done", to: null } });
+  log.push({ at: iso(today), key: "ACME-131", title: prev["ACME-131"].title, url: prev["ACME-131"].url, before: facts(prev["ACME-131"]), after: null, left: { cause: "reassigned", state: null, to: "bob" } });
+  return { version: 1, sweeps: [{ at: iso(today), complete: true, pages: 4, issues: byKey(now_) }, { at: iso(fri), complete: true, pages: 4, issues: prev }], log,
+    last: { at: iso(today), trigger: "morning", ok: true, complete: true, pages: 4, reads: 2, durationMs: 4200, error: null, total: now_.length },
+    seen: null, morningDay: day(now), viewer: "user-alice", dismissed: [] };
+}
+async function briefSinceShots({ shoot, call, home }) {
+  const file = join(home, "plugin-data", "follow-up", "linear-queue.json");
+  // Two issues already have a workspace (a linked Linear key; keys the fake Linear knows), so the queue shows its workspace chip, the filters'
+  // counts differ, and the brief says "<workspace> has it".
+  const { workspaces } = await call("follow.list", {});
+  for (const [key, title] of [["APP-139", "Webhook signing"], ["APP-151", "Invoice PDFs"]]) {
+    const w = workspaces.find(x => x.title === title);
+    if (w) await call("follow.set-linked-items", { workspaceId: w.id, action: "add", ref: key }).catch(e => log(`brief-since: couldn't link ${key}: ${e.message}`));
+  }
+  const seed = () => fs.writeFile(file, JSON.stringify(briefSinceQueue()));
+  const each = async (name, drive) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      await seed();
+      await shoot(`mb-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openHome(page);
+        await drive(page, viewport.width < 768);
+        await page.waitForTimeout(400);
+      });
+    }
+  };
+  // Phones: the brief is its own row on Home's list; the Since block sits under the headline.
+  const brief = async (page, phone) => {
+    if (phone) await page.getByText("Morning brief", { exact: true }).filter({ visible: true }).first().click();
+    const head = page.getByText(/your Linear queue$/).filter({ visible: true }).first();
+    await head.waitFor({ timeout: 20_000 });
+    await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+  };
+  await each("since", brief);
+  await each("queue-screen", async (page, phone) => {
+    await brief(page, phone);
+    await page.getByRole("link", { name: /Open your Linear queue/ }).filter({ visible: true }).first().click();
+    await page.getByText("Your Linear queue", { exact: true }).filter({ visible: true }).first().waitFor();
+    await page.getByText(/^Urgent · 1$/).filter({ visible: true }).first().waitFor();
+  });
+  // The raised issue is the first row of Needs you; hovering it reveals its x (invariant 59).
+  await each("raised", async (page, phone) => {
+    const row = page.getByLabel(/^Needs you: ACME-142 raised Low → High/).filter({ visible: true }).first();
+    await row.waitFor({ timeout: 20_000 });
+    if (!phone) await row.hover();
+  });
 }
 
 async function settingsTabsShots({ shoot, out }) {

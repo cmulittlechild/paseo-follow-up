@@ -4,8 +4,8 @@ import { readError, linearMissing } from "./linear-issues";
 import type { LinearIssue } from "../shared/linear-issues";
 import {
   BRIEF_SETTINGS_DEFAULT, QUEUE, briefSince, byUrgency, changeLine, changesSince, current, diffSweeps, emptyQueueFile, leftCause, leftKeys, markSeen, missedRead, morningDue,
-  priorityName, pruneLog, queueFileSchema, queueIssues, toQueueIssue, workdaySince, zoned,
-  type BriefSettings, type Clock, type LogEntry, type QueueChange, type QueueFile, type QueueIssue, type Sweep, type SweepTrigger,
+  priorityName, pruneLog, queueFileSchema, queueIssues, raisedNeeds, toQueueIssue, workdaySince, zoned,
+  type BriefSettings, type RaisedNeed, type Clock, type LogEntry, type QueueChange, type QueueFile, type QueueIssue, type Sweep, type SweepTrigger,
 } from "../shared/linear-queue";
 
 export class LinearQueueStore extends JsonFileStore<QueueFile> {
@@ -56,6 +56,8 @@ export type QueueView = {
   groups: { priority: number; name: string; count: number; issues: (QueueIssue & { workspace: { workspaceId: string; title: string } | null; change: string | null })[] }[];
   counts: { all: number; noWorkspace: number; changed: number };
   more: number;
+  /** Decision Q8: raises to Urgent or High on issues with no workspace, not dismissed. Home shows them in Needs you. */
+  raised: RaisedNeed[];
 };
 
 /**
@@ -165,6 +167,7 @@ export class LinearQueue {
       // the-queue-is-whole: a partial sweep replaces only a partial one (or nothing), never a complete one.
       else if (!f.sweeps.some(s => s.complete)) f.sweeps = [next];
       if (entries.length || f.log.some(e => started - Date.parse(e.at) > QUEUE.logDays * 86_400_000)) f.log = [...pruneLog(f.log, started), ...entries];
+      f.dismissed = f.dismissed.filter(d => started - Date.parse(d.at) <= QUEUE.logDays * 86_400_000);
       f.last = { at, trigger, ok: true, complete, pages, reads, durationMs: this.now() - started, error: partial, total: Object.keys(issues).length };
     });
     return { ok: true, complete, total: Object.keys(issues).length, pages, reads, changes: entries.length, error: partial, durationMs: this.now() - started, trigger };
@@ -209,7 +212,28 @@ export class LinearQueue {
       since, changes, groups,
       counts: { all: all.length, noWorkspace: all.filter(i => !i.workspace).length, changed: all.filter(i => i.change).length },
       more: Math.max(0, filtered.length - shown.length),
+      raised: raisedNeeds(file, key => workspaces.has(key)),
     };
+  }
+
+  /**
+   * Decision Q8: dismiss a raised issue's Needs-you item (its small x, or `dismiss_item {issue}`), or bring it back.
+   * Only this record changes; nothing is sent. The item returns if the issue is raised again.
+   */
+  async dismissRaise(key: string, undo: boolean): Promise<{ name: string }> {
+    const workspaces = await (this.d.workspaces?.().catch(() => new Map()) ?? Promise.resolve(new Map()));
+    return this.d.store.mutate(f => {
+      if (undo) {
+        if (!f.dismissed.some(d => d.key === key)) throw new Error(`${key} isn't dismissed.`);
+        f.dismissed = f.dismissed.filter(d => d.key !== key);
+        return { name: key };
+      }
+      const need = raisedNeeds(f, k => workspaces.has(k)).find(n => n.key === key);
+      // Moot, not failed: it left Needs you by itself (a workspace, lowered again, out of the queue) before the click.
+      if (!need) throw new Error(`${key} is already gone from Needs you.`);
+      f.dismissed = [...f.dismissed.filter(d => d.key !== key), { key, at: need.at }];
+      return { name: key };
+    }).finally(() => this.d.onChange?.());
   }
 
   /**

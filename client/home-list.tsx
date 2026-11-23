@@ -50,6 +50,8 @@ export type HomeListProps = {
   top?: ReactNode;
   /** Phones: a row placed right after the Needs-you group (the setup offer), so it never pushes the first ask down. */
   afterNeeds?: ReactNode;
+  /** Decision Q8's raised Linear issues, drawn first in Needs you when `model.raised` counts any. */
+  raised?: ReactNode;
   /** Phones: the action under the "Nothing followed yet" empty state. */
   emptyAction?: ReactNode;
   /** While searching: one flat ranked list instead of the groups. */
@@ -90,7 +92,7 @@ export type HomeListProps = {
 
 const noMenu: OpenRowMenu = () => undefined;
 
-export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow, keys, selectedBg }: HomeListProps) {
+export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, raised, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow, keys, selectedBg }: HomeListProps) {
   const c = theme.colors;
   const [openMenu, setOpenMenu] = useState<RowMenuOpen | null>(null);
   const build = menu.build;
@@ -129,6 +131,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
         {emptyAction ? <View style={{ flexDirection: "row", marginTop: 6 }}>{emptyAction}</View> : null}
       </View>;
       case "slot": return <View style={{ paddingVertical: 10 }}>{afterNeeds}</View>;
+      case "raised": return <>{raised}</>;
       case "hold": return <HoldLine theme={theme} text={item.text} dense={dense} touch={touch} />;
       // The list's own Row (search-row-is-the-list-row); the keyboard-active result wears the selected style.
       case "result": return <Row s={item.s} sig={item.s.sig} hit={item.hit} theme={theme} dense={dense} touch={touch} selected={item.index === activeResult} menuOpen={menuKey === item.s.key}
@@ -156,7 +159,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
         </View>;
       }
     }
-  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, emptyAction, onMenu, menuKey, onSendNow, selectedBg]);
+  }, [theme, c, dense, touch, selectedKey, onSelect, briefLine, renderExpanded, toggle, toggleProject, activeResult, onResult, pickResult, model, overseer?.state, overseer?.line, overseer?.ranges, stackOverseer, asking, afterNeeds, raised, emptyAction, onMenu, menuKey, onSendNow, selectedBg]);
 
   const listRef = useRef<NativeFlatList<Entry>>(null);
   const rootRef = useRef<View>(null);

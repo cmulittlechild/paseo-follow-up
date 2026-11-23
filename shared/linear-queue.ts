@@ -122,6 +122,8 @@ export type LogEntry = z.infer<typeof logEntrySchema>;
 export const SWEEP_TRIGGERS = ["morning", "open", "manual", "agent", "ranker"] as const;
 export type SweepTrigger = typeof SWEEP_TRIGGERS[number];
 
+/** Dismissed raises kept: one per raised issue, pruned with the log, so this only bounds a corrupt file. */
+export const QUEUE_DISMISSED_MAX = 500;
 export const queueFileSchema = z.object({
   version: z.literal(1),
   /** The last two complete sweeps, newest first; or, before any sweep was complete, the newest partial one alone. */
@@ -141,9 +143,14 @@ export const queueFileSchema = z.object({
   morningDay: z.string().nullable(),
   /** The developer's Linear user id (`get_user me`), read once when a sweep first has issues to look up. */
   viewer: z.string().nullable().default(null),
+  /**
+   * Raised-issue Needs-you items the developer dismissed (decision Q8): the issue's key and the raise's sweep time, so
+   * a later raise of the same issue comes back. Pruned with the log.
+   */
+  dismissed: z.array(z.object({ key: z.string().min(1).max(30), at: z.string() })).max(QUEUE_DISMISSED_MAX).default([]),
 });
 export type QueueFile = z.infer<typeof queueFileSchema>;
-export const emptyQueueFile = (): QueueFile => ({ version: 1, sweeps: [], log: [], last: null, seen: null, morningDay: null, viewer: null });
+export const emptyQueueFile = (): QueueFile => ({ version: 1, sweeps: [], log: [], last: null, seen: null, morningDay: null, viewer: null, dismissed: [] });
 
 /** Bounds. PAGES_MAX × PAGE_SIZE issues is the most a sweep reads before it says "partial". */
 export const QUEUE = {
@@ -317,4 +324,19 @@ export function leftCause(issue: (Pick<LinearIssue, "stateType" | "state"> & { a
   if (issue.stateType && !stateTypes.includes(issue.stateType)) return { cause: "moved", state: issue.state, to: null };
   // Still in a queue state but not in the developer's list: someone else has it (or no one).
   return { cause: "reassigned", state: issue.state, to: issue.assignee ?? null };
+}
+
+/** A raise that needs the developer (decision Q8): to Urgent or High, on an issue still in the queue with no workspace. */
+export type RaisedNeed = Pick<QueueChange, "key" | "title" | "url" | "priority" | "priorityBefore" | "due" | "at">;
+/**
+ * Decision Q8: every raise to Urgent or High in the log window, on an issue still in the snapshot with no workspace,
+ * that the developer hasn't dismissed since it was raised. A raise taken back, a workspace, or the issue leaving ends it.
+ */
+export function raisedNeeds(file: Pick<QueueFile, "log" | "sweeps" | "dismissed">, hasWorkspace: (key: string) => boolean): RaisedNeed[] {
+  const snap = current(file);
+  if (!snap) return [];
+  return changesSince(file.log, null)
+    .filter(c => c.kinds.includes("raised") && (c.priority === 1 || c.priority === 2) && !!snap.issues[c.key] && !hasWorkspace(c.key))
+    .filter(c => !file.dismissed.some(d => d.key === c.key && d.at >= c.at))
+    .map(c => ({ key: c.key, title: c.title, url: c.url, priority: c.priority, priorityBefore: c.priorityBefore, due: c.due, at: c.at }));
 }

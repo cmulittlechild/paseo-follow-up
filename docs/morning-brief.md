@@ -94,6 +94,36 @@ elsewhere) unless Settings picks the days. The ranker's automatic runs use the s
   root agents and main agents get them; contributors, recovery agents and subagents don't (invariant 4).
 - An issue "has a workspace" when an unarchived workspace has its key linked (New's rule).
 
+## In the brief
+
+The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws the queue under Catch up
+(`client/brief-since.tsx`, words from `shared/brief-since.ts`). Opening the pane is the developer's read: its one
+`follow.linear-queue` call passes `open: true` (`a-change-is-against-what-you-last-saw`); nothing else does.
+
+- **The Since block:** "Since Friday · your Linear queue" (`sinceWords`: a time today, yesterday, a weekday this week,
+  else a date), at most `SINCE_LINES` (5) lines in `changesSince`'s order. New Low and No-priority issues fold into
+  one "+N new, Low" line (never on another issue's line, which read as that issue's doing), and issues that left share one line
+  ("2 left your queue: ACME-120 done, ACME-131 reassigned to bob"). The rest are counted, and the Changed filter has them.
+  A line for an Urgent or High issue that is new or raised and has no workspace carries New's first two actions,
+  bordered (Catch up stays the one filled button, decision Q9), and ⋯, which opens New on the issue. An action runs
+  `follow.dispatch` for that issue, the same call New makes, and its record (with Undo) shows on Home; a source New
+  can't place alone opens New on it. A line whose issue has a workspace names it and opens it. A raised issue that is in
+  Needs you keeps its line here without actions: the Needs-you item carries its Start…, one set of actions per issue.
+  Buttons keep their whole label and wrap to a second row rather than truncate.
+- **The queue screen** (`?view=queue`, from "47 issues by priority ›"): every issue by Linear priority (Urgent, High,
+  Medium, Low, No priority), with All / No workspace / Changed (decision Q10) and each count. A row is the key, title,
+  state and due, the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
+  issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue`. On
+  phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.
+- **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
+  no workspace (`raisedNeeds`, over the log window) is the first row of Home's Needs you group, shaped like its rows
+  (amber ↑, the key, "Raised", "Low → High · title · no workspace yet", the raise's age), and counts in the group's
+  header and the strip (`HomeModel.raised`; Catch up's deck stays workspaces). It has Start… and the same two-click
+  Remove as every Needs-you item (`follow.dismiss` with `issue`; agents: `dismiss_item {issue}`).
+  Dismissing records the key and the raise's sweep time (`linear-queue.json` `dismissed`), so a later raise brings it
+  back; a workspace for it, a raise taken back, or the issue leaving ends it without one. `linear_queue` returns them
+  as `raised`.
+
 ## Settings
 
 Settings → Morning brief (`client/morning-brief-settings.tsx`, `shared/morning-brief.ts`, `server/morning-brief.ts`),

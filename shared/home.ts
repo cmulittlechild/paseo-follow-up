@@ -95,6 +95,8 @@ export type Workstream = {
 export type HomeGroup = { id: HomeGroupId; title: string; items: Workstream[] };
 export type HomeModel = {
   groups: HomeGroup[]; needs: number; byKey: Map<string, Workstream>;
+  /** Decision Q8's raised Linear issues (no workspace, so no row of their own): they head Needs you and count in it. */
+  raised?: number;
   /** One hold line per machine, shown once at the top of Sending, and only while Sending has rows. */
   hold: string | null;
   /** The sort the groups are in, and when fresh external priorities were ranked (null: "By urgency"). */
@@ -345,10 +347,11 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
  * and the brief headline all read this, so they never disagree.
  */
 export type HomeCounts = Record<HomeGroupId, number> & { archivable: number };
-export function homeCounts(model: Pick<HomeModel, "groups">): HomeCounts {
+export function homeCounts(model: Pick<HomeModel, "groups" | "raised">): HomeCounts {
   const out = Object.fromEntries(HOME_GROUPS.map(g => [g, 0])) as HomeCounts;
   out.archivable = 0;
   for (const g of model.groups) { out[g.id] = g.items.length; if (g.id === "quiet") out.archivable = g.items.filter(s => s.readyToArchive).length; }
+  out.needs += model.raised ?? 0;
   return out;
 }
 

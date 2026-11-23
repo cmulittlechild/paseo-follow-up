@@ -878,10 +878,11 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.dismissQuestionRpc, async ({ workspaceId, questionId, undo }, context) => { await requireReady(); return engine.dismiss(workspaceId, questionId, !!undo, actorOf(context)); });
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: one path for every kind; only records change.
-  handle(rpc.dismissRpc, async ({ workspaceId, key, agentId, undo }, context) => {
+  handle(rpc.dismissRpc, async ({ workspaceId, key, agentId, issue, undo }, context) => {
     await requireReady();
     const actor = actorOf(context);
     if (agentId) return inbox.dismiss(agentId, !!undo, actor);
+    if (issue) return linearQueue!.dismissRaise(issue, !!undo);
     return store.mutateWorkspace(workspaceId!, w => {
       const r = undo ? undoDismissItem(w, key!, actor) : dismissItem(w, key!, actor, Date.now());
       w.updatedAt = new Date().toISOString();
