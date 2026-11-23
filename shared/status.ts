@@ -165,7 +165,7 @@ function computeBatchView(w: Workspace, now: number): BatchView | null {
   }
   const recovering = w.batches.find(b => recoveryBatch(b) && ["sending", "sent"].includes(b.state));
   if (recovering) return { batch: recovering, kind: "recovery", phase: "sent", recipient: "recovery", waitingOn: "agent", line: "Recovery agent is rebuilding the PR list" };
-  const stuck = work.find(b => ["blocked", "uncertain"].includes(b.state));
+  const stuck = work.find(b => ["blocked", "uncertain"].includes(b.state) && !b.movedOn);
   if (stuck) return { batch: stuck, kind: completionCheck(stuck) ? "finish" : "repairs", phase: "stuck", recipient: recipientOf(stuck), waitingOn: "you",
     line: stuckLine(stuck) };
   const repairs = work.find(b => b.state === "pending" && !completionCheck(b));

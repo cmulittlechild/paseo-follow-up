@@ -138,7 +138,8 @@ test("workspace controls share the panel's mutator and its guards", async t => {
   await f.agent.run("orchestrator", "clear_hold", { workspace: "workspace" });
   await f.agent.run("orchestrator", "retry_batch", { workspace: "workspace", batchId: "b1" });
   const w = await f.get();
-  assert.equal(w.enable_auto_sends, true); assert.equal(w.hold, null); assert.deepEqual(w.batches.map(b => [b.state, b.attempts]), [["cancelled", 1], ["pending", 2]]);
+  assert.equal(w.enable_auto_sends, true); assert.equal(w.hold, null); // An answered batch keeps its answer and is set aside (invariant 104), never rewritten as cancelled.
+  assert.deepEqual(w.batches.map(b => [b.state, b.attempts, b.movedOn?.why ?? null]), [["blocked", 1, "retried"], ["pending", 2, null]]);
   assert.deepEqual(f.notes.map(n => n.action), ["set_auto_send", "clear_hold", "retry_batch"]);
   await f.store.mutate(s => { s.workspaces[0].enable_tracking = false; });
   await assert.rejects(f.agent.run("orchestrator", "set_auto_send", { workspace: "workspace", value: false }), /Activate this workspace/);

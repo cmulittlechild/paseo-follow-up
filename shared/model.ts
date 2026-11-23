@@ -110,6 +110,12 @@ export const obligationSchema = z.object({
 export const taskSchema = z.object({
   key: idSchema, kind: z.enum(["conflict", "review", "checks", "restack", "obligation", "inventory", "completion"]),
   target: idSchema, title: z.string(), fingerprint: z.string(),
+  /**
+   * What the condition is made of, when it has parts that change on their own: a review's open threads as
+   * `id@updatedAt`. A later message about the same task says only what moved since the last one (taskUpdate in
+   * shared/send-decision.ts). Absent on older records and on tasks without parts.
+   */
+  parts: z.array(z.string().max(300)).optional(),
 });
 export const batchSchema = z.object({
   id: idSchema, tasks: z.array(taskSchema),
@@ -133,6 +139,19 @@ export const batchSchema = z.object({
    * conditions wait as the developer's held "person" tasks (invariant a-human-only-outcome-is-a-human-item).
    */
   humanOnly: z.boolean().optional(),
+  /**
+   * The agent acknowledged it in_progress: it (or its own subagent) is already working on it. Settled completed, not a
+   * failure; its unchanged conditions are not sent again while that work runs (inProgressHolds, shared/send-decision.ts),
+   * only once the workspace is quiet or the condition changes (invariant a-changed-review-updates-never-cancels).
+   */
+  inProgress: z.boolean().optional(),
+  /**
+   * A sent batch whose conditions moved on after it went out: `changed` (the same task, new content on GitHub, which the
+   * next message carries), `gone` (nothing it asked for still applies), `retried` (the developer sent it again) or
+   * `duplicate` (the same conditions went out again while this one stood). A batch the agent answered keeps its state and
+   * result; this only takes it out of Needs you and the queue (holdsQueue, stuckRepair). Never a failure on screen.
+   */
+  movedOn: z.object({ at: z.string(), why: z.enum(["changed", "gone", "retried", "duplicate"]), reason: z.string() }).optional(),
 });
 export const workspaceSchema = z.object({
   id: idSchema, title: textSchema, goal: textSchema, mainAgentId: idSchema,
@@ -282,7 +301,7 @@ export function completionGate(w: ListWorkspace, now = Date.now()): CompletionGa
   for (const o of followUpObligations(w).filter(o => o.status === "done" && o.communication && !replyRecorded(o.communication))) add("agent", `Record the sent reply for ${o.title}`);
   const open = w.batches.filter(b => !recoveryBatch(b) && !completionCheck(b));
   if (open.some(b => ["sending", "sent"].includes(b.state))) add("agent", "Acknowledge the open follow-up batch");
-  if (open.some(b => ["blocked", "uncertain"].includes(b.state))) add("developer", "Retry or dismiss the stuck follow-up batch");
+  if (open.some(b => ["blocked", "uncertain"].includes(b.state) && !b.movedOn)) add("developer", "Retry or dismiss the stuck follow-up batch");
   if (open.some(b => b.state === "pending")) add("developer", "Send or dismiss the queued repairs");
   if (w.prActions.some(a => ["sending", "uncertain"].includes(a.state))) add("developer", "Check the outstanding PR action");
   for (const q of (w.questions ?? []).filter(questionOpen)) add("developer", `Answer or withdraw ${q.id} (${q.title})`);
@@ -307,7 +326,7 @@ export function liveWorkingTask<W extends ListWorkspace>(w: W): W["obligations"]
 export function summary(w: ListWorkspace, now = Date.now()): { status: Status; label: string; reason: string } {
   const obligations = followUpObligations(w);
   if (w.hold) return { status: "needs-you", label: "Needs you", reason: w.hold };
-  const blocked = w.batches.find(b => !recoveryBatch(b) && ["blocked", "uncertain"].includes(b.state) && !(w.completion && completionCheck(b)));
+  const blocked = w.batches.find(b => !recoveryBatch(b) && ["blocked", "uncertain"].includes(b.state) && !b.movedOn && !(w.completion && completionCheck(b)));
   if (blocked) return { status: "needs-you", label: "Needs you", reason: blocked.result || "Follow-up needs a decision" };
   const question = (w.questions ?? []).find(questionOpen);
   if (question) return { status: "needs-you", label: "Needs you", reason: `${question.id}: ${question.title}` };

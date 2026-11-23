@@ -193,6 +193,7 @@ test("a person's task is never sent to a free main agent, and a moot stuck batch
   await f.store.mutate(s => { s.workspaces[0].prs[1].snapshot = snapshot({ state: "MERGED" }); });
   f.advance(61_000); await f.engine.tick();
   w = await f.get();
-  assert.notEqual(w.batches.find(b => b.id === second.id)?.state, "blocked", "the moot blocked batch settled");
+  // The agent's answer keeps its outcome (invariant 104); moving on takes it out of Needs you and the queue.
+  assert.equal(w.batches.find(b => b.id === second.id)?.movedOn?.why, "gone", "the moot blocked batch settled");
   assert.ok(!needsYou(w, f.now()).some(i => i.kind === "retry"));
 });
