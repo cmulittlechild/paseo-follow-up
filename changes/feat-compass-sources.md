@@ -1,2 +1,2 @@
-- Compass: pick the people whose words set your priorities, like your product lead's DM, in Settings → Morning brief. Each workday morning Follow-up reads what they said, keeps a note of each priority with their words and a date, and AI priority ranks your work by it.
+- Compass, in Settings → Morning brief: pick the people whose words set your priorities, like your product lead's DM. Each workday morning Follow-up notes what they asked for, in their words, and AI priority ranks by it.
 - Tell Compass how to read each source in your own words ("P0 means today"), and teach it your names for things with a glossary. Agents can set it up for you too.
