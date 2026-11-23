@@ -95,7 +95,17 @@ export const setFollowSettingsRpc = defineRpc({ name: "follow.set-follow-setting
   workspace: z.object({ workspaceId: idSchema, follow: z.boolean().optional(), enable_auto_sends: z.boolean().optional() }).optional(),
 }), output: followSettingsSchema });
 /** External priorities for Home's Priority sort (written by the set_priorities agent tool). */
-export const prioritiesRpc = defineRpc({ name: "follow.priorities", input: z.object({}), output: z.object({ items: z.array(prioritySchema) }) });
+/**
+ * Decision Q8's part of Needs you (raised Linear issues with no workspace), computed by the worker from the queue it
+ * holds, plus the zone their due dates read in and the queue's revision (a sweep or a dismissal moves it, so an open
+ * brief pane re-reads). Rides the home feed, and on 0.15 the priorities poll: never a read of its own.
+ */
+export const queueNeedsSchema = z.object({
+  raised: z.array(z.object({ key: z.string(), title: z.string(), url: z.string().nullable(), priority: z.number(), priorityBefore: z.number().nullable(), due: z.string().nullable(), at: z.string() })),
+  timeZone: z.string(),
+  revision: z.string(),
+});
+export const prioritiesRpc = defineRpc({ name: "follow.priorities", input: z.object({}), output: z.object({ items: z.array(prioritySchema), queue: queueNeedsSchema.optional() }) });
 /** Provider session limits from the Smart Session plugin, for Home's meters. Hidden when it isn't installed. */
 /** Summary: collapsed reads the cache; open may start an overview; refresh always does. */
 export const workspaceAboutRpc = defineRpc({ name: "follow.workspace-about", input: z.object({ workspaceId: idSchema, open: z.boolean().optional(), refresh: z.boolean().optional() }), output: aboutViewSchema });
@@ -133,8 +143,10 @@ export const dismissQuestionRpc = defineRpc({ name: "follow.dismiss-question", i
  * item by its key (NeedItem.key; "question:Qn" closes the question as dismissed), or an agent's turn-end brief by its
  * agentId. Sends nothing to any agent. `name` is what the toast calls it ("Q3", or the row's title).
  */
-export const dismissRpc = defineRpc({ name: "follow.dismiss", input: z.strictObject({ workspaceId: idSchema.optional(), key: z.string().min(1).max(400).optional(), agentId: idSchema.optional(), undo: z.boolean().optional() })
-  .refine(i => !!i.agentId !== !!(i.workspaceId && i.key), "Give workspaceId and key for a Needs-you item, or agentId for an agent's brief."),
+export const dismissRpc = defineRpc({ name: "follow.dismiss", input: z.strictObject({ workspaceId: idSchema.optional(), key: z.string().min(1).max(400).optional(), agentId: idSchema.optional(),
+  /** Decision Q8: a raised Linear issue's Needs-you item (it has no workspace), by its key. */
+  issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]*-\d+$/).max(30).optional(), undo: z.boolean().optional() })
+  .refine(i => [!!i.agentId, !!(i.workspaceId && i.key), !!i.issue].filter(Boolean).length === 1, "Give workspaceId and key for a Needs-you item, agentId for an agent's brief, or issue for a raised Linear issue."),
   output: z.object({ name: z.string() }) });
 export const answerQuestionRpc = defineRpc({ name: "follow.answer-question", input: z.object({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional(), action: z.enum(["send", "copy", "chat", "resend"]) }), output: z.object({ workspace: workspaceSchema, question: questionSchema }) });
 export const setSpecRpc = defineRpc({ name: "follow.set-spec", input: z.strictObject({ agentId: idSchema, url: z.string().trim().min(1).max(2000), title: z.string().trim().max(120).optional() }), output: z.object({ workspaceId: idSchema, spec: specSchema.nullable(), applied: z.boolean(), message: z.string() }) });
@@ -336,7 +348,8 @@ export const linearQueueInputSchema = z.strictObject({
   open: z.boolean().optional(),
 });
 export const linearQueueRpc = defineRpc({ name: "follow.linear-queue", input: linearQueueInputSchema, output: z.unknown() });
-export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({}), output: z.unknown() });
+// `wait: false` (the queue screen's Sweep now): reply at once with `{ running: true }` and poll the view; agents wait.
+export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({ wait: z.boolean().optional() }), output: z.unknown() });
 // Settings → Morning brief (shared/morning-brief.ts, server/morning-brief.ts): the queue's settings, the plan link and
 // its finder, and the pickers' chat search.
 export const briefSettingsRpc = defineRpc({ name: "follow.brief-settings", input: z.strictObject({}), output: z.unknown() });
@@ -376,6 +389,8 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   dispatches: z.array(dispatchRecordSchema).optional(),
   /** Whether any repository has PR statistics (on or paused): Home's PR stats icon shows only then. Absent from an older worker. */
   prStats: z.boolean().optional(),
+  /** The raised Linear issues in Needs you (Q8) and the queue's revision; pushed when a sweep or a dismissal changes them. */
+  queue: queueNeedsSchema.optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
 /**

@@ -36,19 +36,20 @@ export const focusRing = (c: Colors, focused: boolean | undefined) => focused &&
  * One bar button. Filled when primary; a disabled primary drops its fill (neutral surface, muted text) so it never
  * reads as live. `trailing` draws its icon after the label (More ▾).
  */
-export function BarBtn({ b, primary, c, compact, disabled, onPress, grow, trailing }: { b: BarButton | { name: string; icon: string; key: string | null }; primary: boolean; c: Colors; compact: boolean; disabled: boolean; onPress: () => void; grow?: boolean; trailing?: boolean }) {
+/** `small`: a desktop row's own action (32px, DESIGN's desktop control), not a dialog's bar. Phones stay 44. */
+export function BarBtn({ b, primary, c, compact, disabled, onPress, grow, trailing, small }: { b: BarButton | { name: string; icon: string; key: string | null }; primary: boolean; c: Colors; compact: boolean; disabled: boolean; onPress: () => void; grow?: boolean; trailing?: boolean; small?: boolean }) {
   const filled = primary && !disabled;
   const fg = filled ? c.accentForeground : disabled ? c.foregroundMuted : c.foreground;
-  const icon = <Icon name={b.icon} size={15} color={fg} />;
+  const icon = <Icon name={b.icon} size={small && !compact ? 14 : 15} color={fg} />;
   return <Pressable accessibilityRole="button" accessibilityLabel={b.key && Platform.OS === "web" ? `${b.name} (${b.key})` : b.name} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={(s: Hover & { focused?: boolean }) => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, minHeight: compact ? (primary ? 48 : 44) : 36, paddingHorizontal: 14, borderRadius: 8,
+    style={(s: Hover & { focused?: boolean }) => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: small && !compact ? 6 : 8, minHeight: compact ? (primary ? 48 : 44) : small ? 32 : 36, paddingHorizontal: small && !compact ? 10 : 14, borderRadius: 8,
       // A grown button takes the free width but never less than its name: the row wraps instead (an action's name is never cut).
       ...(grow ? { flexGrow: 1 } : {}),
       ...(filled ? { backgroundColor: s.pressed ? withAlpha(c.accent, 0.85) : s.hovered ? withAlpha(c.accent, 0.92) : c.accent }
         : { borderWidth: 1, borderColor: c.border, backgroundColor: disabled ? c.surface1 : s.pressed ? c.surface2 : s.hovered ? c.surface1 : c.surface0 }),
       ...focusRing(c, s.focused) })}>
     {!trailing && icon}
-    <Text numberOfLines={1} style={{ color: fg, fontSize: compact ? 15 : 13, fontWeight: "600", flexShrink: 0 }}>{b.name}</Text>
+    <Text numberOfLines={1} style={{ color: fg, fontSize: compact ? 15 : small ? 12 : 13, fontWeight: "600", flexShrink: 0 }}>{b.name}</Text>
     {trailing && icon}
     {b.key && !compact && Platform.OS === "web" && <Text style={{ color: fg, opacity: 0.75, fontSize: 12 }}>{b.key === "⌥↵" && !isMac() ? "Alt ↵" : b.key}</Text>}
   </Pressable>;

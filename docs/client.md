@@ -142,7 +142,7 @@ worktree's status, so while it's unknown (and no diff) the line says uncommitted
 the folder is clean only when Paseo says so. An Undo from Paseo's own app cancels the archive: the row stays and the
 toast says so. A refusal shows the error toast with Paseo's reason and the
 row stays. Agents archive with Paseo's own `archive_workspace` tool (the `ROW_ACTIONS` exemption). Follow-up never
-archives by itself (invariants 6 and 86, `tests/archive-on-click.test.ts`).
+archives by itself (invariants 6 and 87, `tests/archive-on-click.test.ts`).
 
 The same menu opens from the workspace panel header's More button (`client/panel-menu.tsx`, the workspace's own
 `ws:<id>` row) and from the rows of Follow-up's sidebar view (`client/sidebar-view.tsx`), so there is one menu

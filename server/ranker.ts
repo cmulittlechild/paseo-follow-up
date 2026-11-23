@@ -304,7 +304,6 @@ export class Ranker {
     const [s, role] = await Promise.all([this.state(), this.d.role()]);
     if (!this.dueNow && s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
     if (await this.d.tight?.()) return null;
-    this.dueNow = false;
     return this.run({ trigger: "schedule" });
   }
 
@@ -320,6 +319,9 @@ export class Ranker {
     const base = (patch: Partial<RankResult>): RankResult => ({ ok: false, trigger, dryRun, skipped: null, priorities: [], notStarted: [], health: {}, healthLine: "", costUsd: null, durationMs: this.now() - started, error: null, dropped: [], ...patch });
     if (!await this.d.enabled()) return base({ skipped: "off" });
     if (trigger === "schedule" && await this.d.tight?.()) return base({ skipped: "tight" });
+    // The run starts here: only now does it take markDue's mark, so a skip above (off, or the governor turning tight
+    // between tick's check and this one) keeps today's Ask items due for the next tick.
+    this.dueNow = false;
     const s = await this.state();
     const role = await this.d.role();
     const clock = await this.clock();

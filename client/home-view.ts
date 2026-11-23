@@ -1,6 +1,6 @@
 import type { DispatchRecord } from "../shared/dispatch";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { contextAskRpc, contextListRpc, dispatchRecordsRpc, displayFeed, homeFeed, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, prStatsSettingsRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
+import { contextAskRpc, contextListRpc, dispatchRecordsRpc, displayFeed, homeFeed, queueNeedsSchema, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, prStatsSettingsRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { Priority } from "../shared/priorities";
@@ -8,6 +8,10 @@ import { DEFAULT_SORT, isSortMode, type SortMode } from "../shared/sort";
 import { homeSortSync } from "../shared/display";
 import type { AgentLite } from "../shared/search";
 import { NO_USAGE, USAGE_POLL_MS, type Usage } from "../shared/usage";
+import type { z } from "zod";
+
+export type QueueNeeds = z.infer<typeof queueNeedsSchema>;
+const NO_QUEUE: QueueNeeds = { raised: [], timeZone: "UTC", revision: "" };
 import { onVisible, whileVisible } from "./visibility";
 import type { ContextRequest } from "../shared/catch-up";
 
@@ -49,6 +53,12 @@ export function createHomeExtras(client: PluginClientContext) {
   let dispatches: DispatchRecord[] = [];
   /** Whether any repository has PR statistics: Home's PR stats icon. Pushed on the home feed; on 0.15, read once at start. */
   let prStatsOn = false;
+  /**
+   * The raised Linear issues in Needs you (Q8) and the queue's revision: the worker's one answer, pushed on the home
+   * feed (on 0.15, carried by the priorities poll). Home's model, the sidebar badge and the brief pane all read it.
+   */
+  let queue: QueueNeeds = NO_QUEUE;
+  const setQueue = (next: QueueNeeds | undefined) => { if (!next || JSON.stringify(next) === JSON.stringify(queue)) return false; queue = next; return true; };
   const setContext = (next: ContextRequest[]) => { if (JSON.stringify(next) === JSON.stringify(context)) return false; context = next; return true; };
   const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
   const agents = new Map<string, AgentLite>();
@@ -93,9 +103,10 @@ export function createHomeExtras(client: PluginClientContext) {
   const pollSort = () => poll(PRIORITY_POLL_MS, readSort);
   const pollHome = () => together([
     poll(PRIORITY_POLL_MS, async () => {
-      const next = (await client.rpc(prioritiesRpc, {})).items;
-      if (JSON.stringify(next) === JSON.stringify(priorities)) return false;
-      priorities = next; return true;
+      const answer = await client.rpc(prioritiesRpc, {});
+      const queued = setQueue(answer.queue);
+      if (JSON.stringify(answer.items) === JSON.stringify(priorities)) return queued;
+      priorities = answer.items; return true;
     }),
     // The ranker's last run and source health, with the priorities (the ranker runs at most hourly).
     poll(PRIORITY_POLL_MS, readRank),
@@ -125,6 +136,7 @@ export function createHomeExtras(client: PluginClientContext) {
       if (event.context) setContext(event.context);
       if (event.dispatches) dispatches = event.dispatches;
       if (event.prStats !== undefined) prStatsOn = event.prStats;
+      setQueue(event.queue);
       if (event.usage) usage = { ...event.usage, resources: usage.resources };
       if (!event.rank.running) { for (const done of rankWaiters) done(); rankWaiters.clear(); }
       // Smart Session's files can't be watched: read the meters once a minute instead.
@@ -255,6 +267,10 @@ export function createHomeExtras(client: PluginClientContext) {
     refreshDispatches: () => { if (!home || homePolls) void readDispatches(); },
     /** Whether Home shows the PR stats icon (some repository has PR statistics). */
     prStatsOn: () => prStatsOn,
+    /** The raised Linear issues in Needs you and the queue's revision (Q8), from the worker. */
+    queue: () => queue,
+    /** A dismissal on a 0.15 host (or with the feed down): read the answer once now; the feed pushes it itself. */
+    refreshQueue: () => { if (home && !homePolls) return; void client.rpc(prioritiesRpc, {}).then(a => { if (!stopped && setQueue(a.queue)) emit(); }).catch(() => undefined); },
     /** Reads the asks once (Catch up opening or moving on, so a 0.15 host or a dropped feed is never stale for long). */
     async refreshContext() { if (await readContext().catch(() => false)) emit(); },
     /** Asks the Overseer or the card's agent; the ask shows at once, its answer arrives on the feed. */

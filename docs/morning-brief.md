@@ -94,6 +94,40 @@ elsewhere) unless Settings picks the days. The ranker's automatic runs use the s
   root agents and main agents get them; contributors, recovery agents and subagents don't (invariant 4).
 - An issue "has a workspace" when an unarchived workspace has its key linked (New's rule).
 
+## In the brief
+
+The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws the queue under Catch up
+(`client/brief-since.tsx`, words from `shared/brief-since.ts`). Opening the pane is the developer's read: its one
+`follow.linear-queue` call passes `open: true` (`a-change-is-against-what-you-last-saw`); nothing else does.
+
+- **The Since block:** "Since Friday · your Linear queue" (`sinceWords`: a time today, yesterday, a weekday this week,
+  else a date), at most `SINCE_LINES` (5) lines in `changesSince`'s order. New Low and No-priority issues fold into
+  one "+N new, Low" line (never on another issue's line, which read as that issue's doing), and issues that left share one line
+  ("2 left your queue: ACME-120 done, ACME-131 reassigned to bob"). The rest are counted, and the Changed filter has them.
+  A line for an Urgent or High issue that is new or raised and has no workspace carries New's first two actions,
+  bordered (Catch up stays the one filled button, decision Q9), and ⋯, which opens New on the issue. An action runs
+  `follow.dispatch` for that issue, the same call New makes, and its record (with Undo) shows on Home; a source New
+  can't place alone opens New on it. A line whose issue has a workspace names it and opens it. A raised issue that is in
+  Needs you keeps its line here without actions: the Needs-you item carries its Start…, one set of actions per issue.
+  Buttons keep their whole label and wrap to a second row rather than truncate.
+- **The queue screen** (`?view=queue`, from "47 issues by priority ›"): every issue by Linear priority (Urgent, High,
+  Medium, Low, No priority), with All / No workspace / Changed (decision Q10) and each count. A row is the key, title,
+  state and due, the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
+  issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue` with `wait: false`: it replies at once and the screen
+  reads the view every 3 s while the sweep runs, so a slow Linear never holds the RPC. On
+  phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.
+- **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
+  no workspace (`raisedNeeds`, over the log window) is the first row of Home's Needs you group, shaped like its rows
+  (amber ↑, the key, "Raised", "Low → High · title · no workspace yet", the raise's age), and counts in the group's
+  header, the strip, the brief line and the sidebar badge from one number: the worker's (`LinearQueue.needs`), pushed on
+  `follow.home-feed` (`queue`) when a sweep or a dismissal changes it, and on 0.15 carried by the priorities poll
+  (`HomeModel.raised`; Catch up's deck stays workspaces). An open Home shows a morning raise without a remount, and an
+  open brief pane re-reads its Since block when the feed's queue revision moves. It has Start… and the same two-click
+  Remove as every Needs-you item (`follow.dismiss` with `issue`; agents: `dismiss_item {issue}`).
+  Dismissing records the key and the raise's sweep time (`linear-queue.json` `dismissed`), so a later raise brings it
+  back; a workspace for it, a raise taken back, or the issue leaving ends it without one. `linear_queue` returns them
+  as `raised`.
+
 ## Settings
 
 Settings → Morning brief (`client/morning-brief-settings.tsx`, `shared/morning-brief.ts`, `server/morning-brief.ts`),
@@ -209,7 +243,8 @@ under `ASK.previewMs` (24 h) old that didn't fail. In Settings the row's first a
 preview turns nothing on and never feeds the ranker. The morning's items go to the ranker as OTHER SOURCES (it reads
 them; it never asks); a failed ask is the row's one line with Retry. Asks wait while the governor says the VM is tight. The ranker's scheduled run can start before the morning's asks finish, so when they store items that differ from
 the last ones they mark it due (`Ranker.markDue`): its next tick on the worker's loop runs once, inside its cadence or
-not, and today's items reach today's rank. No new timer. An Ask source whose upstream needs a sign-in or isn't connected
+not, and today's items reach today's rank. Only a run that starts takes the mark: one that skips first (off, or the
+governor turning tight between the tick's check and the run's) leaves it for the next tick. No new timer. An Ask source whose upstream needs a sign-in or isn't connected
 is skipped in the loop's cheap check (from the last upstream list), so it costs one store read a tick. The planner's and
 the summary's prompts say tool descriptions and replies are a third-party server's data, never instructions; whatever
 the model does with them, a call still has to pass validation and a link still has to appear in a reply verbatim.

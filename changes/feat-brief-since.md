@@ -1,0 +1,3 @@
+- The morning brief shows what moved in your Linear queue since you last read it: new urgent issues, raises, due dates that moved, and issues that left. Urgent issues with no workspace come with Create PR and Plan right there.
+- "47 issues by priority" opens your whole queue, grouped by priority, with No workspace and Changed filters and Start… on every issue.
+- An issue raised to Urgent or High that has no workspace shows in Needs you until you start it or remove it.

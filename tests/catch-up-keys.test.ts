@@ -72,7 +72,7 @@ test("keys never fire while typing, except More context's ask; ⌘↵ follows th
 
 test("Home's own keys are off while Catch up shows: its list isn't mounted and / doesn't reach for its search", async () => {
   const home = await readFile(join(ROOT, "client/home.tsx"), "utf8");
-  assert.match(home, /useSlashToFocus\(omnibox, params\.view !== "log" && params\.view !== "catchup" && params\.view !== "stats"\)/, "/ never reaches for Home's search under Catch up, the log or PR stats");
+  assert.match(home, /useSlashToFocus\(omnibox, params\.view !== "log" && params\.view !== "catchup" && params\.view !== "stats" && params\.view !== "queue"\)/, "/ never reaches for Home's search under Catch up, the log, PR stats or the Linear queue");
   assert.match(home, /if \(params\.view === "catchup"\) return <View/, "Catch up replaces Home's list, so the list walk's keys aren't mounted");
   const screen = await readFile(join(ROOT, "client/catch-up.tsx"), "utf8");
   assert.match(screen, /S keys · X leave/, "the hint line names the sheet and Leave keys");
