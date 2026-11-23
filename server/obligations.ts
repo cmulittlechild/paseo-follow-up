@@ -5,6 +5,7 @@ import { communicationKey, communicationSchema, replyRecorded, type Communicatio
 import type { TaskTrigger } from "../shared/task-trigger";
 import { currentQuestion } from "../shared/questions";
 import { RECHECK_DAYS } from "../shared/task-due";
+import { sameTask, similarLines, similarOpen } from "../shared/task-dup";
 
 type Update = {
   id?: string; title: string; status: Obligation["status"]; afterPrs?: string[]; evidence?: string;
@@ -24,10 +25,26 @@ type Update = {
   caller?: string;
   /** The agent actually doing it, when the caller names another (an orchestrator's subagent). */
   workingAgentId?: string;
+  /** Add it even when a similar open task exists (a-new-task-is-checked-once). */
+  new?: boolean;
 };
+/**
+ * a-new-task-is-checked-once: a write without an id is checked against this workspace's open tasks, once, here. The
+ * caller's own exact title updates that task (a repeated write); a similar title is refused with up to DUP_MAX lines
+ * naming each by id, unless the agent passes new=true. Clean: nothing. Only agent writes (a caller) are checked.
+ */
+function newTaskCheck(w: Workspace, input: Update): Obligation | undefined {
+  if (!input.caller || input.new) return undefined;
+  const same = sameTask(w, input.title, input.caller);
+  if (same) return same;
+  const similar = similarOpen(w, input.title);
+  if (similar.length) throw new Error(similarLines(similar));
+  return undefined;
+}
+
 export function updateObligation(w: Workspace, input: Update): Obligation {
   const { id, title, status, dependencyStage, enable_follow_up, communication } = input;
-  const existing = id ? w.obligations.find(o => o.id === id) : communication ? w.obligations.find(o => o.communication && !["done", "waived"].includes(o.status) && communicationKey(o.communication) === communicationKey(communicationSchema.parse(communication))) : undefined;
+  const existing = id ? w.obligations.find(o => o.id === id) : (communication ? w.obligations.find(o => o.communication && !["done", "waived"].includes(o.status) && communicationKey(o.communication) === communicationKey(communicationSchema.parse(communication))) : undefined) ?? newTaskCheck(w, input);
   if (id && !existing) throw new Error("Obligation does not exist. Omit id to add one.");
   const afterPrs = input.afterPrs ?? existing?.afterPrs ?? [];
   const evidence = input.evidence ?? existing?.evidence ?? "";
@@ -84,6 +101,6 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
     if (pointed && ask) existing.coveredBy = pointed.id;
     return existing;
   }
-  const added = { ...record, ...(recheckAt ? { recheckAt } : {}), ...(finishedAt ? { finishedAt } : {}), ...(ask ? { ask } : {}), ...(need ? { need } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
+  const added = { ...record, ...(recheckAt ? { recheckAt } : {}), ...(finishedAt ? { finishedAt } : {}), ...(ask ? { ask } : {}), ...(need ? { need } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), ...(input.caller ? { createdBy: input.caller } : {}), id: randomUUID(), revision: 0 };
   w.obligations.push(added); return added;
 }

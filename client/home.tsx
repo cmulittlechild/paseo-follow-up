@@ -18,6 +18,7 @@ import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
 import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
+import { QueueScreen, RaisedRows, SinceBlock } from "./brief-since";
 import type { NewKey } from "./search-key";
 import { DockedPane } from "./docked-pane";
 import type { DockState } from "./dock";
@@ -72,6 +73,8 @@ export type HomeDeps = {
   /** Docks the workspace's own panel in its explorer column. */
   openPanel(workspaceId: string): void;
   openLog(): void;
+  /** The Morning brief's Linear queue screen (`?view=queue`, client/brief-since.tsx). */
+  openQueue?(): void;
   /** Catch up: Needs you one card at a time (`?view=catchup`). */
   openCatchUp?(): void;
   /** The PR stats page (`?view=stats`, docs/pr-stats.md#the-page); a phone's person opens as its own screen. */
@@ -108,11 +111,15 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const { inbox } = deps.sources;
   const c = theme.colors;
   const compact = layout.compact;
+  // Decision Q8: raised Linear issues are Needs-you items with no workspace row. The worker sends them on the home
+  // feed; the model counts them (model.raised) and they head the group. Catch up's deck and model.needs stay workspaces.
   const model = useHomeModel(deps.sources);
+  const queue = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.queue, deps.sources.extras.queue);
+  const raisedKeys = useMemo(() => new Set(queue.raised.map(r => r.key)), [queue.raised]);
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
-  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup" && params.view !== "stats");
+  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup" && params.view !== "stats" && params.view !== "queue");
   const [filter, setFilter] = useState<HomeGroupId | null>(null);
   const [selected, setSelected] = useState<string | null>(() => params.item ?? (params.select ? `agent:${params.select}` : null));
   const openAgentRow = useMemo(() => navigation ? (row: InboxRow) => navigation.openAgent({ agentId: row.agentId }) : undefined, [navigation]);
@@ -237,13 +244,19 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       deps={{ onHome: deps.openHome, openSettings: () => deps.openSettings("following"), openStats: p => deps.openStats?.(p) }} />
     {updateSheets}
   </View>;
+  if (params.view === "queue") return <View style={{ flex: 1 }}>
+    <QueueScreen theme={theme} compact={compact} onHome={deps.openHome} navigation={navigation} />
+    {newHost}
+    {updateSheets}
+  </View>;
   if (params.view === "log") return <LogView theme={theme} compact={compact} sources={deps.sources} onHome={deps.openHome} onOpen={key => { setSelected(key); deps.openHome(); }} />;
 
   const detail = selected === OVERSEER_KEY && overseer
     ? <OverseerPane theme={theme} compact={compact} o={overseer} focus={replyFocus} pending={pendingAsk} agentId={overseerStatus?.agentId ?? null} model={overseerStatus?.model ?? null} restartWith={overseerStatus?.restartWith ?? null} configured={overseerStatus?.configured ?? null} deps={deps} navigation={navigation} onBack={compact && !route ? () => setSelected(null) : undefined} />
     : current
     ? <DetailPane key={current.key} s={current} model={model} theme={theme} compact={compact} deps={deps} openFull={openFull} signOffNext={signOffNext} ask={ask?.key === current.key ? ask : null} onBack={compact && !route ? () => setSelected(null) : undefined} />
-    : <BriefPane theme={theme} compact={compact} pane={pane} catchUp={deps.openCatchUp} deckSize={deckSize} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources} />;
+    : <BriefPane theme={theme} compact={compact} pane={pane} catchUp={deps.openCatchUp} deckSize={deckSize} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources}
+      queue={deps.openQueue ? <SinceBlock theme={theme} compact={compact} openQueue={deps.openQueue} onStarted={() => deps.sources.extras.refreshDispatches()} navigation={navigation} raised={raisedKeys} revision={queue.revision} /> : null} />;
   // Nothing followed at all: no sort, no meters, just the empty state and its action.
   const nothing = model.groups.every(g => !g.items.length);
   // Enter on a row: its chat, as Open full does. The brief has nothing to open; the Overseer opens once it runs.
@@ -265,6 +278,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         <View style={{ flexDirection: "row", paddingHorizontal: 6 }}><VersionMark theme={theme} touch openSettings={deps.openSettings} /></View></View>
       : undefined}
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
+    raised={<RaisedRows theme={theme} compact={compact} data={queue} onDismissed={deps.sources.extras.refreshQueue} />}
     afterNeeds={compact && model.needs > 0 && props.onboarding?.offer ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
     top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>
@@ -841,7 +855,7 @@ function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in 
 
 // ---------- brief pane ----------
 
-function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, deckSize = 0 }: { theme: Theme; compact: boolean; pane: ReturnType<typeof briefPane>; onSelect: (key: string) => void; openLog: () => void; sources: HomeSources; catchUp?: () => void; deckSize?: number }) {
+function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, deckSize = 0, queue = null }: { theme: Theme; compact: boolean; pane: ReturnType<typeof briefPane>; onSelect: (key: string) => void; openLog: () => void; sources: HomeSources; catchUp?: () => void; deckSize?: number; queue?: ReactNode }) {
   const c = theme.colors; const t = text(c, compact);
   useTick(30_000);
   const now = Date.now();
@@ -859,6 +873,8 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, 
     <Text accessibilityRole="header" style={t.headline}>{pane.headline}</Text>
     {compact && <Text style={t.meta}>Morning brief · {date} · {time}</Text>}
     {catchUp && deckSize > 0 ? <CatchUpButton theme={theme} compact={compact} count={deckSize} onPress={catchUp} /> : pane.first && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="ArrowRight" title={`Open ${pane.first.title.length > 40 ? `${pane.first.title.slice(0, 40)}…` : pane.first.title}`} onPress={() => onSelect(pane.first!.key)} />}
+    {/* The Morning brief's Linear queue: what moved since the developer last read it (client/brief-since.tsx). */}
+    {queue}
     {!!pane.waiting && <Text style={t.body}><Text style={{ color: c.foregroundMuted }}>Waiting on others: </Text>{pane.waiting}</Text>}
     <Text style={t.body}><Text style={{ color: c.foregroundMuted }}>Cleared since {sinceLabel(now)}: </Text>{pane.cleared ?? "nothing yet"}.</Text>
 

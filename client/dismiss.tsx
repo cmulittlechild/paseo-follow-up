@@ -51,22 +51,24 @@ const watchArmed = (f: () => void) => { armWatchers.add(f); return () => { armWa
 /** Disarm whatever x is armed (a surface closing, a test resetting). */
 export function disarmDismiss(): void { setArmed(null); }
 
-export type DismissTarget = { workspaceId: string; key: string } | { agentId: string };
-const targetKey = (t: DismissTarget) => "agentId" in t ? `agent:${t.agentId}` : `${t.workspaceId}:${t.key}`;
+/** A workspace's item, an agent's brief, or a raised Linear issue with no workspace (the Morning brief's Q8 item). */
+export type DismissTarget = { workspaceId: string; key: string } | { agentId: string } | { issue: string };
+const targetKey = (t: DismissTarget) => "agentId" in t ? `agent:${t.agentId}` : "issue" in t ? `issue:${t.issue}` : `${t.workspaceId}:${t.key}`;
 
 /** The inbox store, bound once by the client entry, so dismissing a brief updates the rows at once. */
 let inbox: InboxStore | null = null;
 export function bindDismissInbox(store: InboxStore | null): void { inbox = store; }
 
 /** Dismiss one item, with Undo in the toast. `onDismissed` runs at once, before the request: the card moves on. */
-export function useDismiss(): (target: DismissTarget, options?: { onDismissed?: () => void }) => void {
+export function useDismiss(after?: () => void): (target: DismissTarget, options?: { onDismissed?: () => void }) => void {
   const rpc = useRpc(dismissRpc);
   const toast = useToast();
   const cache = useQueryClient();
   const refresh = (t: DismissTarget) => {
     if ("agentId" in t) void cache.invalidateQueries({ queryKey: liveBriefKey(t.agentId) });
-    else void cache.invalidateQueries({ queryKey: workspaceKey(t.workspaceId) });
+    else if ("workspaceId" in t) void cache.invalidateQueries({ queryKey: workspaceKey(t.workspaceId) });
     void cache.invalidateQueries({ queryKey: overviewKey });
+    after?.();
   };
   const call = (t: DismissTarget, undo: boolean) => "agentId" in t && inbox ? inbox.dismiss(t.agentId, undo) : rpc({ ...t, ...(undo ? { undo: true } : {}) });
   const undo = (t: DismissTarget, name: string) => void runAction({ label: `Undo remove ${name}`, toast, run: () => call(t, true), onSuccess: () => refresh(t),

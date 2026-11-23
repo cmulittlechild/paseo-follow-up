@@ -20,7 +20,9 @@ export type Entry =
   | { type: "label"; key: string; text: string }
   | { type: "hold"; key: string; text: string }
   | { type: "empty"; key: string }
-  | { type: "slot"; key: string };
+  | { type: "slot"; key: string }
+  /** Decision Q8's raised Linear issues, first in Needs you (client/brief-since.tsx RaisedRows). */
+  | { type: "raised"; key: string };
 
 /** The line under an open Older header (briefs-from-closed-agents). */
 export const OLDER_NOTE = "Closed agents with nothing new for 3 days. A row comes back when its agent runs again.";
@@ -57,12 +59,17 @@ export function listEntries({ model, closed, openProjects, pages, briefLine, res
   }
   if (briefLine !== undefined && !filter) out.push({ type: "brief", key: BRIEF_KEY });
   if (overseer && !filter) out.push({ type: "overseer", key: OVERSEER_KEY });
-  for (const g of model.groups) {
+  // Raised issues (Q8) are Needs-you items with no workspace row: they open the group, or make it when it has no rows.
+  const raised = model.raised ?? 0;
+  const groups = raised && !model.groups.some(g => g.id === "needs") ? [{ id: "needs" as const, title: GROUP_TITLE.needs, items: [] as Workstream[] }, ...model.groups] : model.groups;
+  for (const g of groups) {
     if (filter && g.id !== filter) continue;
     const open = !!filter || !!hits || !closed.has(g.id);
+    const extra = g.id === "needs" && !hits ? raised : 0;
     // Phones with one group filtered: the chip above already says "N Needs you ×"; no header repeating it.
-    if (!(touch && filter)) out.push({ type: "header", key: `h:${g.id}`, group: g.id, title: g.title, count: g.items.length, open });
+    if (!(touch && filter)) out.push({ type: "header", key: `h:${g.id}`, group: g.id, title: g.title, count: g.items.length + extra, open });
     if (!open) { if (g.id === "needs" && afterNeeds && !filter) out.push({ type: "slot", key: "s:afterNeeds" }); continue; }
+    if (extra) out.push({ type: "raised", key: "s:raised" });
     // One hold line per machine, once, at the top of Sending (the model has it only while Sending has rows).
     if (g.id === "sending" && model.hold) out.push({ type: "hold", key: "l:hold", text: model.hold });
     // briefs-from-closed-agents: Older says why its rows are there, since their ages alone can't.
