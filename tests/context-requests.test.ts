@@ -106,7 +106,7 @@ test("after a restart an open ask is re-derived: delivered to an idle agent sett
 
 test("context asks ride the queue under the asker's own label, and the queue's settle is their delivery", async () => {
   const source = await readFile("index.server.ts", "utf8");
-  assert.match(source, /enqueueMessage\(to\.agentId, agentContextPrompt\(out\.request\), out\.request\.id, actorBy\(actor\)\)/, "an agent's ask_context isn't labelled the developer");
+  assert.match(source, /enqueueMessage\(to\.agentId, agentContextPrompt\(out\.request\), out\.request\.id, actorBy\(actor\)(, refs)?\)/, "an agent's ask_context isn't labelled the developer");
   assert.match(source, /item\.messageId\?\.startsWith\("ctx-"\)[\s\S]{0,200}contextRequests\.delivered\(item\.messageId/);
   assert.match(source, /contextRequests\.reconcile\(/);
   assert.doesNotMatch(source, /contextRequests\.turnStarted/);
