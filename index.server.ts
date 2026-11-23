@@ -432,13 +432,18 @@ export default function contribute(server: PluginServerContext) {
    */
   const maintainDue = async () => {
     const now = Date.now();
+    const due = new Map<string, NudgeReceipt | null>();
     for (const w of (await store.snapshot()).workspaces) {
       if (!w.enable_tracking || w.archived || !w.obligations.length) continue;
       const raw = /^[\w-]+$/.test(w.id) ? await readFile(join(directory, "hook-state", `task-nudges-${w.id}.json`), "utf8").then(t => JSON.parse(t) as unknown, () => null) : null;
       const receipt = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as NudgeReceipt : null;
-      if (!maintainTasks(w, now, receipt, false)) continue;
-      await store.mutateWorkspace(w.id, d => { maintainTasks(d, now, receipt, true); }).catch(() => undefined);
+      if (maintainTasks(w, now, receipt, false)) due.set(w.id, receipt);
     }
+    if (!due.size) return;
+    // One mutation for the whole pass: the first pass after an upgrade stamps every workspace's tasks, and one
+    // mutateWorkspace each (a copy, a write and a re-derive per workspace) left the scale check's idle worker
+    // ~100 MB higher (#283 CI). The draft copies only the workspaces it changes (`find` by id copies nothing).
+    await store.mutate(state => { for (const [id, receipt] of due) { const d = state.workspaces.find(w => w.id === id); if (d) maintainTasks(d, now, receipt, true); } }).catch(() => undefined);
   };
   let hooksStarted = false;
   let loadError: string | null = null;

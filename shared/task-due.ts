@@ -41,7 +41,9 @@ const time = (v?: string | null) => v && Number.isFinite(Date.parse(v)) ? Date.p
 /** "2026-11-25": the day, as the agent writes recheck. */
 export const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** "Nov 25": the day, as the developer reads it. */
-const shortDay = (ms: number, now: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC", ...(new Date(ms).getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" } : {}) });
+// Built by hand, not toLocaleDateString: the worker formats every open task's label on each scopes.json write.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDay = (ms: number, now: number) => { const d = new Date(ms), y = d.getUTCFullYear(); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}${y !== new Date(now).getUTCFullYear() ? `, ${y}` : ""}`; };
 
 type Questions = Pick<ListWorkspace, "questions">["questions"];
 
