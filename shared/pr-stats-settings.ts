@@ -101,6 +101,13 @@ export const statsEstimateSchema = z.object({
   bytes: z.number().int().nonnegative().nullable(),
   /** Why there is no estimate: the repository can't be read, or the gate is closed. */
   error: z.string().nullable(),
+  /**
+   * Why the count couldn't run now, when the stats gate held it (GitHub's limit low, stats' share spent, another read
+   * running), with when it can (epoch ms; null: unknown). Turning on still goes ahead: the first sync waits the same way.
+   */
+  wait: z.object({ reason: z.enum(["governor", "budget", "slice", "busy"]), until: z.number().nullable() }).nullable().default(null),
+  /** The account can't read the repository (not found or no access): the only answer that refuses Turn on. */
+  unreadable: z.boolean().default(false),
 });
 export type StatsEstimate = z.infer<typeof statsEstimateSchema>;
 
@@ -206,6 +213,26 @@ export function statsRepoWaitTone(row: z.infer<typeof statsRepoRowSchema>): "dan
   if (st.error) return "danger";
   if (!st.waiting) return null;
   return st.waiting.reason === "budget" || st.waiting.reason === "slice" ? "warning" : st.waiting.reason === "governor" ? "muted" : null;
+}
+/**
+ * The opt-in sheet's lines when there is no count (a-read-the-developer-starts-never-waits-on-the-governor): what Turn on
+ * does now first (`lead`), then why there is no count, in plain words (`reason`). `canTurnOn` is false only for a
+ * repository the account can't read; the sheet never dead-ends otherwise. `retry` asks the sheet to count again by
+ * itself (another stats read was running). `time` formats an epoch-ms time in the developer's zone, with the day when
+ * it isn't today.
+ */
+export function estimateBlocked(e: StatsEstimate | null, failure: string | null, time: (ms: number) => string): { lead: string; reason: string; canTurnOn: boolean; tone: "danger" | "neutral"; retry: boolean } | null {
+  if (e && e.prs !== null && e.points !== null) return null;
+  const later = "You can turn stats on now. They start reading on the next sync and show their progress here.";
+  if (!e) return failure ? { lead: later, reason: `Couldn't count the PRs: ${failure}`, canTurnOn: true, tone: "neutral", retry: false } : null;
+  if (e.unreadable) return { lead: e.error ?? `Can't read ${e.repo} with this GitHub account.`, reason: "Check the account has access to the repository, then try again.", canTurnOn: false, tone: "danger", retry: false };
+  const at = e.wait?.until ? time(e.wait.until) : null;
+  if (e.wait?.reason === "budget") return { lead: at ? `You can turn stats on now. They start reading at ${at}.` : later,
+    reason: `Less than 40% of your GitHub limit is left${at ? ` until ${at}` : ""}.`, canTurnOn: true, tone: "neutral", retry: false };
+  if (e.wait?.reason === "slice") return { lead: at ? `You can turn stats on now. They start reading at ${at}.` : later,
+    reason: "Stats used their share of your GitHub limit this hour.", canTurnOn: true, tone: "neutral", retry: false };
+  if (e.wait?.reason === "busy") return { lead: "Counting as soon as the other stats read finishes. You can turn stats on now.", reason: "Another stats read is running.", canTurnOn: true, tone: "neutral", retry: true };
+  return { lead: later, reason: `Couldn't count the PRs: ${e.error ?? "GitHub didn't answer."}`, canTurnOn: true, tone: "neutral", retry: false };
 }
 /** The opt-in sheet's cost line. */
 export function estimateLines(e: StatsEstimate, slice: number): { cost: string; time: string } | null {
