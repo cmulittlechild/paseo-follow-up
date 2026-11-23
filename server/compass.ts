@@ -8,6 +8,7 @@ import { parseChatRefs } from "../shared/morning-brief";
 import { isWorkday, zoned, type Clock } from "../shared/linear-queue";
 import {
   COMPASS, EXTRACT_SYSTEM, ROLE_INFO, applyCompassChange, batchItems, compassFileSchema, emptyCompassFile, extractPrompt, extractReplySchema, guardedProvider,
+  HAND_LABEL, HAND_SOURCE, applyNoteAction, noteLines, noteWho, tellText, type NoteAction,
   noteRole, parseConversation, placeKey, placeNote, presetsView, rankNotes, settleNotes, unguardedWhy, validateExtraction, whoFilter,
   type CompassChange, type CompassFile, type CompassItem, type CompassNote, type CompassSettings, type CompassSource, type Place, type PlaceIndex, type RankCompassNote, type RefuseCode,
 } from "../shared/compass";
@@ -34,6 +35,11 @@ export type CompassDeps = {
   /** The brief's Chat switch: which servers may be read (a chat source turned off isn't read). Throws when off. */
   allowed?: () => Promise<((server: string) => boolean) | undefined>;
   tight?: () => boolean;
+  /**
+   * Tell the agent (compass-reaches-an-agent-only-by-a-click): one queued message to the workspace's main agent
+   * (invariant 36). Null when the workspace has no main agent to tell. The only way a note reaches an agent.
+   */
+  tell?: (workspaceId: string, text: string, by: string) => Promise<{ agentId: string } | null>;
   /** Notes changed: AI priority's next tick runs once (Ranker.markDue) and the feeds push. */
   onChange?: () => void;
   now?: () => number;
@@ -305,6 +311,56 @@ export class Compass {
       const results = parseChatRefs(reply, kind).flatMap(r => r.id ? [{ id: r.id, name: r.name, place: { kind: "conversation" as const, sub: kind === "people" ? "dm" as const : "channel" as const, id: r.id, name: r.name } }] : []);
       return { results, error: null };
     } catch (e) { return { results: [], error: e instanceof NoSourceError ? "No chat search is connected." : readError(e) }; }
+  }
+
+  /**
+   * One note, by hand (Why it matters' menu, a confirmed compass_note): pin, edit, unpin, or tell its workspace's main
+   * agent. A tell changes no note; it is the only path from a note to an agent.
+   */
+  async note(a: NoteAction, by: string, opts: { workspaceExists?: (id: string) => boolean } = {}): Promise<{ view: CompassView; told: { agentId: string } | null }> {
+    const file = await this.d.store.read();
+    const r = applyNoteAction(file.notes as CompassNote[], a, { now: this.now(), by: by === "developer" ? "developer" : by, newId: () => this.newId("n-"), workspaceExists: opts.workspaceExists ?? (() => true) });
+    if (!r.ok) throw new Error(r.error);
+    let told: { agentId: string } | null = null;
+    if (a.action === "tell") {
+      const workspace = r.note.match.workspace;
+      if (!workspace) throw new Error("This note isn't on a workspace. Move it onto one first.");
+      if (!this.d.tell) throw new Error("Follow-up can't send messages here.");
+      const settings = await this.settings();
+      const source = settings.sources.find(s => s.id === r.note.source) ?? null;
+      const place = source?.places.find(p => placeKey(p) === r.note.place) ?? null;
+      const where = place?.kind === "conversation" ? (place.sub === "dm" ? "a DM" : `#${place.name}`) : place?.name ?? null;
+      told = await this.d.tell(workspace, tellText(r.note, source, where), by);
+      if (!told) throw new Error("This workspace has no main agent to tell.");
+    } else {
+      await this.d.store.mutate(f => { f.notes = r.notes; });
+      this.d.onChange?.();
+    }
+    return { view: await this.view(a.workspace || r.note.match.workspace ? { workspace: (a.workspace ?? r.note.match.workspace)! } : {}), told };
+  }
+
+  /** Each workspace's first live note as one line ("Dana: …"), for Home rows and Catch up. Reads compass.json only. */
+  async lines(): Promise<Record<string, string>> {
+    const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
+    if (!file.notes.length) return {};
+    return noteLines(file.notes as CompassNote[], this.now(), settings.expiry);
+  }
+
+  /**
+   * why_suggested: for a workspace, an issue or a note, the live notes behind it, who said them, where, the source
+   * and role, and how each was matched. Compass notes reorder AI priority; none adds a Needs-you row yet.
+   */
+  async why(input: { workspace?: string; issue?: string; note?: string }): Promise<{ notes: unknown[]; needsYou: { suggested: false; why: string } }> {
+    const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
+    const label = new Map([...settings.sources.map(s => [s.id, s.label] as const), [HAND_SOURCE, HAND_LABEL] as const]);
+    const key = input.issue?.toUpperCase();
+    const notes = (file.notes as CompassNote[]).filter(n => n.state === "live" && (input.note ? n.id === input.note
+      : input.workspace ? n.match.workspace === input.workspace : key ? n.keys.some(k => k.toUpperCase() === key) || n.match.issue?.toUpperCase() === key : true));
+    return {
+      notes: notes.map(n => ({ id: n.id, what: n.what, quote: n.quote, who: noteWho(n), at: n.at, source: label.get(n.source) ?? "a removed source", role: n.role, strength: n.strength, until: n.until,
+        matched: { how: n.match.how, score: Math.round(n.match.score * 100) / 100, workspace: n.match.workspace ?? null, issue: n.match.issue ?? null } })),
+      needsYou: { suggested: false, why: "Compass notes reorder AI priority. They don't add Needs-you rows yet." },
+    };
   }
 
   /** What AI priority reads: live notes, settled for time first (an ended note never reaches the ranker). */

@@ -1,7 +1,7 @@
 import { queueViewSchema } from "./queue";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
 import { sourcesChangeSchema } from "./brief-sources";
-import { compassChangeSchema } from "./compass";
+import { compassChangeSchema, noteActionSchema } from "./compass";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -31,6 +31,8 @@ import { setUpdatesInputSchema, updatesViewSchema } from "./updates";
 import { releaseNotesViewSchema } from "./changelog";
 import { SCALE } from "./scale";
 import { actionPlanSchema, actionResultSchema, browserCommandSchema, browserExchangeSchema, browserPrSchema, browserStatusSchema, prActionKind } from "./pr-actions";
+/** Each workspace's first live Compass note as one line (shared/compass.ts noteLines). */
+const compassLinesSchema = z.record(z.string(), z.string().max(200));
 
 const agentCommunicationSchema = z.strictObject({
   threadUrl: communicationSchema.shape.threadUrl, recipient: communicationSchema.shape.recipient,
@@ -106,7 +108,7 @@ export const queueNeedsSchema = z.object({
   timeZone: z.string(),
   revision: z.string(),
 });
-export const prioritiesRpc = defineRpc({ name: "follow.priorities", input: z.object({}), output: z.object({ items: z.array(prioritySchema), queue: queueNeedsSchema.optional() }) });
+export const prioritiesRpc = defineRpc({ name: "follow.priorities", input: z.object({}), output: z.object({ items: z.array(prioritySchema), queue: queueNeedsSchema.optional(), compass: compassLinesSchema.optional() }) });
 /** Provider session limits from the Smart Session plugin, for Home's meters. Hidden when it isn't installed. */
 /** Summary: collapsed reads the cache; open may start an overview; refresh always does. */
 export const workspaceAboutRpc = defineRpc({ name: "follow.workspace-about", input: z.object({ workspaceId: idSchema, open: z.boolean().optional(), refresh: z.boolean().optional() }), output: aboutViewSchema });
@@ -367,6 +369,10 @@ export const compassRpc = defineRpc({ name: "follow.compass", input: z.strictObj
 export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
 export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassChangeSchema, output: z.unknown() });
 export const readCompassRpc = defineRpc({ name: "follow.read-compass", input: z.strictObject({}), output: z.unknown() });
+/** Why it matters' menu and compass_note: pin, edit, unpin a note, or tell its workspace's main agent. */
+export const compassNoteRpc = defineRpc({ name: "follow.compass-note", input: noteActionSchema, output: z.unknown() });
+/** why_suggested: the notes behind a workspace, an issue or a note, and how each was matched. */
+export const whySuggestedRpc = defineRpc({ name: "follow.why-suggested", input: z.strictObject({ workspace: z.string().min(1).max(200).optional(), issue: z.string().min(1).max(60).optional(), note: z.string().min(1).max(80).optional() }), output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),
   output: z.object({
@@ -397,6 +403,8 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   prStats: z.boolean().optional(),
   /** The raised Linear issues in Needs you (Q8) and the queue's revision; pushed when a sweep or a dismissal changes them. */
   queue: queueNeedsSchema.optional(),
+  /** Each workspace's first live Compass note as one line (Home rows, Catch up); absent from an older worker. */
+  compass: compassLinesSchema.optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
 /**

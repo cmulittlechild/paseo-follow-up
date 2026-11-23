@@ -86,11 +86,28 @@ after the note ends.
 - **Life** (`settleNotes`): a dated note lives through its date plus grace; an undated one for `undatedDays` after it
   was last said; a retraction ends it; a newer note from the same source on the same subject supersedes it. Notes from
   different people that disagree are all kept: Follow-up never picks between people.
+- **By hand** (`applyNoteAction`): pin a note on a workspace in your own words (source `hand`, "Pinned by hand"),
+  edit its date, strength or workspace, unpin it. A hand note with no date lives until it is unpinned.
 - **Settings** opens a source's live notes under its row: what each says, the words it quotes, its date and where it
   went.
 - **AI priority** reads the live notes (`Compass.forRanker`, at most 20, soonest first) as its COMPASS section, with
   rules for how strong each role and strength is. A note's reason line names Compass as its source
   (`PRIORITY_SOURCES` `compass`). New notes mark the ranker due once (`Ranker.markDue`).
+
+## On screen
+
+- **Home's reason line**: a Compass reason carries the compass glyph and ends "· Compass". A workspace the ranker gave
+  no reason shows its first live note instead ("Dana: client call Tue"; `noteLines`, soonest then strongest), on the
+  workspace's main row only. The lines ride on `follow.priorities` and the Home feed as `compass`.
+- **The panel's Why it matters** (`client/why-it-matters.tsx`), under the goal: the AI priority line ("2nd of 14 in AI
+  priority · reason", from `compass {workspace}`), then the first note: what it says, the quote at two lines (press to
+  open), who, role, when, where and until. Open message opens the source message. Ask the Overseer puts a question about
+  the note in the Overseer's composer, unsent (hidden when the Overseer is off). ⋯ holds Tell the agent, Edit, Move to
+  another workspace and Unpin (asks once). "+N more" shows the rest.
+- **Catch up**: a card's head gains one muted line, "Compass · Dana: client call Tue".
+- **Tell the agent** (invariant 107, `compass-reaches-an-agent-only-by-a-click`) queues one message to the workspace's
+  main agent: the developer passed this on, the quote as someone else's words, what Compass read, the date. It asks for
+  nothing. Nothing else in Compass ever messages an agent.
 
 ## Tools
 
@@ -100,5 +117,7 @@ after the note ends.
 | `compass_find` | read | People or channels from the chat tool's own search, each with the place `set_compass` takes. |
 | `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry. |
 | `read_compass` | planned | Read now; waits up to 30 s, then `running`. |
+| `compass_note` | planned | Pin (a workspace, what, optional until and strength), edit, unpin, or tell (one message to the workspace's main agent, only on the developer's ask). Audited as `agent:<id>`. |
+| `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched. Needs you rows don't come from Compass yet. |
 
 "Set up Compass from my DM with my PM" is `compass` → `compass_find` → `set_compass` (dry run, then confirm).
