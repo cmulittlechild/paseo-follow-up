@@ -24,12 +24,14 @@ export type RankMessage = { where: string; who: string | null; text: string; at:
 export type RankReview = { repo: string; number: number; title: string; url: string | null; author: string | null };
 export type RankPlanItem = { level: string; title: string; keys: string[] };
 export type RankPlanning = { title: string | null; url: string | null; items: RankPlanItem[] };
+/** What an Ask source found this morning (docs/morning-brief.md#ask): its server and validated items. */
+export type RankAsked = { source: string; items: { title: string; why: string; url: string | null; due: string | null }[] };
 /** A meeting today, from the calendar source (docs/morning-brief.md#sources). */
 export type RankEvent = { title: string; start: string | null; url: string | null };
 /** `calendar` and `mail`: only when those sources are on and connected (mail is off until turned on). */
-export type RankInputs = { workstreams: RankWorkstream[]; linear: RankIssue[]; slack: RankMessage[]; github: RankReview[]; planning: RankPlanning | null; calendar?: RankEvent[]; mail?: RankMessage[]; chatHours?: number };
+export type RankInputs = { workstreams: RankWorkstream[]; linear: RankIssue[]; slack: RankMessage[]; github: RankReview[]; planning: RankPlanning | null; calendar?: RankEvent[]; mail?: RankMessage[]; chatHours?: number; asks?: RankAsked[] };
 
-export const RANK_LIMITS = { workstreams: 150, issues: 60, messages: 40, reviews: 30, planItems: 60, events: 20, textChars: 220, titleChars: 120 };
+export const RANK_LIMITS = { workstreams: 150, issues: 60, messages: 40, reviews: 30, planItems: 60, events: 20, asked: 20, textChars: 220, titleChars: 120 };
 const clip = (s: string | null | undefined, n: number) => { const t = (s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
 /** The ranker's view of a workstream. Follow-up's own priority is left out, so a ranking never feeds itself. */
@@ -51,6 +53,7 @@ export function stableInputs(inputs: RankInputs): string {
     // Only when read, so a brief without them hashes as it did before they existed.
     ...(inputs.calendar?.length ? { c: inputs.calendar.map(e => [e.start, e.title]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) } : {}),
     ...(inputs.mail?.length ? { m: inputs.mail.map(m => [m.who, m.text]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) } : {}),
+    ...(inputs.asks?.length ? { a: [...inputs.asks].sort((x, y) => x.source.localeCompare(y.source)).map(a => [a.source, a.items.map(i => [i.title, i.why, i.due])]) } : {}),
   };
   return JSON.stringify(stable);
 }
@@ -62,7 +65,7 @@ export function stableInputs(inputs: RankInputs): string {
 export const RANK_STRICT = `\nCheck before replying: every object in "priorities" has a "reason" of at least three words. An empty reason, "", "-" or "n/a" is invalid. Reply with the JSON only.`;
 
 export const RANK_SYSTEM = `You rank a developer's workstreams (Paseo workspaces) by what matters most today. Reply with one JSON object only, no prose or code fence:
-{"priorities":[{"workspace":"<workspace id>","score":0-100,"reason":"<one line, at most 60 characters, never empty>","sources":[{"kind":"linear|slack|github|planning|calendar|mail|paseo","label":"<short>","url":"<only a url given in the material>"}]}]}
+{"priorities":[{"workspace":"<workspace id>","score":0-100,"reason":"<one line, at most 60 characters, never empty>","sources":[{"kind":"linear|slack|github|planning|calendar|mail|other|paseo","label":"<short>","url":"<only a url given in the material>"}]}]}
 Rules:
 - Rank only workspace ids from WORKSTREAMS. Give every non-resting workstream a score; leave resting ones out unless an input names them.
 - The reason is the concrete fact, at most 60 characters, fact first: "ACME-1312 · Urgent · due today", "This week's Okta milestone", "Dana asked twice, demo tomorrow", "Review requested by Avi". Never start it with the source's name ("Slack:", "Plan:", "Linear:"): the list shows the source beside it. Never "important" or "high priority" alone.
@@ -87,6 +90,7 @@ export function rankPrompt(inputs: RankInputs, today: string, maxChars: number, 
     ["PLAN (the CPO's weekly plan: level · title · keys)", (inputs.planning?.items ?? []).slice(0, L.planItems).map(i => [i.level, clip(i.title, L.titleChars), i.keys.join(" ") || "-"].join(" · "))],
     ...(inputs.calendar?.length ? [["CALENDAR (the developer's meetings today: start · title · url)", inputs.calendar.slice(0, L.events).map(e => [e.start ?? "-", clip(e.title, L.titleChars), e.url ?? "-"].join(" · "))] as [string, string[]]] : []),
     ...(inputs.mail?.length ? [["MAIL (unread mail to the developer: who · subject · when)", inputs.mail.slice(0, L.messages).map(m => [m.who ?? "-", clip(m.text, L.textChars), m.at ?? "-"].join(" · "))] as [string, string[]]] : []),
+    ...(inputs.asks?.length ? [["OTHER SOURCES (asked this morning: source · title · why · due · url)", inputs.asks.flatMap(a => a.items.map(i => [a.source, clip(i.title, L.titleChars), clip(i.why, L.textChars), i.due ?? "-", i.url ?? "-"].join(" · "))).slice(0, L.asked)] as [string, string[]]] : []),
     ...(previous.length ? [["PREVIOUS RANKING (id · score)", previous.filter(p => inputs.workstreams.some(w => w.id === p.id)).map(p => `${p.id} · ${p.score}`)] as [string, string[]]] : []),
   ];
   const head = `Today is ${today} (${timeZone}).\n`;
@@ -113,7 +117,7 @@ export function emptyReasons(reply: RankReply, inputs: RankInputs): string[] {
 }
 const meaningful = (reason: string) => { const r = reason.replace(SOURCE_PREFIX, "").trim(); return r.length >= 3 && !/^(-+|n\/?a|none|tbd|\.+)$/i.test(r); };
 export const REASON_SYSTEM = `You write the one-line reason for workstreams that were already ranked. Reply with one JSON object only, no prose or code fence:
-{"reasons":[{"workspace":"<workspace id>","reason":"<one line, at most 60 characters, never empty>","sources":[{"kind":"linear|slack|github|planning|calendar|mail|paseo","label":"<short>","url":"<only a url given in the material>"}]}]}
+{"reasons":[{"workspace":"<workspace id>","reason":"<one line, at most 60 characters, never empty>","sources":[{"kind":"linear|slack|github|planning|calendar|mail|other|paseo","label":"<short>","url":"<only a url given in the material>"}]}]}
 Rules:
 - One entry for every workspace id in WORKSTREAMS, and no others.
 - The reason is the concrete fact, fact first: "ACME-1312 · Urgent · due today", "Dana asked twice, demo tomorrow", "Review requested by Avi". Never start it with the source's name.

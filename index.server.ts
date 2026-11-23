@@ -106,6 +106,7 @@ import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
 import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
 import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
+import { askSource } from "./server/ask";
 import { BriefSources } from "./server/brief-sources";
 import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
@@ -1396,7 +1397,7 @@ export default function contribute(server: PluginServerContext) {
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
     workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
     windows: async () => { const q = await morningBrief!.settings(); return { chatHours: q.chatHours, calendarDays: q.calendarDays }; },
-    sources: rankSources });
+    sources: { ...rankSources, asks: () => briefSources!.askedItems() } });
   // The brief's sources (server/brief-sources.ts): what mcpproxy has, the switches, each source's health, Retry.
   briefSources = new BriefSources({
     store: morningBriefStore, tools: sourceDirectory(), deviceZone: () => clientTimeZone,
@@ -1411,6 +1412,9 @@ export default function contribute(server: PluginServerContext) {
       const now = Date.now();
       await rankSources.calendar!({ start: new Date(now).toISOString(), end: new Date(now + 86_400_000).toISOString(), timeZone: (await briefClock()).timeZone });
     },
+    // Ask (server/ask.ts): the Summary's role, a fast model; the reads go through the same directory (tool-read only).
+    ask: (server, opts) => askSource({ tools: sourceDirectory(), jobs: aiJobs, role: () => agentSettings.role("about") }, server, { ...opts, now: Date.now() }),
+    tight: () => !governor.allowsBackground(),
     onChange: () => feeds.home(), log: line => console.warn(line),
   });
   handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });

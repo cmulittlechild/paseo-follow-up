@@ -105,11 +105,24 @@ export class SourceDirectory {
    * One read: the recipe's tool for `role`, with only the arguments its schema takes, through `tool-read`. Throws
    * NoSourceError when no (allowed) server has it.
    */
+  /** The read tools one server has (Ask's planner sees these). */
+  async serverTools(server: string): Promise<ReadTool[]> { return (await this.discover()).tools.filter(t => t.server === server); }
+
+  /** One read of `server`'s tool by name, through `tool-read`, only if it's in the read list. Arguments as given (Ask checked them). */
+  async callTool(server: string, tool: string, args: Record<string, unknown>, opts: { reason: string; timeoutMs: number }): Promise<string> {
+    if (!(await this.serverTools(server)).some(t => t.name === tool)) throw new Error(`${tool} isn't one of ${server}'s read tools.`);
+    return this.read(`${server}:${tool}`, args, opts);
+  }
+
+  private async read(tool: string, json: Record<string, unknown>, opts: { reason: string; timeoutMs: number }): Promise<string> {
+    return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(json)}`, `--reason=Follow-up: ${opts.reason}`, "--log-level=error", "-o", "json"], opts.timeoutMs));
+  }
+
   async call(id: RecipeId, role: string, args: Record<string, unknown>, opts: { reason: string; timeoutMs: number; allowed?: (server: string) => boolean; fit?: boolean }): Promise<string> {
     const tool = await this.tool(id, role, opts.allowed);
     if (!tool) throw new NoSourceError(id, role);
     const json = opts.fit === false ? args : fitArgs(await this.props(tool), args);
-    return mcpproxyText(await this.run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(json)}`, `--reason=Follow-up: ${opts.reason}`, "--log-level=error", "-o", "json"], opts.timeoutMs));
+    return this.read(tool, json, opts);
   }
 }
 

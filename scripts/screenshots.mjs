@@ -212,6 +212,26 @@ console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}),
  * A fake `claude` for Rename title with AI's review shots (--rename-review): it answers only the rename prompt, as
  * `claude -p --output-format json` does, and the mode file picks the state: ready, slow (still suggesting) or fail.
  */
+/**
+ * A fake `claude` for the Ask shots only: Ask's plan call gets one read of the fictional tracker, its items call two
+ * items from that read. Anything else fails at once, as an unlogged-in CLI does.
+ */
+function fakeAskClaude() {
+  return `#!/usr/bin/env node
+const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
+const items = process.argv.some(a => a.startsWith("You turn read-only lookup results"));
+if (!plan && !items) { process.stderr.write("not logged in"); process.exit(1); }
+let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
+  const value = plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
+    : { items: [
+      { title: "T-7: review the retry limits for soft declines", why: "Waiting on your review, due tomorrow", url: "https://tracker.example/T-7", due: "2026-03-03" },
+      { title: "T-12: bob asked about the refund export", why: "A question waiting on you since yesterday", url: "https://tracker.example/T-12", due: null },
+    ] };
+  process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0004, usage: { input_tokens: 900, output_tokens: 80 } }));
+});
+`;
+}
+
 function fakeClaude(modeFile) {
   return `#!/usr/bin/env node
 const fs = require("node:fs");
@@ -260,13 +280,15 @@ if (process.argv[2] === "tools" && process.argv[3] === "list") {
     t("team-chat", "search_users", ["keywords", "natural_language_query", "limit", "response_format"]), t("team-chat", "search_channels", ["keywords", "natural_language_query", "limit", "channel_types", "response_format"]),
     t("calendar", "list-events", ["timeMin", "timeMax", "timeZone"], "List the user's events."),
     t("warehouse", "run_query", ["sql"]), t("warehouse", "list_tables", []),
+    // An Ask source (no recipe fits): a ticket tracker, shown only in the Ask shots (over.ask).
+    ...(over.ask ? [t("tracker", "search_tickets", ["query", "limit"], "Search tickets."), t("tracker", "get_ticket", ["id"], "One ticket.")] : []),
     ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
   ]));
   process.exit(0);
 }
 if (process.argv[2] === "upstream" && process.argv[3] === "list") {
   const up = name => ({ name, enabled: true, connected: true, authenticated: true, oauth: null, quarantined: false, tool_count: 4, health: { level: "healthy", summary: "Connected", action: null }, ...(over.upstreams || {})[name] });
-  console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : [])].map(up)));
+  console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : []), ...(over.ask ? ["tracker"] : [])].map(up)));
   process.exit(0);
 }
 // The morning sweep, only for the Sources shots (over.linear): an empty queue, so the card reads Linear as fine. Other
@@ -284,6 +306,11 @@ if (/search_public_and_private$/.test(tool)) {
   if (chat.error) { console.error("Command failed: chat search timed out"); process.exit(1); }
   reply(JSON.stringify({ results: chat.messages || "No results found.", pagination_info: "" }));
 }
+// The Ask shots' tracker (fictional): two tickets waiting on the developer.
+if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
+  { id: "T-7", title: "Review the retry limits for soft declines", status: "Waiting on alice", url: "https://tracker.example/T-7", due: "2026-03-03" },
+  { id: "T-12", title: "Answer bob's question on the refund export", status: "Waiting on alice", url: "https://tracker.example/T-12" },
+] }));
 if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
 if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
 reply("not available in the screenshot fixture", true);
@@ -3102,6 +3129,17 @@ async function morningBriefShots({ shoot, call, home }) {
   await seedRead(A1, "Week of Mar 2", 18);
   await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
   await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  // Ask: a server no recipe fits (the tracker) shows Preview; the preview (the fake claude plans one read and sums it up)
+  // shows what it would add, with Turn on.
+  ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true, ask: true });
+  const trackerRow = page => page.getByText("tracker", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "center" }));
+  await states("ask-off", async page => { await sourcesReady(page); await page.getByRole("button", { name: /Preview what Ask would read from tracker/ }).first().waitFor(); await trackerRow(page); }, { top: true });
+  await call("follow.brief-sources", { check: true });
+  await new Promise(r => setTimeout(r, 1500));
+  await call("follow.set-brief-sources", { preview: "mcp:tracker" });
+  await states("ask-preview", async page => { await sourcesReady(page); await page.getByText(/would add these 2 to today.s brief/).first().waitFor({ timeout: 30_000 }); await trackerRow(page); }, { top: true });
   await setSources({});
   ranHealth = { health: {}, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
@@ -3612,6 +3650,7 @@ try {
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

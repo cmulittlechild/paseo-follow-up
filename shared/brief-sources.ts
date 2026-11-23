@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ASK, askItemSchema, type AskCall, type AskItem } from "./ask";
 
 /**
  * The Morning brief's sources (docs/morning-brief.md#sources): every source is found by the tools mcpproxy exposes,
@@ -13,7 +14,8 @@ import { z } from "zod";
 /** One upstream server, from `mcpproxy upstream list -o json` (only the fields the brief reads). */
 export type Upstream = { name: string; enabled: boolean; connected: boolean; authenticated: boolean; oauth: boolean; quarantined: boolean; action: string | null; summary: string | null; tools: number };
 /** One read-only tool, from `mcpproxy tools list --risk read -o json`: its server, bare name, description and inputs. */
-export type ReadTool = { server: string; name: string; description: string; props: string[]; required: string[] };
+/** A read-only tool: its inputs, and (for Ask's planner and its argument check) each input's type and description. */
+export type ReadTool = { server: string; name: string; description: string; props: string[]; required: string[]; params?: Record<string, { type: string | null; description: string }> };
 
 const str = (v: unknown) => typeof v === "string" ? v : null;
 const list = (text: string): unknown[] => {
@@ -47,7 +49,11 @@ export function parseReadTools(text: string): ReadTool[] {
     // Some lists prefix the server ("server:tool" or "server__tool"); the brief keeps the bare name.
     const name = raw.startsWith(`${server}:`) ? raw.slice(server.length + 1) : raw.startsWith(`${server}__`) ? raw.slice(server.length + 2) : raw;
     const schema = (o.schema ?? o.inputSchema ?? {}) as { properties?: Record<string, unknown>; required?: unknown };
-    out.push({ server, name, description: (str(o.description) ?? "").slice(0, 1200), props: Object.keys(schema.properties ?? {}), required: Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === "string") : [] });
+    const params = Object.fromEntries(Object.entries(schema.properties ?? {}).map(([k, v]) => {
+      const p = (v ?? {}) as { type?: unknown; description?: unknown };
+      return [k, { type: typeof p.type === "string" ? p.type : null, description: (str(p.description) ?? "").slice(0, 200) }];
+    }));
+    out.push({ server, name, description: (str(o.description) ?? "").slice(0, 1200), props: Object.keys(schema.properties ?? {}), required: Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === "string") : [], params });
   }
   return out;
 }
@@ -227,7 +233,8 @@ export function parseMail(text: string): BriefMail[] {
 
 export const SOURCE_HEALTH = ["ok", "sign-in", "failed", "off"] as const;
 export type SourceHealthState = typeof SOURCE_HEALTH[number];
-export const SOURCE_KINDS = ["recipe", "builtin", "unknown", "skipped"] as const;
+/** recipe: a known kind of source; builtin: GitHub, Paseo; ask: no recipe fits, so a fast model plans its reads (Ask, off until previewed and turned on); skipped: no read tools at all. */
+export const SOURCE_KINDS = ["recipe", "builtin", "ask", "skipped"] as const;
 /** The built-in sources: GitHub (every `gh` account) and Paseo itself (Follow-up's own state, always on). */
 export const GITHUB_SOURCE = "gh";
 export const PASEO_SOURCE = "paseo";
@@ -253,8 +260,13 @@ export const briefSourceSchema = z.object({
   /** When the brief last read it (ok or not). */
   readAt: z.string().nullable(),
   readTools: z.number().int(),
+  /** An Ask source's last ask (a preview or a morning's): what it found, how many reads it ran, or why it failed. */
+  asked: z.object({ at: z.string(), preview: z.boolean(), items: z.array(askItemSchema), tools: z.array(z.string()), error: z.string().nullable(), canTurnOn: z.boolean() }).nullable().optional(),
 });
 export type BriefSource = z.infer<typeof briefSourceSchema>;
+/** What the store keeps of an Ask: the morning-brief file's `sources.asked[id]`. */
+export type AskedEntry = { at: string; preview: boolean; items: AskItem[]; calls: AskCall[]; error: string | null };
+export const ASK_COST = "up to 3 lookups and one or two quick model calls a morning";
 
 /** What the last read of a source said, kept by the reader (the ranker, the sweep, a Retry). */
 export type SourceRead = { at: string; ok: boolean; error: string | null };
@@ -277,6 +289,9 @@ export function upstreamHealth(u: Upstream | undefined): { health: SourceHealthS
 export function briefSources(input: {
   upstreams: readonly Upstream[]; matched: readonly Matched[]; on: Readonly<Record<string, boolean>>;
   reads: Readonly<Record<string, SourceRead | undefined>>; github: { accounts: number | null };
+  asked?: Readonly<Record<string, AskedEntry | undefined>>;
+  /** The worker's clock: whether a preview is fresh enough to turn Ask on. */
+  now?: number;
 }): BriefSource[] {
   const rows: BriefSource[] = [];
   const matchedBy = new Map(input.matched.map(m => [m.server, m]));
@@ -293,12 +308,22 @@ export function briefSources(input: {
       const health = !on ? "off" : up.health !== "ok" ? up.health : read && !read.ok ? "failed" : "ok";
       const detail = !on ? (input.on[id] === false ? "Off in the brief." : r.offWhy ?? "Off until you turn it on.") : up.health !== "ok" ? up.detail : read && !read.ok ? read.error : null;
       rows.push({ id, kind: "recipe", recipe: r.id, label: r.label, server, adds: r.adds, cost: r.cost, on, canToggle: true, health, detail, command: on && up.health === "sign-in" ? up.command ?? null : null, readAt: read?.at ?? null, readTools: m!.readTools });
-    } else {
-      const readTools = m?.readTools ?? 0;
+    } else if (m?.readTools) {
+      // Ask: off until the developer previews it and turns it on (ask-is-validated).
+      const asked = input.asked?.[id] ?? null;
+      const on = input.on[id] ?? false;
+      const health = !on ? "off" : up.health !== "ok" ? up.health : asked?.error && !asked.preview ? "failed" : "ok";
+      const detail = !on ? null : up.health !== "ok" ? up.detail : asked?.error && !asked.preview ? asked.error : null;
       rows.push({
-        id, kind: readTools ? "unknown" : "skipped", recipe: null, label: server, server,
-        adds: readTools ? "Not a kind of source the brief can read yet." : "Only has tools that change things, so the brief stays away.",
-        cost: null, on: false, canToggle: false, health: up.health === "ok" ? "off" : up.health, detail: up.health === "ok" ? null : up.detail, command: null, readAt: null, readTools,
+        id, kind: "ask", recipe: null, label: server, server,
+        adds: on ? "Asked each workday morning · a fast model picks the reads" : asked ? "Off · previewed, not on yet" : "Not read yet. Preview to see what it would add.",
+        cost: on ? ASK_COST : null, on, canToggle: true, health, detail, command: on && up.health === "sign-in" ? up.command ?? null : null, readAt: asked && !asked.preview ? asked.at : null, readTools: m.readTools,
+        asked: asked ? { at: asked.at, preview: asked.preview, items: asked.items, tools: [...new Set(asked.calls.map(c => c.tool))], error: asked.error, canTurnOn: !asked.error && (input.now ?? Date.now()) - Date.parse(asked.at) <= ASK.previewMs } : null,
+      });
+    } else {
+      rows.push({
+        id, kind: "skipped", recipe: null, label: server, server, adds: "Only has tools that change things, so the brief stays away.",
+        cost: null, on: false, canToggle: false, health: up.health === "ok" ? "off" : up.health, detail: up.health === "ok" ? null : up.detail, command: null, readAt: null, readTools: 0,
       });
     }
   }
@@ -320,7 +345,7 @@ export function briefSources(input: {
 
 /** The brief's one Sources sentence: muted "5 sources read" until something fails, then what failed. */
 export function sourcesLine(rows: readonly BriefSource[]): { tone: "muted" | "warn"; text: string } {
-  const used = rows.filter(r => r.on && r.kind !== "unknown" && r.kind !== "skipped");
+  const used = rows.filter(r => r.on && r.kind !== "skipped");
   const bad = used.filter(r => r.health === "failed" || r.health === "sign-in");
   if (!bad.length) return { tone: "muted", text: `${used.length} source${used.length === 1 ? "" : "s"} read` };
   return { tone: "warn", text: bad.map(r => `${r.label} ${r.health === "sign-in" ? "needs a sign-in" : "failed"}`).join(" · ") };
@@ -335,21 +360,37 @@ export const sourcesChangeSchema = z.strictObject({
   retry: z.string().min(1).max(120).optional(),
   /** Check sources again: ask mcpproxy what it has now. */
   check: z.boolean().optional(),
+  /** Preview an Ask source (`mcp:<server>`): one ask now, its items shown, nothing turned on. Turning Ask on needs one. */
+  preview: z.string().min(1).max(120).optional(),
 });
 export type SourcesChange = z.infer<typeof sourcesChangeSchema>;
 
-/** A change, checked against the sources there are: unknown ids, Paseo and sources with no recipe are refused. */
-export function applySourcesChange(on: Readonly<Record<string, boolean>>, rows: readonly BriefSource[], change: SourcesChange): { ok: true; on: Record<string, boolean> } | { ok: false; error: string } {
+/**
+ * A change, checked against the sources there are: unknown ids, Paseo and servers with no read tools are refused, and
+ * an Ask source turns on only after a preview (or a morning's ask) under ASK.previewMs old that didn't fail.
+ */
+export function applySourcesChange(on: Readonly<Record<string, boolean>>, rows: readonly BriefSource[], change: SourcesChange, now = Date.now()): { ok: true; on: Record<string, boolean> } | { ok: false; error: string } {
   const next = { ...on };
   for (const [id, value] of Object.entries(change.on ?? {})) {
     const row = rows.find(r => r.id === id);
     if (!row) return { ok: false, error: `No source ${id}. brief_sources lists them.` };
-    if (!row.canToggle) return { ok: false, error: row.kind === "builtin" ? `${row.label} is always read.` : `${row.label} has no recipe yet, so the brief can't read it.` };
+    if (!row.canToggle) return { ok: false, error: row.kind === "builtin" ? `${row.label} is always read.` : `${row.label} has no read-only tools, so the brief can't read it.` };
+    if (row.kind === "ask" && value && !row.on) {
+      const a = row.asked;
+      if (!a || now - Date.parse(a.at) > ASK.previewMs) return { ok: false, error: `Preview ${row.label} first (preview: "${id}"), so you see what Ask would read before it's on.` };
+      if (a.error) return { ok: false, error: `${row.label}'s preview failed (${a.error}). Preview it again first.` };
+    }
     next[id] = value;
   }
   if (change.retry && !rows.some(r => r.id === change.retry)) return { ok: false, error: `No source ${change.retry}. brief_sources lists them.` };
+  if (change.preview) {
+    const row = rows.find(r => r.id === change.preview);
+    if (!row) return { ok: false, error: `No source ${change.preview}. brief_sources lists them.` };
+    if (row.kind !== "ask") return { ok: false, error: `${row.label} has a recipe; only Ask sources have a preview.` };
+  }
   return { ok: true, on: next };
 }
 
 /** `checking`: mcpproxy is being asked now; `retrying`: sources being read again now (the card polls until both clear). */
-export type SourcesView = { sources: BriefSource[]; checkedAt: string | null; error: string | null; line: ReturnType<typeof sourcesLine>; checking: boolean; retrying: string[] };
+/** `previewing`: Ask sources being previewed now. */
+export type SourcesView = { sources: BriefSource[]; checkedAt: string | null; error: string | null; line: ReturnType<typeof sourcesLine>; checking: boolean; retrying: string[]; previewing: string[] };
