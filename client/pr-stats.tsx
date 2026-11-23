@@ -122,7 +122,7 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
   return <View style={{ gap: 14 }}>
     <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 10, flexWrap: "wrap" }}>
       <RepoPicker theme={theme} compact={compact} out={out} onRepo={onRepo} />
-      <Segmented theme={theme} compact={compact} label="Period" value={period} options={PERIODS.map(p => ({ value: p, label: PERIOD_LABELS[p] }))} onChange={onPeriod} />
+      <Segmented theme={theme} compact={compact} label="Period" value={period} options={PERIODS.map(p => ({ value: p, text: PERIOD_LABELS[p] }))} onChange={onPeriod} />
     </View>
     <View style={{ gap: 4 }}>
       <Text style={t.meta}>{`${rangeWords(out)} · ${out.clock === "working" ? "working hours" : "calendar time"} · ${out.timeZone}`}</Text>
@@ -180,7 +180,7 @@ function RepoPicker({ theme, compact, out, onRepo }: { theme: Theme; compact: bo
 }
 
 /** A row of choices, one selected (radio semantics). */
-function Segmented<V extends string>({ theme, compact, label, value, options, onChange }: { theme: Theme; compact: boolean; label: string; value: V; options: { value: V; label: string }[]; onChange: (v: V) => void }) {
+function Segmented<V extends string>({ theme, compact, label, value, options, onChange }: { theme: Theme; compact: boolean; label: string; value: V; options: { value: V; text: string }[]; onChange: (v: V) => void }) {
   const c = theme.colors;
   return <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: "row", padding: 2, gap: 2, borderRadius: 8, backgroundColor: c.surface2, alignSelf: compact ? "stretch" : "flex-start", ...(compact ? { width: "100%" as const } : {}) }}>
     {options.map(o => {
@@ -188,7 +188,7 @@ function Segmented<V extends string>({ theme, compact, label, value, options, on
       return <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => onChange(o.value)}
         style={({ hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexGrow: compact ? 1 : 0, minHeight: compact ? 40 : 28, paddingHorizontal: compact ? 6 : 12, borderRadius: 6, alignItems: "center", justifyContent: "center",
           backgroundColor: on ? c.surface0 : hovered ? withAlpha(c.foreground, 0.05) : "transparent", ...(on ? { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } } : {}) })}>
-        <Text numberOfLines={1} style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 13 : 12, lineHeight: 17, fontWeight: on ? "600" : "500" }}>{o.label}</Text>
+        <Text numberOfLines={1} style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 13 : 12, lineHeight: 17, fontWeight: on ? "600" : "500" }}>{o.text}</Text>
       </Pressable>;
     })}
   </View>;
