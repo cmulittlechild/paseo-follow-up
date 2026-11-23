@@ -76,7 +76,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | --- | --- | --- |
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
-| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
+| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx` | [dispatch](docs/dispatch.md) |
@@ -1023,6 +1023,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
+
+83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
+   reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
+   its last update). A task blocked on a question the developer answered or closed is the agent's again
+   (`waitsOnDeveloper`, `coveredBy`): it comes due at the answer ("Due · Q7 answered"), whatever its PRs say, and gets
+   no default re-check while it waits; one still waiting on an open question stays exempt. A due task is a nudge to its owner at the Stop hook: at most 3 a turn end, each at most twice for
+   the same fact and once a day, zero words when nothing is due (`taskDue`, `pickNudges`, `shared/task-due.ts`). It is
+   never an auto-send and never a done: two unanswered nudges make it stale, still listed, and only a supersede by id
+   waives a task for the agent. Finished tasks leave storage 30 days after `finishedAt` unless something still reads
+   them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
+   deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
+   timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
 
 ## Bugs
 

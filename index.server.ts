@@ -78,6 +78,7 @@ import { HistoryCache } from "./server/history-cache";
 import { Governor } from "./server/governor";
 import { ListCache } from "./server/list-cache";
 import { scopeWriter, workflowSummary } from "./server/scopes";
+import { maintainTasks, type NudgeReceipt } from "./shared/task-due";
 import { PrWorkflowStore } from "./server/pr-workflow";
 import { commandName, handsMergeBack, noReviewRepoList, noReviewRepos } from "./shared/pr-workflow";
 import { projectRepo } from "./server/daemon";
@@ -428,6 +429,27 @@ export default function contribute(server: PluginServerContext) {
   const startedTurns = new Map<string, string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let hookTimer: ReturnType<typeof setInterval> | null = null;
+  let dueTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * due-by-fact, every 10 minutes: the agent hook's nudge receipts become each task's `nudged` (stale needs two), tasks
+   * from before due-by-fact get their re-check date and finished time, and finished tasks over 30 days old leave
+   * storage (`maintainTasks`). A workspace with nothing to change is only read, never copied.
+   */
+  const maintainDue = async () => {
+    const now = Date.now();
+    const due = new Map<string, NudgeReceipt | null>();
+    for (const w of (await store.snapshot()).workspaces) {
+      if (!w.enable_tracking || w.archived || !w.obligations.length) continue;
+      const raw = /^[\w-]+$/.test(w.id) ? await readFile(join(directory, "hook-state", `task-nudges-${w.id}.json`), "utf8").then(t => JSON.parse(t) as unknown, () => null) : null;
+      const receipt = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as NudgeReceipt : null;
+      if (maintainTasks(w, now, receipt, false)) due.set(w.id, receipt);
+    }
+    if (!due.size) return;
+    // One mutation for the whole pass: the first pass after an upgrade stamps every workspace's tasks, and one
+    // mutateWorkspace each (a copy, a write and a re-derive per workspace) left the scale check's idle worker
+    // ~100 MB higher (#283 CI). The draft copies only the workspaces it changes (`find` by id copies nothing).
+    await store.mutate(state => { for (const [id, receipt] of due) { const d = state.workspaces.find(w => w.id === id); if (d) maintainTasks(d, now, receipt, true); } }).catch(() => undefined);
+  };
   let hooksStarted = false;
   let loadError: string | null = null;
   /**
@@ -517,6 +539,8 @@ export default function contribute(server: PluginServerContext) {
     hooksStarted = true;
     await agentHooks.start().catch(() => { hookError = "Automatic sidebar instructions could not be registered for every provider. Check Claude/Codex hook settings; following still works."; });
     hookTimer = setInterval(() => void agentHooks.heartbeat().catch(() => {}), 30_000);
+    await maintainDue().catch(() => undefined);
+    dueTimer = setInterval(() => void maintainDue().catch(() => undefined), 10 * 60_000);
     await writeBriefState().catch(() => undefined);
     // The message queue: answers recorded before a reload (or before the upgrade from 2.0's per-answer senders) join it,
     // a send a reload cut off is read back from the agent's chat before it goes again, and everything due goes now.
@@ -1939,7 +1963,7 @@ export default function contribute(server: PluginServerContext) {
   const stop = () => stopping ??= (async () => {
     process.off("disconnect", hostGone);
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); dispatcher.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); dispatcher.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); if (dueTimer) clearInterval(dueTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.

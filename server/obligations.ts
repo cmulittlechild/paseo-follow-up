@@ -4,6 +4,7 @@ import { lifecycleOnly } from "../shared/follow-up";
 import { communicationKey, communicationSchema, replyRecorded, type Communication } from "../shared/communication";
 import type { TaskTrigger } from "../shared/task-trigger";
 import { currentQuestion } from "../shared/questions";
+import { RECHECK_DAYS } from "../shared/task-due";
 
 type Update = {
   id?: string; title: string; status: Obligation["status"]; afterPrs?: string[]; evidence?: string;
@@ -15,6 +16,10 @@ type Update = {
   need?: "decision" | "action";
   dependencyStage?: "merged" | "deployed"; enable_follow_up?: boolean; communication?: Pick<Communication, "threadUrl" | "recipient"> & Partial<Communication>;
   trigger?: TaskTrigger | null;
+  /** due-by-fact: when to look at it again, "YYYY-MM-DD" or an ISO time. An open task with no PRs gets RECHECK_DAYS out by default. */
+  recheck?: string;
+  /** The clock (tests); defaults to Date.now(). */
+  now?: number;
   /** The calling agent (from the daemon, never an argument). */
   caller?: string;
   /** The agent actually doing it, when the caller names another (an orchestrator's subagent). */
@@ -51,21 +56,34 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   if (trigger && trigger.event !== "now" && !afterPrs.length) throw new Error("Select at least one owned PR for a merge/deploy trigger.");
   const stage = trigger?.event === "merge" ? "merged" : trigger?.event === "deploy" ? "deployed" : dependencyStage ?? existing?.dependencyStage ?? "deployed";
   const followUp = enable_follow_up ?? (input.trigger !== undefined ? !!trigger : existing?.enable_follow_up ?? false);
+  // due-by-fact: every open task knows what moves it. With no PRs that is a re-check date: the agent's, else
+  // RECHECK_DAYS from this update (an update is the agent looking at it). A finished task records when.
+  const now = input.now ?? Date.now();
+  const recheck = input.recheck === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(input.recheck) ? Date.parse(`${input.recheck}T00:00:00Z`) : Date.parse(input.recheck);
+  if (recheck !== undefined && !Number.isFinite(recheck)) throw new Error("recheck is a date: \"YYYY-MM-DD\" or an ISO time.");
+  const finished = ["done", "waived"].includes(status);
+  const kept = existing?.recheckAt && Date.parse(existing.recheckAt) > now ? existing.recheckAt : undefined;
+  // A task blocked on the developer gets none by default: the answer (or the question closing) is what moves it, and a
+  // default date would hold that (shared/task-due.ts taskDue). Only a recheck the agent passes holds it.
+  const recheckAt = finished ? undefined : recheck !== undefined ? new Date(recheck).toISOString() : ask ? undefined : kept ?? (afterPrs.length ? undefined : new Date(now + RECHECK_DAYS * 86_400_000).toISOString());
+  const finishedAt = finished ? (existing && ["done", "waived"].includes(existing.status) ? existing.finishedAt : undefined) ?? new Date(now).toISOString() : undefined;
   const record = { title, status, afterPrs, evidence: evidence || (destination ? `Reply to ${destination.recipient}: ${destination.threadUrl}` : ""), enable_follow_up: followUp, dependencyStage: stage, category: "follow_up" as const, ...(destination ? { communication: destination } : {}), ...(trigger !== undefined ? { trigger } : {}) };
   // Who is working on it: set whenever status is working (the named agent, else the caller); kept as history otherwise.
   const worker = status === "working" ? input.workingAgentId ?? input.caller ?? existing?.workingAgentId : input.workingAgentId ?? existing?.workingAgentId;
   if (worker) Object.assign(record, { workingAgentId: worker });
   if (existing) {
     const reopened = ["done", "waived", "blocked"].includes(existing.status) && ["pending", "waiting"].includes(status);
-    if (reopened || existing.title !== title || JSON.stringify(existing.afterPrs) !== JSON.stringify(afterPrs) || existing.dependencyStage !== stage || JSON.stringify(existing.communication) !== JSON.stringify(destination) || JSON.stringify(existing.trigger) !== JSON.stringify(trigger) || existing.enable_follow_up !== followUp || (existing.ask ?? "") !== (ask ?? "") || existing.need !== need) existing.revision++;
+    if (reopened || existing.title !== title || JSON.stringify(existing.afterPrs) !== JSON.stringify(afterPrs) || existing.dependencyStage !== stage || JSON.stringify(existing.communication) !== JSON.stringify(destination) || JSON.stringify(existing.trigger) !== JSON.stringify(trigger) || existing.enable_follow_up !== followUp || (existing.ask ?? "") !== (ask ?? "") || existing.need !== need || existing.recheckAt !== recheckAt) existing.revision++;
     // A changed ask is a new decision: what covered the old one doesn't cover it (syncTaskQuestions looks again).
     if ((existing.ask ?? "") !== (ask ?? "")) delete existing.coveredBy;
     Object.assign(existing, record);
     if (ask) existing.ask = ask; else delete existing.ask;
     if (need) existing.need = need; else delete existing.need;
+    if (recheckAt) existing.recheckAt = recheckAt; else delete existing.recheckAt;
+    if (finishedAt) existing.finishedAt = finishedAt; else delete existing.finishedAt;
     if (pointed && ask) existing.coveredBy = pointed.id;
     return existing;
   }
-  const added = { ...record, ...(ask ? { ask } : {}), ...(need ? { need } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
+  const added = { ...record, ...(recheckAt ? { recheckAt } : {}), ...(finishedAt ? { finishedAt } : {}), ...(ask ? { ask } : {}), ...(need ? { need } : {}), ...(pointed && ask ? { coveredBy: pointed.id } : {}), id: randomUUID(), revision: 0 };
   w.obligations.push(added); return added;
 }
