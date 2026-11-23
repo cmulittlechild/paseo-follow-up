@@ -84,18 +84,20 @@ const lines = (n: number, word: string) => `${n} ${word} line${n === 1 ? "" : "s
  * an agent working right now.
  */
 export function archiveConfirm(title: string, f: ArchiveFacts): string {
+  // The question, then one line per consequence, so the line about lost work stands on its own.
   const out = [`Archive ${title}?`];
-  out.push(f.running ? "An agent is working in it right now: archiving stops it and every other agent, closes its terminals and takes it off your list."
+  out.push(f.running ? "An agent is working in it now. Archiving stops it and every other agent, closes its terminals and takes it off your list."
     : "Its agents stop, its terminals close and it leaves your list.");
+  let dirty = false;
   if (f.kind === "worktree" && f.ownedWorktree !== false) {
     const changed = !!f.diff && (f.diff.additions > 0 || f.diff.deletions > 0);
-    const dirty = f.dirty === true || (f.dirty == null && changed);
+    dirty = f.dirty === true || (f.dirty == null && changed);
     const stat = changed ? [f.diff!.additions > 0 && lines(f.diff!.additions, "added"), f.diff!.deletions > 0 && lines(f.diff!.deletions, "deleted")].filter(Boolean).join(", ") : "";
-    out.push(dirty ? `Paseo deletes its worktree, and the uncommitted changes in it${stat ? ` (${stat})` : ""} are lost.` : "Paseo deletes its worktree folder; the branch and its commits stay.");
+    out.push(dirty ? `Paseo deletes its worktree. Uncommitted changes${stat ? ` (${stat})` : ""} are lost.` : "Paseo deletes its worktree folder. The branch and its commits stay.");
     if ((f.ahead ?? 0) > 0) out.push(`${f.ahead} unpushed commit${f.ahead === 1 ? "" : "s"} stay only on the local branch.`);
   }
-  out.push("Paseo can restore it later.");
-  return out.join(" ");
+  out.push(dirty ? "Paseo can restore the workspace later, without those changes." : "Paseo can restore it later.");
+  return out.join("\n");
 }
 
 export type RowMenuInput = {

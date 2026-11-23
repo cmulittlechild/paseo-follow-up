@@ -105,11 +105,11 @@ test("a row ready to archive leads with Archive, first in triage, and not again 
 
 test("Archive's confirm says what Paseo's archive does to this workspace", () => {
   const item = flatItems(rowMenu({ ...base, archive: facts() })).find(i => i.action === "archive")!;
-  assert.equal(item.confirm, "Archive Migration rollout? Its agents stop, its terminals close and it leaves your list. Paseo deletes its worktree folder; the branch and its commits stay. Paseo can restore it later.");
+  assert.equal(item.confirm, "Archive Migration rollout?\nIts agents stop, its terminals close and it leaves your list.\nPaseo deletes its worktree folder. The branch and its commits stay.\nPaseo can restore it later.");
   assert.equal(archiveConfirm("example-app", facts({ dirty: true, diff: { additions: 12, deletions: 1 }, ahead: 2 })),
-    "Archive example-app? Its agents stop, its terminals close and it leaves your list. Paseo deletes its worktree, and the uncommitted changes in it (12 added lines, 1 deleted line) are lost. 2 unpushed commits stay only on the local branch. Paseo can restore it later.");
-  assert.match(archiveConfirm("x", facts({ dirty: null, diff: { additions: 0, deletions: 4 } })), /uncommitted changes in it \(4 deleted lines\) are lost/, "unknown dirty with a diff counts as dirty, as Paseo's warning does");
-  assert.match(archiveConfirm("x", facts({ running: true })), /^Archive x\? An agent is working in it right now: archiving stops it/);
+    "Archive example-app?\nIts agents stop, its terminals close and it leaves your list.\nPaseo deletes its worktree. Uncommitted changes (12 added lines, 1 deleted line) are lost.\n2 unpushed commits stay only on the local branch.\nPaseo can restore the workspace later, without those changes.");
+  assert.match(archiveConfirm("x", facts({ dirty: null, diff: { additions: 0, deletions: 4 } })), /Uncommitted changes \(4 deleted lines\) are lost/, "unknown dirty with a diff counts as dirty, as Paseo's warning does");
+  assert.match(archiveConfirm("x", facts({ running: true })), /^Archive x\?\nAn agent is working in it now\. Archiving stops it/);
   for (const kind of ["directory", "checkout", "local_checkout"] as const)
     assert.doesNotMatch(archiveConfirm("x", facts({ kind, dirty: true, ahead: 3 })), /worktree|uncommitted|unpushed/, `${kind}: Paseo deletes no folder`);
   assert.doesNotMatch(archiveConfirm("x", facts({ ownedWorktree: false, dirty: true })), /deletes/, "a worktree Paseo can't prove it owns is left in place");
