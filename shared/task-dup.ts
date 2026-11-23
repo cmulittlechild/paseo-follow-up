@@ -14,9 +14,10 @@ export const DUP_SIMILARITY = 0.5;
 export const DUP_MAX = 3;
 
 const open = (o: Obligation) => o.status !== "done" && o.status !== "waived";
-/** Case, spacing and punctuation don't make a different task. */
-export const normTitle = (title: string) => title.slice(0, DUP_TITLE_CHARS).toLowerCase().replace(/[^\p{L}\p{N}#]+/gu, " ").trim();
-const tokens = (title: string) => new Set(normTitle(title).split(" ").filter(Boolean));
+/** Case, spacing and punctuation don't make a different task. The whole title: the exact-title rule compares this. */
+export const normTitle = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}#]+/gu, " ").trim();
+/** The similarity score reads only the first 60 characters, what an agent names a task by. */
+const tokens = (title: string) => new Set(normTitle(title.slice(0, DUP_TITLE_CHARS)).split(" ").filter(Boolean));
 
 export function titleSimilarity(a: string, b: string): number {
   const x = tokens(a), y = tokens(b);

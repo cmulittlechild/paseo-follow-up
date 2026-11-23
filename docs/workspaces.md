@@ -265,7 +265,7 @@ waiting one, and a waiting one says what moves it ("Check alert emails in stagin
   keys.
 - **Duplicates at write time** (invariant `a-new-task-is-checked-once`, `shared/task-dup.ts`). A write without an id is
   checked once against the workspace's open tasks, by token Jaccard on the first 60 characters of the titles. The same
-  agent's exact title updates its task (a repeated write); a similar one (0.5 or more) is refused with up to 3 lines,
+  agent's exact whole title updates its task (a repeated write); a similar one (0.5 or more) is refused with up to 3 lines,
   `Similar open task: <id> "<title>" (<status>). Update it by id, or pass new=true for a separate task.`, and `new: true`
   adds it anyway. Clean writes add nothing. Renames keep the id and are never checked.
 - **Triggers** (`shared/task-trigger.ts`): `now`, `merge` or `deploy`, with an optional `delayDays`. Deploy state

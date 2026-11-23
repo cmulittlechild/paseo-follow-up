@@ -63,7 +63,7 @@ test("a-new-task-is-checked-once: similarity is token Jaccard on the first 60 ch
   assert.equal(titleSimilarity("Check alert emails in staging", "check ALERT emails, in staging!"), 1);
   assert.ok(titleSimilarity("Check alert emails in staging", "Check alert emails on staging") >= 0.5);
   assert.ok(titleSimilarity("Wire alert thresholds", "Backfill alert history") < 0.5);
-  assert.equal(normTitle("x".repeat(80)).length, 60);
+  assert.equal(normTitle("x".repeat(80)).length, 80, "the exact-title rule reads the whole title");
   const w = workspace({ prs: [], obligations: Array.from({ length: 14 }, (_, i) => ({ id: `t${i}`, title: `Task number ${i} about thing ${i}`, status: "pending" as const, afterPrs: [], evidence: "", enable_follow_up: false, revision: 0 })) });
   const t0 = performance.now();
   for (let i = 0; i < 100; i++) similarOpen(w, "Task number 3 about thing 3");
@@ -77,4 +77,20 @@ test("a-new-task-is-checked-once: the agent can say new=true, and who made a tas
   const w = empty();
   add(w, "Wire alert thresholds");
   assert.equal("createdBy" in (listEntry(w) as { obligations: object[] }).obligations[0], false, "the panel never needs it");
+});
+
+test("a-new-task-is-checked-once: two long titles sharing their first 60 characters are two tasks, never merged", () => {
+  // #287 review: templated titles ("… after deploy of #283" / "… #290") cut at 60 characters were one title, so the
+  // second write renamed and updated the first.
+  const w = empty();
+  const stem = "Verify the vendors table migration after the deploy of the billing service ";
+  assert.ok(stem.length > 60);
+  const first = add(w, `${stem}#283`);
+  assert.throws(() => add(w, `${stem}#290`), new RegExp(`Similar open task: ${first.id} `), "close enough to ask, not the same task");
+  assert.equal(w.obligations.length, 1);
+  assert.equal(first.title, `${stem}#283`, "the first task is untouched");
+  const second = add(w, `${stem}#290`, { new: true });
+  assert.notEqual(second.id, first.id);
+  assert.equal(add(w, `${stem}#290`, { status: "waiting" }).id, second.id, "the whole exact title still updates its own task");
+  assert.equal(w.obligations.length, 2);
 });

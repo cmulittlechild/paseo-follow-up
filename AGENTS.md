@@ -1045,6 +1045,14 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
    the stored items and never asks. Guarded by `tests/ask.test.ts`.
 
+85. **A new task is checked once** (`a-new-task-is-checked-once`). `update_obligation` without an id is the only place
+   a duplicate task is checked: against the workspace's open tasks (p95 7, max 14 live), token Jaccard on the first 60
+   characters of each title (`shared/task-dup.ts`, `newTaskCheck` in `server/obligations.ts`). The caller's own exact
+   whole title (case and punctuation aside, never cut at 60; `createdBy`) updates that task; a title at 0.5 or more is refused with at most 3
+   lines, each naming an open task by id, and nothing is added; `new: true` adds it anyway. A clean write adds no words.
+   No scans, no pairwise passes, no model; renames keep the id and are never checked; Follow-up's own writes (no caller)
+   aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
+   duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
@@ -1055,14 +1063,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    mirrored Needs you ("Q1 · waiting on your answer"), sorted the due task last, carried the send queue and every
    finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
    `tests/tasks-view.test.ts` and `INVARIANTS`.
-90. **A new task is checked once** (`a-new-task-is-checked-once`). `update_obligation` without an id is the only place
-   a duplicate task is checked: against the workspace's open tasks (p95 7, max 14 live), token Jaccard on the first 60
-   characters of each title (`shared/task-dup.ts`, `newTaskCheck` in `server/obligations.ts`). The caller's own exact
-   title (case and punctuation aside; `createdBy`) updates that task; a title at 0.5 or more is refused with at most 3
-   lines, each naming an open task by id, and nothing is added; `new: true` adds it anyway. A clean write adds no words.
-   No scans, no pairwise passes, no model; renames keep the id and are never checked; Follow-up's own writes (no caller)
-   aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
-   duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
 
 ## Bugs
 
