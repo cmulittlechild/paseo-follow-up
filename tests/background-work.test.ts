@@ -19,7 +19,9 @@ test("backgroundCount/isLive/liveStatus: positive counts only; absent (0.15) and
   const working = { status: "idle", activeTurn: null, backgroundWork: { count: 2 } };
   assert.equal(backgroundCount(working), 2); assert.equal(isLive(working), true); assert.equal(liveStatus(working), "running");
   assert.equal(isLoaded({ status: "idle", backgroundWork: { count: 1 } }), true, "live work means a loaded runtime");
-  assert.equal(liveStatus({ status: "error", backgroundWork: { count: 1 } }), "running");
+  // An agent in error or closed has no background work it can finish, so a stale count never reads as busy (invariant 104).
+  assert.equal(backgroundCount({ status: "error", backgroundWork: { count: 1 } }), 0);
+  assert.equal(liveStatus({ status: "error", backgroundWork: { count: 1 } }), "error");
   assert.equal(liveStatus({ status: "closed" }), "closed");
 });
 

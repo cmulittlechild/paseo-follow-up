@@ -3,7 +3,7 @@ import type { Workspace as FullWorkspace } from "./model";
 import type { ListBatch as Batch, ListObligation as Obligation, ListWorkspace as Workspace } from "./list";
 import { completionCheck } from "./model";
 import { recoveryBatch } from "./follow-up";
-import { sendDecision } from "./send-decision";
+import { inProgressHolds, sendDecision } from "./send-decision";
 
 /**
  * Repairs are tasks (Q49). A PR condition Follow-up found (a conflict, review feedback, a failing required check, a
@@ -80,16 +80,18 @@ export function obligationDelivery(w: Workspace, o: Pick<Obligation, "id">): "qu
  * Open repair rows (queued, sent, capped, manual) then done ones. A repair GitHub cleared before it ever went out
  * vanishes: Done only means a task that was sent, so flapping checks never flood Done.
  */
-export function repairRows(w: Workspace, doneLimit = 20): { open: RepairRow[]; done: RepairRow[] } {
+export function repairRows(w: Workspace, doneLimit = 20, now = Date.now()): { open: RepairRow[]; done: RepairRow[] } {
   const open: RepairRow[] = [];
   const seen = new Set<string>();
   const add = (task: Task, state: RepairState, text: string) => { if (!isRepair(task) || seen.has(task.key)) return; seen.add(task.key); open.push({ task, state, text, pr: prOf(task) }); };
   for (const t of sentMessage(w)?.tasks ?? []) add(t, "sent", "Sent");
   for (const t of pendingMessage(w)?.tasks ?? []) add(t, "queued", "Queued");
+  // The agent said it's already on these (Batch.inProgress): they wait for that work, never queued again meanwhile.
+  for (const b of w.batches.filter(b => inProgressHolds(w, b, now)).reverse()) for (const t of b.tasks) add(t, "sent", `Sent · ${agent(w)} is on it`);
   for (const h of w.heldTasks ?? []) add(h.task, h.held, h.held === "capped" ? "Needs you · sent twice, no change on GitHub" : h.held === "person" ? "Needs you · waits on a person, not the agent" : "Auto off · stays with you");
   const done: RepairRow[] = [];
   // Newest settled message first; a task key still open (another fingerprint) isn't done.
-  const settled = w.batches.filter(b => b.state === "completed" && b.sentAt && message(b)).sort((a, b) => Date.parse(b.settledAt ?? b.sentAt!) - Date.parse(a.settledAt ?? a.sentAt!));
+  const settled = w.batches.filter(b => b.state === "completed" && !b.inProgress && b.sentAt && message(b)).sort((a, b) => Date.parse(b.settledAt ?? b.sentAt!) - Date.parse(a.settledAt ?? a.sentAt!));
   for (const b of settled) for (const t of b.tasks) {
     if (!isRepair(t) || seen.has(t.key) || done.length >= doneLimit) continue;
     seen.add(t.key);

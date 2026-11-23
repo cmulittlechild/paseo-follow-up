@@ -4,7 +4,7 @@ import { deliveryStatus } from "./queue";
 import { sentence } from "./errors";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summary, type Task, type Status } from "./model";
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
-import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from "./send-decision";
+import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, holdsQueue, mainWait, stuckBatch } from "./send-decision";
 import { workingLine } from "./task-status";
 import { owedTask } from "./task-view";
 import { taskDue } from "./task-due";
@@ -135,7 +135,7 @@ export function quietFold<P extends Pr>(prs: readonly P[], isOpen: (key: string)
 }
 
 const pendingSends = (w: Workspace) => w.batches.filter(b => !recoveryBatch(b) && b.state === "pending");
-const openBatches = (w: Workspace) => w.batches.filter(b => !recoveryBatch(b) && ["sending", "sent", "blocked", "uncertain"].includes(b.state));
+const openBatches = (w: Workspace) => w.batches.filter(b => !recoveryBatch(b) && holdsQueue(b));
 const QUEUED = ["QUEUED_TO_MERGE", "WAITING_TO_MERGE", "REBASING", "HANDED_OFF_TO_EXTERNAL_MERGE_QUEUE"];
 
 /** Snapshot-only merge readiness. Pr controls add the browser's live "merging" read on top. */
@@ -160,7 +160,7 @@ export function sendBlocker(w: Workspace, batch: Batch): string | null {
   const main = mainWait(w);
   if (main) return capitalize(MAIN_WAIT[main]);
   if (w.runtimeReason) return w.runtimeReason;
-  if (w.batches.some(other => other.id !== batch.id && ["sending", "sent", "blocked", "uncertain"].includes(other.state))) return "Another batch is still open";
+  if (w.batches.some(other => other.id !== batch.id && holdsQueue(other))) return "Another batch is still open";
   return null;
 }
 
@@ -304,7 +304,8 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   const open = questions.filter(questionOpen);
   for (const q of open.filter(q => questionState(q) === "stopped")) items.push({ kind: "question", key: `question:${q.id}`, questionId: q.id, title: `${q.id} · ${q.title}`, detail: q.question, state: "stopped", big: q.big });
   if (w.hold) items.push({ kind: "hold", key: "hold", title: "Follow-up is paused", detail: w.hold });
-  for (const b of w.batches.filter(b => !recoveryBatch(b) && ["blocked", "uncertain"].includes(b.state) && !(w.completion && completionCheck(b)))) {
+  // A batch whose review changed, went away or was sent again (Batch.movedOn) isn't stuck: it never shows as failing.
+  for (const b of w.batches.filter(b => !recoveryBatch(b) && stuckBatch(b) && !(w.completion && completionCheck(b)))) {
     items.push({ kind: "retry", key: `retry:${b.id}`, batchId: b.id, exhausted: b.attempts >= 3,
       title: stuckLine(b),
       detail: b.result || (b.state === "uncertain" ? "Delivery wasn't confirmed." : "The main agent reported a blocker.") });

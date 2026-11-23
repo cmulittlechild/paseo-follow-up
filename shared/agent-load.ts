@@ -19,8 +19,13 @@ export const LIVE_STATUSES = ["running", "initializing"];
  * number reads as 0: `backgroundWork.list()` throws before an agent's first turn, and unknown is not busy here.
  */
 export type WorkSignals = { status: string; backgroundWork?: { count?: unknown } | null };
+/** Statuses with no live runtime: whatever background count the agent last reported is not work that will ever end. */
+export const DEAD_STATUSES = ["error", "closed"];
 export function backgroundCount(agent: WorkSignals | null | undefined): number {
-  const n = agent?.backgroundWork?.count;
+  // An agent in error or closed has no runtime left to finish its jobs: a count it still carries can never clear, so it
+  // never holds Done, a sent message's settle or anything else that waits for "all work finished" (2026-11-23).
+  if (!agent || DEAD_STATUSES.includes(agent.status)) return 0;
+  const n = agent.backgroundWork?.count;
   return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
 }
 /** Running for Follow-up: mid-turn, starting, or (0.16) with live background work. Status invariant background-work-is-running. */
