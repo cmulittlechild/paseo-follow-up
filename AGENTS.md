@@ -1039,7 +1039,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    waives a task for the agent. Finished tasks leave storage 30 days after `finishedAt` unless something still reads
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
-   timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+   timing. No text an agent reads calls a task manual either: the skill (`skills/follow-up/SKILL.md`), tool, hook,
+   overseer and recovery text, OVERVIEW and PRODUCT say what the tool says (2026-11-23: the skill still said "Tasks are
+   manual unless explicitly scheduled", so agents read two rules; `tests/no-manual-tasks.test.ts`, scoped to "manual" in
+   a sentence about tasks or triggers). Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS`
+   ([docs/workspaces.md](docs/workspaces.md)).
 84. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
    `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
    only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
