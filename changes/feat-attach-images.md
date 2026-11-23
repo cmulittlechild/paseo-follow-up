@@ -1,0 +1,1 @@
+- Every field that takes images has an Add image button that opens your file picker on desktop and in the browser.

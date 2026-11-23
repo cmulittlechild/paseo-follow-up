@@ -3,7 +3,7 @@ import { Platform, View, useWindowDimensions, type ViewStyle } from "react-nativ
 import { Pressable, Text } from "./text";
 import { useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
-import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
+import { AttachImageButton, ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
 import { imagesWord } from "../shared/images";
 import { agentSettingsRpc, dispatchPreviewRpc, dispatchRecordsRpc, dispatchRpc, dispatchSettingsRpc, dispatchSourcesRpc, dispatchUndoRpc, setDispatchSettingsRpc } from "../shared/contracts";
 import type { ActionAgent, DispatchPlan, DispatchRecord, DispatchSources } from "../shared/dispatch";
@@ -320,13 +320,15 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
   const [focused, setFocused] = useState(false);
   return <View style={{ flex: 1, minHeight: 0 }}>
     <View style={{ paddingHorizontal: compact ? 16 : 16, paddingTop: compact ? 12 : 16, paddingBottom: 8 }}>
-      <ImageField model={img} theme={{ colors: c }} compact={compact}>
+      <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 8, paddingLeft: focused ? 9 : 10, paddingRight: focused ? 3 : 4, minHeight: compact ? 48 : 40, backgroundColor: c.surface0 }}>
         <Icon name="Clipboard" size={16} color={c.foregroundMuted} />
         <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
           accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           style={{ flex: 1, color: c.foreground, fontSize: compact ? 16 : 14, paddingVertical: 8, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-        {!compact && !query && <View style={{ paddingRight: 6 }}><Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} /></View>}
+        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
+        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
+        <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
       </View>
       </ImageField>

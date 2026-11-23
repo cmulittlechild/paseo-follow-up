@@ -322,6 +322,13 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
   as a small thumbnail under the field with a remove ×; hovering a thumbnail names it and its size, and a click shows it
   larger in the release notes' viewer (`client/image-viewer.tsx`) so the right screenshot is checked before Send. A
   reply box (an agent's, the Overseer's) draws its thumbnails inside the composer, above the words.
+- **Add image** (`AttachImageButton`): every field that takes images has one, from the same component. It opens the
+  system file picker for the caps' types, several at once, the way Paseo's composer does on web (a hidden file input;
+  Paseo's desktop app opens its system dialog for it). A one-line field or a reply box draws it among its own controls
+  (`ImageField` `attach="inline"`: before New's ⌘V, beside a reply box's Send, at the end of Home's search while it
+  asks the Overseer, named "Add image for the Overseer"); every other field gets a quiet "Add image" line under it and
+  its thumbnails. At the cap a press opens nothing and says why on the field's line, as a refused paste does. No
+  picker, no button: the phone app draws none (`PICKER_ON`).
 - **Caps** (`shared/images.ts`): PNG, JPEG, GIF and WebP; 6 per message, 5 MB each (Claude's API limit), 20 MB in all.
   A paste past a cap is refused at once with the reason under the field ("6 images is the most one message takes.",
   "That image is 7.2 MB; the most is 5 MB." then "Nothing was added."), and nothing is added.
