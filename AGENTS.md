@@ -1023,16 +1023,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
-83. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
-   `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
-   only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
-   ranker. The model only proposes: at most `ASK.calls` reads, each refused unless the tool is one of that server's
-   read tools and every argument is one its schema takes, of its type (`validateCall`, also re-run on a cached plan);
-   Follow-up runs them through `SourceDirectory.callTool` (`tool-read`, sources-are-read-only). Its items are at most
-   `ASK.items`, with a link only when a reply carries it (`validateItems`). It runs on the Summaries role's fast model,
-   once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
-   the stored items and never asks. Guarded by `tests/ask.test.ts`.
-
 83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
    reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
    its last update). A task blocked on a question the developer answered or closed is the agent's again
@@ -1044,6 +1034,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+
+84. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
+   `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
+   only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
+   ranker. The model only proposes: at most `ASK.calls` reads, each refused unless the tool is one of that server's
+   read tools and every argument is one its schema takes, of its type (`validateCall`, also re-run on a cached plan);
+   Follow-up runs them through `SourceDirectory.callTool` (`tool-read`, sources-are-read-only). Its items are at most
+   `ASK.items`, with a link only when a reply carries it (`validateItems`). It runs on the Summaries role's fast model,
+   once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
+   the stored items and never asks. Guarded by `tests/ask.test.ts`.
 
 ## Bugs
 
