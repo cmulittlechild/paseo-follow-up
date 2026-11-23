@@ -77,7 +77,8 @@ export function matchesQuery(issue: Pick<LinearIssue, "key" | "title">, query: s
  * The left list and its default selection for what's in the field (a-taken-issue-is-not-a-suggestion): My issues lists
  * only issues you could start. One a live workspace already has (`routes[key].existing`, the server's one predicate)
  * folds into a last row, "N already have a workspace", that opens in place (`foldOpen`); preselection and ↑/↓ reach a
- * taken row only once it's open. `empty`: the line drawn when nothing is left to start but the fold.
+ * taken row only once it's open. `empty`: the line above the fold when nothing is left to start (the fold right
+ * under it says how many).
  * - Empty: My issues, the first startable preselected (the right pane is never empty while Linear is there).
  * - A Linear key or link that is in the list: that row, tagged "From your link" (no duplicate row).
  * - Any other link or key: a Pasted row on top, selected, then My issues.
@@ -92,7 +93,7 @@ export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | nu
   const q = query.trim();
   if (!q) {
     const { free, taken } = split(issues);
-    return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? null, empty: !free.length && taken.length ? `Nothing new to start. ${takenWords(taken.length)}.` : null };
+    return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? null, empty: !free.length && taken.length ? "Nothing new to start." : null };
   }
   const parsed = parseSource(q);
   if (parsed.kind !== "text") {

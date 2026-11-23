@@ -2777,7 +2777,7 @@ async function newShots({ shoot, call, out, home, billing }) {
     await openHome(page); await narrow(page, vp);
     await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
     await dialog(page).waitFor();
-    if (list) await row(page, /^APP-151 Dunning/).waitFor();
+    if (list) await row(page, /^WEB-31 Invoice/).waitFor();
   };
   const type = async (page, text) => { const f = dialog(page).getByRole("textbox", { name: FIELD }).first(); await f.fill(text); await page.waitForTimeout(250); };
   /** Phones: a row opens the preview screen; desktop: it selects in place. */
@@ -2823,7 +2823,7 @@ async function newShots({ shoot, call, out, home, billing }) {
       if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
     await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
-    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^2 already have a workspace/).click(); await pick(page, /^APP-142 /);
+    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
       check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
     await shoot(name("ambiguous"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^OPS-12 /); await dialog(page).getByText("Which project for OPS?").first().waitFor();
       check(`${device} ${theme}: ambiguous blocks every action`, await dialog(page).getByText("Pick a project first; the actions start there.").count() > 0); });
@@ -2862,7 +2862,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   // title) fold into one last row; opened, each is muted and names its workspace, and ↵ opens it. All taken: one line.
   for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) {
     const phone = vp.width < 768;
-    const fold = page => row(page, /^2 already have a workspace/);
+    const fold = page => row(page, /^\d+ already ha(s|ve) a workspace/);
     await shoot(`new-taken-folded-${device}-${theme}`, vp, theme, async page => {
       await openFromHome(page, vp); await fold(page).waitFor();
       check(`${device} ${theme}: a taken issue is not listed until the fold opens`, !(await dialog(page).getByRole("button", { name: /^APP-142 / }).filter({ visible: true }).count()) && !(await dialog(page).getByRole("button", { name: /^APP-160 / }).filter({ visible: true }).count()));
@@ -2879,7 +2879,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues().filter(i => ["APP-142", "APP-160"].includes(i.id))));
   await call("follow.dispatch-sources", { fresh: true });
   for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) await shoot(`new-taken-all-${device}-${theme}`, vp, theme, async page => {
-    await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Nothing new to start. 2 already have a workspace.").waitFor();
+    await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Nothing new to start.").waitFor();
   });
   await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues()));
   await call("follow.dispatch-sources", { fresh: true });

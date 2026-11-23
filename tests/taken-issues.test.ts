@@ -92,7 +92,7 @@ test("New suggests only the free issue; the taken ones fold, naming their worksp
 test("all taken: the list says so in one line, never a blank pane", () => {
   const sources = { linear: { status: "ok" as const, at: NOW, more: false, issues: [issue("ACME-12", "Plan")] }, routes: { "ACME-12": { project: "web", guess: false, existing: { workspaceId: "plan", title: "Q4 planning", state: "tracked" } } } };
   const { rows, selected, empty } = newRows(sources, "", NOW);
-  assert.equal(empty, "Nothing new to start. 1 already has a workspace.");
+  assert.equal(empty, "Nothing new to start.", "the fold right under it says how many");
   assert.deepEqual(rows.map(r => r.id), ["taken"]);
   assert.equal(selected, null);
 });
