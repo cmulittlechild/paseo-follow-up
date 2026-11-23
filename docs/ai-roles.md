@@ -74,6 +74,12 @@ User-facing copy calls it **Summary** (the Settings → Agents role is "Summarie
 - **Agent tool:** `workspace_about`.
 - **UI:** `client/about.tsx`. Placement tests: `tests/about-placement.test.ts`.
 
+## Ask for unknown sources
+
+The Morning brief's Ask (docs/morning-brief.md#ask) runs on the Summaries role too: one call plans at most 3 read-only
+reads of a server no recipe fits (weekly, or when its tools change), one turns the replies into at most 5 items. Every
+call and item is validated; the model runs nothing itself. Off until the developer previews and turns a source on.
+
 ## Rename title with AI
 
 A short workspace name from what Follow-up already stored, on Summaries' agent (Settings → Agents → Summaries, Claude
