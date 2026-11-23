@@ -7,6 +7,7 @@ import { Text } from "./text";
 import { Button, IconButton, SubmitScope, Switch, errorText, text, type Theme } from "./kit";
 import { raised } from "./theme";
 import { focusRing } from "./action-row";
+import { isMac } from "../shared/search-key";
 import { dispatchActionsRpc, dispatchSettingsRpc, setDispatchActionsRpc, setDispatchSettingsRpc } from "../shared/contracts";
 import type { z } from "zod";
 import type { DispatchAction, actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
@@ -18,7 +19,7 @@ type ActionsView = { actions: DispatchAction[]; edited: boolean };
 type ActionChange = z.infer<typeof actionChangeSchema>;
 type SettingsChange = z.infer<typeof settingsChangeSchema>;
 const PICK = "__pick";
-const REMOVE = "__remove";
+const RESET_ALL = "__reset-all";
 
 /**
  * Settings → New work (docs/dispatch.md#settings): the actions New offers (order, show or hide, reset to built-in),
@@ -32,8 +33,8 @@ export function NewWorkCategory({ theme, compact, openAgents }: { theme: Theme; 
     <WhereSection theme={theme} compact={compact} />
     <BasesSection theme={theme} compact={compact} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 4, paddingHorizontal: 4 }}>
-      <Text style={t.meta}>The agent New starts for an action without its own is in Agents → New work.</Text>
-      {openAgents && <Button theme={theme} compact={compact} kind="ghost" title="Open Agents" onPress={openAgents} />}
+      <Text style={t.meta}>New's agent is set in Agents → New work.</Text>
+      {openAgents && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowRight" title="Open Agents" accessibilityLabel="Open Settings, Agents" onPress={openAgents} />}
     </View>
   </>;
 }
@@ -59,6 +60,7 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
   const info = "What New offers for an issue, a link or your words, in this order: the first one shown is ↵, the second ⌥↵, the rest are under More. A hidden action stays here. Agents can add their own; an action is a template, never code.";
   const rows = query.data ? actionRows(query.data.actions) : [];
   const [confirm, setConfirm] = useState<string | null>(null);
+  const added = query.data?.actions.filter(a => !a.builtin).length ?? 0;
   return <SettingsSection title="Actions" info={info}>
     {query.isPending && <ActivityIndicator accessibilityLabel="Loading New's actions" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label="Couldn't load New's actions" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
@@ -67,9 +69,16 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
         confirming={confirm === row.id} onConfirm={v => setConfirm(v ? row.id : null)}
         onChange={op => { setConfirm(null); change.mutate(op); }} index={i} />)}
     </View>}
+    {query.data && <Text style={[t.meta, { paddingHorizontal: 4 }]}>In New, the first two shown get ↵ and ⌥↵; the rest are under More.</Text>}
+    {/* Reset all removes added actions, so it asks in place first, like Delete. */}
     {query.data?.edited && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <Button theme={theme} compact={compact} icon="RotateCcw" title="Reset all to built-in" disabled={change.isPending} onPress={() => change.mutate({ op: "reset-all" })} />
-      <Text style={[t.meta, { flexShrink: 1 }]}>Restores the shipped order and text; actions agents added are removed.</Text>
+      {confirm === RESET_ALL
+        ? <>
+          <Button theme={theme} compact={compact} kind="danger" icon="RotateCcw" title={added ? `Reset and remove ${added} added` : "Reset all"} disabled={change.isPending} onPress={() => { setConfirm(null); change.mutate({ op: "reset-all" }); }} />
+          <Button theme={theme} compact={compact} kind="ghost" title="Keep them" onPress={() => setConfirm(null)} />
+        </>
+        : <Button theme={theme} compact={compact} icon="RotateCcw" title="Reset all to built-in" disabled={change.isPending} onPress={() => setConfirm(RESET_ALL)} />}
+      <Text style={[t.meta, { flexShrink: 1 }]}>{added ? `Restores the built-in order and text, and removes ${added === 1 ? "the action" : `the ${added} actions`} added here.` : "Restores the built-in order and text."}</Text>
     </View>}
   </SettingsSection>;
 }
@@ -79,7 +88,8 @@ function ActionRowView({ row, first, index, theme, compact, busy, confirming, on
   onConfirm: (v: boolean) => void; onChange: (change: ActionChange) => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
-  const tags = [row.key, row.scope, row.origin].filter((x): x is string => !!x);
+  const tags = [row.key, row.scope, row.origin, row.hidden ? "Hidden" : null].filter((x): x is string => !!x);
+  const spoken = (tag: string) => tag === "↵" ? "Enter in New" : tag === "⌥↵" ? `${isMac() ? "Option" : "Alt"} Enter in New` : tag;
   const fg = row.hidden ? c.foregroundMuted : c.foreground;
   return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: compact ? 12 : 16, paddingVertical: compact ? 10 : 12, gap: 8 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -87,10 +97,9 @@ function ActionRowView({ row, first, index, theme, compact, busy, confirming, on
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 2 }}>
           <Text style={{ color: fg, fontSize: compact ? 15 : 13, fontWeight: "600" }}>{row.name}</Text>
-          {tags.map(tag => <View key={tag} style={{ borderRadius: 4, borderWidth: 1, borderColor: c.border, paddingHorizontal: 5, paddingVertical: 1 }}>
+          {tags.map(tag => <View key={tag} accessible accessibilityLabel={spoken(tag)} style={{ borderRadius: 4, borderWidth: 1, borderColor: c.border, paddingHorizontal: 5, paddingVertical: 1 }}>
             <Text style={{ color: c.foregroundMuted, fontSize: 11 }}>{tag}</Text>
           </View>)}
-          {row.hidden && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Hidden</Text>}
         </View>
         {!!row.description && <Text style={[t.meta, { color: c.foregroundMuted }]}>{row.description}</Text>}
       </View>
@@ -98,7 +107,7 @@ function ActionRowView({ row, first, index, theme, compact, busy, confirming, on
       <IconButton theme={theme} compact={compact} icon="ArrowDown" label={`Move ${row.name} down`} disabled={busy || row.last} onPress={() => onChange({ op: "move", id: row.id, to: index + 1 })} />
       <Switch theme={theme} compact={compact} label="" accessibilityLabel={`Show ${row.name} in New`} value={!row.hidden} disabled={busy} onChange={on => onChange({ op: "hide", id: row.id, hidden: !on })} />
     </View>
-    {(row.canReset || row.canDelete) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingLeft: 26 }}>
+    {(row.canReset || row.canDelete) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingLeft: 16 }}>
       {row.canReset && <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title="Reset to built-in" disabled={busy} onPress={() => onChange({ op: "reset", id: row.id })} />}
       {row.canDelete && (confirming
         ? <>
@@ -124,29 +133,42 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const query = useNewSettings(); const change = useSettingsChange();
   const [team, setTeam] = useState(""); const [project, setProject] = useState(PICK);
+  const [removing, setRemoving] = useState<string | null>(null);
   const view = query.data;
   const info = "Which project New starts an issue's work in. A link to a repository and an issue that already has a workspace go there; otherwise the team's rule, then where the team's past work went, then the rule below. When New isn't sure it asks, and your pick is saved as the team's rule.";
   const projectOptions = (view?.projects ?? []).map(p => ({ value: p.id, label: p.name }));
   const key = teamKey(team);
-  const add = () => { change.mutate({ rules: { [key]: project } }); setTeam(""); setProject(PICK); };
+  // The fields clear only once the rule is saved: a failed save keeps what was typed.
+  const add = () => change.mutate({ rules: { [key]: project } }, { onSuccess: () => { setTeam(""); setProject(PICK); } });
   return <SettingsSection title="Where work goes" info={info}>
     {query.isPending && <ActivityIndicator accessibilityLabel="Loading where New starts work" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label="Couldn't load New's rules" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {view && <>
       <SettingsCard>
-        <SettingsSelect label="No rule and no clear history" hint="An issue from a team without a rule, a link or your words." value={view.noTeam} disabled={change.isPending}
+        <SettingsSelect label="Everything else" hint="Issues from a team without a rule or a clear history, links and your words." value={view.noTeam} disabled={change.isPending}
           options={[{ value: "last", label: "The project you used last" }, { value: "ask", label: "Ask which project" }]} onValueChange={noTeam => change.mutate({ noTeam })} />
       </SettingsCard>
       <SettingsCard>
-        {view.rules.map(rule => <SettingsSelect key={rule.team} label={`${rule.team} issues`} hint={rule.project ? undefined : "That project is gone: pick another or remove the rule."}
-          value={rule.project ? rule.projectId : PICK} disabled={change.isPending}
-          options={[...(rule.project ? [] : [{ value: PICK, label: "Pick a project" }]), ...projectOptions, { value: REMOVE, label: "Remove the rule" }]}
-          onValueChange={v => v !== PICK && change.mutate({ rules: { [rule.team]: v === REMOVE ? null : v } })} />)}
+        {view.rules.map(rule => <View key={rule.team}>
+          <SettingsSelect label={`${rule.team} issues`} hint={rule.project ? undefined : "That project is gone: pick another or remove the rule."}
+            value={rule.project ? rule.projectId : PICK} disabled={change.isPending}
+            options={[...(rule.project ? [] : [{ value: PICK, label: "Pick a project" }]), ...projectOptions]}
+            onValueChange={v => v !== PICK && change.mutate({ rules: { [rule.team]: v } })} />
+          {/* Removing is its own control, asked twice in place; never an option hidden in the project list. */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, paddingHorizontal: 12, paddingBottom: 8, marginTop: -4 }}>
+            {removing === rule.team
+              ? <>
+                <Button theme={theme} compact={compact} kind="ghost" title="Keep" onPress={() => setRemoving(null)} />
+                <Button theme={theme} compact={compact} kind="danger" title={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => { setRemoving(null); change.mutate({ rules: { [rule.team]: null } }); }} />
+              </>
+              : <Button theme={theme} compact={compact} kind="ghost" title="Remove" accessibilityLabel={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => setRemoving(rule.team)} />}
+          </View>
+        </View>)}
         {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. New learns from where each team's work went; add a rule to fix one.</Text></View>}
         <SettingsRow label="Add a rule" hint="A Linear team's key, like ACME, and its project.">
           <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8 }}>
             <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
-            {key.length > 0 && <SettingsSelect label="Project" value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />}
+            <SettingsSelect label="Project" value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
             <Button theme={theme} compact={compact} title="Add" icon="Plus" disabled={!key || project === PICK || change.isPending} onPress={add} />
           </View>
         </SettingsRow>
@@ -176,22 +198,23 @@ function BasesSection({ theme, compact }: { theme: Theme; compact: boolean }) {
   return <SettingsSection title="Bases" info="The branch a new worktree starts from. Empty: the repository's default branch. The dialog can change it for one start; that saves it here too.">
     <SettingsCard>
       {worktrees.map(p => <BaseRow key={p.id} theme={theme} compact={compact} name={p.name} saved={view.bases.find(b => b.projectId === p.id)?.base ?? ""} busy={change.isPending}
-        onSave={base => change.mutate({ bases: { [p.id]: base || null } })} />)}
+        onSave={(base, done) => change.mutate({ bases: { [p.id]: base || null } }, { onSuccess: done })} />)}
       {!worktrees.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No project here is a git repository, so New opens work in place.</Text></View>}
     </SettingsCard>
   </SettingsSection>;
 }
 
-function BaseRow({ theme, compact, name, saved, busy, onSave }: { theme: Theme; compact: boolean; name: string; saved: string; busy: boolean; onSave: (base: string) => void }) {
+function BaseRow({ theme, compact, name, saved, busy, onSave }: { theme: Theme; compact: boolean; name: string; saved: string; busy: boolean; onSave: (base: string, done: () => void) => void }) {
   const c = theme.colors;
   const [draft, setDraft] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const value = draft ?? saved;
   const dirty = draft !== null && draft.trim() !== saved;
-  const save = () => { if (dirty) onSave(draft!.trim()); setDraft(null); };
-  return <SettingsRow label={name} hint={saved ? undefined : "Repository default"}>
+  // The draft stays until the save lands: a failed save keeps what was typed.
+  const save = () => { if (dirty) onSave(draft!.trim(), () => setDraft(null)); else setDraft(null); };
+  return <SettingsRow label={name}>
     <SubmitScope enabled={dirty && !busy} onSubmit={save} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <TextInput value={value} onChangeText={setDraft} placeholder="default branch" placeholderTextColor={c.foregroundMuted} accessibilityLabel={`Base for ${name}`} autoCapitalize="none" autoCorrect={false}
+      <TextInput value={value} onChangeText={setDraft} placeholder="Repository default" placeholderTextColor={c.foregroundMuted} accessibilityLabel={`Base for ${name}`} autoCapitalize="none" autoCorrect={false}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onSubmitEditing={save}
         style={{ minWidth: compact ? 140 : 180, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: focused ? c.accent : c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: compact ? 15 : 13, fontFamily: "ui-monospace, Menlo, monospace" }} />
       {dirty && <Button theme={theme} compact={compact} kind="primary" shortcut title="Save" disabled={busy} onPress={save} />}

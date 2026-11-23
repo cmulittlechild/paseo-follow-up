@@ -76,7 +76,7 @@ export const ROLE_INFO: Record<AgentRole, { title: string; does: string }> = {
   overseer: { title: "Overseer", does: "One agent you ask about all your workspaces, from Home's search. Starts only when you click Start on Home." },
   recovery: { title: "Recovery", does: "Rebuilds a workspace's tracking when Follow-up lost track of it. Runs only when you ask." },
   ranker: { title: "AI priority", does: "Sorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays." },
-  dispatch: { title: "New work", does: "The agent New starts for an action that doesn't pick its own. Starts only when you start work from New." },
+  dispatch: { title: "New work", does: "Starts the work you begin from New, unless an action picks its own agent." },
 };
 
 /** Reads the file leniently: anything unreadable becomes empty, each role and field is checked on its own. */

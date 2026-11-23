@@ -95,3 +95,27 @@ test("the screen on a phone: reads New's own settings only, and Hide, Move and A
   assert.equal(byLabel(r, "Base for acme/web").length, 1);
   r.unmount();
 });
+
+test("removing a rule and resetting every action each ask in place first; nothing is sent on the first press", async () => {
+  rpc.reply = (name: string) => {
+    if (name === "follow.dispatch-actions") return { actions: effectiveActions(null), edited: true };
+    if (name === "follow.set-dispatch-actions") return { actions: effectiveActions(null) };
+    if (name === "follow.dispatch-settings" || name === "follow.set-dispatch-settings") return view();
+    return {};
+  };
+  let r!: ReturnType<typeof create>;
+  const orig = console.error; console.error = () => {};
+  try { await act(async () => { r = create(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(NewWorkCategory, { theme, compact: true }))); }); await tick(); } finally { console.error = orig; }
+  const press = async (n: Node) => { await act(async () => { (n.props.onPress as () => void)(); }); await tick(); };
+  rpcCalls.length = 0;
+  await press(byLabel(r, "Remove ACME's rule")[0]);
+  assert.deepEqual(rpcCalls, [], "the first press only asks");
+  await press(r.root.findAll(n => n.props.title === "Remove ACME's rule" && typeof n.props.onPress === "function")[0]);
+  assert.deepEqual(rpcCalls.at(-1), { name: "follow.set-dispatch-settings", input: { rules: { ACME: null } } });
+  rpcCalls.length = 0;
+  await press(r.root.findAll(n => n.props.title === "Reset all to built-in" && typeof n.props.onPress === "function")[0]);
+  assert.deepEqual(rpcCalls, [], "Reset all asks first");
+  await press(r.root.findAll(n => n.props.title === "Reset all" && typeof n.props.onPress === "function")[0]);
+  assert.deepEqual(rpcCalls.at(-1), { name: "follow.set-dispatch-actions", input: { change: { op: "reset-all" } } });
+  r.unmount();
+});

@@ -2675,6 +2675,25 @@ async function newShots({ shoot, call, out, home, billing }) {
         check(`${theme} ${device}: the saved base shows`, await page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first().inputValue().catch(() => "") === "develop");
         await page.evaluate(() => window.scrollTo(0, 0));
       });
+      // The states a resting frame doesn't show: an edited built-in (Reset to built-in), Delete asked in place, a rule
+      // being added (both fields), a base edited but not saved (Save).
+      await shoot(`new-work-states-${device}-${theme}`, vp, theme, async page => {
+        const pr = (await call("follow.dispatch-actions", {})).actions.find(a => a.id === "pr");
+        const { builtin: _b, by: _by, ...edit } = pr;
+        await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { ...edit, instructions: pr.instructions + "\nRun the linter before the PR." } } });
+        await page.setViewportSize(vp);
+        await openSettingsAt(page, "new", vp);
+        await page.getByText("Reset to built-in", { exact: true }).filter({ visible: true }).first().waitFor();
+        check(`${theme} ${device}: an edited built-in says Edited and offers Reset`, await page.getByText("Edited", { exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("button", { name: "Delete", exact: true }).filter({ visible: true }).first().click();
+        check(`${theme} ${device}: Delete asks in place`, await page.getByRole("button", { name: "Keep it", exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("textbox", { name: "Team key" }).filter({ visible: true }).first().fill("ops");
+        const base = page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first();
+        await base.fill("release");
+        check(`${theme} ${device}: an edited base offers Save`, await page.getByRole("button", { name: /^Save/ }).filter({ visible: true }).count() > 0);
+        await page.evaluate(() => window.scrollTo(0, 0));
+      });
+      await call("follow.set-dispatch-actions", { change: { op: "reset", id: "pr" } });
       await shoot(`new-work-agent-${device}-${theme}`, device === "phone" ? PHONE : DESKTOP, theme, async page => {
         await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
         await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);

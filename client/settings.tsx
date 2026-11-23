@@ -245,7 +245,7 @@ const REVIEWERS_INFO = "Who Add reviewers asks on a PR: a list per repository, o
 /** Settings → General → Help → Report a bug. */
 export const REPORT_HINT = "Or an idea or feedback. An agent writes it up and shows you the issue before filing it.";
 
-export function FollowSettings({ theme, layout, openSetup, openReport, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void;
+export function FollowSettings({ theme, layout, openSetup, openReport, openSettings, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void; openSettings?: (category: SettingsCategory) => void;
   /** Paseo 0.16: this screen is one category, and Paseo's own tabs switch between them (client/settings-screens.ts). */
   category?: SettingsCategory }) {
   const compact = layout.compact;
@@ -276,8 +276,8 @@ export function FollowSettings({ theme, layout, openSetup, openReport, category:
     </View>
     : category === "agents" ? <AgentsCategory theme={theme} compact={compact} />
     : category === "brief" ? <MorningBriefCategory theme={theme} compact={compact} />
-    // Under Paseo's tabs a tab can't switch another, so the Agents link is Follow-up's own tabs only.
-    : category === "new" ? <NewWorkCategory theme={theme} compact={compact} openAgents={only ? undefined : () => pick("agents")} />
+    // settings-link-lands-on-its-category: under Paseo's tabs the link opens the Agents screen; on 0.15 it picks the tab.
+    : category === "new" ? <NewWorkCategory theme={theme} compact={compact} openAgents={() => openSettings ? openSettings("agents") : pick("agents")} />
     : <DisplaySections theme={theme} />;
   // Phones: the shared gutter and the bottom inset (the gesture bar), like every other Follow-up surface.
   const page = { padding: compact ? space(true).gutter : 24, gap: 18, maxWidth: 720, width: "100%" as const, alignSelf: "center" as const, paddingBottom: 40 };

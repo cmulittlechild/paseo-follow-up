@@ -17,7 +17,7 @@ export const ROLE_NEED: Record<AgentRole, string> = {
   ranker: "Reads a lot and has to give reasons, so a mid-size model.",
   overseer: "Long-lived and reasons across everything, so your strongest model.",
   recovery: "Rebuilds a workspace, so the same setup as its main agent.",
-  dispatch: "Does the work you start from New, so the Overseer's agent unless you pick one.",
+  dispatch: "Copies the Overseer until you pick one here.",
 };
 const HINT: Record<Tier, string> = {
   small: "None of its models says which is small, so this is its default.",
