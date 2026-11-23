@@ -125,13 +125,14 @@ test("ranker: a failing source is reported, not fatal; the plan is read once a d
   const logged: string[] = [];
   const f = await fixture(t, { sources: { async slack() { throw new Error("mcpproxy down"); } }, log: l => logged.push(l) });
   const r = await f.ranker.run({ trigger: "manual" });
-  assert.equal(r.ok, true); assert.equal(r.health.slack, "failed"); assert.equal(r.healthLine, "Slack unavailable");
+  assert.equal(r.ok, true); assert.equal(r.health.slack, "failed"); assert.equal(r.healthLine, "Chat unavailable");
+  assert.deepEqual((await f.ranker.state()).errors, { slack: "mcpproxy down" }, "the failed read's line, for Settings → Morning brief's Sources");
   assert.deepEqual(logged, ["[follow-up] ranker: slack read failed: mcpproxy down"], "the daemon log says why");
   assert.match(f.calls[0].prompt, /SLACK[^\n]*:\n\(none\)/);
   assert.match(f.calls[0].prompt, /milestone · Okta GA · ACME-1312/);
   f.setNow(NOW + 2 * 3_600_000); await f.ranker.run({ trigger: "manual", force: true });
   assert.equal(f.reads.planning, 1, "cached for a day");
-  assert.equal((await f.ranker.status()).healthLine, "Slack unavailable");
+  assert.equal((await f.ranker.status()).healthLine, "Chat unavailable");
   const off = await fixture(t, { planningUrl: null });
   assert.equal((await off.ranker.run({ trigger: "manual" })).healthLine, "Plan off");
   assert.equal(off.reads.planning, 0);
@@ -226,7 +227,7 @@ test("ranker: with no outside source readable it skips the model (no logins, an 
   const f = await fixture(t, { sources: { linear: fail, slack: fail, github: fail, planning: fail } });
   const r = await f.ranker.run({ trigger: "schedule" });
   assert.equal(r.skipped, "sources"); assert.equal(f.calls.length, 0);
-  assert.equal(r.healthLine, "Linear unavailable · Slack unavailable · GitHub unavailable · Plan unavailable");
+  assert.equal(r.healthLine, "Linear unavailable · Chat unavailable · GitHub unavailable · Plan unavailable");
   assert.equal(await f.ranker.tick(), null, "and waits for the cadence before trying again");
 });
 

@@ -13,7 +13,8 @@ import { DisplaySections, PermissionsSection } from "./display";
 import { ReviewerSettings, reviewerSettingsKey } from "./reviewers";
 import { AgentSettings, WaitSettings, agentSettingsKey } from "./agents";
 import { ShippingSettings } from "./shipping";
-import { MorningBriefCategory, briefSettingsKey } from "./morning-brief-settings";
+import { MorningBriefCategory, briefSettingsKey, briefSourcesKey } from "./morning-brief-settings";
+import type { SourcesView } from "../shared/brief-sources";
 import { briefSummary, type BriefSettingsView } from "../shared/morning-brief";
 import { PrStatsSettings } from "./pr-stats-settings";
 import { UpdatesSections, useUpdates } from "./updates";
@@ -218,12 +219,13 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
   // General's line reads the updates view (local files, no npm request), so the phone list shows it before a drill-in.
   const updates = useUpdates().data;
   const brief = useQuery({ queryKey: briefSettingsKey, queryFn: skipToken }).data as BriefSettingsView | undefined;
+  const sources = useQuery({ queryKey: briefSourcesKey, queryFn: skipToken }).data as SourcesView | undefined;
   return {
     general: updates ? generalSummary(updates) : null,
     following: follow ? followingSummary(follow) : null,
     reviewers: reviewers ? reviewersSummary(reviewers.config) : null,
     agents: agents ? agentsSummary(agents, changed) : null,
-    brief: brief ? briefSummary(brief) : null,
+    brief: brief ? briefSummary(brief, Date.now(), sources?.line) : null,
   };
 }
 

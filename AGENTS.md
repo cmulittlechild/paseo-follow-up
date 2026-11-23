@@ -82,6 +82,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `server/dispatch.ts`, `server/linear-issues.ts` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it) | `shared/linear-queue.ts`, `server/linear-queue.ts` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
+| The brief's sources: recipes matched by tools, discovery, health, switches, Retry; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts` | [morning-brief](docs/morning-brief.md#sources) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -972,7 +973,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 78. **The brief has one timer** (`the-brief-has-one-timer`). The sweep runs once each workday at the sweep time in the
    developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
    governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
-   fresh install; nothing else reads Linear on a schedule. The zone is the setting's, else the developer's device's,
+   fresh install; nothing else reads Linear on a schedule. Find it for me and the sources check (mcpproxy asked again)
+   ride the same loop, once a workday after the sweep time. The zone is the setting's, else the developer's device's,
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
@@ -990,7 +992,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    took two clicks. In review, a first draft folded the brief into any card made in the turn, so an unrelated
    "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
    ([docs/workspaces.md](docs/workspaces.md)).
-
 80. **Briefs from closed agents** (`briefs-from-closed-agents`). Needs you lists what someone can still act on. At
    render, from facts Follow-up already holds (`flagFate`), a flag whose workspace is archived or gone from Paseo's
    list (agent not running) drops, and so does a closed agent's flag that asks nothing (no asking brief, no question,
@@ -1002,6 +1003,26 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    only a row `flagFate` shows, never a dropped or Older one. 2026-11-22, live: 49
    flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
    old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
+81. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
+   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
+   through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
+   `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
+   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
+   when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
+   the morning run (the-brief-has-one-timer); never on its own timer. **Discovery heals itself**
+   (`discovery-heals-itself`): a reader whose recipe no server has asks again first, at most once per
+   `MISS_REDISCOVER_MS` (10 min), so an upstream down or still connecting at the first discovery (an mcpproxy restart,
+   an OAuth refresh, a worker started right after an install) is found once it's back, never a day later; a source
+   switched off is not a miss. A failed discovery answers every read with its error for `FAILED_DISCOVERY_MS` (60 s),
+   so a down mcpproxy isn't asked on every read; Check sources again always asks. Guarded by
+   `tests/brief-sources.test.ts`.
+82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
+   channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
+   shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
+   channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
+   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
+   Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
+   for any `mcpproxy` run outside the source directory).
 
 ## Bugs
 

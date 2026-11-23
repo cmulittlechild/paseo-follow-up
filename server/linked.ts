@@ -1,12 +1,11 @@
 import type { Workspace } from "../shared/model";
 import { fillLinkedTitles, localTitles, titleKey, type TitleIndex } from "../shared/local-titles";
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { JsonFileStore } from "./json-file-store";
-import { promisify } from "node:util";
-import { liveSources, mcpproxyText } from "./about";
+import { liveSources } from "./about";
+import { liveRun, sourceDirectory } from "./source-tools";
 import { LIMITS, LINKED_FULL, TEAMS_TTL_MS, applyCheck, classifyLink, emptyWorkspaceLinks, excludeItem, linkedView, noteCandidate, noteRefs, setTeams, dueChecks, emptyLinkedFile, linkedFileSchema, workspaceLinksSchema, linkedSearchIndex, migrateAboutLinks, takeBudget, teamOf, toneOf, unexcludeItem, upsertItem, type LinearIssueFacts, type LinkedFile, type LinkedItem, type LinkRef, type LinkedView } from "../shared/linked";
 
 /**
@@ -192,15 +191,13 @@ export class LinkedService {
 export type LinkResult = { ok: false; reason: string } | { ok: true; pending: true; key: string; message: string } | { ok: true; pending: false; key: string; item: LinkedItem; created: boolean };
 const excludedReason = (key: string) => `${key} was removed from this workspace's linked items, so it stays out. The developer can add it back in the Linked items list.`;
 
-const exec = promisify(execFile);
 /** The live reads, through mcpproxy like the Summary: Linear's get_issue and list_teams. */
-export function liveLinkedSources(run: (command: string, args: string[], timeoutMs: number) => Promise<string> = async (c, a, t) => (await exec(c, a, { timeout: t, maxBuffer: 4 * 1024 * 1024 })).stdout): LinkedSources {
+export function liveLinkedSources(run: (command: string, args: string[], timeoutMs: number) => Promise<string> = liveRun): LinkedSources {
   const about = liveSources(run);
   return {
     async issue(key) { const i = await about.linear(key); return i ? { title: i.title, state: i.state, url: i.url } : null; },
     async teams() {
-      const out = await run("mcpproxy", ["call", "tool-read", "--tool-name=linear:list_teams", "--json_args={}", "--reason=Follow-up: which Linear keys are real", "--log-level=error", "-o", "json"], 45_000);
-      return parseLinearTeams(mcpproxyText(out));
+      return parseLinearTeams(await sourceDirectory(run).call("linear", "list_teams", {}, { reason: "which Linear keys are real", timeoutMs: 45_000, fit: false }));
     },
   };
 }
