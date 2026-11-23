@@ -93,7 +93,9 @@ test("the query clears when the workspace changes", () => {
 const src = (f: string) => readFile(new URL(`../client/${f}`, import.meta.url), "utf8");
 
 test("each list section has the search icon and its own placeholder, through the one shared field", async () => {
-  for (const [file, id] of [["stacks.tsx", "prs"], ["tasks.tsx", "tasks"], ["questions.tsx", "activity"]] as const) {
+  // Not Tasks: it is the agent's list, collapsed to one line, a handful of rows when open (tasks-are-the-agent-s).
+  assert.doesNotMatch(await src("tasks.tsx"), /useSectionSearch/, "Agent's tasks has no search icon");
+  for (const [file, id] of [["stacks.tsx", "prs"], ["questions.tsx", "activity"]] as const) {
     const s = await src(file);
     assert.match(s, new RegExp(`useSectionSearch(<[^>]*>)?\\(w\\.id, "${id}",`), `${file} searches as "${id}"`);
     assert.match(s, /search=\{search\.header\}/, `${file} hands the field to its Card header`);
@@ -106,8 +108,7 @@ test("each list section has the search icon and its own placeholder, through the
 });
 
 test("folds are ignored while searching", async () => {
-  const stacks = await src("stacks.tsx"), tasks = await src("tasks.tsx"), log = await src("questions.tsx");
-  assert.match(tasks, /\{!hits && doneCount > 0 && <FoldRow/, "Tasks: no '8 done' fold while searching");
+  const stacks = await src("stacks.tsx"), log = await src("questions.tsx");
   assert.match(stacks, /\{!hits && settled\.length > 0/, "PRs: no settled-stacks fold while searching");
   assert.match(stacks, /const fold = !hits && !settled && done\.length > 0/, "PRs: no merged fold while searching");
   assert.match(log, /\{!hits && list\.length > LIMIT && <FoldRow/, "Activity: no 'Show all' while searching");

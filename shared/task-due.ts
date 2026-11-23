@@ -116,8 +116,14 @@ export function isStale(o: Pick<Obligation, "nudged" | "revision">, d: TaskDue |
 export function dueLabel(o: ListObligation, w: Pick<ListWorkspace, "prs" | "questions">, now: number): string | null {
   const d = taskDue(o, w, now);
   if (!d) return null;
-  return isStale(o, d) ? `Stale · ${d.fact} · nudged twice, no answer` : d.label;
+  return isStale(o, d) ? staleLabel(d) : d.label;
 }
+
+/**
+ * A stale task's line, in the developer's words: what came due, as the Due line says it ("Stale · #231 merged · …",
+ * "Stale · due since Jan 1 · …"), never the agent's "re-check 2026-01-01".
+ */
+export const staleLabel = (d: TaskDue) => `Stale · ${d.label.replace(/^Due · /, "").replace(/^Due since /, "due since ")} · nudged twice, no answer`;
 
 /** A title of at most 60 characters, cut at a word. */
 const short = (title: string) => title.length <= 60 ? title : `${title.slice(0, 59).replace(/\s+\S*$/, "")}…`;
