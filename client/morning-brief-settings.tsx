@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
 import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
 import { raised, tint, withAlpha } from "./theme";
+import { CompassSection } from "./compass-settings";
 import { briefChatSearchRpc, briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
 import { ASK_COST, type BriefSource, type SourcesChange, type SourcesView } from "../shared/brief-sources";
 import { ASK } from "../shared/ask";
@@ -30,6 +31,7 @@ export function MorningBriefCategory({ theme, compact }: { theme: Theme; compact
   if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading Morning brief settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
   if (query.error || !query.data) return <SettingsCard><SettingsAction label="Couldn't load Morning brief settings" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
   return <>
+    <CompassSection theme={theme} compact={compact} />
     <SourcesSection view={query.data} theme={theme} compact={compact} />
     <PlanSection view={query.data} theme={theme} compact={compact} />
     <QueueSection view={query.data} theme={theme} compact={compact} />

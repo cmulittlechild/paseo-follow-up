@@ -1,6 +1,6 @@
 import { searchRows } from "./search";
 import { sendingOf, type Sending } from "./sending";
-import { parseAnswersMessage } from "./questions";
+import { ANSWER_PREFIX, OTHER_LABEL, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { envelopeParts } from "./queue";
 import { z } from "zod";
 import { HOME_GROUPS, buildHome, type HomeGroupId, type PaseoWorkspaceLite, type Workstream } from "./home";
@@ -286,11 +286,6 @@ export function branchFor(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/, "") || "overseer-task";
 }
 
-/**
- * Server-side gate for start_workspace: the developer's latest message to the Overseer has to ask for a new
- * workspace, pick "New workspace" on its decision card, or approve the proposal ("yes", "go ahead"). The system
- * prompt asks for the same; this keeps a model slip from starting work on its own.
- */
 /** "Follow-up answer D1 (Which agent?): C — New workspace\nContinue…" as the developer sees it: "Answered: C · New workspace". */
 export function answerLine(text: string): string | null {
   // A message carrying several parts (shared/queue.ts) previews by its first, the answer.
@@ -301,12 +296,157 @@ export function answerLine(text: string): string | null {
   const several = parseAnswersMessage(text);
   return several ? `Answered: ${several.answers.map((a, i) => `${i + 1}. ${a.choice ? `${a.choice} · ${a.label}` : "skipped"}`).join("; ")}` : null;}
 
-export function approvesNewWorkspace(message: string | null | undefined): boolean {
+// ---------- the Overseer's start gate (the-overseer-starts-what-the-developer-asked) ----------
+//
+// start_workspace, and New's dispatch when the Overseer calls it, start a workspace only for work the developer's
+// latest message asked for or approved. Deterministic: real grammar over clauses (imperatives, polite requests,
+// plurals, wh-questions, negation), never one regex over the whole message.
+
+/**
+ * What the developer's latest message approves. `keys`: the Linear keys it approves, or null when it approves work
+ * without naming any (then any start passes, except `declined`). `declined`: keys it said no to (Skip on a card,
+ * "not ACME-14"). `via` says how, for the refusal text.
+ */
+export type StartApproval = { keys: string[] | null; declined: string[]; via: "request" | "yes" | "card" };
+
+const VERB = String.raw`start|create|open|spin|kick|launch|begin|fire|set|make|dispatch|work|pick`;
+/** Verbs that start work on their own ("start ACME-12", "spin these up"); open/set/make need a workspace word. */
+const STRONG = new Set(["start", "create", "spin", "kick", "launch", "begin", "fire", "dispatch", "work", "pick"]);
+const PARTICLE: Record<string, RegExp> = { spin: /\bup\b/, kick: /\boff\b/, fire: /\bup\b/, set: /\bup\b/, work: /\bon\b/, pick: /\bup\b/ };
+const WORKSPACE = /\b(workspaces?|worktrees?|agents?)\b/;
+const ANAPHOR = /\b(it|this|that|these|those|them|both|all|each|one|ones|two|three|the rest)\b/;
+const NEGATION = /\b(don'?t|do not|doesn'?t|not|never|no need|hold off|wait|stop|skip|cancel|without)\b/;
+/** Polite and filler openers, stripped before reading the clause's verb. */
+const OPENER = /^(?:(?:and|also|then|so|ok(?:ay)?|hey|please|pls|now|just|alright|great|cool|thanks)\b[\s,]*|(?:can|could|would|will) (?:you|u)(?: please)?\b\s*|let'?s\b\s*|go ahead and\b\s*|(?:i'?d like|i want|i need|i'?d love) (?:you )?to\b\s*|(?:yes|yeah|yep|sure)\b[\s,]*)+/;
+/** A question about the state of things, not a request: "which open workspaces need me?", "how many agents…". */
+const WH_QUESTION = /^(which|what|how|why|where|when|who|whose|is|are|was|were|does|did|has|have|had|am|should|shall|do (?:you|we|i|they))\b/;
+/** A whole message that says yes to the Overseer's proposal. */
+const YES = /^(?:yes|yeah|yep|yup|ya|y|sure|ok(?:ay)?|k|go(?: ahead| for it)?|do it|do (?:both|all|them|those|these|each)|both|all of them|all|approved?|start (?:it|them|both|all)|please do|sounds good|lgtm|ship it|go on|proceed|confirmed?)\b/;
+
+/** Clauses: sentences, lines, and "but"/";" breaks, lower-cased. */
+const clauses = (text: string) => text.toLowerCase().split(/[.!?;\n]+|,?\s+but\s+|,\s+(?=not\b)/).map(c => c.trim()).filter(Boolean);
+
+/** A clause that asks for new work: an imperative or polite request with a start verb and something to start. */
+function requests(clause: string): boolean {
+  const c = clause.replace(OPENER, "").trim();
+  if (!c || WH_QUESTION.test(c) || NEGATION.test(c)) return false;
+  // "a new workspace for ACME-12", "new worktrees for these": the noun phrase alone is the ask.
+  if (/^(?:(?:a|an|some|two|three|\d+)\s+)?new (?:workspaces?|worktrees?|agents?)\b/.test(c) || /^(?:workspaces?|worktrees?) for\b/.test(c)) return true;
+  const m = new RegExp(String.raw`^(${VERB})\b(.*)$`).exec(c);
+  if (!m) return /\bnew (?:workspaces?|worktrees?|agents?)\b/.test(c) && /^(?:i|we)\b|\bplease\b/.test(c);
+  const [, verb, rest] = m;
+  if (PARTICLE[verb] && !PARTICLE[verb].test(rest)) return false;
+  // The verb's object, past particles, articles and counts: "spin up agents", "start a new workspace", "kick them off".
+  const object = rest.trim().split(/[\s,:]+/).find(w => !/^(up|off|on|a|an|the|new|some|more|another|\d+|two|three|separate|fresh|working)$/.test(w)) ?? "";
+  if (WORKSPACE.test(object)) return true;
+  return STRONG.has(verb) && (new RegExp(`^${KEY.source}$`, "i").test(object) || ANAPHOR.test(object) || object === "work");
+}
+
+/** Keys named in clauses that say no ("not ACME-14", "skip ACME-14", "don't start ACME-14"). */
+const negatedKeys = (text: string) => clauses(text).filter(c => NEGATION.test(c)).flatMap(c => linearKeys(c));
+
+/** A card decision's pick that starts a workspace: "New workspace", or yes/start on a question about starting one. */
+const startsWork = (label: string | null, question: string) => !!label && (/\bnew (workspace|worktree|agent)s?\b/i.test(label) || (/^(yes|start|go|do it)\b/i.test(label) && /\b(start|new|workspace|worktree)\b/i.test(question)));
+
+/** A Follow-up answer from the Overseer's own card: exactly the decisions answered with a start pick. */
+function cardApproval(text: string): StartApproval | null | undefined {
+  const head = envelopeParts(text)[0] ?? text;
+  if (!head.trim().startsWith(ANSWER_PREFIX)) return undefined;
+  const several = parseAnswersMessage(head);
+  const one = several ? null : parseAnswerMessage(head);
+  const decisions = several?.answers ?? (one ? [{ question: one.title, choice: one.choice, label: one.label, words: one.words }] : []);
+  if (!decisions.length) return undefined;
+  const keys: string[] = []; const declined: string[] = []; let unnamed = false;
+  for (const d of decisions) {
+    const named = linearKeys(d.question);
+    // "Something else" in the developer's own words reads like a chat message about that decision.
+    const words = d.choice === OTHER_LABEL ? (d.words ?? d.label?.replace(/^"|"$/g, "") ?? "") : "";
+    const own = words ? startApproval(words, d.question) : null;
+    if ((d.choice !== OTHER_LABEL && startsWork(d.label, d.question)) || own) {
+      const k = own?.keys ?? named;
+      if (k.length) keys.push(...k); else unnamed = true;
+    } else declined.push(...named);
+  }
+  if (!keys.length && !unnamed) return null;
+  return { keys: unnamed ? null : [...new Set(keys)], declined: declined.filter(k => !keys.includes(k)), via: "card" };
+}
+
+/**
+ * The approval in the developer's latest message to the Overseer, or null when it approves nothing. `proposal` is
+ * what the Overseer said since the developer's previous message (its reply and its card): a bare "yes", or "spin
+ * these up", approves the keys it named.
+ */
+export function startApproval(message: string | null | undefined, proposal?: string | null): StartApproval | null {
   const m = (message ?? "").trim();
-  if (!m) return false;
-  if (/^Follow-up answer \S+ \(.*\): [A-Z] — New workspace\b/m.test(m)) return true;
-  if (/\b(new|start|create|spin up|open|kick off)\b[^.?!\n]{0,40}\b(workspace|agent|worktree)\b/i.test(m)) return true;
-  return /^(yes|yep|yeah|go ahead|do it|approved?|ok(ay)?|sure|start it)\b/i.test(m);
+  if (!m) return null;
+  const card = cardApproval(m);
+  if (card !== undefined) return card;
+  const declined = negatedKeys(m);
+  const named = linearKeys(m).filter(k => !declined.includes(k));
+  const proposed = linearKeys(proposal).filter(k => !declined.includes(k));
+  const parts = clauses(m);
+  if (parts.some(requests)) {
+    // Named keys win; "these"/"this"/"both" points at what the Overseer proposed; otherwise any work they described.
+    const keys = named.length ? named : proposed.length && parts.some(c => requests(c) && ANAPHOR.test(c)) ? proposed : null;
+    return { keys, declined, via: "request" };
+  }
+  const first = (parts[0] ?? "").replace(/^(?:ok(?:ay)?|great|cool|thanks|perfect)\b[\s,]*/, "").trim() || (parts[0] ?? "");
+  if (YES.test(first) && !NEGATION.test(first)) {
+    return { keys: named.length ? named : proposed.length ? proposed : null, declined, via: "yes" };
+  }
+  return null;
+}
+
+/**
+ * The developer's own words for the new agent (the note on the Overseer's dispatch): their latest message minus the
+ * keys it names and the "start these" request itself, or null when nothing else is left. For a card answer, the note
+ * the developer wrote on that key's decision. Never the Overseer's paraphrase of the issue: the agent reads it itself.
+ */
+export function developerNote(message: string | null | undefined, key: string | null): string | null {
+  const m = (message ?? "").trim();
+  if (!m) return null;
+  const head = envelopeParts(m)[0] ?? m;
+  if (head.trim().startsWith(ANSWER_PREFIX)) {
+    const several = parseAnswersMessage(head);
+    const one = several ? null : parseAnswerMessage(head);
+    const decisions = several?.answers ?? (one ? [{ question: one.title, choice: one.choice, label: one.label, words: one.words }] : []);
+    const d = decisions.find(d => key && linearKeys(d.question).includes(key.toUpperCase())) ?? (decisions.length === 1 ? decisions[0] : null);
+    const words = d ? d.words ?? (d.choice === OTHER_LABEL ? d.label?.replace(/^"|"$/g, "") ?? null : null) : null;
+    return words?.trim() || null;
+  }
+  const kept = m.split(/[.!?;\n]+|,\s*/).filter(f => {
+    const lower = f.toLowerCase().trim();
+    return !requests(lower) && !(YES.test(lower) && lower.replace(YES, "").replace(/[^a-z]+/g, "").length === 0);
+  }).map(f => f.replace(new RegExp(KEY.source, "gi"), " ").replace(/\s+/g, " ").replace(/^[\s:,&-]+|[\s:,&-]+$/g, "").replace(/^(and|also|then|but)\s+/i, "").trim())
+    .filter(f => /[a-z]/i.test(f) && !/^(and|or|for|these|those|them|both|all|please|thanks|thank you|asap|now)$/i.test(f));
+  return kept.length ? kept.join(". ") : null;
+}
+
+/** Whether an approval covers a start with this key (null: a task with no Linear key). */
+export function approvalCovers(a: StartApproval, key: string | null): boolean {
+  const k = key?.toUpperCase() ?? null;
+  if (k && a.declined.includes(k)) return false;
+  if (!a.keys) return true;
+  return !!k && a.keys.includes(k);
+}
+
+/**
+ * The start gate's refusal: what counts (the developer's request in chat, "yes" to a proposal, New workspace on a
+ * card) and the one plain question to ask when they really haven't asked. Never "only the card counts".
+ */
+export function startRefusal(a: StartApproval | null, key: string | null): string {
+  const what = key ? `a workspace for ${key}` : "this workspace";
+  const ask = `"Start ${what}?"`;
+  const counts = "The developer's go-ahead counts in any form: their request in chat (\"start ACME-12\", \"create workspaces for these\"), \"yes\" to your proposal, or New workspace on your card.";
+  if (!a) return `The developer's latest message doesn't ask for ${what}. ${counts} If they haven't asked, ask once in plain words, ${ask}, and wait for the answer.`;
+  const k = key?.toUpperCase() ?? null;
+  if (k && a.declined.includes(k)) return `The developer said no to ${k} (Skip or "not ${k}"). Don't start it; ask once, ${ask}, only if something changed.`;
+  return `The developer approved ${a.keys!.join(", ")}, not ${key ?? "work without one of those keys"}. Start only what they approved; pass the Linear key as linear_key. ${counts} If they want more, ask once, ${ask}.`;
+}
+
+/** True when the developer's latest message approves at least one new workspace (any key). */
+export function approvesNewWorkspace(message: string | null | undefined, proposal?: string | null): boolean {
+  return !!startApproval(message, proposal);
 }
 
 /** The pinned row's state and line, from the Overseer's status and its own inbox row. Null: the Overseer is off. */
