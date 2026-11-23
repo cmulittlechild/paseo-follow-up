@@ -146,6 +146,9 @@ test("Retry keeps the agent's answer: the answered batch is marked sent again, n
   const b = w.batches.find(b => b.id === first.id)!;
   assert.equal(b.state, "blocked"); assert.equal(b.result, IN_PROGRESS); assert.equal(b.movedOn?.why, "retried");
   assert.ok(!needsYou(w, f.now()).some(i => i.kind === "retry" && i.batchId === first.id));
+  // The new message is a fresh batch: it carries none of the old one's marks, so it holds the queue and can fail.
+  const again = w.batches.find(x => x.attempts === b.attempts + 1)!;
+  assert.equal(again.state, "pending"); assert.equal(again.movedOn, undefined); assert.equal(again.inProgress, undefined);
 });
 
 test("a sent message waits on other agents' work only so long: a stuck subagent never holds the queue forever", async t => {
