@@ -12,7 +12,7 @@ import { tailSteps, HOME_GROUPS, type PaseoWorkspaceLite, type TailStep } from "
 import { isOpen as questionOpen } from "../shared/questions";
 import { classify, latestPrompt, ledgerSender, type Sources } from "./inbox-classifier";
 import {
-  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvesNewWorkspace, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
+  EMPTY_OVERSEER, OVERSEER_LABEL, OVERSEER_TITLE, approvalCovers, developerNote, startApproval, startRefusal, branchFor, digestFile, forwardText, forwardedSender, linearKeys,
   overseerStateSchema, pageRows, type DigestFile, routeDecision, scoreCandidates, workspaceTitleFor, workstreams, type OverseerState, type WorkstreamRow,
 } from "../shared/overseer";
 import { overseerPrompt } from "./overseer-prompt-source";
@@ -49,7 +49,6 @@ export type OverseerDispatch = {
   projects(): Promise<{ id: string; name: string }[]>;
 };
 
-const NOT_APPROVED = "The developer hasn't asked for or approved a new workspace. Ask them first (needs_you kind=decision with \"New workspace\" as an option).";
 
 export type OverseerDeps = {
   directory: string;
@@ -299,7 +298,7 @@ export class Overseer {
         return { confident, candidates: top, next: confident ? `Send it with send_to_agent to ${top[0].agentId} (${top[0].title}), then tell the developer in one line.` : "Not sure: ask the developer with needs_you kind=decision, these candidates plus \"New workspace\"." };
       }
       case "send_to_agent": return this.send(paseo, s, args as { agentId: string; text: string; reply_to_ask?: boolean });
-      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.dispatcher ? this.planDispatch(this.dispatcher, s, args) : this.planWorkspace(paseo, s, args);
+      case "start_workspace": return args.confirm ? this.confirm(args.planId) : this.dispatcher ? this.planDispatch(paseo, this.dispatcher, s, args) : this.planWorkspace(paseo, s, args);
       case "rerank": { if (!this.d.rerank) throw new Error("Re-ranking isn't available on this host."); return this.d.rerank(); }
     }
   }
@@ -359,30 +358,49 @@ export class Overseer {
    * The Overseer is mid-turn when it calls a tool, so it is loaded; the transcript covers the rare other case.
    */
   private async lastDeveloperMessage(paseo: OverseerPaseo, agentId: string): Promise<string | null> {
+    return (await this.developerTurn(paseo, agentId)).message;
+  }
+
+  /**
+   * The developer's latest message (see lastDeveloperMessage) and what the Overseer said since their previous one:
+   * its reply text and its tool calls (a needs_you card), which a bare "yes" approves.
+   */
+  private async developerTurn(paseo: OverseerPaseo, agentId: string): Promise<{ message: string | null; proposal: string }> {
     const agent = (await paseo.agents.ref(agentId).refresh().catch(() => null))?.agent ?? null;
     if (agent && isLoaded(agent)) {
       const page = await paseo.agents.ref(agentId).timeline.refetch({ direction: "tail", limit: 40, projection: "canonical" }).catch(() => null);
-      const prompt = page ? latestPrompt([...page.entries].sort((a, b) => a.seqStart - b.seqStart).map(e => e.item)) : null;
-      if (!prompt?.message || typeof prompt.sender === "string") return null;
+      const items = page ? [...page.entries].sort((a, b) => a.seqStart - b.seqStart).map(e => e.item) : [];
+      const prompt = page ? latestPrompt(items) : null;
+      if (!prompt?.message || typeof prompt.sender === "string") return { message: null, proposal: "" };
+      const proposal = proposalBefore(items, prompt.message.text);
       const sources = this.d.sources ?? NO_SOURCES;
-      if (prompt.sender.kind === "follow-up" && prompt.sender.what === "answer") return await ledgerSender(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.message.text : null;
-      if (prompt.sender.kind !== "developer") return null;
-      return await classify(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.sender.text : null;
+      if (prompt.sender.kind === "follow-up" && prompt.sender.what === "answer") return { message: await ledgerSender(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.message.text : null, proposal };
+      if (prompt.sender.kind !== "developer") return { message: null, proposal };
+      return { message: await classify(prompt.message, agentId, this.now(), sources) === "tom" ? prompt.sender.text : null, proposal };
     }
     // Transcript steps say "you" only for the developer's own message (shared/message-sender.ts).
     const read = await this.steps(paseo, agentId, 20, agent).catch(() => null);
-    const last = [...(read?.steps ?? [])].reverse().find(x => x.kind === "you" || x.kind === "message");
-    return last?.kind === "you" ? last.text : null;
+    const steps = read?.steps ?? [];
+    const at = steps.map(x => x.kind === "you" || x.kind === "message").lastIndexOf(true);
+    if (at < 0 || steps[at].kind !== "you") return { message: null, proposal: "" };
+    const before = steps.slice(0, at);
+    const since = before.map(x => x.kind === "you" || x.kind === "message").lastIndexOf(true);
+    return { message: steps[at].text, proposal: before.slice(since + 1).filter(x => x.kind === "agent").map(x => x.text).join("\n") };
   }
 
   /** Set by the worker once New's dispatch exists: start_workspace then runs as `dispatch` with Create PR. */
   dispatcher: OverseerDispatch | null = null;
 
-  /** The new-workspace gate for the Overseer's own dispatch: a blocker, or null when the developer asked or approved. */
-  async newWorkspaceGate(paseo: OverseerPaseo): Promise<string | null> {
+  /**
+   * The new-workspace gate for the Overseer's own dispatch (the-overseer-starts-what-the-developer-asked): a blocker,
+   * or null when the developer's latest message asked for or approved a workspace for this key (null: no key).
+   */
+  async newWorkspaceGate(paseo: OverseerPaseo, key: string | null): Promise<string | null> {
     const s = await this.state();
     if (!s.agentId) return null;
-    return approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId)) ? null : NOT_APPROVED;
+    const turn = await this.developerTurn(paseo, s.agentId);
+    const approval = startApproval(turn.message, turn.proposal);
+    return approval && approvalCovers(approval, key) ? null : startRefusal(approval, key);
   }
 
   /**
@@ -390,12 +408,17 @@ export class Overseer {
    * and the same records, Undo and failure handling as New. The developer's words go as the source, or as the note
    * when a Linear key is given.
    */
-  private async planDispatch(dispatcher: OverseerDispatch, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
-    if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
+  private async planDispatch(paseo: OverseerPaseo, dispatcher: OverseerDispatch, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
+    if (!args.task && !args.linear_key) throw new Error("start_workspace: give linear_key, or task (the developer's words for work with no issue).");
     const wanted = args.project?.toLowerCase();
     const project = wanted ? (await dispatcher.projects().catch(() => [])).find(p => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted) : undefined;
     const key = args.linear_key?.toUpperCase() ?? linearKeys(args.task)[0] ?? null;
-    const input = { source: key ?? args.task, ...(key && args.task.trim().toUpperCase() !== key ? { note: args.task } : {}), actionId: "pr", ...(project ? { projectId: project.id } : {}), ...(args.base ? { base: args.base } : {}), ...(args.title ? { title: args.title } : {}) };
+    // The developer's words go to the new agent, never the Overseer's paraphrase of the issue: an issue is referenced
+    // by its key and the agent reads it itself (the-overseer-starts-what-the-developer-asked). Work with no issue
+    // has no other home, so its task text is the source.
+    const note = developerNote(await this.lastDeveloperMessage(paseo, s.agentId!), key);
+    const source = key ?? args.task!;
+    const input = { source, ...(note && note !== source.trim() ? { note } : {}), actionId: "pr", ...(project ? { projectId: project.id } : {}), ...(args.base ? { base: args.base } : {}), ...(args.title ? { title: args.title } : {}) };
     const actor = agentActor(s.agentId!, OVERSEER_TITLE);
     const p = await dispatcher.preview(input, actor);
     const blockers = [...p.blockers];
@@ -411,7 +434,8 @@ export class Overseer {
 
   /** Dry run: the workspace Follow-up would start. Runs only after the developer asked for or approved it. */
   private async planWorkspace(paseo: OverseerPaseo, s: OverseerState, args: { task?: string; title?: string; project?: string; linear_key?: string; base?: string }) {
-    if (!args.task) throw new Error("start_workspace: give task (the developer's words for the work).");
+    if (!args.task && !args.linear_key) throw new Error("start_workspace: give linear_key, or task (the developer's words for work with no issue).");
+    const task = args.task ?? args.linear_key!;
     const [lites, projects] = await Promise.all([this.d.workspaces(true), listProjects(paseo)]);
     const wanted = args.project?.toLowerCase();
     // Without a project, the one most of the developer's workspaces live in.
@@ -419,14 +443,15 @@ export class Overseer {
     for (const l of lites) if (l.projectId && l.id !== s.workspaceId) counts.set(l.projectId, (counts.get(l.projectId) ?? 0) + 1);
     const busiest = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
     const project = wanted ? projects.find(p => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted) : projects.find(p => p.id === busiest);
-    const key = args.linear_key?.toUpperCase() ?? linearKeys(args.task)[0] ?? null;
-    const title = args.title ?? workspaceTitleFor(args.task, key);
+    const key = args.linear_key?.toUpperCase() ?? linearKeys(task)[0] ?? null;
+    const title = args.title ?? workspaceTitleFor(task, key);
     const branch = branchFor(title);
     const base = args.base ?? "main";
     const blockers: string[] = [];
     if (!project) blockers.push(projects.length ? `Pick a project: ${projects.slice(0, 8).map(p => p.name).join(", ")}.` : "No Paseo project is available.");
-    if (!approvesNewWorkspace(await this.lastDeveloperMessage(paseo, s.agentId!))) blockers.push(NOT_APPROVED);
-    const plan = { title, branch, base, project: project?.name ?? null, firstMessage: forwardText(args.task) };
+    const gate = await this.newWorkspaceGate(paseo, key);
+    if (gate) blockers.push(gate);
+    const plan = { title, branch, base, project: project?.name ?? null, firstMessage: await this.firstMessage(paseo, s, task, key) };
     const planId = blockers.length ? null : randomUUID();
     if (planId) this.plans.set(planId, { expiresAt: this.now() + 10 * 60_000, run: async () => {
       const w = await paseo.workspaces.create({ title, source: { kind: "worktree", projectId: project!.id, action: "branch-off", baseBranch: base, branchName: branch } });
@@ -436,6 +461,12 @@ export class Overseer {
       return { started: true, workspaceId: w.id, agentId: agent.id, title, branch };
     } });
     return { dryRun: true, planId, plan, blockers, next: planId ? `Call start_workspace with confirm=true and planId=${planId}. Then tell the developer in one line.` : "Blocked; resolve the blockers first." };
+  }
+  /** The fallback's first message: an issue by its key plus the developer's own words; work with no issue, its task. */
+  private async firstMessage(paseo: OverseerPaseo, s: OverseerState, task: string, key: string | null): Promise<string> {
+    const note = developerNote(await this.lastDeveloperMessage(paseo, s.agentId!), key);
+    if (!key) return forwardText(note && note !== task.trim() ? `${task}\n\n${note}` : task);
+    return forwardText(`Work on ${key}. Read the issue and its comments yourself.${note ? `\n\n${note}` : ""}`);
   }
   private async confirm(planId: string | undefined) {
     if (!planId) throw new Error("start_workspace: confirm needs the planId from the dry run.");
@@ -451,6 +482,23 @@ export type OverseerAgentSetting = { provider: string; model: string | null; thi
 export const DEFAULT_OVERSEER_AGENT: OverseerAgentSetting = { provider: "claude", model: null, thinking: null, mode: "bypassPermissions" };
 /** Identifies a setting: the default is plain "claude", so older Overseers (no recorded agent) match it. */
 export const settingKey = (s: OverseerAgentSetting) => s.provider === "claude" && !s.model && !s.thinking && s.mode === "bypassPermissions" ? "claude" : [s.provider, s.model ?? "", s.thinking ?? "", s.mode ?? ""].join("|");
+
+/**
+ * What the Overseer said between the developer's previous message and `prompt` (newest last): its reply text and
+ * its tool calls' input (a needs_you card's ask and decisions), as one text whose keys a bare "yes" approves.
+ */
+export function proposalBefore(items: unknown[], prompt: string): string {
+  const at = items.map(i => (i as { type?: string; text?: unknown })?.type === "user_message" && (i as { text?: unknown }).text === prompt).lastIndexOf(true);
+  const out: string[] = [];
+  for (let i = (at < 0 ? items.length : at) - 1; i >= 0; i--) {
+    const it = items[i] as { type?: string; text?: unknown; detail?: unknown; input?: unknown; arguments?: unknown } | null;
+    if (!it || typeof it !== "object") continue;
+    if (it.type === "user_message") break;
+    if (it.type === "assistant_message" && typeof it.text === "string") out.unshift(it.text);
+    else if (it.type === "tool_call") { const body = it.detail ?? it.input ?? it.arguments; if (body) out.unshift(typeof body === "string" ? body : JSON.stringify(body)); }
+  }
+  return out.join("\n");
+}
 
 const NO_SOURCES: Sources = { ledger: async () => [], defer: async () => false, session: async () => false, schedule: async () => false };
 
