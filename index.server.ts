@@ -112,6 +112,7 @@ import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
 import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
 import { askSource } from "./server/ask";
 import { BriefSources } from "./server/brief-sources";
+import { Compass, CompassStore } from "./server/compass";
 import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
@@ -304,6 +305,7 @@ export default function contribute(server: PluginServerContext) {
   let linearQueue: LinearQueue | null = null;
   let morningBrief: MorningBrief | null = null;
   let briefSources: BriefSources | null = null;
+  let compass: Compass | null = null;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -436,6 +438,8 @@ export default function contribute(server: PluginServerContext) {
     if (morningBrief) void morningBrief.tick().catch(() => undefined);
     // The brief's sources: mcpproxy is asked again once a workday after the sweep time (same loop, same rule).
     if (briefSources) void briefSources.tick().catch(() => undefined);
+    // Compass's morning read: once a workday after the sweep time (same loop, same rule).
+    if (compass) void compass.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
     feeds.inbox(); feeds.home();
@@ -1482,7 +1486,7 @@ export default function contribute(server: PluginServerContext) {
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
     workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
     windows: async () => { const q = await morningBrief!.settings(); return { chatHours: q.chatHours, calendarDays: q.calendarDays }; },
-    sources: { ...rankSources, asks: () => briefSources!.askedItems() } });
+    sources: { ...rankSources, asks: () => briefSources!.askedItems(), compass: () => compass ? compass.forRanker() : Promise.resolve([]) } });
   // The brief's sources (server/brief-sources.ts): what mcpproxy has, the switches, each source's health, Retry.
   briefSources = new BriefSources({
     store: morningBriefStore, tools: sourceDirectory(), deviceZone: () => clientTimeZone,
@@ -1504,6 +1508,31 @@ export default function contribute(server: PluginServerContext) {
     onAsked: () => ranker?.markDue(),
     onChange: () => feeds.home(), log: line => console.warn(line),
   });
+  // Compass (server/compass.ts, docs/compass.md): its settings beside the brief's, its notes in compass.json. Extraction
+  // runs on the Summaries role, only on a provider Follow-up can guard (Claude, Codex).
+  compass = new Compass({
+    settings: morningBriefStore, store: new CompassStore(directory), tools: sourceDirectory(), jobs: aiJobs,
+    role: async () => { const r = await agentSettings.role("about"); return { provider: r.provider, model: r.model, thinking: r.thinking, label: providerName(r.provider) }; },
+    clock: briefClock, sweepAt: async () => (await morningBrief!.settings()).sweepAt,
+    index: async () => {
+      const [rows, holders, aboutFile, linked] = await Promise.all([overseer!.workstreams(), issueHolders(), aboutStore.read(), linkedOf()]);
+      const titles = new Map(linked.map(([id, l]) => [id, l.items.flatMap(i => i.title ? [i.title] : [])]));
+      return {
+        workspaces: rows.map(w => ({ id: w.workspaceId, title: w.title, summary: aboutFile.entries[w.workspaceId]?.gist ?? null, branch: w.branch, linked: titles.get(w.workspaceId) ?? [], prs: [] })),
+        issueWorkspace: key => holders.get(key.toUpperCase())?.workspaceId ?? null,
+      };
+    },
+    allowed: chatAllowed, tight: () => !governor.allowsBackground(),
+    onChange: () => { ranker?.markDue(); feeds.home(); }, log: line => console.warn(line),
+  });
+  handle(rpc.compassRpc, async ({ workspace }) => { await requireReady(); return compass!.view({ workspace }); });
+  handle(rpc.compassFindRpc, async ({ kind, query }) => { await requireReady(); return compass!.find(kind, query); });
+  handle(rpc.setCompassRpc, async (input, context) => {
+    await requireReady();
+    const ids = new Set((await store.snapshot()).workspaces.map(w => w.id));
+    return compass!.set(input, actorBy(actorOf(context)), { workspaceExists: id => ids.has(id) });
+  });
+  handle(rpc.readCompassRpc, async (_input, context) => { await requireReady(); const r = await compass!.readWithin(actorOf(context).kind === "agent" ? "agent" : "manual"); return { ...r, view: await compass!.view() }; });
   handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });
   handle(rpc.setBriefSourcesRpc, async input => { await requireReady(); return briefSources!.set(input); });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });
