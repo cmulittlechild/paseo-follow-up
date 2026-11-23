@@ -10,7 +10,7 @@ import { usageSchema } from "./usage";
 import { aboutViewSchema } from "./about";
 import { LINKED_KINDS, linkedItemSchema } from "./linked";
 import { AGENT_ROLES, agentSettingsViewSchema, savedRoleSchema } from "./agent-settings";
-import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema } from "./pr-stats-settings";
+import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema, statsStatusSchema } from "./pr-stats-settings";
 import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
 import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
@@ -372,6 +372,17 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   usageLive: z.boolean(),
   /** Catch up's More context asks (pushed when one is asked or answered); absent from an older worker. */
   context: z.array(contextRequestSchema).optional(),
+  /** Whether any repository has PR statistics (on or paused): Home's PR stats icon shows only then. Absent from an older worker. */
+  prStats: z.boolean().optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
-export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed] as const;
+/**
+ * The PR stats page's feed for one repository: its sync status, pushed when a run ends or a setting changes. While it
+ * is open the repository syncs every 5 minutes instead of hourly (`PrStats.watching`); the page re-reads its model
+ * when the status moves. Only the page subscribes, and only while it is on screen.
+ */
+export const prStatsFeed = subscription("follow.pr-stats-feed", z.object({ repo: statsRepoName }), z.object({
+  repo: z.string(), state: z.enum(["on", "paused", "off"]), lastSyncAt: z.number().nullable(), records: z.number().int(), coveredTo: z.number().nullable(),
+  waiting: statsStatusSchema.shape.waiting, error: statsStatusSchema.shape.error,
+}));
+export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed, prStatsFeed] as const;

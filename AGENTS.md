@@ -86,7 +86,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
-| PR statistics (records, store, sync, the GitHub budget gate, metrics, settings and tools) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
+| PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
 | Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
@@ -356,7 +356,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    lookup costs a set read. Guarded by `tests/review-mode.test.ts` ([docs/prs.md](docs/prs.md#review-mode)).
 18. **An idle open client makes at most one RPC a minute** (`idle-client-makes-at-most-one-rpc-a-minute`). On Paseo
    0.16 the client subscribes to the worker's feeds (`follow.workspaces-feed`, `follow.inbox-feed`, `follow.home-feed`,
-   `follow.display-feed`) instead of polling. The worker serves each topic once, from state it already holds, and
+   `follow.display-feed`, and the PR stats page's `follow.pr-stats-feed` while it is on screen) instead of polling. The worker serves each topic once, from state it already holds, and
    pushes only a value that changed: no polling on the server and no per-subscriber timers (`server/feeds.ts`). On
    0.15 (no `client.subscribe`) the client polls as before. Quiet must not mean stale: a feed the worker closes (a
    restart) or refuses polls until it resubscribes and stays subscribed, and a feed that keeps dropping backs off
