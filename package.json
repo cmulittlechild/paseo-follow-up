@@ -20,6 +20,7 @@
     "README.md",
     "THIRD_PARTY_NOTICES.md",
     "docs/screenshots/",
+    "!docs/screenshots/follow-up-demo*",
     "scripts/build.mjs"
   ],
   "scripts": {

@@ -1,7 +1,8 @@
 // Records Follow-up's 20-30 s demo video (plugin page and README) from the real UI on fixture data:
 // `npm run video -- --out <dir>` through ~/paseo-harness/tools/harness-slot. Writes follow-up-demo.mp4 (H.264,
 // 1920×1200, faststart), follow-up-demo-poster.png (its first second), follow-up-demo.webp (an animated fallback at
-// 960×600) and frames/ (one PNG every 2 s, to review). The video stays out of git and the npm package.
+// 960×600) and frames/ (one PNG every 2 s, to review). The committed copies sit in docs/screenshots/, left out of the npm
+// package (package.json files: !docs/screenshots/follow-up-demo*); see docs/testing.md "Demo video".
 // Usage: node scripts/demo-video.mjs [--out <dir>] [--as-version <X.Y.Z>] [--keep-frames]
 //
 // The take, in one 16:10 frame: Home with Needs you on top; Catch up, where one click allows a permission, the next
@@ -103,6 +104,26 @@ const MODEL_LABEL = () => {
   if (document.body) start(); else addEventListener("DOMContentLoaded", start, { once: true });
 };
 
+/**
+ * Starting the Overseer makes the harness add its home as a project ("overseer-home") to Paseo's sidebar, which the
+ * screenshot fixture (and the slides) never show. Hide that one project block, row and workspace list; nothing else.
+ */
+const HIDE_HARNESS_PROJECT = () => {
+  const hide = () => {
+    for (const row of document.querySelectorAll('[data-testid^="sidebar-project-row-"]')) {
+      if (!(row.textContent ?? "").includes("overseer-home")) continue; // the row reads "<avatar letter>overseer-home"
+      const key = row.getAttribute("data-testid").slice("sidebar-project-row-".length);
+      // The project's block: the widest ancestor that holds this project's row and no other project's.
+      let block = row;
+      for (let up = row.parentElement; up && up.querySelectorAll('[data-testid^="sidebar-project-row-"]').length === 1; up = up.parentElement) block = up;
+      block.style.display = "none";
+      for (const list of document.querySelectorAll(`[data-testid="sidebar-workspace-list-${key}"]`)) list.style.display = "none";
+    }
+  };
+  const start = () => { hide(); new MutationObserver(hide).observe(document.body, { subtree: true, childList: true }); };
+  if (document.body) start(); else addEventListener("DOMContentLoaded", start, { once: true });
+};
+
 // ---------- motion ----------
 // The first frame is the poster: the pointer starts in the empty foot of the right pane, off every row.
 let pointer = { x: VIEW.width * 0.86, y: VIEW.height * 0.9 };
@@ -196,7 +217,7 @@ try {
   const { chromium } = createRequire(join(process.env.PLAYWRIGHT_CORE, "package.json"))("playwright-core");
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM, headless: true });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE, colorScheme: "light", timezoneId: "UTC", locale: "en-US" });
-  for (const script of [INIT, CURSOR, MODEL_LABEL]) await context.addInitScript(script);
+  for (const script of [INIT, CURSOR, MODEL_LABEL, HIDE_HARNESS_PROJECT]) await context.addInitScript(script);
   const page = await context.newPage();
   page.setDefaultTimeout(30000);
   await page.clock.setFixedTime(VIEW_TIME);
@@ -207,6 +228,7 @@ try {
   await page.waitForTimeout(1500); // fonts, avatars and the first PR chips settle before the first frame
   await page.mouse.move(pointer.x, pointer.y);
   assertNoRealNames(await page.evaluate(() => document.body.innerText), "Home");
+  if (await page.locator('[data-testid^="sidebar-project-row-"]').filter({ hasText: "overseer-home", visible: true }).count()) throw new Error("the harness's overseer-home project still shows in the sidebar");
 
   // 4. The take.
   const cdp = await context.newCDPSession(page);
@@ -313,7 +335,7 @@ try {
   if (t1 > cursor) pieces.push([cursor, t1, Math.min(t1 - cursor, DEAD_MAX)]);
   const remap = t => { let o = 0; for (const [a, b, len] of pieces) { if (t >= b) { o += len; continue; } if (t > a) o += (t - a) / (b - a) * len; break; } return o; };
   // The take plays at PACE: a touch quicker than it was driven, still a person's speed, so the whole loop fits 30 s.
-  const PACE = 1.1;
+  const PACE = 1.15;
   const out_t = [...frames.map(f => remap(f.t) / PACE), remap(t1) / PACE];
   const list = frames.map((f, i) => `file '${f.file}'\nduration ${Math.max(0.0005, out_t[i + 1] - out_t[i]).toFixed(4)}`);
   list.push(`file '${frames.at(-1).file}'`);
