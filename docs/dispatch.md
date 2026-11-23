@@ -2,8 +2,8 @@
 
 New (internal name: dispatch) starts a workspace and an agent from a source, with an action. The source is a Linear
 issue, a GitHub issue or PR link, another link, or the developer's own words. The action says what the agent is asked
-to do. Phase 1 ships in three PRs: the core and the agent tools (this one), the dialog and its entry points, and then
-Settings → New work.
+to do. Phase 1 ships in three PRs: the core and the agent tools, the dialog and its entry points, and then Settings → New
+work.
 
 ## Files
 
@@ -12,6 +12,10 @@ Settings → New work.
 | `shared/dispatch.ts` | Pure rules: actions as data and the built-ins, `renderAction` (placeholders, the 4 KB `{body}` clip, the developer's note), `parseSource`, titles and branches, `resolveWhere` (which project, and why), the record and `dispatch.json` schemas, and the RPC input schemas. Safe on the phone (no Node APIs). |
 | `shared/linear-issues.ts` | One typed Linear issue record (`LinearIssue`) and the parsers for `list_issues` and `get_issue` replies, a cut-off reply included (`salvageArray`). The Morning brief reuses it. |
 | `server/linear-issues.ts` | `LinearIssues`: the reader, through mcpproxy like the Summary. `list` walks every page up to its limit and is shared for `LIST_TTL_MS` (60 s); `get` reads one issue with its description; `search` runs only on an explicit press. A missing mcpproxy or Linear server reads as `missing`, not as an error. |
+| `shared/new-view.ts` | The dialog as pure data: the left list (`newRows`: My issues, a pasted source, "Start from your words", "Search all of Linear"), what a row sends to the preview, the action bar (`actionBar`: ↵ the first action, ⌥↵ the second, the rest under More, Open it when the source has a workspace), the four steps of a dispatch, Home's row (`homeRecords`, `recordLine`) and the keys (`newKey`). |
+| `client/new.tsx` | The dialog (`NewDialog`), its host on Home (`NewHost`: a dialog over everything on desktop web, a full screen on a phone), `openNew`, and Home's dispatch rows with Undo (`DispatchRows`). |
+| `client/action-row.tsx` | The action row (`ActionRow`): ↵ the first action, ⌥↵ the second, More, or Open it. It starts nothing itself (the caller's `onAction`), so any surface can mount it (the Morning brief's queue). |
+| `client/new-entry.tsx` | The sidebar's New row (`addSidebarHeaderItem`, id `new`). |
 | `server/dispatch.ts` | `DispatchStore` (`dispatch.json`) and `DispatchService`: sources, preview, dispatch, the background create, retries, cancel, Undo, and the action and settings edits. Every outside effect is an injected dependency, so tests run it on a fake Paseo. |
 
 ## Actions
@@ -32,12 +36,14 @@ list is `null` until the developer changes something, so new built-ins reach eve
 
 1. The developer's pick.
 2. The link's repository (a GitHub issue or PR).
-3. The team's rule (Linear team key → project). A rule naming a project that is gone asks again and says so.
-4. Learned: at least `LEARN_MIN` (2) of the team's linked workspaces, `LEARN_SHARE` (70 %) of them in one project.
-5. For a source with no team (a link or words), the last used project, drawn as a guess, unless the no-team rule is
+3. The project of the source's live workspace ("Where its workspace is"): an issue already being worked on is never
+   ambiguous, so its preview offers Open it with starting another in the same project.
+4. The team's rule (Linear team key → project). A rule naming a project that is gone asks again and says so.
+5. Learned: at least `LEARN_MIN` (2) of the team's linked workspaces, `LEARN_SHARE` (70 %) of them in one project.
+6. For a source with no team (a link or words), the last used project, drawn as a guess, unless the no-team rule is
    `ask`.
-6. The only project that can take a worktree.
-7. Otherwise ambiguous: New asks, and a pick for a team with no rule is saved as that team's rule (asked once per team).
+7. The only project that can take a worktree.
+8. Otherwise ambiguous: New asks, and a pick for a team with no rule is saved as that team's rule (asked once per team).
 
 The base is the project's saved base, else the repository's default branch (`origin/HEAD`, read once an hour), else
 `main`. The branch is the issue's own Linear branch name or one from the title; Paseo picks a free name if it's taken.
@@ -68,6 +74,40 @@ never creates again blind, which could make a second workspace.
 - `new-reads-nothing-while-closed`: Linear is read only when New asks; the one timer is a queued dispatch's retry.
 - The Overseer's own dispatches keep its new-workspace gate: the developer's latest message must ask for or approve a
   new workspace. Its `start_workspace` is an alias of `dispatch` with Create PR for one release.
+
+## The dialog
+
+Every entry point goes through one path, `openNew` (`client/new.tsx`): Home's **+ New** (first in Home's header), the
+sidebar's **New** row, ⌘K **Follow-up: New…** (its title names the key) and **New from anywhere**, the Display setting
+`new_shortcut` (⌘⇧N, ⌘⇧O or None). Unset, the key is ⌘⇧N in Paseo's desktop app and ⌘⇧O in a browser tab, because
+Chrome keeps Ctrl/Cmd+Shift+N for a new incognito window and never hands it to a page (`newShortcutPreset`,
+`shared/search-key.ts`); a pick wins everywhere. The key shares Search from anywhere's one capture listener
+(`client/search-key.ts`), and pressing it again closes New. The sidebar row, ⌘K and the key open Home with `?new=<nonce>`
+and Home's host shows the dialog; on Home already (Paseo hands no new params to the screen that's showing) they open it
+in place (`enterNew`, `index.client.tsx`).
+
+- **Desktop:** the sources on the left (the field, focused, then My issues with the first one that can start
+  preselected; each row says where it
+  would go, "→ which project?" when New would ask, or the workspace that already has it), everything about the selected
+  source on the right (Project, From, Workspace, Branch, Title, Agent, Show instructions, a note), and the action bar
+  across the bottom. ↵ runs the first action, ⌥↵ the second, ⇧↵ searches all of Linear, ↑↓ move, ⌘I shows the
+  instructions, Esc closes. Once created: ⌘↵ opens the workspace, ⌘Z undoes.
+- **Phone:** the list with the bar pinned at the bottom, then a preview screen for any other row; on both, the bar's
+  line names the target, its base, the agent and its mode before the click.
+- **Which project:** the project choices commit at once (up to four, then Other… for the full list); the fields below
+  fill in once one is picked.
+- **A source with a live workspace:** Open it (↵) leads, and starting another stays under the usual gate.
+- **Failures:** the remedy leads: Change agent when the agent didn't start (the workspace was archived again), Change
+  base when a new worktree couldn't be made; Try again otherwise. Home's row for a failure says why first and offers
+  Try again (New, on that source).
+- **Agent:** the chip picks the provider, model and mode for this dispatch only (`agent` on the input, kept on the
+  record so a retry starts the same agent).
+- **Home's row:** dispatches in progress, failed in the last hour, or still undoable come on the home feed
+  (`dispatches`), so Home reads nothing of its own; on a Paseo without feeds (0.15) Home reads them once on start and
+  once each time New closes, never on a timer. One that finishes while New is closed says so in a toast with Undo.
+
+`new-reads-nothing-while-closed`: closed, New makes no request (no feed, no timer). Open, it reads the list once, a
+preview per selection, and one record a second only while a dispatch is starting.
 
 ## Agent tools
 

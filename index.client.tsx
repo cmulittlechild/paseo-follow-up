@@ -1,6 +1,8 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
-import { createSearchKey, installSearchShortcut } from "./client/search-key";
+import { createNewKey, createSearchKey, installSearchShortcut, onHomeRoute } from "./client/search-key";
+import { NewSidebarRow } from "./client/new-entry";
+import { closeNew, newHostMounted, newRequestNow, openNew, setNewFallback } from "./client/new";
 import { withButtonVisibility } from "./client/button-visibility";
 import { openExternalUrl, type PluginClientContext, type PluginButtonRegistration, type PluginScreenProps, type PluginSurfaceProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { Dimensions } from "react-native";
@@ -93,6 +95,20 @@ export default function contribute(host: PluginClientContext) {
   // One store of More context asks for every question surface (client/more-context.tsx).
   setContextSource(extras);
   const searchKey = createSearchKey();
+  // New (client/new.tsx): every entry point lands on Home with `new` set, whose host shows the dialog; with Home
+  // already mounted, openNew shows it in place. The key toggles it.
+  const newKey = createNewKey();
+  let newToken = 0;
+  setNewFallback(r => client.openScreen({ screenId: OVERVIEW, params: { new: String(++newToken), ...(r.source ? { source: r.source } : {}) } }));
+  // On Home, New opens in place (openScreen to the screen already showing is skipped, as the search key does). A Home
+  // kept mounted behind takes it and is brought forward; with none, Home opens with `new` set and its host shows New.
+  const enterNew = (openScreen: (t: { screenId: string; params?: Record<string, string> }) => void) => {
+    const loc = (globalThis as { location?: { pathname?: string } }).location;
+    if (newHostMounted() && onHomeRoute(loc?.pathname, OVERVIEW)) { openNew(); return; }
+    if (newHostMounted()) { openNew(); openScreen({ screenId: OVERVIEW }); return; }
+    openScreen({ screenId: OVERVIEW, params: { new: String(++newToken) } });
+  };
+  const openNewAnywhere = () => { if (newRequestNow()) { closeNew(); return; } enterNew(t => client.openScreen(t)); };
   const sources = { inbox, live: store, paseo: paseoWorkspaces, extras };
   const offActivity = extras.onActivity(() => { inbox.nudge(); store.nudge(); });
   // "Sign off & next" from a pill or ⌘K: the screen relays it to the host's navigation.
@@ -107,7 +123,7 @@ export default function contribute(host: PluginClientContext) {
     noteDone: (agentId, cancel) => inbox.noteDone(agentId, cancel), endDone: agentId => inbox.endDone(agentId),
   };
   const openItem = (key: string, extra: { question?: string } = {}) => client.openScreen({ screenId: OVERVIEW, params: { item: key, ...(extra.question ? { question: extra.question } : {}) } });
-  const homeDeps = { sources, openSettings, openPanel, openLog, openCatchUp, openStats, openHome: openOverview, openItem, briefDeps, searchKey };
+  const homeDeps = { sources, openSettings, openPanel, openLog, openCatchUp, openStats, openHome: openOverview, openItem, briefDeps, searchKey, newKey };
   const Overview = (props: PluginScreenProps) => <><FollowHome {...props} deps={homeDeps} />{reportHost(props)}</>;
   const Panel = (props: PluginWorkspacePanelProps) => <><FollowPanel {...props} openSettings={openSettings} openOverview={openOverview} openLarge={openLarge} inbox={inbox} live={store} briefDeps={briefDeps} sources={sources} />{reportHost(props)}</>;
   const Large = (props: PluginScreenProps) => <FollowLarge {...props} openSettings={openSettings} openOverview={openOverview} live={store} />;
@@ -167,13 +183,25 @@ export default function contribute(host: PluginClientContext) {
       onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); extras.focusSearch(); } });
   };
   syncSearch();
-  removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: () => extras.focusSearch() }));
+  // ⌘K "Follow-up: New…" names New's key the same way, re-listed when it changes.
+  let removeNew: (() => unknown) | null = null;
+  const syncNew = () => {
+    void removeNew?.();
+    const label = newKey.label();
+    removeNew = client.addCommandCenterItem({ id: "follow-up-new", title: label ? `Follow-up: New… (${label})` : "Follow-up: New…", icon: "Plus", keywords: ["new", "dispatch", "start", "workspace", "issue", "linear", "task", "create"], context: "global",
+      onSelect({ openScreen }) { enterNew(openScreen); } });
+  };
+  syncNew();
+  removers.push(newKey.subscribe(syncNew), () => removeNew?.());
+  // The sidebar's New row (Paseo lists it as "New" in Settings → Sidebar → Header, beside its own "New workspace").
+  removers.push(client.addSidebarHeaderItem({ id: "new", title: "New", Component: NewSidebarRow(newKey, enterNew) }));
+  removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: () => extras.focusSearch() }, { key: newKey, open: openNewAnywhere }));
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);
   if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
 
   return async () => {
-    setReportFallback(null); setReportError(null);
+    setReportFallback(null); setReportError(null); setNewFallback(null);
     stopped = true;
     offActivity(); visibility.dispose(); removeDisplay(); store.stop(); inbox.stop();
     for (const r of removers) void r();

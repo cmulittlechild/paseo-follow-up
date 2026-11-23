@@ -30,6 +30,9 @@
   default when absent or saved as the retired `mod-slash`), `mod-shift-h` or `none`. Settings → Inbox & display → Keyboard picks it (web
   and desktop only); `set_display` sets it with `{ values: { search_shortcut: "none" } }`. No choice is a key Paseo
   binds (`PASEO_BOUND`, `shared/search-key.ts`; invariant `every-shortcut-is-configurable-and-never-paseo-s`).
+- **New from anywhere** is the Display field `new_shortcut`: `mod-shift-n`, `mod-shift-o` or `none`. Unset means the
+  host's default: ⌘⇧N (Ctrl+Shift+N) in Paseo's desktop app, ⌘⇧O (Ctrl+Shift+O) in a browser tab, where Chrome keeps
+  Ctrl/Cmd+Shift+N for a new incognito window. A pick wins everywhere. It opens New ([dispatch.md](dispatch.md#the-dialog)).
 - **Display fields** are read and written by agents through `display_settings` and `set_display`
   (`DISPLAY_TOOLS` in `server/agent-parity.ts`, PARITY key `settings.display`).
 - **View state is per device; settings are per host** (invariant 22, `view-state-is-per-device-settings-are-per-host`).

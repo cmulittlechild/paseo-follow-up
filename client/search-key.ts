@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { displayPreferences, displayRpc } from "../shared/display";
-import { isMac, matchesShortcut, searchShortcutOf, shortcutLabel, type KeyEventLike, type SearchShortcut } from "../shared/search-key";
+import { isDesktopApp, isMac, matchesShortcut, newShortcutPreset, searchShortcutOf, shortcutLabel, type KeyEventLike, type NewShortcut, type SearchShortcut } from "../shared/search-key";
 import { subscribeDisplay } from "./display";
 
 type DomKey = KeyEventLike & { target?: { closest?(selector: string): unknown } | null; preventDefault(): void; stopPropagation(): void };
@@ -37,13 +37,31 @@ export function createSearchKey() {
 export type SearchKey = ReturnType<typeof createSearchKey>;
 
 /**
+ * New from anywhere's key (`new_shortcut`): unset means the host's default, ⌘⇧N in Paseo's desktop app and ⌘⇧O in a
+ * browser tab (Chrome keeps Ctrl/Cmd+Shift+N for a new incognito window and never hands it to the page). A pick wins
+ * everywhere.
+ */
+export function createNewKey(desktop = isDesktopApp()) {
+  let preset: NewShortcut = newShortcutPreset(undefined, desktop);
+  const listeners = new Set<() => void>();
+  const set = (next: unknown) => { const p = newShortcutPreset(next, desktop); if (p === preset) return; preset = p; for (const l of listeners) l(); };
+  return {
+    preset: () => preset,
+    label: () => shortcutLabel(preset, isMac()),
+    set,
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  };
+}
+export type NewKey = ReturnType<typeof createNewKey>;
+
+/**
  * Search from anywhere (every-shortcut-is-configurable-and-never-paseo-s): one document listener, web and desktop
  * only, in the capture phase so it works with focus in a text field (it's a chord, like ⌘K). On a match it opens Home
  * (or stays there) and asks Home's search for the cursor; anything else passes through untouched. The key is the
  * Display setting `search_shortcut`, read once at start and then from the Display feed or poll. Inside a code editor
- * the key stays the editor's (EDITOR_SELECTOR).
+ * the key stays the editor's (EDITOR_SELECTOR). New from anywhere (`extra`) is matched by the same listener.
  */
-export function installSearchShortcut(client: PluginClientContext, key: SearchKey, open: { screenId: string; focus: () => void }): () => void {
+export function installSearchShortcut(client: PluginClientContext, key: SearchKey, open: { screenId: string; focus: () => void }, extra?: { key: NewKey; open: () => void }): () => void {
   const win = globalThis as Win;
   const doc = win.document;
   if (Platform.OS !== "web" || !doc) return () => undefined;
@@ -52,10 +70,12 @@ export function installSearchShortcut(client: PluginClientContext, key: SearchKe
   void client.rpc(displayRpc.read, {}).then(doc => {
     if (!live || doc.status !== "ready") return;
     const parsed = displayPreferences.schema.safeParse(doc.values);
-    if (parsed.success) key.set(parsed.data.search_shortcut);
+    if (parsed.success) { key.set(parsed.data.search_shortcut); extra?.key.set(parsed.data.new_shortcut); }
   }).catch(() => undefined);
-  const offDisplay = subscribeDisplay(values => key.set(values.search_shortcut));
+  const offDisplay = subscribeDisplay(values => { key.set(values.search_shortcut); extra?.key.set(values.new_shortcut); });
   const onKey = (e: DomKey) => {
+    // New from anywhere shares this one listener (every-shortcut-is-configurable-and-never-paseo-s).
+    if (extra && matchesShortcut(e, extra.key.preset(), mac) && !e.target?.closest?.(EDITOR_SELECTOR)) { e.preventDefault(); e.stopPropagation(); extra.open(); return; }
     if (!matchesShortcut(e, key.preset(), mac) || e.target?.closest?.(EDITOR_SELECTOR)) return;
     e.preventDefault(); e.stopPropagation();
     if (onHomeRoute(win.location?.pathname, open.screenId)) { open.focus(); return; }

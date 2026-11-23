@@ -1,7 +1,7 @@
 import { defineSettings, settingsRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { DEFAULT_SORT, isSortMode, SORT_MODES, type SortMode } from "./sort";
-import { DEFAULT_SEARCH_SHORTCUT, SEARCH_SHORTCUTS } from "./search-key";
+import { DEFAULT_SEARCH_SHORTCUT, NEW_SHORTCUTS, SEARCH_SHORTCUTS } from "./search-key";
 
 /** Home's right pane as a share of Home's width: the default and the range set_display and the divider accept. */
 export const HOME_DETAIL_DEFAULT = 0.42;
@@ -46,7 +46,9 @@ export const displayPreferences = defineSettings({
     // 2.1: the key that opens Home with the cursor in its search from anywhere in Paseo (shared/search-key.ts).
     // Absent means DEFAULT_SEARCH_SHORTCUT (⌘⇧K or Ctrl+Shift+K); "none" turns it off.
     // The retired preset must not invalidate the entire saved Display document.
-    search_shortcut: z.preprocess(value => value === "mod-slash" ? DEFAULT_SEARCH_SHORTCUT : value, z.enum(SEARCH_SHORTCUTS).optional()) }),
+    search_shortcut: z.preprocess(value => value === "mod-slash" ? DEFAULT_SEARCH_SHORTCUT : value, z.enum(SEARCH_SHORTCUTS).optional()),
+    /** New from anywhere (docs/dispatch.md); absent: ⌘⇧N in Paseo's desktop app, ⌘⇧O in a browser tab. */
+    new_shortcut: z.enum(NEW_SHORTCUTS).optional() }),
 });
 
 /** Every Display key, set or not: what set_display accepts. */
