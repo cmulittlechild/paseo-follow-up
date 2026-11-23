@@ -88,7 +88,7 @@ export function useHomeModel(sources: HomeSources): HomeModel {
   // strip and brief line and the sidebar badge (client/live.tsx) agree (invariant raised-is-needs-you).
   const raised = useSyncExternalStore(extras.subscribe, () => extras.queue().raised.length, () => 0);
   const compass = useSyncExternalStore(extras.subscribe, extras.compass, extras.compass);
-  return useMemo(() => buildHome({ rows: inbox.rows(), tracked: live.all(), paseo: paseo.all(), now: Date.now(), sort, priorities, hidden: overseer ? [overseer] : [], hold, raised, compass }), [a, b, c, now, sort, priorities, inbox, live, paseo, overseer, hold, raised, compass]);
+  return useMemo(() => buildHome({ rows: inbox.rows(), tracked: live.all(), paseo: paseo.all(), now: Date.now(), sort, priorities, hidden: overseer ? [overseer] : [], hold, compass, raised }), [a, b, c, now, sort, priorities, inbox, live, paseo, overseer, hold, raised, compass]);
 }
 
 /** Rebuilds a value at most every `ms` while mounted (used for the brief pane's source ages). */
