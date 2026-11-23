@@ -9,7 +9,7 @@ import { taskSchedule } from "./task-trigger";
 //
 // Tasks are the agent's to-do list, not the developer's. The developer needs three things from it: how many are open,
 // whether the agent is keeping up (a stale task: due, nudged twice, no answer), and what moves each one. So the card is
-// one collapsed line by default ("5 open · 1 due · 1 stale"), due stays neutral (it's the agent's normal work), and only
+// one collapsed line by default ("6 open · 2 due · 1 stale"), due stays neutral (it's the agent's normal work), and only
 // stale is amber. Expanded, a row says what moves it in a few words. The send queue, repairs, finished tasks and the
 // schedule editor live elsewhere (the Messages to the agent card, Activity, the task's own detail).
 

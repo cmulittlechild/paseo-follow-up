@@ -1,3 +1,3 @@
-- The workspace panel's Tasks card is now "Agent's tasks": one line by default ("6 open · 1 due · 1 stale"), amber only when the agent let a task go stale. Open it to see what moves each task, due ones first with the agent's note.
+- The workspace panel's Tasks card is now "Agent's tasks": one line by default ("6 open · 2 due · 1 stale"), amber only when the agent let a task go stale. Open it to see what moves each task, due ones first with the agent's note.
 - The next message to the agent and the PR repairs in it have their own card, and finished tasks are listed in Activity.
 - The header line names the task the agent owes next, and question cards in the panel show the question before its context.

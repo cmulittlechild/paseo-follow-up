@@ -1933,7 +1933,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     }
   }
   if (only.includes("tasks-view")) {
-    // tasks-are-the-agent-s: Agent's tasks folded to one line ("6 open · 1 due · 1 stale", stale alone amber), then
+    // tasks-are-the-agent-s: Agent's tasks folded to one line ("6 open · 2 due · 1 stale", stale alone amber), then
     // open (stale and due first, each with the agent's note; a row says what moves it), a row opened in place, the
     // phone's larger view, and the action card (ask first; Tasks says "In Needs you", Activity "Action · …").
     // Stale needs two nudges the agent didn't answer: the hook's receipt says so, and the worker reads it at start.

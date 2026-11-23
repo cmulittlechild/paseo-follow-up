@@ -1037,7 +1037,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
 
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
-   developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 1 due · 1 stale"; due
+   developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
    neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
    stale and due first; a task waiting on the developer says "In Needs you" with no question id and comes last; no
    section search. Finished tasks are in Activity, the send queue and repairs in the Messages to the agent card

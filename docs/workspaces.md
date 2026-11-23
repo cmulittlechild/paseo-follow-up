@@ -230,7 +230,7 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 
 **The developer's view: Agent's tasks** (`shared/task-view.ts`, `client/tasks.tsx`, invariant `tasks-are-the-agent-s`).
 Tasks are the agent's to-do list, so the panel folds them to one line by default, in every state: "Agent's tasks ·
-6 open · 1 due · 1 stale". Due is the agent's normal work and stays neutral; only stale (due, nudged twice, no answer)
+6 open · 2 due · 1 stale". Due is the agent's normal work and stays neutral; only stale (due, nudged twice, no answer)
 is amber. Opened, a row per open task: a glyph per kind of move (a dot for due, amber for stale, a PR for "After #232
 merges", a calendar for a re-check, a pause for blocked, a hand or question bubble for one in Needs you), the title, and
 one line saying what moves it (`taskViewRows`). Stale and due come first, oldest first, each with the agent's note under
