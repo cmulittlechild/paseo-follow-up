@@ -107,6 +107,8 @@ import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
 import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
 import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
+import { BriefSources } from "./server/brief-sources";
+import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
 import { workspaceRefs } from "./shared/linked-extract";
@@ -294,6 +296,7 @@ export default function contribute(server: PluginServerContext) {
   let ranker: Ranker | null = null;
   let linearQueue: LinearQueue | null = null;
   let morningBrief: MorningBrief | null = null;
+  let briefSources: BriefSources | null = null;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -411,6 +414,8 @@ export default function contribute(server: PluginServerContext) {
     if (linearQueue) void linearQueue.tick().catch(() => undefined);
     // This week's plan: Find it for me looks again once a workday after the sweep time (same loop, same rule).
     if (morningBrief) void morningBrief.tick().catch(() => undefined);
+    // The brief's sources: mcpproxy is asked again once a workday after the sweep time (same loop, same rule).
+    if (briefSources) void briefSources.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
     feeds.inbox(); feeds.home();
@@ -1328,8 +1333,22 @@ export default function contribute(server: PluginServerContext) {
   void ready.then(() => { if (!stopped && !loadError) return dispatcher.start(); }).catch(() => undefined);
   // Settings → Morning brief (server/morning-brief.ts): the queue's settings, the brief's clock and this week's plan
   // link. The plan reader is the ranker's (built below); the skill registry is imported once.
+  // One store for the brief's settings and its sources (morning-brief.json).
+  const morningBriefStore = new MorningBriefStore(directory);
+  // The chat search follows the brief's Chat switch: a chat source turned off isn't searched.
+  const chatAllowed = async () => {
+    const g = await briefSources!.gate("chat");
+    if (!g.on) throw new Error("Chat is off in Settings → Morning brief.");
+    return g.allowed;
+  };
   morningBrief = new MorningBrief({
-    store: new MorningBriefStore(directory), chat: mcpproxyChat(), env: () => process.env.FOLLOW_UP_PLAN_URL, deviceZone: () => clientTimeZone,
+    store: morningBriefStore, chat: mcpproxyChat(undefined, { allowed: chatAllowed }), env: () => process.env.FOLLOW_UP_PLAN_URL, deviceZone: () => clientTimeZone,
+    // From what discovery last found (never a call of its own: Settings must answer at once); unknown yet counts as ready.
+    chatReady: async () => {
+      const found = sourceDirectory().cached();
+      const g = await briefSources!.gate("chat", { cachedOnly: true });
+      return g.on && (!found || found.matched.some(m => m.recipe === "chat" && (!g.allowed || g.allowed(m.server))));
+    },
     readPlan: url => ranker!.readPlan(url),
     lastRead: async () => { const p = (await ranker!.state()).planning; return p ? { url: p.url, at: p.at, title: p.value.title, items: p.value.items.length } : null; },
     onChange: () => feeds.home(), log: line => console.warn(line),
@@ -1396,9 +1415,30 @@ export default function contribute(server: PluginServerContext) {
     const r = await agentSettings.role("ranker");
     return { provider: r.provider, model: r.model, thinking: r.thinking, dailyCap: r.dailyCap ?? RANKER_ROLE_DEFAULT.dailyCap, maxPromptChars: r.maxPromptChars ?? RANKER_ROLE_DEFAULT.maxPromptChars, cadenceMinutes: r.cadenceMinutes ?? RANKER_ROLE_DEFAULT.cadenceMinutes };
   };
+  // Every outside source is gated by Settings → Morning brief's switches (shared/brief-sources.ts).
+  const rankSources = liveRankSources(aiJobs, { queue: linearQueue, gate: id => briefSources!.gate(id), model: async () => { const r = await rankerRole(); return r.provider === "claude" ? r.model : null; } });
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
     workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
-    sources: liveRankSources(aiJobs, { queue: linearQueue, model: async () => { const r = await rankerRole(); return r.provider === "claude" ? r.model : null; } }) });
+    windows: async () => { const q = await morningBrief!.settings(); return { chatHours: q.chatHours, calendarDays: q.calendarDays }; },
+    sources: rankSources });
+  // The brief's sources (server/brief-sources.ts): what mcpproxy has, the switches, each source's health, Retry.
+  briefSources = new BriefSources({
+    store: morningBriefStore, tools: sourceDirectory(), deviceZone: () => clientTimeZone,
+    ranker: async () => { const s = await ranker!.state(); return { lastRunAt: s.lastRunAt, health: s.health, errors: s.errors }; },
+    sweep: () => linearQueue!.lastSweep(),
+    githubAccounts: () => githubApi().accounts(),
+    probe: async id => {
+      if (id === "linear") { const r = await linearQueue!.sweepNow("manual"); if ("ok" in r && !r.ok) throw new Error(r.error ?? "The sweep failed."); return; }
+      if (id === "github") { await rankSources.github(); return; }
+      if (id === "chat") { await rankSources.slack(Date.now() - 3_600_000); return; }
+      if (id === "mail") { const now = Date.now(); await rankSources.mail!(now - 86_400_000, now); return; }
+      const now = Date.now();
+      await rankSources.calendar!({ start: new Date(now).toISOString(), end: new Date(now + 86_400_000).toISOString(), timeZone: (await briefClock()).timeZone });
+    },
+    onChange: () => feeds.home(), log: line => console.warn(line),
+  });
+  handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });
+  handle(rpc.setBriefSourcesRpc, async input => { await requireReady(); return briefSources!.set(input); });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });
   // Returns at once: the run can take minutes on a slow model; Home polls rank-status and shows "Ranking…".
   handle(rpc.rankNowRpc, async ({ force }) => { await requireReady(); return { ...ranker!.start({ trigger: "manual", force: !!force }), running: true }; });

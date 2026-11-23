@@ -229,7 +229,7 @@ let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end
 
 /**
  * What the fake `mcpproxy` knows of Linear. Linked items only show a Linear key once Linear confirms it, and the worker
- * asks through `mcpproxy call tool-read --tool-name=linear:get_issue`; these answer it. Any other key is "not found",
+ * asks through `mcpproxy call tool-read` for the server whose tools look like Linear's; these answer it. Any other key is "not found",
  * so keys extracted from the other workspaces' goals are rejected and never render (whenever the linked loop runs).
  */
 function linearIssues() {
@@ -239,15 +239,42 @@ function linearIssues() {
     "APP-151": { title: "Dunning email copy for failed renewals", status: "Todo" },
   };
 }
-/** A fake `mcpproxy`: Linear's get_issue and list_teams from the fixture file, a tool error for everything else. */
+/**
+ * A fake `mcpproxy` with fictional servers (found by their tools, as on a real host): an issue tracker, a chat, a
+ * calendar and a database with no recipe. Linear's get_issue and list_teams come from the fixture file;
+ * `sources-fixture.json` beside it can change a server's state (a sign-in needed, turned off) for the Sources renders.
+ */
 function fakeMcpproxy(file) {
   return `#!/usr/bin/env node
-const issues = JSON.parse(require("fs").readFileSync(${JSON.stringify(file)}, "utf8"));
+const fs = require("fs"), path = require("path");
+const issues = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, "utf8"));
 const flag = name => (process.argv.find(a => a.startsWith("--" + name + "=")) || "").slice(name.length + 3);
-const tool = flag("tool-name"); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
+const qualified = flag("tool-name"); const tool = qualified.slice(qualified.indexOf(":") + 1); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
 const reply = (text, isError = false) => { console.log(JSON.stringify({ content: [{ type: "text", text }], isError })); process.exit(0); };
-if (tool === "linear:list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
-if (tool === "linear:get_issue") {
+let over = {}; try { over = JSON.parse(fs.readFileSync(path.join(path.dirname(${JSON.stringify(file)}), "sources-fixture.json"), "utf8")); } catch {}
+const t = (server_name, name, props, description = "") => ({ server_name, name, description, annotations: { readOnlyHint: true }, schema: { type: "object", properties: Object.fromEntries(props.map(p => [p, { type: "string" }])) } });
+if (process.argv[2] === "tools" && process.argv[3] === "list") {
+  console.log(JSON.stringify([
+    t("issues", "list_issues", ["assignee", "state", "orderBy", "limit", "fields", "cursor", "query"]), t("issues", "get_issue", ["id", "fields"]), t("issues", "get_user", ["query"]), t("issues", "list_teams", []),
+    t("team-chat", "search_public_and_private", ["keywords", "filters", "natural_language_query", "sort", "sort_dir", "limit", "include_context", "response_format"], "Search messages. Current logged in user's user_id is UALICE0001."),
+    t("team-chat", "search_users", ["keywords", "natural_language_query", "limit", "response_format"]), t("team-chat", "search_channels", ["keywords", "natural_language_query", "limit", "channel_types", "response_format"]),
+    t("calendar", "list-events", ["timeMin", "timeMax", "timeZone"], "List the user's events."),
+    t("warehouse", "run_query", ["sql"]), t("warehouse", "list_tables", []),
+    ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
+  ]));
+  process.exit(0);
+}
+if (process.argv[2] === "upstream" && process.argv[3] === "list") {
+  const up = name => ({ name, enabled: true, connected: true, authenticated: true, oauth: null, quarantined: false, tool_count: 4, health: { level: "healthy", summary: "Connected", action: null }, ...(over.upstreams || {})[name] });
+  console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : [])].map(up)));
+  process.exit(0);
+}
+// The morning sweep, only for the Sources shots (over.linear): an empty queue, so the card reads Linear as fine. Other
+// shots seed their queue and must not have it replaced by a sweep.
+if (over.linear && tool === "list_issues") reply(JSON.stringify({ issues: [], hasNextPage: false }));
+if (over.linear && tool === "get_user") reply(JSON.stringify({ id: "user-alice", name: "alice" }));
+if (tool === "list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
+if (tool === "get_issue") {
   const i = issues[args.id];
   reply(i ? JSON.stringify({ identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
 }
@@ -3040,23 +3067,29 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * PATH. Writes settings-tabs.json; any failed check fails the run.
  */
 /**
- * Settings → Morning brief (docs/morning-brief.md#settings), every plan state, desktop and phone, light and dark:
- * found, the channel picker open, not found (amber, keeps last week's), a failed search, a pasted link, and the Linear
- * queue section. Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
+ * Settings → Morning brief (docs/morning-brief.md#settings), every state, desktop and phone, light and dark: the
+ * Sources card (all read; one failed with Retry, one waiting for a sign-in, mail off until turned on), every plan state
+ * (found, the channel picker open, not found, a failed search, a pasted link, off, nothing picked) and the Linear queue
+ * section. The fake mcpproxy's servers are fictional and found by their tools (sources-fixture.json changes their state). Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
  * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
  * last run in the future so no scheduled ranking calls a model.
  */
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
-  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null,
+  const setSources = v => fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify(v));
+  let ranHealth = { health: {}, errors: {} };
+  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, ...ranHealth, notStarted: [], last: null, slackSince: null,
     planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
-  const states = async (name, drive) => {
+  // Sources sit above the plan: the plan's states scroll to it; the Sources states stay at the top.
+  const states = async (name, drive, { top = false } = {}) => {
     for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
       await shoot(`mb-${name}-${device}-${theme}`, viewport, theme, async page => {
         await page.setViewportSize(viewport);
         await openSettingsAt(page, "brief", viewport);
-        await page.getByText("This week's plan", { exact: true }).first().waitFor();
+        const plan = page.getByText("This week's plan", { exact: true }).first();
+        await plan.waitFor();
+        if (!top) await plan.evaluate(e => e.scrollIntoView({ block: "start" }));
         await drive?.(page);
         await page.waitForTimeout(300);
         // Desktop: only Follow-up's pane, from "Back to plugins" (the host's settings sidebar beside it isn't ours).
@@ -3071,6 +3104,21 @@ async function morningBriefShots({ shoot, call, home }) {
   await seedRead(A1, "Week of Mar 2", 18);
   await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
   await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
+  // Sources: every source read (opening Settings asks the fake mcpproxy again; wait for its answer).
+  const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
+  ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true });
+  await call("follow.sweep-queue", {});
+  await states("sources", sourcesReady, { top: true });
+  // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
+  ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  await setSources({});
+  ranHealth = { health: {}, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
   await states("picker", async page => {
     await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
     await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");

@@ -170,6 +170,12 @@ export class LinearQueue {
     return { ok: true, complete, total: Object.keys(issues).length, pages, reads, changes: entries.length, error: partial, durationMs: this.now() - started, trigger };
   }
 
+  /** The last sweep's outcome, for Settings → Morning brief's Linear source (a partial sweep is ok, with its line). */
+  async lastSweep(): Promise<{ at: string; ok: boolean; error: string | null } | null> {
+    const l = (await this.read()).last;
+    return l ? { at: l.at, ok: l.ok, error: l.ok ? null : l.error } : null;
+  }
+
   /**
    * The developer opened the brief: sweep in the background when the last complete sweep is older than 6 h, and mark
    * the read (a-change-is-against-what-you-last-saw). Returns the view against the read before this session.

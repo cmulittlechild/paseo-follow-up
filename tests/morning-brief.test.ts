@@ -1,3 +1,4 @@
+import { FAKE_SERVERS, discoveryReply, toolOf } from "./fixtures/mcpproxy-tools";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -192,9 +193,14 @@ test("chat replies: the link and channel are read from markdown or plain text; i
 
 test("the mcpproxy chat search calls only read-only tools", async () => {
   const args: string[][] = [];
-  const chat = mcpproxyChat(async (_c, a) => { args.push(a); return JSON.stringify({ content: [{ text: "{}" }], isError: false }); });
+  const chat = mcpproxyChat(async (_c, a) => { const found = discoveryReply(a); if (found) return found; args.push(a); return JSON.stringify({ content: [{ text: "{}" }], isError: false }); });
   await chat.messages({ filters: "from:alice", limit: 20 }); await chat.people("al"); await chat.channels("pl");
   assert.ok(args.every(a => a[0] === "call" && a[1] === "tool-read"), "tool-read only");
+  // Whichever server has the chat recipe's tools, found by their shape; each call carries only its tool's inputs.
+  assert.deepEqual(args.map(a => toolOf(a)), [{ server: FAKE_SERVERS.chat, tool: "search_public_and_private" }, { server: FAKE_SERVERS.chat, tool: "search_users" }, { server: FAKE_SERVERS.chat, tool: "search_channels" }]);
+  const people = JSON.parse(args[1].find(x => x.startsWith("--json_args="))!.slice(12));
+  assert.equal("query" in people, false, "an input the tool doesn't take is left out");
+  assert.deepEqual(people.keywords, ["al"]);
 });
 
 test("the plan card: found, pasted, not found (amber, keeps last week's, a paste field), off and the environment", () => {
@@ -218,7 +224,7 @@ test("the plan card: found, pasted, not found (amber, keeps last week's, a paste
   assert.equal(planCard({ ...base, mode: "off", source: "off", url: null }, TUE, "Asia/Jerusalem")?.tone, "quiet");
   assert.match(planCard({ ...base, source: "env" }, TUE, "Asia/Jerusalem")!.line, /^Set by the environment/);
   // The line under the tab is built from the same card, so it never says "found" while the card says otherwise.
-  const summary = (plan: PlanView) => briefSummary({ queue: { states: ["triage"], sweepAt: "07:00", timeZone: null, workdays: null, since: "read" }, clock: { timeZone: "Asia/Jerusalem", workdays: ["Mon"], zoneFrom: "host" }, plan }, TUE);
+  const summary = (plan: PlanView) => briefSummary({ queue: { states: ["triage"], sweepAt: "07:00", timeZone: null, workdays: null, since: "read", chatHours: 48, calendarDays: 1 }, clock: { timeZone: "Asia/Jerusalem", workdays: ["Mon"], zoneFrom: "host" }, plan }, TUE);
   assert.equal(summary(base), "Sweeps 07:00 on workdays · this week's plan found");
   assert.equal(summary({ ...base, found: null, previous: base.found, check: { at: "x", status: "not-found", error: null } }), "Sweeps 07:00 on workdays · using last week's plan");
   assert.equal(summary({ ...base, found: null, previous: base.found, check: { at: "x", status: "error", error: "x" } }), "Sweeps 07:00 on workdays · plan search failed, using last week's");

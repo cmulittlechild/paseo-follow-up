@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { rm, testStore } from "./support/store-temp-dir";
 import { LinearIssues } from "../server/linear-issues";
+import { FAKE_SERVERS, discoveryReply, toolOf } from "./fixtures/mcpproxy-tools";
 import { LinearQueue, LinearQueueStore, type QueueReader } from "../server/linear-queue";
 import { RPC_TOOLS } from "../server/agent-parity";
 import { toLinearIssue, type LinearIssue } from "../shared/linear-issues";
@@ -70,8 +71,10 @@ test("the-queue-is-whole: a sweep reads every page of every queue state, through
   const calls: { state: string; limit: number; cursor: string | null }[] = [];
   const wrap = (text: string) => `banner\n${JSON.stringify({ content: [{ text: `[map[text:${text} type:text]]` }], isError: false })}`;
   const run = async (_c: string, args: string[]) => {
+    const found = discoveryReply(args); if (found) return found;
     const a = JSON.parse(args.find(x => x.startsWith("--json_args="))!.slice(12));
     assert.equal(args.includes("tool-read"), true, "only read-only calls");
+    assert.equal(toolOf(args).server, FAKE_SERVERS.issues, "the server with Linear's tools, found by its tools");
     calls.push({ state: a.state, limit: a.limit, cursor: a.cursor ?? null });
     const mine = all.filter(i => i.statusType === a.state);
     const start = a.cursor ? Number(a.cursor) : 0;
@@ -151,11 +154,12 @@ test("the-queue-is-whole: an issue raised while the sweep walks the pages is nei
   let raiseAfterFirstPage = false;
   const wrap = (text: string) => `banner\n${JSON.stringify({ content: [{ text }], isError: false })}`;
   const run = async (_c: string, args: string[]) => {
-    const tool = args.find(x => x.startsWith("--tool-name="))!.slice(12);
+    const found = discoveryReply(args); if (found) return found;
+    const { tool } = toolOf(args);
     const a = JSON.parse(args.find(x => x.startsWith("--json_args="))!.slice(12));
     assert.equal(args.includes("tool-read"), true, "only read-only calls");
-    if (tool === "linear:get_user") return wrap(JSON.stringify({ id: "user-alice", name: "alice" }));
-    if (tool === "linear:get_issue") return wrap(JSON.stringify(live.find(i => i.id === a.id)));
+    if (tool === "get_user") return wrap(JSON.stringify({ id: "user-alice", name: "alice" }));
+    if (tool === "get_issue") return wrap(JSON.stringify(live.find(i => i.id === a.id)));
     const mine = live.filter(i => i.statusType === a.state).sort((x, y) => (y[a.orderBy as "updatedAt"] as string).localeCompare(x[a.orderBy as "updatedAt"] as string));
     const start = a.cursor ? Number(a.cursor) : 0;
     const page = mine.slice(start, start + a.limit);
