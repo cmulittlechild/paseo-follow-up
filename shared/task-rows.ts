@@ -16,8 +16,8 @@ import { sendDecision } from "./send-decision";
  * "Queued" or "Sent", and adds words only where it differs from the strip (status invariant message-rows-say-it-once).
  */
 
-export const REPAIR_KINDS: readonly Task["kind"][] = ["conflict", "review", "checks", "restack"];
-export const isRepair = (t: Pick<Task, "kind">) => REPAIR_KINDS.includes(t.kind);
+export { REPAIR_KINDS, isRepair } from "./send-words";
+import { isRepair, sendItems } from "./send-words";
 
 export type RepairState = "queued" | "sent" | "capped" | "manual" | "person" | "done";
 export type RepairRow = {
@@ -38,6 +38,8 @@ export type MessageStrip = {
   to: string;
   recipientId: string;
   count: number;
+  /** "2 repairs", "1 task": what the message holds, in the developer's words (send-words). */
+  what: string;
   /** Queued: the send decision's reason (what it waits for, and why). Sent: what Follow-up waits for. */
   reason: string;
   /** Queued: when it goes out on its own (ISO), if known. Sent: when it went out. */
@@ -60,12 +62,12 @@ export const sentMessage = (w: Workspace) => w.batches.find(b => ["sending", "se
 
 export function messageStrip(w: Workspace, now: number): MessageStrip | null {
   const sent = sentMessage(w);
-  if (sent) return { phase: "sent", to: agent(w), recipientId: sent.recipientAgentId ?? w.mainAgentId, count: sent.tasks.length, reason: "waiting for it to report back", at: sent.sentAt, sendNow: false, batchId: sent.id };
+  if (sent) return { phase: "sent", to: agent(w), recipientId: sent.recipientAgentId ?? w.mainAgentId, count: sent.tasks.length, what: sendItems(sent.tasks), reason: "waiting for it to report back", at: sent.sentAt, sendNow: false, batchId: sent.id };
   const pending = pendingMessage(w);
   if (!pending) return null;
   const d = sendDecision(w, now, { batch: pending });
   // Say it once: when the send waits on the developer, Needs you carries the reason and the Send.
-  return { phase: "queued", to: agent(w), recipientId: w.mainAgentId, count: pending.tasks.length, reason: d.waitingOn === "you" ? WAITS_ON_YOU : d.reason, at: d.eta, sendNow: d.canSendNow && d.waitingOn !== "you", batchId: pending.id };
+  return { phase: "queued", to: agent(w), recipientId: w.mainAgentId, count: pending.tasks.length, what: sendItems(pending.tasks), reason: d.waitingOn === "you" ? WAITS_ON_YOU : d.reason, at: d.eta, sendNow: d.canSendNow && d.waitingOn !== "you", batchId: pending.id };
 }
 
 /** Where an agent's or the developer's own task stands in the message, if it rides one (Auto tasks). */

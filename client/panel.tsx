@@ -223,7 +223,7 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
           <View style={{ flex: 1, minWidth: 160, gap: 2 }}>
             <Text style={t.label}>Main agent</Text>
             <MainAgentName agentId={w.mainAgentId} theme={theme} />
-            <Text style={t.meta}>Owns the PRs, tasks and the Done call. Tasks go here.</Text>
+            <Text style={t.meta}>Owns the PRs, tasks and the Done call. Repairs are sent here.</Text>
           </View>
           {openAgent && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open" accessibilityLabel="Open main agent" onPress={() => openAgent(w.mainAgentId)} />}
         </View>
@@ -368,7 +368,7 @@ export function WorkspaceView({ theme, layout, workspace: w, navigation, loadErr
   const browser = useQuery({ queryKey: browserKey, queryFn: () => browserRead({}), staleTime: 0, refetchOnMount: "always" });
   useEffect(() => { if (sheet) void browser.refetch(); }, [sheet?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const invalidated = () => { void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey }); };
-  const auto = useMutation({ mutationFn: (next: boolean) => control({ workspaceId: w.id, enable_auto_sends: next }), onSuccess: (_, next) => { toast.show(next ? "Auto-send on for this workspace" : "Auto-send off · tasks wait for your Send"); invalidated(); }, onError: e => toast.error(errorText(e)) });
+  const auto = useMutation({ mutationFn: (next: boolean) => control({ workspaceId: w.id, enable_auto_sends: next }), onSuccess: (_, next) => { toast.show(next ? "Auto-send on for this workspace" : "Auto-send off · repairs wait for your Send"); invalidated(); }, onError: e => toast.error(errorText(e)) });
   // Opening a workspace reads its PRs now: background polling backs off for settled repositories (server/github.ts).
   useEffect(() => { const t = setTimeout(invalidated, 1500); void refresh({ workspaceId: w.id }).catch(() => undefined); return () => clearTimeout(t); }, [w.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const update = useMutation({ mutationFn: () => refresh({ workspaceId: w.id }), onSuccess: () => setTimeout(invalidated, 1200), onError: e => toast.error(errorText(e)) });

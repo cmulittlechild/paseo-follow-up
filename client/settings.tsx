@@ -81,7 +81,7 @@ function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean 
       {data && <SettingsCard>
         <SettingsSwitch label="Follow every workspace" hint="New and existing workspaces, except the ones turned off under Workspaces below." value={data.enable_follow_every} disabled={change.isPending}
           onValueChange={value => change.mutate({ enable_follow_every: value })} />
-        <SettingsSwitch label="Send tasks automatically" hint="Review threads and red CI go to the workspace's agent on their own. Applies to workspaces Follow-up starts following from now on." value={data.enable_auto_sends_default} disabled={change.isPending}
+        <SettingsSwitch label="Send repairs automatically" hint="Repairs (review threads, conflicts, red CI) go to the workspace's agent on their own. Applies to workspaces Follow-up starts following from now on." value={data.enable_auto_sends_default} disabled={change.isPending}
           onValueChange={value => change.mutate({ enable_auto_sends_default: value })} />
         <SettingsSelect label="Rest workspaces after" hint="A workspace rests when you haven't messaged it in this long, its agent isn't loaded and it has no open PR. It stays listed, but isn't checked and gets nothing sent until you start a turn there."
           value={String(windowDays)} disabled={change.isPending}
@@ -163,7 +163,7 @@ function WorkspacesFold({ theme, compact, all, autoDefault, busy, set }: { theme
         {open && <View style={{ paddingLeft: 14, paddingRight: 14, paddingBottom: 10, gap: 4 }}>
           <Switch theme={theme} compact={compact} label="Follow this workspace" value={followed} disabled={busy}
             onChange={value => set({ workspaceId: w.id, follow: value }, value ? `Following ${w.title}` : `Stopped following ${w.title}`)} />
-          {followed && <Switch theme={theme} compact={compact} label="Send tasks automatically" hint={w.parked ? "Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick." : w.dormant ? "Resting. Nothing is sent until you start a turn there." : undefined}
+          {followed && <Switch theme={theme} compact={compact} label="Send repairs automatically" hint={w.parked ? "Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick." : w.dormant ? "Resting. Nothing is sent until you start a turn there." : undefined}
             value={w.enable_auto_sends} disabled={busy} onChange={value => set({ workspaceId: w.id, enable_auto_sends: value })} />}
         </View>}
       </View>;

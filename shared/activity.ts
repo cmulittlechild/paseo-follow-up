@@ -1,3 +1,4 @@
+import { sendItems } from "./send-words";
 import type { ListWorkspace as Workspace } from "./list";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { shortRefs } from "./attention";
@@ -38,7 +39,7 @@ export function activity(w: Workspace): Activity[] {
       continue;
     }
     if (!b.sentAt) continue;
-    const n = plural(b.tasks.length, "task");
+    const n = sendItems(b.tasks);
     rows.push({ key: `sent:${b.id}`, at: b.sentAt, icon: "Send", tone: "muted", text: `Sent ${n} to the main agent`, detail: b.tasks.map(t => shortRefs(t.title, w)).join(" · "), took: null });
     // A human-only outcome (Batch.humanOnly) isn't finished work: it waits on a person.
     if (b.settledAt && b.state === "completed" && b.humanOnly) rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "UserRound", tone: "warning", text: `${n} ${b.tasks.length === 1 ? "waits" : "wait"} on a person, not the agent`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });

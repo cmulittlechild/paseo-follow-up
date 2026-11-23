@@ -1,3 +1,4 @@
+import { sendItems } from "./send-words";
 import { z } from "zod";
 import type { ListWorkspace as Workspace } from "./list";
 import { summary } from "./model";
@@ -16,6 +17,8 @@ export type Sending = {
   /** queued: goes out on its own (after the agent's turn, the settle, GitHub's answer…). sent: out with the agent. */
   state: "queued" | "sent";
   count: number;
+  /** "2 repairs": what the message holds, in the developer's words (send-words). */
+  what: string;
   /** Why it hasn't gone out yet (queued), or what Follow-up waits for (sent), in the send decision's words. */
   why: string;
   /** Queued: when it goes out on its own (ISO), if Follow-up knows. Sent: when it went out. */
@@ -26,7 +29,6 @@ export type Sending = {
   line: string;
 };
 
-const tasks = (n: number) => `${n} task${n === 1 ? "" : "s"}`;
 /** The queued reason while the machine holds auto-sends (Home shows the hold itself once, above the group). */
 export const HELD_REASON = "next when auto-sends resume";
 /** After a send the agent never acknowledged: what happens to the tasks still open, said on the queued row. */
@@ -48,7 +50,7 @@ export function sendingOf(w: Workspace, now: number, o: { held?: boolean } = {})
   if (!view) return null;
   if (view.phase === "sent") {
     const at = view.batch.sentAt ?? null;
-    return { batchId: view.batch.id, state: "sent", count: view.batch.tasks.length, why: "waiting for it to report back", when: at, canSendNow: false, line: view.line };
+    return { batchId: view.batch.id, state: "sent", count: view.batch.tasks.length, what: sendItems(view.batch.tasks), why: "waiting for it to report back", when: at, canSendNow: false, line: view.line };
   }
   if (view.phase !== "queued" || view.kind !== "repairs" || view.waitingOn === "you" || !w.enable_auto_sends) return null;
   const d = sendDecision(w, now, { batch: view.batch });
@@ -56,8 +58,8 @@ export function sendingOf(w: Workspace, now: number, o: { held?: boolean } = {})
   const why = held ? HELD_REASON : d.reason;
   const n = view.batch.tasks.length;
   const again = lastUnacknowledged(w) ? ` · ${UNACKNOWLEDGED_NOTE}` : "";
-  return { batchId: view.batch.id, state: "queued", count: n, why, when: held ? null : d.eta, canSendNow: d.canSendNow,
-    line: `${tasks(n)} queued${again} · ${why}` };
+  return { batchId: view.batch.id, state: "queued", count: n, what: sendItems(view.batch.tasks), why, when: held ? null : d.eta, canSendNow: d.canSendNow,
+    line: `${sendItems(view.batch.tasks)} queued${again} · ${why}` };
 }
 
 /**
@@ -72,10 +74,10 @@ export function autoSendHold(r: Resources | null | undefined, now: number): stri
   const why = memoryHigh ? current ? `Paseo is at ${r.memoryPct}% of its memory limit` : "Paseo is near its memory limit"
     : (r.memoryPressure ?? 0) >= MEMORY_PRESSURE_CONSTRAINED ? "Paseo's memory is under pressure"
     : "the machine's CPU is under sustained load";
-  return `Auto-sends are paused on this machine · ${why}. Queued tasks go out when it eases; Send now still sends.`;
+  return `Auto-sends are paused on this machine · ${why}. Queued repairs go out when it eases; Send now still sends.`;
 }
 
 /** What agents read about a Sending row (workspace_status, inbox_list, workstreams): the same answer Home shows. */
 export const sendingSchema = z.object({
-  batchId: z.string(), state: z.enum(["queued", "sent"]), count: z.number(), why: z.string(), when: z.string().nullable(), canSendNow: z.boolean(), line: z.string(),
+  batchId: z.string(), state: z.enum(["queued", "sent"]), count: z.number(), what: z.string(), why: z.string(), when: z.string().nullable(), canSendNow: z.boolean(), line: z.string(),
 });

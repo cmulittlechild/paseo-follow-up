@@ -1,3 +1,4 @@
+import { sendItems } from "./send-words";
 import { batchView, FINISH_LINE, perSnapshot, stuckLine, unconfirmedRefs } from "./status";
 import { deliveryStatus } from "./queue";
 import { sentence } from "./errors";
@@ -175,7 +176,7 @@ type NeedItemBase =
    */
   | { kind: "person"; key: string; taskKey: string; prKey: string | null; review: boolean; title: string; detail: string }
   /** `finish`: the Done check. It never auto-sends, so it always waits on you. */
-  | { kind: "send"; key: string; batchId: string; title: string; tasks: string[]; blocker: string | null; finish?: true }
+  | { kind: "send"; key: string; batchId: string; title: string; tasks: string[]; /** "2 repairs": what the message holds, in the developer's words (send-words). */ what: string; blocker: string | null; finish?: true }
   | { kind: "decision"; key: string; obligationId: string; title: string; detail: string }
   | { kind: "question"; key: string; questionId: string; title: string; detail: string; state: QuestionState; big: string | null }
   | { kind: "answer"; key: string; questionId: string; title: string; detail: string; waiting?: "copied" | "in-chat" }
@@ -194,7 +195,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** The main agent as the developer knows it: its Paseo title, else "the main agent". */
 const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 /** The Needs-you Send while Auto is off: how much waits and why, never the workspace's title (say it once, Q51). */
-export const autoOffLine = (n: number) => `${plural(n, "task")} ready · auto-send is off here`;
+export const autoOffLine = (items: readonly Pick<Task, "kind">[]) => `${sendItems(items)} ready · auto-send is off here`;
 export const agentName = (w: Pick<Workspace, "mainAgentTitle">) => w.mainAgentTitle?.trim() || "the main agent";
 /** A person task's Needs-you title: whom it waits on, never "didn't finish". */
 export function personTitle(t: Pick<Task, "kind" | "title">, number?: number): string {
@@ -347,10 +348,10 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   const idleWait = (b: Batch) => view?.batch.id === b.id && view.phase === "queued" && view.waitingOn === "you" && !w.hold && !w.goneAgent && !w.dormant;
   for (const b of pendingSends(w).filter(b => completionCheck(b) ? !w.completion : !w.enable_auto_sends || idleWait(b))) {
     items.push(completionCheck(b)
-      ? { kind: "send", key: `send:${b.id}`, batchId: b.id, tasks: b.tasks.map(t => t.title), blocker: sendBlocker(w, b), title: FINISH_LINE, finish: true }
-      : { kind: "send", key: `send:${b.id}`, batchId: b.id, tasks: b.tasks.map(t => t.title), blocker: sendBlocker(w, b),
+      ? { kind: "send", key: `send:${b.id}`, batchId: b.id, tasks: b.tasks.map(t => t.title), what: sendItems(b.tasks), blocker: sendBlocker(w, b), title: FINISH_LINE, finish: true }
+      : { kind: "send", key: `send:${b.id}`, batchId: b.id, tasks: b.tasks.map(t => t.title), what: sendItems(b.tasks), blocker: sendBlocker(w, b),
       // Say it once: the tasks are rows in Tasks; the send item says only why it waits on you, and its button how many.
-      title: w.enable_auto_sends ? capitalize(IDLE_REASON) : autoOffLine(b.tasks.length) });
+      title: w.enable_auto_sends ? capitalize(IDLE_REASON) : autoOffLine(b.tasks) });
   }
   const blocking = (pr: Pr) => w.prActions.some(a => prActionBlocks(a, [pr.key]));
   // One click merges the PR and its unmerged downstack (a-click-on-merge-merges), so Merge is offered only when every
@@ -452,7 +453,7 @@ export function headerLine(w: Workspace, now = Date.now()): { icon: LiveIcon; te
   const view = batchView(w, now);
   if (view?.phase !== "queued" || view.kind !== "repairs" || live.text !== view.line) return live;
   const to = w.mainAgentTitle?.trim() || "the main agent";
-  return { icon: live.icon, text: `${view.batch.tasks.length === 1 ? "1 task" : `${view.batch.tasks.length} tasks`} queued for ${to}`, since: null };
+  return { icon: live.icon, text: `${sendItems(view.batch.tasks)} queued for ${to}`, since: null };
 }
 
 export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text: string; since: string | null } {

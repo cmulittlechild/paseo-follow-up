@@ -120,7 +120,7 @@ test("a human-only outcome is a PR item for the developer, not an agent failure"
   await f.engine.tick();
   let w = await f.get();
   const items = needsYou(w, f.now());
-  assert.ok(!items.some(i => i.kind === "retry"), "never \"The tasks didn't finish\"");
+  assert.ok(!items.some(i => i.kind === "retry"), "never \"The repairs didn't finish\"");
   const item = items.find(i => i.kind === "person");
   assert.ok(item, `a person item, got ${items.map(i => i.kind)}`);
   assert.equal(item.title, "#1 waits on its reviewer");
