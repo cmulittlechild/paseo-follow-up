@@ -293,10 +293,10 @@ function RowTime({ s, c, size }: { s: Workstream; c: Colors; size: number }) {
  * clips (so the lowest-priority chips drop, last first), and a lone chip truncates. Guarded by
  * `scripts/screenshots.mjs --only rowchips` (CDP boxes at list widths 320, 360 and 400) and tests/row-chips.test.ts.
  */
-function ChipRail({ s, c }: { s: Workstream; c: Colors }) {
+function ChipRail({ s, c, dim = false }: { s: Workstream; c: Colors; /** An Older row: chips at 60 %, like its glyph. */ dim?: boolean }) {
   const chips = railChips(s);
   if (chips.length === 0) return null;
-  return <View testID="follow-up-row-chips" style={{ flexShrink: 1000, minWidth: 0, height: 20, overflow: "hidden", flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 10, rowGap: 4 }}>
+  return <View testID="follow-up-row-chips" style={{ ...(dim ? { opacity: 0.6 } : {}), flexShrink: 1000, minWidth: 0, height: 20, overflow: "hidden", flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 10, rowGap: 4 }}>
     {chips.map(ch => ch.kind === "badge" ? <BadgeView key={ch.badge.text} b={ch.badge} c={c} /> : <PrChipView key="pr" s={s} c={c} />)}
   </View>;
 }
@@ -325,7 +325,10 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const c = theme.colors;
   const trigger = useRowMenuTrigger(s, onMenu, touch);
   const archived = s.icon === "Archive" && s.sig.startsWith("archived:");
-  const color = archived ? c.foregroundMuted : glyphColor(s, c, touch);
+  // An Older row is demoted at one level: its title muted, and its glyph and chips keep their hue at 60 % (still
+  // readable as an error or a review), never full red beside a grey title.
+  const older = s.group === "older";
+  const color = archived ? c.foregroundMuted : older ? withAlpha(glyphColor(s, c, touch), 0.6) : glyphColor(s, c, touch);
   const blocking = s.group === "needs" && s.tier === 0;
   const muted = s.group === "quiet" || s.group === "later" || s.group === "older";
   // Desktop rows are one line beside badges and the PR chip: the ask and the "<Field> · excerpt" line are cut around the
@@ -365,7 +368,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
         {s.word && s.group === "needs" ? <Text style={{ color, fontWeight: "600" }}>{s.word}</Text> : null}{s.word && s.group === "needs" && s.line ? " · " : ""}{line}
       </Text>}
       {!!s.priority?.reason && <PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} size={12} lines={2} />}
-      {!!s.pr && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"] }}><PrSummaryText s={s} c={c} /></Text>}
+      {!!s.pr && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"], ...(older ? { opacity: 0.6 } : {}) }}><PrSummaryText s={s} c={c} /></Text>}
       {sendNow && <View style={{ flexDirection: "row", marginTop: 6 }}>{sendNow}</View>}
     </View> : dense ? <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
       <Text numberOfLines={1} style={{ color: muted ? c.foregroundMuted : c.foreground, fontSize: 13, lineHeight: 18, fontWeight: muted ? "400" : "500" }}>{title}</Text>
@@ -387,7 +390,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
       <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12, marginLeft: !via && s.word && s.group === "needs" ? -10 : 0 }}>
         {via ?? <>{s.word && s.group === "needs" && s.line ? "\u00a0· " : ""}{line}</>}
       </Text>
-      <ChipRail s={s} c={c} />
+      <ChipRail s={s} c={c} dim={older} />
       {sendNow}
     </View>{!!s.priority?.reason && <View style={{ paddingRight: 40 }}><PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} /></View>}</View>}
     {!touch && <RowTime s={s} c={c} size={dense ? 11 : 12} />}

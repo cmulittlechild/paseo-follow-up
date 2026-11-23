@@ -78,10 +78,11 @@ test("taskAgentStates reads the directory's metadata: running is working, a clos
   assert.deepEqual(taskAgentStates(["a"], null), {}, "an unreadable directory says nothing (Agent unavailable)");
 });
 
-test("the task row and sheet take their line from shared/task-status.ts, never a hard-coded Agent working", async () => {
+test("the task row takes its line from shared/task-view.ts (taskStatus underneath), never a hard-coded Agent working", async () => {
   const src = await readFile(join(import.meta.dirname, "../client/tasks.tsx"), "utf8");
   assert.ok(!src.includes("Agent working"), "client/tasks.tsx hard-codes Agent working");
-  assert.match(src, /taskStatus\(/);
+  assert.match(src, /taskViewRows\(/);
+  assert.match(await readFile(join(import.meta.dirname, "../shared/task-view.ts"), "utf8"), /taskStatus\(/);
 });
 
 test("a-task-only-says-working-when-its-agent-is: the live line, the summary and Home use the same live state as the row", () => {

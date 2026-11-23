@@ -1,7 +1,7 @@
 // The question dialog and its answer form. The layout of options with a recommendation, the
 // "what the agent does meanwhile" line and Copy are adapted from Progress
 // (@stevecastaneda/paseo-progress, MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { Pressable, Text, copyable } from "./text";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -107,7 +107,9 @@ export type SendReady = { send: () => void; busy: boolean };
  * (the dialog, Needs you on Home and in the panel, the pill, phones): what its field means comes from answerDraft
  * (`one-answer-flow-for-every-question`), never from the surface.
  */
-export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false, moreContext = true, dismissAt = inline ? "host" : "top" }: {
+export function QuestionBody({ workspace: w, question: q, theme, compact, now = Date.now(), dense = false, bodyMaxHeight, openAgent, onAnswered, onDetails, onClose, inline = false, onSendReady, dictate = false, moreContext = true, dismissAt = inline ? "host" : "top", afterAsk }: {
+  /** What the host card says about the ask (the brief's context, what the agent does meanwhile), right under the ask: the ask reads first on every surface. */
+  afterAsk?: ReactNode;
   workspace: ListWorkspace; question: ListQuestion; theme: Theme; compact: boolean; now?: number; dense?: boolean; bodyMaxHeight?: number; openAgent?: (agentId: string) => void; onAnswered?: () => void; onDetails?: () => void;
   /** Inside the Needs you block: its header says the title and when it was asked, its footer what the agent does meanwhile. */
   inline?: boolean;
@@ -295,6 +297,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
         <Text style={[t.meta, { flex: 1, color: state.color(c) }]}>{state.text}</Text>
       </View>}
     </View>
+    {afterAsk}
     {q.closed && <View style={{ flexDirection: "row", gap: 6 }}>
       <View style={{ paddingTop: 2 }}><Icon name={isDismissed(q) ? "X" : "MessageCircleOff"} size={12} color={c.foregroundMuted} /></View>
       <Text style={[t.meta, { flex: 1 }]}>{isDismissed(q) ? `${closedLine(q)} ${ago(q.closed.at, now)}. The agent wasn't messaged.` : `Withdrawn ${ago(q.closed.at, now)}: ${q.closed.reason}`}</Text>

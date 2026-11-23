@@ -107,7 +107,7 @@ test("phones: Home's search results use the list row, the offer sits after Needs
   assert.match(list, /case "result": return <Row /, "a result is the list's own Row (search-row-is-the-list-row), two-line 15px title and all");
   assert.ok(!/GroupChip/.test(await source("client/home-chrome.tsx")), "no group pill: the state word already says it");
   const home = await source("client/home.tsx");
-  assert.match(home, /afterNeeds=\{compact && model\.needs > 0 \? <SetupOffer/);
+  assert.match(home, /afterNeeds=\{compact && model\.needs > 0 && props\.onboarding\?\.offer \? <SetupOffer/, "the slot only when there is an offer: an empty one left a gap above the next group");
   assert.match(home, /emptyAction=\{compact \? <Button [^>]*title="Project settings"/);
   assert.match(home, /\{!\(compact && nothing\) && <SortMenu/);
 });

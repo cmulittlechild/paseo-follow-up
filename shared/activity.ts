@@ -1,5 +1,5 @@
 import type { ListWorkspace as Workspace } from "./list";
-import { recoveryBatch } from "./follow-up";
+import { followUpObligations, recoveryBatch } from "./follow-up";
 import { shortRefs } from "./attention";
 import { isGithubFlow, prRefs } from "./pr-actions";
 import { answerLabel, answerStatus, closedLine } from "./questions";
@@ -22,7 +22,7 @@ export function duration(from: string | null | undefined, to: string | null | un
 
 /**
  * What happened in this workspace, newest first, from what Follow-up already stores: repairs sent
- * and finished (with how long they took), PR merges, merge and reviewer actions, questions and Done.
+ * and finished (with how long they took), PR merges, merge and reviewer actions, questions, finished tasks and Done.
  */
 export function activity(w: Workspace): Activity[] {
   const rows: Activity[] = [];
@@ -51,8 +51,9 @@ export function activity(w: Workspace): Activity[] {
     rows.push({ key: `action:${a.id}`, at: a.createdAt, icon: a.kind === "request_reviewers" ? "UserPlus" : "GitMerge", tone: a.state === "failed" ? "danger" : a.state === "uncertain" ? "warning" : "muted", text: what, detail: a.state === "submitted" ? null : a.result || null, took: null });
   }
   for (const q of w.questions ?? []) {
-    const ref = `${q.id} · ${q.title}`;
-    rows.push({ key: `asked:${q.id}`, at: q.askedAt, icon: "MessageCircleQuestion", tone: "warning", text: ref, detail: "Asked", took: null });
+    // An action card ("tell me when you've done it") never shows a question id, so its rows don't either.
+    const ref = q.need === "action" ? `Action · ${q.title}` : `${q.id} · ${q.title}`;
+    rows.push({ key: `asked:${q.id}`, at: q.askedAt, icon: q.need === "action" ? "Hand" : "MessageCircleQuestion", tone: "warning", text: ref, detail: q.need === "action" ? "Requested" : "Asked", took: null });
     if (q.answer) {
       // "Answered" only once it reached the agent; until then the shared state ("Copied · not sent yet"…), answerStatus.
       const s = answerStatus(q)!;
@@ -61,6 +62,9 @@ export function activity(w: Workspace): Activity[] {
     }
     if (q.closed) rows.push({ key: `withdrawn:${q.id}`, at: q.closed.at, icon: "MessageCircleOff", tone: "muted", text: ref, detail: closedLine(q), took: null });
   }
+  // Finished tasks live here, not in Tasks (the Tasks card's footer points here): when, and the agent's evidence.
+  for (const o of followUpObligations(w)) if ((o.status === "done" || o.status === "waived") && o.finishedAt)
+    rows.push({ key: `task:${o.id}`, at: o.finishedAt, icon: o.status === "done" ? "ListChecks" : "CircleSlash", tone: o.status === "done" ? "success" : "muted", text: `${o.status === "done" ? "Task done" : "Task waived"} · ${o.title}`, detail: o.evidence?.trim() || null, took: null });
   if (w.completion) rows.push({ key: "done", at: w.completion.declaredAt, icon: "CircleCheck", tone: "success", text: "Main agent declared Done", detail: null, took: null });
   return rows.filter(r => Number.isFinite(Date.parse(r.at))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.key.localeCompare(b.key));
 }

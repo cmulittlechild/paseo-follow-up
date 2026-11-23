@@ -265,7 +265,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         <View style={{ flexDirection: "row", paddingHorizontal: 6 }}><VersionMark theme={theme} touch openSettings={deps.openSettings} /></View></View>
       : undefined}
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
-    afterNeeds={compact && model.needs > 0 ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
+    afterNeeds={compact && model.needs > 0 && props.onboarding?.offer ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
     top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
