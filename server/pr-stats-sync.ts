@@ -1,6 +1,6 @@
 import { FLAG, PAGE_COMMENTS, PAGE_REVIEWS, PAGE_TIMELINE, parseStatsRecord, STATS_PAGE_MIN, STATS_PAGE_SIZE, withAllReviews, type StatsRecord } from "../shared/pr-stats-records";
 import type { GithubApi } from "./github-api";
-import type { GateReason, RateLimit, StatsGate } from "./pr-stats-gate";
+import type { GateReason, RateLimit, ReadOrigin, StatsGate } from "./pr-stats-gate";
 import { STATS_RECORDS_MAX, type RepoStats, type StatsStore } from "./pr-stats-store";
 
 /**
@@ -80,7 +80,7 @@ export class StatsSync {
    * One run for a repository: the incremental walk, review follow-ups, then backfill pages while the gate allows.
    * Never throws: a read error is stored on the repository (`meta.error`) and returned.
    */
-  async run(repo: string, o: { backfillPages?: number; incrementalPages?: number } = {}): Promise<SyncResult> {
+  async run(repo: string, o: { backfillPages?: number; incrementalPages?: number; origin?: ReadOrigin } = {}): Promise<SyncResult> {
     const stats = await this.o.store.open(repo);
     const result: SyncResult = { repo, pages: 0, cost: 0, changed: 0, waiting: null, error: null, backfillDone: stats.meta.backfill.done };
     const meta = () => stats.meta;
@@ -95,7 +95,7 @@ export class StatsSync {
           answer = await this.o.gate.run(repo.split("/")[0]!, async () => {
             const body = await this.o.api.graphql(repo, statsPageQuery(size, after !== null), { owner: repo.split("/")[0]!, name: repo.split("/")[1]!, ...(after !== null ? { after } : {}) });
             return { value: body, rate: body?.data?.rateLimit as RateLimit | undefined };
-          });
+          }, { origin: o.origin });
         } catch (error) {
           failures++;
           if (tooBig(error) && failures < FAILURES_PER_RUN) { set({ page: Math.max(STATS_PAGE_MIN, Math.floor(size / 2)) }); continue; }
@@ -150,7 +150,7 @@ export class StatsSync {
           after = p.endCursor; set({ incremental: { after, high } });
         }
       }
-      if (!result.error && !result.waiting) await this.followUps(repo, stats, result);
+      if (!result.error && !result.waiting) await this.followUps(repo, stats, result, o.origin);
       // Backfill.
       if (!result.error && !result.waiting && !meta().backfill.done) {
         for (let n = 0; n < (o.backfillPages ?? BACKFILL_PAGES_PER_RUN); n++) {
@@ -166,7 +166,7 @@ export class StatsSync {
           if (done) break;
         }
         result.backfillDone = meta().backfill.done;
-        if (!result.error && !result.waiting) await this.followUps(repo, stats, result);
+        if (!result.error && !result.waiting) await this.followUps(repo, stats, result, o.origin);
       }
       if (!result.error && !result.waiting) set({ waiting: null });
       if (!result.error && result.pages > 0) set({ error: null });
@@ -180,7 +180,7 @@ export class StatsSync {
   }
 
   /** Reads all reviews of PRs whose reviews ran past the page, REVIEWS_BATCH per query, through the gate. */
-  private async followUps(repo: string, stats: RepoStats, result: SyncResult): Promise<void> {
+  private async followUps(repo: string, stats: RepoStats, result: SyncResult, origin?: ReadOrigin): Promise<void> {
     while (stats.meta.pendingReviews.length) {
       const batch = stats.meta.pendingReviews.slice(0, REVIEWS_BATCH);
       let answer;
@@ -188,7 +188,7 @@ export class StatsSync {
         answer = await this.o.gate.run(repo.split("/")[0]!, async () => {
           const body = await this.o.api.graphql(repo, statsReviewsQuery(batch), { owner: repo.split("/")[0]!, name: repo.split("/")[1]! });
           return { value: body, rate: body?.data?.rateLimit as RateLimit | undefined };
-        });
+        }, { origin });
       } catch (error) { this.fail(stats, error, result); return; }
       if (!answer.ok) { result.waiting = { reason: answer.reason, until: answer.until }; return; }
       const body = answer.value as Node;
