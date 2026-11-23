@@ -45,7 +45,7 @@ not a patch for one instance.
     can look like a fast reply locally while the same timeout just outside the window passes on CI.
   - `tests/rpc-cached.test.ts`: the polled reads (Needs you's list, usage, the Summary) answer from what the worker
     holds while their slow side hangs, and the slow-RPC log fires at the ack budget.
-    `tests/answer-ack.test.ts` covers the answer paths: fast ack, one send per answer, retries, resume after reload.
+    `tests/answer-ack.test.ts` covers the answer paths: the reply resolves before a gated send completes, one send per answer, retries, resume after reload.
     Retry delays and attempt deadlines run on injected `Timers` (`server/delivery.ts`); these tests pass
     `tests/support/fake-timers.ts`, fire timers in order with `await timers.fire()` and settle with `idle()`, and never
     sleep: a test that waits on the wall clock for a retry fails under CI load (2026-11-11, beta.67's publish run).

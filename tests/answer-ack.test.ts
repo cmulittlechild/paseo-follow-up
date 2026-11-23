@@ -10,7 +10,6 @@ import { Engine, type Gateway, type Runtime } from "../server/engine";
 import { Store } from "../server/store";
 import { askQuestion } from "../server/questions";
 import { clock, pr, workspace } from "./fixtures";
-import { settleTime } from "./support/hanging-host";
 import { testQueue } from "./support/queue";
 import { DeliveryDeferred } from "../server/delivery";
 import { readFile } from "node:fs/promises";
@@ -22,13 +21,12 @@ import { readFile } from "node:fs/promises";
  * then waits for its run to start (up to 60 s): 86 s that morning, while a plugin RPC gets 30 s. The answer did arrive,
  * 88 s later, but the card said it hadn't, and Retry sent it again under a new messageId (the agent got Q4 twice).
  *
- * The rule these tests hold: an answer RPC replies once the answer is recorded, within ACK_MS, whatever Paseo does;
+ * The rule these tests hold: an answer RPC replies once the answer is recorded, before the pending send completes, whatever Paseo does;
  * the send runs after, under one messageId per answer, and a retry or a double click never sends twice.
  *
  * Retry delays and attempt deadlines run on FakeTimers: a test fires them in order and awaits idle(), never the wall
  * clock (the last test below holds that for this file and tests/rpc-ack.test.ts).
  */
-const ACK_MS = 500;
 const NOW = "2026-11-11T08:52:42.000Z";
 const never = () => new Promise<string>(() => undefined);
 
@@ -53,14 +51,18 @@ async function inbox(t: { after(fn: () => unknown): void }, o: QueueOptions = {}
   return { box, rows, dir, options, stops, ...q, brief: async () => (await box.store.snapshot()).entries.main!.brief! };
 }
 
-test("brief-action replies within ACK_MS while Paseo is still resuming the agent, and the answer is recorded", async t => {
-  const { box, brief, queue } = await inbox(t, { deliver: never });
-  const r = await settleTime(() => box.briefAction("main", { briefId: "brief:t1", decisionId: "D1", choice: "A", answerId: "answer-0001" }), 5_000);
-  assert.ok(r.ms !== null && r.ms < ACK_MS, `brief-action took ${r.ms === null ? "more than 5 s" : `${Math.round(r.ms)} ms`} with the send still pending; the card's RPC must not wait for delivery`);
-  assert.equal(r.error, null);
+test("brief-action replies before delivery completes while Paseo resumes the agent, and the answer is recorded", { timeout: 30_000 }, async t => {
+  let release!: () => void; let completed = false;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  t.after(() => release());
+  const { box, brief, queue } = await inbox(t, { deliver: async target => { await pending; completed = true; return target.recipients[0]!; } });
+  await box.briefAction("main", { briefId: "brief:t1", decisionId: "D1", choice: "A", answerId: "answer-0001" });
+  assert.equal(completed, false, "the answer RPC must resolve before the pending send completes");
   const b = await brief();
   assert.equal(b.state, "answered"); assert.equal(b.answerId, "answer-0001"); assert.deepEqual(b.delivery, { state: "sending", error: null });
   assert.equal(queue.list().items.length, 1, "the answer waits in the queue until Paseo confirms it");
+  release(); await box.idle();
+  assert.equal(completed, true);
 });
 
 test("Retry and double clicks: the same answerId never sends twice, and every attempt uses one messageId", async t => {
@@ -148,21 +150,21 @@ test("upgrade: 2.0's outbox in inbox.json moves into the queue once, and its sen
   assert.equal(queue.list().recent[0].state, "sent", "it had arrived: kept as sent, not sent again");
 });
 
-test("answer-question replies within ACK_MS while delivery hangs; the question reads sending until it lands", async t => {
+test("answer-question replies before delivery completes; the question reads sending until it lands", { timeout: 30_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), "follow-answer-ack-q-"));
   const store = testStore(Store, root);
   const w = workspace({ prs: [pr()] });
   askQuestion(w, "main-agent", { title: "Retry window", question: "How long?", options: [{ letter: "A", label: "An hour" }, { letter: "B", label: "A day" }], recommend: "A" } as never, "work-around", clock);
   await store.mutate(s => { s.workspaces.push(w); });
   const runtime: Runtime = { busy: false, reason: null, archived: false };
-  let release!: (to: string) => void;
+  let release!: (to: string) => void; let completed = false;
   const gateway: Gateway = { observe: async () => runtime, send: async () => undefined, label: async () => undefined, prepareRecovery: async () => ({ agentId: "r", contextPath: "/r.json" }) };
-  const q = await testQueue(root, { deliver: () => new Promise<string>(r => { release = r; }) });
+  const q = await testQueue(root, { deliver: async () => { const result = await new Promise<string>(r => { release = r; }); completed = true; return result; } });
   t.after(async () => { q.queue.stop(); await q.queue.writer.flush().catch(() => undefined); await store.flush().catch(() => undefined); await rm(root, { recursive: true, force: true }); });
   const engine = new Engine(store, { observe: async () => new Map() } as never, gateway, q.queue.now);
   engine.attachQueue(q.queue);
-  const r = await settleTime(() => engine.answer(w.id, "Q1", "A", undefined, "send"), 5_000);
-  assert.ok(r.ms !== null && r.ms < ACK_MS, `answer-question took ${r.ms === null ? "more than 5 s" : `${Math.round(r.ms)} ms`} with delivery pending`);
+  await engine.answer(w.id, "Q1", "A", undefined, "send");
+  assert.equal(completed, false, "the answer RPC must resolve before the pending send completes");
   assert.equal((await store.snapshot()).workspaces[0].questions[0].answer!.delivery.state, "sending");
   void engine.idle();
   while (!release) await new Promise(r => setImmediate(r));
@@ -179,7 +181,7 @@ test("the card's answer ids pass the RPC's schema", async () => {
 });
 
 test("invariant: answer-ack and rpc-ack never wait on the wall clock for retries or deadlines", async () => {
-  // settleTime's cap (tests/support/hanging-host.ts) bounds an ACK and is the only timer allowed; retries use FakeTimers.
+  // Test timeouts only bound a hung test; retry and deadline assertions use FakeTimers.
   for (const file of ["answer-ack.test.ts", "rpc-ack.test.ts"]) {
     const source = (await readFile(new URL(file, import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
     const name = "invariant: answer-ack and rpc-ack never wait";
