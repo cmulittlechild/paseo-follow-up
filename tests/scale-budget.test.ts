@@ -203,7 +203,8 @@ test("scale-runner-facts: test:scale runs the daemon with the live host's alloca
   assert.deepEqual(b.LIVE_MALLOC_ENV, { MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "131072", MALLOC_TRIM_THRESHOLD_: "131072" }, "the three lines in Paseo's env file on the live host");
   const src = await readFile("scripts/scale-check.mjs", "utf8");
   assert.match(src, /const env = harnessEnv\(root, \{[^\n]*set: \{ \.\.\.LIVE_MALLOC_ENV,/, "the daemon's env sets them (set wins over the inherited shell)");
-  const { harnessEnv } = await import("../scripts/harness-env.mjs");
+  const { resolve } = await import("node:path");
+  const { harnessEnv } = await import(resolve("scripts/harness-env.mjs"));
   const env = harnessEnv("/tmp/scale-env-check", { set: { ...(b.LIVE_MALLOC_ENV as object) }, base: { PATH: "/usr/bin", MALLOC_ARENA_MAX: "8" } });
   assert.equal(env.MALLOC_ARENA_MAX, "2", "a shell's own value doesn't leak into the measured worker");
   // The run says what it ran on: the runner, the worker's arenas and the peak's anonymous/file split.
