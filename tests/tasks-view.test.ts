@@ -42,7 +42,7 @@ test("tasks-are-the-agent-s: stale and due first, Needs you's last, each row say
   const rows = taskViewRows(fixture(), {}, NOW);
   assert.deepEqual(rows.map(r => [r.o.id, r.kind]), [["stale", "stale"], ["due", "due"], ["blocked", "blocked"], ["after", "after-pr"], ["later", "recheck"], ["ask", "needs-you"]]);
   const meta = Object.fromEntries(rows.map(r => [r.o.id, r.meta]));
-  assert.match(meta.stale, /^Stale · re-check \d{4}-\d{2}-\d{2} · nudged twice, no answer$/);
+  assert.match(meta.stale, /^Stale · due since [A-Z][a-z]{2} \d+(, \d{4})? · nudged twice, no answer$/, "the developer's date, never the agent's re-check 2026-01-01");
   assert.match(meta.due, /^Due since /);
   assert.equal(meta.ask, "In Needs you", "no question id: the action card in Needs you shows none");
   assert.ok(meta.blocked.length <= 45, `one line for a blocked task: "${meta.blocked}"`);

@@ -2,7 +2,7 @@ import type { ListObligation as Obligation, ListWorkspace as Workspace } from ".
 import { followUpObligations } from "./follow-up";
 import { blockedOnDeveloper } from "./model";
 import { ANSWERED_TASK, blockedLine, finishedTask, IN_NEEDS_YOU, linkedQuestion, taskStatus, type TaskAgents, type TaskStatus } from "./task-status";
-import { isStale, taskDue } from "./task-due";
+import { isStale, staleLabel, taskDue } from "./task-due";
 import { taskSchedule } from "./task-trigger";
 
 // ---------- the developer's view of the agent's tasks (invariant tasks-are-the-agent-s) ----------
@@ -46,7 +46,7 @@ export function taskViewRow(o: Obligation, w: Workspace, agents: TaskAgents = w.
   if (q && !q.answer && !q.closed) return row("needs-you", IN_NEEDS_YOU);
   if (blockedOnDeveloper(o) && !q) return row("needs-you", IN_NEEDS_YOU);
   if (q?.answer && !d) return row("blocked", ANSWERED_TASK);
-  if (d?.due) return isStale(o, d) ? row("stale", `Stale · ${d.fact} · nudged twice, no answer`, true) : row("due", d.label, true);
+  if (d?.due) return isStale(o, d) ? row("stale", staleLabel(d), true) : row("due", d.label, true);
   if (o.status === "working") return row("working", status.text);
   if (o.status === "blocked") return row("blocked", cut(blockedLine(o, w), BLOCKED_ROW_MAX));
   if (status.tone === "queued" || status.tone === "sent" || status.tone === "ready") return row("scheduled", status.text);
