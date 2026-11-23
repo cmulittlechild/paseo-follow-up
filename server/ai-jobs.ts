@@ -3,6 +3,7 @@ import { appendFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { z } from "zod";
+import { guardFor, refusedCalls, type ToolGrant } from "./job-guard";
 
 /**
  * Small bounded model jobs: a prompt in, validated JSON out. Shared by Summaries and the Overseer ranker.
@@ -14,7 +15,7 @@ import type { z } from "zod";
  */
 
 export type RunInput = { prompt: string; system: string; provider: string; model: string; thinking: string | null; timeoutMs: number; signal: AbortSignal };
-export type RunOutput = { text: string; costUsd: number | null; inputTokens: number | null; outputTokens: number | null };
+export type RunOutput = { text: string; costUsd: number | null; inputTokens: number | null; outputTokens: number | null; /** Tool calls the job guard refused, "Tool.action" names only (job-guard.ts). */ refused?: string[] };
 export type Runner = (input: RunInput) => Promise<RunOutput>;
 
 export type JobSpec<T> = {
@@ -42,7 +43,7 @@ export type JobSpec<T> = {
 export type JobResult<T> =
   | { ok: true; value: T; costUsd: number | null; durationMs: number; inputTokens?: number | null; outputTokens?: number | null }
   | { ok: false; error: string; reason: "timeout" | "too-large" | "invalid-json" | "invalid-shape" | "failed" | "stopped"; costUsd: number | null; durationMs: number; inputTokens?: number | null; outputTokens?: number | null };
-export type JobLog = { at: string; name: string; provider: string; model: string; ok: boolean; reason: string | null; durationMs: number; costUsd: number | null; promptChars: number; inputTokens: number | null; outputTokens: number | null; validationReason?: string };
+export type JobLog = { at: string; name: string; provider: string; model: string; ok: boolean; reason: string | null; durationMs: number; costUsd: number | null; promptChars: number; inputTokens: number | null; outputTokens: number | null; validationReason?: string; refused?: string[] };
 
 export const DEFAULT_SYSTEM = "You turn the material you are given into the JSON object the user asks for. Reply with that JSON object only: no prose, no code fence. Use only facts in the material; never guess names, numbers or links.";
 
@@ -69,7 +70,7 @@ export class AiJobs {
     const done = (r: JobResult<T>, out?: RunOutput | null) => {
       let validationReason: string | null = null;
       try { if (r.ok) validationReason = spec.diagnose?.(r.value) ?? null; } catch { /* diagnostics never discard a reply */ }
-      entry = ({ at: new Date(started).toISOString(), name: spec.name, provider, model, ok: r.ok, reason: r.ok ? null : r.reason, durationMs: r.durationMs, costUsd: r.costUsd, promptChars: spec.prompt.length, inputTokens: out?.inputTokens ?? null, outputTokens: out?.outputTokens ?? null, ...(validationReason ? { validationReason } : {}) }); return { ...r, inputTokens: out?.inputTokens ?? null, outputTokens: out?.outputTokens ?? null }; };
+      entry = ({ at: new Date(started).toISOString(), name: spec.name, provider, model, ok: r.ok, reason: r.ok ? null : r.reason, durationMs: r.durationMs, costUsd: r.costUsd, promptChars: spec.prompt.length, inputTokens: out?.inputTokens ?? null, outputTokens: out?.outputTokens ?? null, ...(validationReason ? { validationReason } : {}), ...(out?.refused?.length ? { refused: out.refused } : {}) }); return { ...r, inputTokens: out?.inputTokens ?? null, outputTokens: out?.outputTokens ?? null }; };
     try { return await this.attempt({ ...spec, provider, model }, model, started, done); } finally { if (entry) await this.log(entry); }
   }
 
@@ -135,11 +136,12 @@ export function parseJsonReply(text: string): unknown {
 
 /** The `claude -p --output-format json` envelope: the reply text, its cost and token counts. */
 export function parseClaudeEnvelope(stdout: string): RunOutput {
-  const envelope = JSON.parse(stdout.slice(stdout.indexOf("{"))) as { result?: unknown; is_error?: boolean; subtype?: string; total_cost_usd?: number; usage?: { input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number; output_tokens?: number } };
+  const envelope = JSON.parse(stdout.slice(stdout.indexOf("{"))) as { result?: unknown; is_error?: boolean; subtype?: string; total_cost_usd?: number; permission_denials?: unknown; usage?: { input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number; output_tokens?: number } };
   if (envelope.is_error || typeof envelope.result !== "string") throw new Error(`Claude returned no reply${envelope.subtype ? ` (${envelope.subtype})` : ""}.`);
   const u = envelope.usage;
   return { text: envelope.result, costUsd: typeof envelope.total_cost_usd === "number" ? envelope.total_cost_usd : null,
-    inputTokens: u ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) : null, outputTokens: u?.output_tokens ?? null };
+    inputTokens: u ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) : null, outputTokens: u?.output_tokens ?? null,
+    ...(refusedCalls(envelope.permission_denials).length ? { refused: refusedCalls(envelope.permission_denials) } : {}) };
 }
 
 export function claudeArgs(input: Pick<RunInput, "model" | "system"> & { thinking?: string | null }): string[] {
@@ -190,9 +192,12 @@ export function childEnv(env: Record<string, string> = {}, defaults: Record<stri
   return out;
 }
 
-/** Spawns `claude` with an argument array (no shell); the prompt goes on stdin. */
-export function claudeRunner(command = "claude", args: (input: RunInput) => string[] = claudeArgs, env: Record<string, string> = {}): Runner {
-  return input => spawnJob(command, args(input), input.prompt, parseClaudeEnvelope, input, childEnv(env));
+/**
+ * Spawns `claude` with an argument array (no shell); the prompt goes on stdin. Every Claude job runs under the job
+ * guard (job-guard.ts): a tool call outside `grant` is refused before it runs. The default grant is nothing.
+ */
+export function claudeRunner(command = "claude", args: (input: RunInput) => string[] = claudeArgs, env: Record<string, string> = {}, grant: ToolGrant = {}): Runner {
+  return input => { const guard = guardFor(grant); return spawnJob(command, [...args(input), ...guard.args], input.prompt, parseClaudeEnvelope, input, childEnv({ ...env, ...guard.env })); };
 }
 
 /** Spawns `codex exec` the same way, from an empty private temp directory that is removed afterwards. */

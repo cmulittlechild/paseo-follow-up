@@ -38,10 +38,16 @@
 `AiJobs` runs bounded one-shot model jobs: a prompt in, validated JSON out.
 
 - **Claude:** `claude -p` with no tools, MCP servers, settings or saved session.
+- **The job guard** (`server/job-guard.ts`, sources-are-read-only): every Claude job runs with a PreToolUse hook,
+  passed with `--settings`, that refuses any tool call outside the job's grant before Claude Code runs it, whatever
+  the prompt or `--allowedTools` say. The default grant is nothing; the plan reader's is the Artifact tool's `read`
+  (`ARTIFACT_READ`, never with `out_dir`). A refused call doesn't fail the job: the model is told no and answers from
+  what it read. The hook is Node with `-e` (the grant in `FOLLOW_UP_JOB_TOOLS`) and refuses what it can't parse.
 - **Codex:** `codex exec --ephemeral` with no user config, no shell and a read-only sandbox in an empty temp folder.
 - **Limits:** one turn, a 90 s timeout (the whole process group is killed), and one job at a time.
 - **Log:** each call’s duration and cost goes to `ai-jobs.jsonl`. A caller may attach a privacy-safe
-  `validationReason` rule code through `diagnose`; never a reply, prompt, name or issue key.
+  `validationReason` rule code through `diagnose`; never a reply, prompt, name or issue key. Calls the guard refused
+  are logged as `refused`, tool and action names only ("Artifact.publish").
 - **Any other provider** (`server/job-agent.ts`, `jobAgentRunner`): when neither a CLI runner applies, `AiJobs`
   falls back to `opts.generic`, a short-lived Paseo agent. Paseo refuses hidden internal agents from plugins, so jobs
   run in one background workspace ("Follow-up jobs", home `jobs-home/`, id cached in `jobs-workspace.json` and
@@ -161,7 +167,8 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
     Low → High"). The ranker makes no Linear call of its own; with no snapshot yet it asks for one sweep first.
   - Slack DMs and mentions from the last 48 h, through `mcpproxy call tool-read`.
   - `gh search prs --review-requested=@me`.
-  - The weekly planning artifact, read through one Claude turn with only the Artifact tool, at most once a day. Its link
+  - The weekly planning artifact, read through one Claude turn with only the Artifact tool's read (the job guard
+    refuses every other action), at most once a day. Its link
     is Settings → Morning brief's ([morning-brief.md](morning-brief.md#settings)): `FOLLOW_UP_PLAN_URL`, else a pasted
     link, else the one Find it for me found (or last week's).
 - **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on the
