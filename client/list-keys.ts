@@ -10,6 +10,9 @@ type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean
 type Doc = { body: unknown; activeElement: unknown; visibilityState?: string; querySelector(selector: string): Row | null;
   addEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void; removeEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void };
 
+/** A row menu, its confirm step or any dialog over the list: while one is open, it keeps every key. */
+const OVERLAYS = '[role="menu"],[role="alertdialog"],[role="dialog"],[aria-modal="true"]';
+
 export type ListKeysOptions = {
   enabled: boolean;
   /** The rows in the order the list draws them (brief, Overseer, then every row of an open group). */
@@ -41,9 +44,6 @@ export type ListKeysOptions = {
  * Not while typing, except the arrows in the list's own query field (`dataSet={{ listKeys: "1" }}`), which step into
  * the list. Web and desktop only; phones have no hardware-key walk.
  */
-/** A row menu, its confirm step or any dialog over the list: while one is open, it keeps every key. */
-const OVERLAYS = '[role="menu"],[role="alertdialog"],[role="dialog"],[aria-modal="true"]';
-
 export function useListKeys(options: ListKeysOptions): void {
   const ref = useRef(options); ref.current = options;
   useEffect(() => {
@@ -56,7 +56,7 @@ export function useListKeys(options: ListKeysOptions): void {
       if (typing && !target?.closest?.("[data-list-keys]")) return;
       // A row menu or a dialog over the list keeps its own keys, and so does a control whose keys move it (Home's
       // divider: arrows, Home and End resize the pane, never walk the list).
-      if (target?.closest?.(`${OVERLAYS},[role="separator"],[role="slider"]`)) return;
+      if (target?.closest?.('[role="menu"],[role="alertdialog"],[role="dialog"],[aria-modal="true"],[role="separator"],[role="slider"]')) return;
       const root = scope();
       const onBody = !target || target === doc.body;
       if (!ownsKey({ inside: !!target && !!root?.contains(target), onBody, claimBody: !!claimBody,
