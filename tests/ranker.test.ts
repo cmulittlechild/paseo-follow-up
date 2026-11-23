@@ -35,7 +35,7 @@ const reply = (over: object = {}) => JSON.stringify({
   ...over,
 });
 
-function fixture(t: any, opts: { sources?: Partial<RankSources>; reply?: () => string; rows?: WorkstreamRow[]; role?: Partial<typeof RANKER_ROLE_DEFAULT>; planningUrl?: string | null; log?: (line: string) => void } = {}) {
+function fixture(t: any, opts: { tight?: () => boolean; sources?: Partial<RankSources>; reply?: () => string; rows?: WorkstreamRow[]; role?: Partial<typeof RANKER_ROLE_DEFAULT>; planningUrl?: string | null; log?: (line: string) => void } = {}) {
   const calls: RunInput[] = []; const reads: Record<string, number> = { linear: 0, slack: 0, github: 0, planning: 0 };
   let now = NOW;
   return (async () => {
@@ -50,7 +50,7 @@ function fixture(t: any, opts: { sources?: Partial<RankSources>; reply?: () => s
       ...opts.sources,
     };
     let rows = opts.rows ?? ROWS;
-    const ranker = new Ranker({ directory: dir, jobs, sources, priorities, workstreams: async () => rows, role: async () => ({ ...RANKER_ROLE_DEFAULT, ...opts.role }), enabled: async () => true,
+    const ranker = new Ranker({ directory: dir, jobs, sources, priorities, workstreams: async () => rows, role: async () => ({ ...RANKER_ROLE_DEFAULT, ...opts.role }), enabled: async () => true, ...(opts.tight ? { tight: async () => opts.tight!() } : {}),
       planningUrl: async () => opts.planningUrl === undefined ? "https://claude.ai/artifact/abc" : opts.planningUrl, now: () => now, log: opts.log ?? (() => {}),
       // A developer whose week is Sunday to Thursday (their zone's usual week, read from the zone, not built in).
       clock: async () => ({ timeZone: "Asia/Jerusalem", workdays: defaultWorkdays("Asia/Jerusalem") }) });
@@ -118,6 +118,19 @@ test("ranker: markDue (the morning's Ask items changed) lets the next scheduled 
   f.ranker.markDue();
   f.setNow(NOW + 11 * 60_000); assert.equal((await f.ranker.tick())?.skipped, null, "due once: today's items reach today's rank");
   f.setNow(NOW + 12 * 60_000); assert.equal(await f.ranker.tick(), null, "once, then the cadence again");
+  assert.equal(f.calls.length, 2);
+});
+
+test("ranker: markDue survives a scheduled run that skips before it starts (the governor turned tight in between)", async t => {
+  let n = 0;
+  // tick checks tight, then the run checks again: false, true here, so the run skips without starting.
+  const tight = [false, true];
+  const f = await fixture(t, { role: { cadenceMinutes: 60 }, tight: () => tight.shift() ?? false, sources: { async linear() { n++; return [{ ...LINEAR[0], title: `changed ${n}` }]; } } });
+  assert.equal((await f.ranker.run({ trigger: "manual" })).skipped, null);
+  f.ranker.markDue();
+  f.setNow(NOW + 10 * 60_000); assert.equal((await f.ranker.tick())?.skipped, "tight", "the run itself skipped");
+  f.setNow(NOW + 11 * 60_000); assert.equal((await f.ranker.tick())?.skipped, null, "the mark held: the next tick runs inside the cadence");
+  f.setNow(NOW + 12 * 60_000); assert.equal(await f.ranker.tick(), null, "and then it's spent");
   assert.equal(f.calls.length, 2);
 });
 

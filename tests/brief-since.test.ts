@@ -1,3 +1,4 @@
+// raised-is-needs-you (AGENTS.md invariant 90): a raised issue with no workspace is a counted Needs-you row, with one set of actions on screen.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";

@@ -1056,6 +1056,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
    `tests/tasks-view.test.ts` and `INVARIANTS`.
 
+90. **A raised issue is a Needs-you item** (`raised-is-needs-you`). A Linear issue raised to Urgent or High that is still
+   in the queue and has no workspace (`raisedNeeds`, decision Q8) is a row of Home's Needs you group, first, shaped like
+   its rows, and counted wherever Needs you is counted on Home (the group header and the strip, `HomeModel.raised`). It
+   has the two-click Remove of every Needs-you item (invariant 59: `follow.dismiss {issue}`, agents `dismiss_item
+   {issue}`), and a later raise brings it back. One issue offers one set of actions on screen: while it's in Needs you
+   (Start…), its line in the brief's Since block keeps the news without New's buttons. 2026-11-23, two critiques: it was
+   a card above the strip that Needs you didn't count, with a second action set in the brief. Guarded by
+   `tests/brief-since.test.ts`.
+
 ## Bugs
 
 Every bug is fixed for its whole class:
