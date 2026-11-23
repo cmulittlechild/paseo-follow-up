@@ -1024,7 +1024,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
 
-81. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
+83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
    reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
    its last update). A task blocked on a question the developer answered or closed is the agent's again
    (`waitsOnDeveloper`, `coveredBy`): it comes due at the answer ("Due · Q7 answered"), whatever its PRs say, and gets
