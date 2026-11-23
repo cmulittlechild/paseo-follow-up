@@ -9,7 +9,7 @@ import { ROLE_DEFAULTS, type AgentRole, type CatalogModel, type CatalogProvider,
  * fits, the provider's default with a hint.
  */
 export type Tier = "small" | "mid" | "strong";
-export const ROLE_TIER: Record<AgentRole, Tier | "same"> = { about: "small", ranker: "mid", overseer: "strong", recovery: "same" };
+export const ROLE_TIER: Record<AgentRole, Tier | "same"> = { about: "small", ranker: "mid", overseer: "strong", recovery: "same", dispatch: "same" };
 
 /** One plain line per job: what it needs and why. */
 export const ROLE_NEED: Record<AgentRole, string> = {
@@ -17,6 +17,7 @@ export const ROLE_NEED: Record<AgentRole, string> = {
   ranker: "Reads a lot and has to give reasons, so a mid-size model.",
   overseer: "Long-lived and reasons across everything, so your strongest model.",
   recovery: "Rebuilds a workspace, so the same setup as its main agent.",
+  dispatch: "Does the work you start from New, so the Overseer's agent unless you pick one.",
 };
 const HINT: Record<Tier, string> = {
   small: "None of its models says which is small, so this is its default.",
@@ -63,7 +64,7 @@ const lowEffort = (m: CatalogModel) => m.thinking.find(t => /^(minimal|low)$/i.t
 
 export function recommend(role: AgentRole, catalog: readonly CatalogProvider[]): Recommendation {
   const tier = ROLE_TIER[role];
-  if (tier === "same") return { role, same: true, provider: ROLE_DEFAULTS.recovery.provider, model: null, thinking: null, source: "same", hint: null };
+  if (tier === "same") return { role, same: true, provider: ROLE_DEFAULTS[role].provider, model: null, thinking: null, source: "same", hint: null };
   const providers = order(catalog);
   if (!providers.length) return { role, same: false, provider: null, model: null, thinking: null, source: "none", hint: null };
   if (providers[0].id === "claude") { const d = ROLE_DEFAULTS[role]; return { role, same: false, provider: d.provider, model: d.model, thinking: d.thinking, source: "default", hint: null }; }
@@ -93,7 +94,7 @@ function pick(models: readonly CatalogModel[], tier: Tier, want: "metadata" | "n
 }
 
 export function recommendAll(catalog: readonly CatalogProvider[]): Record<AgentRole, Recommendation> {
-  return { about: recommend("about", catalog), ranker: recommend("ranker", catalog), overseer: recommend("overseer", catalog), recovery: recommend("recovery", catalog) };
+  return { about: recommend("about", catalog), ranker: recommend("ranker", catalog), overseer: recommend("overseer", catalog), recovery: recommend("recovery", catalog), dispatch: recommend("dispatch", catalog) };
 }
 
 /** Whether a role as used matches the recommendation (Settings' "Recommended" marker). */
