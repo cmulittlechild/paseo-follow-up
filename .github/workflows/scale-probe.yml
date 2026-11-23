@@ -1,0 +1,31 @@
+# TEMPORARY (fix/scale-flake): samples test:scale's worker peak on several runners, with and without the host's
+# glibc MALLOC_* lines, on the same runner each. Removed before the PR merges.
+name: scale-probe
+on:
+  push:
+    branches: [fix/scale-flake]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        i: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm install --global @getpaseo/cli@0.15.2 @anthropic-ai/claude-code@2.1.300 @openai/codex@0.162.1
+      - name: runner
+        run: |
+          nproc; grep -m1 "model name" /proc/cpuinfo; uname -r; cat /sys/kernel/mm/transparent_hugepage/enabled; ldd --version | head -1; free -m
+      - name: scale both ways
+        run: |
+          plain() { npm run -s test:scale 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[plain] /'; }
+          malloc() { MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072 MALLOC_TRIM_THRESHOLD_=131072 npm run -s test:scale 2>&1 | grep -E "scale-diag|over [0-9.]+ MB" | sed 's/^/[malloc] /'; }
+          if [ $(( ${{ matrix.i }} % 2 )) = 1 ]; then plain; malloc; else malloc; plain; fi

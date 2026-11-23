@@ -183,6 +183,8 @@ try {
         const now = Math.round(Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] ?? 0) / 1024);
         const kb = name => Math.round(Number(new RegExp(`${name}:\\s+(\\d+)`).exec(status)?.[1] ?? 0) / 1024);
         if (now && Math.abs(now - last) > 10) { trace.steps.push({ s: Math.round((Date.now() - installedAt) / 100) / 10, at: new Date().toISOString(), rssMb: now }); last = now; }
+        // The peak's split (anonymous vs file-backed vs shmem) at the moment it happens: a runner-level shift shows here.
+        if (now > trace.peakRssMb) trace.peakSplit = { s: Math.round((Date.now() - installedAt) / 1000), rssMb: now, anonMb: kb("RssAnon"), fileMb: kb("RssFile"), shmemMb: kb("RssShmem") };
         trace.peakRssMb = Math.max(trace.peakRssMb, now);
         if (Date.now() - lastUsage > 5000) { lastUsage = Date.now(); const w = await client?.invokePluginRpc("follow-up", "follow.usage", {}).then(u => u?.resources?.worker, () => null); if (w) { trace.memory.push({ s: Math.round((Date.now() - installedAt) / 1000), rssMb: now, heapUsedMb: w.heapUsedMb, heapTotalMb: w.heapTotalMb, externalMb: w.externalMb, nativeMb: Math.round(now - (w.heapTotalMb ?? 0) - (w.externalMb ?? 0)), anonMb: kb("RssAnon"), fileMb: kb("RssFile") }); trace.peakHeapTotalMb = Math.max(trace.peakHeapTotalMb, w.heapTotalMb ?? 0); trace.peakHeapUsedMb = Math.max(trace.peakHeapUsedMb, w.heapUsedMb ?? 0); } }
       }
@@ -368,6 +370,11 @@ try {
     worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) } } : {}), drain, ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), ...(cycles ? { cycles: { spec: arg("cycles"), each: cycles.map(c => ({ k: c.k, turns: c.turns, rpcs: c.rpcs, rpcFailed: c.rpcFailed, asked: c.asked, answered: c.answered, burstPeakMb: Math.max(...c.burstSamplesMb), gapMedianMb: idleVerdict(c.gapSamplesMb, 0).medianMb, burstCpuS: c.burstCpuS, gapCpuS: c.gapCpuS, burstSamplesMb: c.burstSamplesMb, gapSamplesMb: c.gapSamplesMb })), ...burstReturnVerdict(cycles.map(c => c.gapSamplesMb), budget.burstReturnMb) } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
   }
   tracing = false; await tracer;
+  // The runner and the worker's memory map: what differs between a run's RSS level and another's (scale-runner-facts).
+  if (worker) {
+    worker.runner = await runnerFacts(pid).catch(e => ({ error: String(e?.message ?? e) }));
+    console.log(`scale-diag ${JSON.stringify({ peakMb: worker.lifetimePeakRssMb, idleMedianMb: worker.idleMedianRssMb, peakSplit: trace.peakSplit, heapTotalMb: trace.peakHeapTotalMb, runner: worker.runner })}`);
+  }
   if (worker) worker.trace = { ...trace, githubRequests: github?.requests.length ?? 0 };
   const receipts = (await readFile(join(home, "fixture-receipts.jsonl"), "utf8").catch(() => "")).trim().split("\n").filter(l => /Follow-up (batch|recovery)/.test(l)).length;
   const state = JSON.parse(await readFile(join(home, "plugin-data/follow-up/state.json"), "utf8"));
@@ -389,3 +396,20 @@ try {
   if (!process.argv.includes("--keep")) await rm(root, { recursive: true, force: true }).catch(() => {});
   else console.error(`kept ${root}`);
 }
+
+/** The runner's facts and the worker's memory map: CPU, kernel, THP, glibc, the allocator's env, smaps_rollup, arenas. */
+async function runnerFacts(pid) {
+  const os = await import("node:os");
+  const read = f => readFile(f, "utf8").then(t => t.trim(), () => null);
+  const rollup = Object.fromEntries(((await read(`/proc/${pid}/smaps_rollup`)) ?? "").split("\n").map(l => /^(\w+):\s+(\d+) kB/.exec(l)).filter(Boolean).map(m => [m[1], Math.round(Number(m[2]) / 1024)]));
+  const environ = ((await readFile(`/proc/${pid}/environ`, "utf8").catch(() => "")).split("\0")).filter(e => /^(MALLOC_|GLIBC_TUNABLES|UV_THREADPOOL_SIZE|NODE_OPTIONS)/.test(e));
+  // glibc's malloc arenas are 64 MiB-aligned anonymous reservations (HEAP_MAX_SIZE); each thread that allocates can add one.
+  const maps = ((await read(`/proc/${pid}/maps`)) ?? "").split("\n");
+  const arenas = maps.filter(l => { const m = /^([0-9a-f]+)-([0-9a-f]+) (\S+) \S+ \S+ 0\s*$/.exec(l); return m && BigInt(`0x${m[1]}`) % 0x4000000n === 0n && m[3].startsWith("rw"); }).length;
+  const threads = ((await read(`/proc/${pid}/status`)) ?? "").match(/Threads:\s+(\d+)/)?.[1];
+  return { cpus: os.cpus().length, model: os.cpus()[0]?.model, kernel: os.release(), memTotalMb: Math.round(os.totalmem() / 1048576),
+    thp: await read("/sys/kernel/mm/transparent_hugepage/enabled"), thpDefrag: await read("/sys/kernel/mm/transparent_hugepage/defrag"),
+    thpShmem: await read("/sys/kernel/mm/transparent_hugepage/shmem_enabled"), glibc: process.report?.getReport?.()?.header?.glibcVersionRuntime ?? null,
+    node: process.version, environ, threads: Number(threads), arenas, rollupMb: rollup };
+}
+
