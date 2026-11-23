@@ -37,6 +37,8 @@ const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i
 const baseline = process.argv.includes("--baseline");
 // --renders: its own daemon (web UI on, FOLLOW_UP_QUEUE_TIME_SCALE so Retrying and the whole unknown ladder pass within minutes).
 const renders = process.argv.includes("--renders");
+/** --receipt '<json>': every send reports this Paseo 0.17.2+ receipt (FOLLOW_UP_HARNESS_RECEIPT), so the renders show its wording. */
+const receiptArg = process.argv.includes("--receipt") ? process.argv[process.argv.indexOf("--receipt") + 1] : null;
 /** --renders --only message: only Needs you's row for a forward that didn't go out (needs the Overseer path). */
 const rendersOnly = renders ? arg("--only", null) : null;
 /** 0.25: the attempt deadline is 30 s (long enough to shoot Sending), the unknown ladder passes ~5.5 min after an unconfirmed send. */
@@ -805,7 +807,7 @@ try {
   await fs.writeFile(join(bin, "gh"), FAKE_GH); await fs.chmod(join(bin, "gh"), 0o700);
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   // The daemon (and so the plugin worker it starts) reaches Paseo through the proxy; the CLI and this script don't.
-  const daemonEnv = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: `ws://127.0.0.1:${proxyPort}/ws`, PASEO_RELAY_ENABLED: "false", ...(renders ? { PASEO_WEB_UI_ENABLED: "true", FOLLOW_UP_QUEUE_TIME_SCALE: String(RENDER_TIME_SCALE) } : {}), ...(scaled ? { FOLLOW_UP_QUEUE_TIME_SCALE: String(STUCK_TIME_SCALE) } : {}), PATH: `${bin}:${process.env.PATH}`, ...github.env }, strip: github.strip });
+  const daemonEnv = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: `ws://127.0.0.1:${proxyPort}/ws`, PASEO_RELAY_ENABLED: "false", ...(renders ? { PASEO_WEB_UI_ENABLED: "true", FOLLOW_UP_QUEUE_TIME_SCALE: String(RENDER_TIME_SCALE) } : {}), ...(receiptArg ? { FOLLOW_UP_HARNESS_RECEIPT: receiptArg } : {}), ...(scaled ? { FOLLOW_UP_QUEUE_TIME_SCALE: String(STUCK_TIME_SCALE) } : {}), PATH: `${bin}:${process.env.PATH}`, ...github.env }, strip: github.strip });
   const env = harnessEnv(root, { home, set: { PASEO_DAEMON_URL: url, PASEO_RELAY_ENABLED: "false" } });
   cli = async (...args) => { try { return JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 180000, maxBuffer: 1 << 20 })).stdout || "null"); } catch (e) { throw new Error(`paseo ${args.join(" ")} failed: ${String(e.stdout ?? "").slice(-1500)} ${String(e.stderr ?? "").slice(-1500)} ${e.killed ? "(timed out)" : ""}`); } };
   daemon = spawnDaemon(["daemon", "run", "--home", home], { env: daemonEnv, stdio: ["ignore", openSync(join(root, "daemon.log"), "a"), openSync(join(root, "daemon.log"), "a")] });

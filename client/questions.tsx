@@ -12,7 +12,7 @@ import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, isDoneOnly, questionState, TASK_DONE, type Question } from "../shared/questions";
 import { ago } from "../shared/attention";
-import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
+import { RETRYING_DETAIL, deliveryStatus, receiptNote } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
 import { activity, activityQuestions, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
@@ -59,7 +59,12 @@ function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: s
   const d = q.answer?.delivery;
   if (!d) return null;
   switch (d.state) {
-    case "sent": return { icon: "CircleCheck", tone: "success", text: `Sent to ${who(w, d.to)} ${ago(d.at, now)}` };
+    // Paseo 0.17.2+'s receipt: held until the agent's turn ends (muted, a clock), or a turn stopped to take it.
+    case "sent": {
+      const note = receiptNote(d.receipt);
+      const held = d.receipt?.deliveryStatus === "queued";
+      return { icon: held ? "Clock" : "CircleCheck", tone: held ? "muted" : "success", text: `Sent to ${who(w, d.to)} ${ago(d.at, now)}${note ? `. ${note}` : ""}` };
+    }
     // The queue's states read one way everywhere (shared/queue.ts deliveryStatus).
     case "sending": case "queued": case "retrying": case "failed": case "cancelled": {
       const s = deliveryStatus({ state: d.state, reason: d.reason, nextAt: d.nextAt });

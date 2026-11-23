@@ -3,7 +3,7 @@ import { agentActor, onBehalfLine } from "./actor";
 // "big question" test are adapted from Progress (@stevecastaneda/paseo-progress,
 // MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
 import { z } from "zod";
-import { deliveryStatus } from "./queue";
+import { deliveryReceiptSchema, deliveryStatus } from "./queue";
 import { defineSettings } from "@getpaseo/plugin";
 
 export const QUESTION_MODES = ["stop", "work-around", "keep-building"] as const;
@@ -72,6 +72,8 @@ export const answerSchema = z.object({
     reason: z.string().nullable().default(null),
     /** When the queue tries again (queued after a send that never left, retrying). */
     nextAt: z.string().nullable().optional(),
+    /** Paseo 0.17.2+: what Paseo did with the send (shared/queue.ts deliveryReceipt). Absent on older hosts. */
+    receipt: deliveryReceiptSchema.nullable().optional(),
   }),
 });
 export const questionSchema = z.object({

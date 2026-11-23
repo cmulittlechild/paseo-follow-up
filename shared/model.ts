@@ -1,5 +1,6 @@
 import { sendItems } from "./send-words";
 import { z } from "zod";
+import { deliveryReceiptSchema } from "./queue";
 import { OBSERVATION_FRESH_MS } from "./poll";
 import { followUpObligations, deployState, recoveryBatch } from "./follow-up";
 import { communicationSchema, replyRecorded } from "./communication";
@@ -120,6 +121,8 @@ export const batchSchema = z.object({
   activityAt: z.string().nullable().default(null),
   acknowledgmentError: z.object({ agentId: idSchema, at: z.string(), error: z.string() }).nullable().default(null),
   recoveryHandoffs: z.array(z.object({ fromAgentId: idSchema, toAgentId: idSchema, at: z.string() })).default([]),
+  /** Paseo 0.17.2+: what Paseo did with the send (held until the agent's turn ends, or the turn stopped). Absent before. */
+  receipt: deliveryReceiptSchema.nullable().optional(),
   /** The last automatic send Follow-up refused for this queued batch (shared/send-decision.ts). Cleared on a send or a task change. */
   refusal: z.object({ reason: z.string(), at: z.string() }).nullable().optional(),
   /** The agent's turn ended without acknowledge_batch; Follow-up settled it from GitHub instead (settleUnacknowledged). */
