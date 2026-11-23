@@ -20,7 +20,7 @@ const DEPLOYMENT_DETAIL = { evidence: true, commits: true } as const;
 // repoMerge stays: Home's Merge button reads it to say "Add to merge queue" (shared/merge-click.ts mergeScope).
 const SNAPSHOT_DETAIL = { base: true, trunk: true, headBranch: true } as const;
 const PR_DETAIL = { discoveredFromSubmission: true } as const;
-const OBLIGATION_DETAIL = { evidence: true, previousTitles: true } as const;
+const OBLIGATION_DETAIL = { evidence: true, previousTitles: true, createdBy: true } as const;
 const BATCH_DETAIL = { contextPath: true, recoveryHandoffs: true, acknowledgmentError: true } as const;
 const QUESTION_DETAIL = { background: true, links: true } as const;
 const WORKSPACE_DETAIL = { inventory: true, excludedStacks: true, nextMessage: true } as const;
