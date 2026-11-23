@@ -8,6 +8,7 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal, ScrollView, TextInput, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { answerQuestionRpc } from "../shared/contracts";
+import { ImageField, useImageAttachments } from "./image-attach";
 import type { Workspace } from "../shared/model";
 import type { ListQuestion, ListWorkspace } from "../shared/list";
 import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading, answerLabel, answerStatus, answerMessage, answerHasActions, resendTitle, isOpen, isOther, isDoneOnly, questionState, TASK_DONE, type Question } from "../shared/questions";
@@ -146,6 +147,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   // Paseo 0.16: the asking agent's composer, for Put in chat. Null on 0.15, or when the app doesn't know that agent.
   const asker = q.askedBy ?? w.mainAgentId ?? null;
   const composer = useChatComposer(open || q.answer?.delivery.state === "in-chat" ? asker : null);
+  // Pasted images (every-agent-field-takes-images) ride the answer's message to the asking agent, on Send only.
+  const img = useImageAttachments({ target: asker ? { kind: "agent", agentId: asker } : { kind: "workspace", workspaceId: w.id } });
   const [choice, setChoice] = useState<string | null>(q.answer?.choice ?? null);
   const [words, setWords] = useState(q.answer?.words ?? "");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -209,7 +212,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const quick = (action: "send" | "copy" | "chat", pick?: { choice: string; words?: string }) => {
     const chosen = pick?.choice ?? answer; const said = pick ? pick.words : sentWords;
     if (!chosen) return;
-    const input = { workspaceId: w.id, questionId: q.id, choice: chosen, words: said, action };
+    const images = action === "send" ? img.uploads() : undefined;
+    const input = { workspaceId: w.id, questionId: q.id, choice: chosen, words: said, action, ...(images ? { images } : {}) };
     if (action === "copy") void copyText(answerMessage(q, chosen, said)).catch(() => undefined);
     // The unsent copy keeps exactly what was sent, so Retry (which rebuilds the draft from it) sends it again.
     setPendingAnswer(w.id, q.id, { choice: chosen, words: said });
@@ -242,7 +246,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   // The footer's Send calls the latest quick through a ref, so it never sends a stale choice or words.
   // On an action card the form's Send is Done (one-done-button), wherever it is pressed from.
   const quickRef = useRef(quick); quickRef.current = doneOnly ? (action: "send" | "copy" | "chat") => action === "send" ? done() : quick(action) : quick;
-  const sendable = open && (!!answer || doneOnly);
+  const sendable = open && (!!answer || doneOnly) && !img.blocked;
   useEffect(() => { onSendReady?.(sendable ? { send: () => quickRef.current("send"), busy: run.isPending } : null); }, [sendable, run.isPending]);
   useEffect(() => () => onSendReady?.(null), []);
   // The body says Not sent · Retry itself, with the button; the state line stays on what the agent is doing.
@@ -272,7 +276,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     </View>}
   </View>;
   // Cmd+Enter (and Enter outside the answer field) does what Send does, only when Send is enabled.
-  const submittable = !run.isPending && (open ? !!answer || doneOnly : q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat");
+  const submittable = !run.isPending && !img.blocked && (open ? !!answer || doneOnly : q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat");
   // In the pill popover the answer field and actions stay pinned below a scrolling body.
   const pinned = dense && !!bodyMaxHeight;
   // Re-keyed by role, so the field that opens on Something else or Add note takes the caret; typing never re-keys it.
@@ -282,8 +286,8 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       const field = (pad: FieldPad) => <TextInput key={draft.field} accessibilityLabel={draft.label} placeholder={draft.placeholder} placeholderTextColor={c.foregroundMuted}
         multiline value={words} editable={!run.isPending} onChangeText={setWords} onSelectionChange={caret.onSelectionChange} maxLength={2000} autoFocus={!free && (other || noteOpen)} style={[inputStyle(c, compact, draft.field === "answer" && !dense ? 3 : 2), pad]} />;
       // Dictated words land in this same field's words (what-you-typed-is-what-gets-sent), at the caret, never sent.
-      return dictate ? <DictationField key={draft.field} theme={theme} compact={compact} keyHint field={field} disabled={run.isPending}
-        onText={said => setWords(prev => caret.insert(prev, said, 2000))} /> : field(null);
+      return <ImageField model={img} theme={theme} compact={compact}>{dictate ? <DictationField key={draft.field} theme={theme} compact={compact} keyHint field={field} disabled={run.isPending}
+        onText={said => setWords(prev => caret.insert(prev, said, 2000))} /> : field(null)}</ImageField>;
     })()}
   </View>;
   // Context comes before the options so the developer reads why before choosing.
@@ -344,11 +348,11 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
     <View onLayout={doneOnly ? e => setRowWidth(e.nativeEvent.layout.width) : undefined} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      {doneOnly && <Button shortcut={rowWidth >= DONE_HINT_MIN_WIDTH} theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending} onPress={done} />}
+      {doneOnly && <Button shortcut={rowWidth >= DONE_HINT_MIN_WIDTH} theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending || !!img.blocked} onPress={done} />}
       {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label="Add note" a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
         onPress={() => { setChoice(TASK_DONE.letter); setNoteOpen(true); }} />}
       {doneOnly && <NoteLink icon="Reply" label="Reply instead" a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}
-      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending} onPress={() => quick("send")} />}
+      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={img.blocked ? img.blocked : other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending || !!img.blocked} onPress={() => quick("send")} />}
       {open && !doneOnly && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title="Put in chat" accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
       {/* Paseo 0.16: Copy steps back to an icon beside Put in chat (both move the words without sending). 0.15 keeps the label. */}
       {open && !doneOnly && !composer && <Button theme={theme} compact={compact} icon="Copy" title="Copy" accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}

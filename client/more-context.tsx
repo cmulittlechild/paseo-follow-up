@@ -17,6 +17,8 @@ import { Button, IconButton, text, type Theme } from "./kit";
 import { withAlpha } from "./theme";
 import { RichText } from "./rich-text";
 import { PRIMARY_FORM } from "./dock";
+import { ImageField, useImageAttachments } from "./image-attach";
+import type { ImageTarget, ImageUpload } from "../shared/images";
 
 const CATCH_UP_FOOTNOTE = "This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.";
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test((navigator as { platform?: string }).platform ?? "");
@@ -41,7 +43,7 @@ const noAsks: ContextRequest[] = [];
 const idle = () => () => undefined;
 
 /** The newest ask about one question, from any surface, and the way to ask. Null `ask` when no source is set. */
-export function useQuestionContext(workspaceId: string, questionId: string): { request: ContextRequest | null; ask: ((words: string, card: string, agentId: string | null) => Promise<ContextRequest>) | null } {
+export function useQuestionContext(workspaceId: string, questionId: string): { request: ContextRequest | null; ask: ((words: string, card: string, agentId: string | null, images?: ImageUpload[]) => Promise<ContextRequest>) | null } {
   const current = useSyncExternalStore(l => { sourceListeners.add(l); return () => { sourceListeners.delete(l); }; }, () => source, () => source);
   const requests = useSyncExternalStore(current?.subscribe ?? idle, current?.context ?? (() => noAsks), current?.context ?? (() => noAsks));
   useEffect(() => { if (current && !read.has(current)) { read.add(current); void current.refreshContext?.().catch(() => undefined); } }, [current]);
@@ -49,7 +51,7 @@ export function useQuestionContext(workspaceId: string, questionId: string): { r
   const request = contextFor(requests, { workspaceId, cardKey });
   return {
     request,
-    ask: current && (async (words, card, agentId) => (await current.askContext({ workspaceId, agentId, cardKey, card: card.slice(0, 300), ask: words })).request),
+    ask: current && (async (words, card, agentId, images) => (await current.askContext({ workspaceId, agentId, cardKey, card: card.slice(0, 300), ask: words, ...(images?.length ? { images } : {}) })).request),
   };
 }
 
@@ -65,7 +67,7 @@ export function QuestionMoreContext({ workspace: w, question: q, theme, compact,
   const asking = request?.state === "asking";
   const agentId = q.askedBy ?? w.mainAgentId ?? null;
   const chatOf = request?.askedOf ?? w.mainAgentId ?? null;
-  const onAsk = async (words: string) => { await ask!(words, `${q.id} · ${q.title}`, agentId); setOpen(false); };
+  const onAsk = async (words: string, images?: ImageUpload[]) => { await ask!(words, `${q.id} · ${q.title}`, agentId, images); setOpen(false); };
   const link = !!ask && !asking && !open && <Pressable accessibilityRole="button" accessibilityLabel={`More context on ${q.id}`} accessibilityHint="Ask the agent to explain this question" hitSlop={6} onPress={() => setOpen(true)}
     style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => ({ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: compact ? 44 : 28, paddingHorizontal: 4, marginLeft: -4, borderRadius: 6, opacity: pressed ? 0.7 : 1, backgroundColor: hovered ? withAlpha(c.foreground, 0.05) : "transparent" })}>
     <Icon name="Sparkles" size={14} color={c.foregroundMuted} />
@@ -76,7 +78,7 @@ export function QuestionMoreContext({ workspace: w, question: q, theme, compact,
     {request && <ContextAnswer theme={theme} compact={compact} request={request} waiting={false} onQuestion agent="the agent"
       openChat={() => { if (chatOf) openAgent?.(chatOf); }} chatDisabled={!openAgent || !chatOf} openAgent={openAgent} />}
     {open && ask && <MoveResult place="sheet" inset theme={theme} label="More context">
-      <MorePanel theme={theme} compact={compact} onClose={() => setOpen(false)} onAsk={onAsk}
+      <MorePanel theme={theme} compact={compact} onClose={() => setOpen(false)} onAsk={onAsk} target={{ kind: "workspace", workspaceId: w.id }}
         footnote="Keep going meanwhile: the answer shows on this question here, on Home and in Catch up." />
     </MoveResult>}
     {(link || children) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 16 }}>{link}{children}</View>}
@@ -137,17 +139,22 @@ export function ContextAnswer({ theme, compact, request, waiting, agent, openCha
  * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
  * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
  */
-export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_FOOTNOTE }: { theme: Theme; compact: boolean; onClose: () => void; onAsk: (words: string) => Promise<void>; /** What happens while the agent answers, in this surface's terms. */ footnote?: string }) {
+export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_FOOTNOTE, target }: { theme: Theme; compact: boolean; onClose: () => void;
+  /** `images`: pasted on the ask (every-agent-field-takes-images); they ride the ask to the card's main agent. */
+  onAsk: (words: string, images?: ImageUpload[]) => Promise<void>; /** What happens while the agent answers, in this surface's terms. */ footnote?: string;
+  /** The card's workspace: its main agent gets the ask (an-ask-goes-only-to-an-agent-that-can-answer-it). */
+  target: ImageTarget | null }) {
   const c = theme.colors; const t = text(c, compact);
+  const img = useImageAttachments({ target });
   const [words, setWords] = useState<string>(CONTEXT_ASKS[0].text);
   const [picked, setPicked] = useState<string>(CONTEXT_ASKS[0].id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const send = () => {
-    if (!words.trim() || busy) return;
+    if (!words.trim() || busy || img.blocked) return;
     setBusy(true); setError(null);
-    // The words stay unless the ask is recorded.
-    onAsk(words.trim()).catch(e => setError(errorText(e))).finally(() => setBusy(false));
+    // The words and images stay unless the ask is recorded.
+    onAsk(words.trim(), img.uploads()).then(() => img.clear(), e => setError(errorText(e))).finally(() => setBusy(false));
   };
   return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -162,12 +169,12 @@ export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_
       </Pressable>)}
     </View>
     <View {...PRIMARY_FORM} style={{ gap: 10 }}>
-    <TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
+    <ImageField model={img} theme={theme} compact={compact}><TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
       onChangeText={v => { setWords(v); setPicked(CONTEXT_ASKS.find(x => x.text === v)?.id ?? ""); }}
-      style={{ minHeight: compact ? 84 : 76, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
+      style={{ minHeight: compact ? 84 : 76, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} /></ImageField>
     {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     <View {...({ dataSet: { askAgent: "1" } } as object)} style={{ flexDirection: "row" }}>
-      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title="Ask the agent" loading={busy} disabled={!words.trim() || busy}
+      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title="Ask the agent" loading={busy} disabled={!words.trim() || busy || !!img.blocked}
         accessibilityHint={compact ? "Asks this workspace's main agent, which may wake it" : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
     </View>
     </View>

@@ -29,6 +29,7 @@ import { prWorkflowViewSchema, setPrWorkflowInputSchema } from "./pr-workflow";
 import { setUpdatesInputSchema, updatesViewSchema } from "./updates";
 import { releaseNotesViewSchema } from "./changelog";
 import { SCALE } from "./scale";
+import { imageSupportSchema, imageTargetSchema, imageUploadsSchema } from "./images";
 import { actionPlanSchema, actionResultSchema, browserCommandSchema, browserExchangeSchema, browserPrSchema, browserStatusSchema, prActionKind } from "./pr-actions";
 
 const agentCommunicationSchema = z.strictObject({
@@ -148,7 +149,9 @@ export const dismissRpc = defineRpc({ name: "follow.dismiss", input: z.strictObj
   issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]*-\d+$/).max(30).optional(), undo: z.boolean().optional() })
   .refine(i => [!!i.agentId, !!(i.workspaceId && i.key), !!i.issue].filter(Boolean).length === 1, "Give workspaceId and key for a Needs-you item, agentId for an agent's brief, or issue for a raised Linear issue."),
   output: z.object({ name: z.string() }) });
-export const answerQuestionRpc = defineRpc({ name: "follow.answer-question", input: z.object({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional(), action: z.enum(["send", "copy", "chat", "resend"]) }), output: z.object({ workspace: workspaceSchema, question: questionSchema }) });
+export const answerQuestionRpc = defineRpc({ name: "follow.answer-question", input: z.object({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional(), action: z.enum(["send", "copy", "chat", "resend"]),
+  /** Pasted images (shared/images.ts): they ride the answer's message, on Send only. */
+  images: imageUploadsSchema.optional() }), output: z.object({ workspace: workspaceSchema, question: questionSchema }) });
 export const setSpecRpc = defineRpc({ name: "follow.set-spec", input: z.strictObject({ agentId: idSchema, url: z.string().trim().min(1).max(2000), title: z.string().trim().max(120).optional() }), output: z.object({ workspaceId: idSchema, spec: specSchema.nullable(), applied: z.boolean(), message: z.string() }) });
 export const workspaceSpecRpc = defineRpc({ name: "follow.workspace-spec", input: z.discriminatedUnion("action", [
   z.object({ workspaceId: idSchema, action: z.literal("set"), url: z.string().trim().min(1).max(2000), title: z.string().trim().max(120).nullable().optional() }),
@@ -221,6 +224,8 @@ export const briefActionRpc = defineRpc({ name: "follow.brief-action", input: z.
   choices: z.array(z.object({ decisionId: z.string().max(20), choice: briefChoiceSchema, words: z.string().trim().max(2000).optional() })).min(1).max(10).optional(),
   /** One per Send, reused on Retry: the same answer is recorded and sent once (server/inbox.ts briefAction). */
   answerId: z.string().regex(/^[\w-]{8,80}$/).optional(),
+  /** Pasted images (shared/images.ts): they ride the answer's message. */
+  images: imageUploadsSchema.optional(),
 }), output: z.object({ brief: briefSchema }) });
 
 // Agent parity: one RPC carries every agent tool; the server runs the same path as the developer's button.
@@ -232,14 +237,16 @@ export const overseerStatusSchema = z.object({ enabled: z.boolean(), agentId: z.
   model: z.string().nullable().default(null), restartWith: z.string().nullable().default(null), configured: z.string().nullable().default(null) });
 export const overseerStatusRpc = defineRpc({ name: "follow.overseer-status", input: z.object({}), output: overseerStatusSchema });
 export const overseerStartRpc = defineRpc({ name: "follow.overseer-start", input: z.object({}), output: overseerStatusSchema });
-export const overseerAskRpc = defineRpc({ name: "follow.overseer-ask", input: z.strictObject({ text: z.string().trim().min(1).max(2000) }), output: overseerStatusSchema });
+export const overseerAskRpc = defineRpc({ name: "follow.overseer-ask", input: z.strictObject({ text: z.string().trim().min(1).max(2000), images: imageUploadsSchema.optional() }), output: overseerStatusSchema });
+/** Whether a field's recipient takes pasted images (server/image-support.ts), asked once per target when the first image is added. */
+export const imageSupportRpc = defineRpc({ name: "follow.image-support", input: z.strictObject({ target: imageTargetSchema }), output: imageSupportSchema });
 // Catch up's More context (docs/needs-you.md#catch-up): ask the Overseer or the card's agent, list the asks, and the
 // asked agent's reply. The ask answers once it is recorded; the send to the agent goes through the message queue.
 export const contextAskRpc = defineRpc({ name: "follow.context-ask", input: z.strictObject({
   workspaceId: z.string().min(1).max(200).nullable(), agentId: z.string().min(1).max(200).nullable(), cardKey: z.string().min(1).max(400),
   card: z.string().trim().min(1).max(300),
   /** Ignored: every ask goes to the card's workspace's main agent. Still accepted, so older callers don't break. */
-  target: z.enum(CONTEXT_TARGETS).optional(), ask: z.string().trim().min(1).max(2000) }),
+  target: z.enum(CONTEXT_TARGETS).optional(), ask: z.string().trim().min(1).max(2000), images: imageUploadsSchema.optional() }),
   output: z.object({ request: contextRequestSchema, fresh: z.boolean(), note: z.string().optional() }) });
 export const contextListRpc = defineRpc({ name: "follow.context-list", input: z.strictObject({ workspaceId: z.string().max(200).optional() }), output: z.object({ requests: z.array(contextRequestSchema) }) });
 /** Catch up's deck as the developer's Home would deal it (agent parity: an agent sees what the developer goes through). */

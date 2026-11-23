@@ -6,6 +6,13 @@ import { MESSAGE_STUCK_MS, PASEO_UNREACHABLE, PROBE_MS, PROBE_SLOW_MS, PROBE_BAC
 import { ConversationGone, DeliveryDeferred, idRefused, realTimers, stableMessageId, withDeadline, type Timers } from "./delivery";
 import { WriteBehind, type WriteHealth } from "./write-behind";
 import type { Workspace } from "../shared/model";
+import type { ImageRef } from "../shared/images";
+
+/** The image files a queue item references (server/image-store.ts ImageStore). */
+export interface QueueImages {
+  read(refs: readonly ImageRef[]): Promise<{ data: string; mimeType: string }[]>;
+  remove(refs: readonly ImageRef[]): Promise<void>;
+}
 
 /**
  * a-message-is-saved-before-sent-and-arrives-once: one durable outbox (queue.json) and one sender per workspace.
@@ -44,7 +51,7 @@ export type Delivered = { to: string; receipt: DeliveryReceipt | null };
 /** How messages reach Paseo. PaseoGateway in the worker; fakes in tests. */
 export interface Courier {
   /** Sends to the first available recipient and returns it. DeliveryDeferred: nothing was sent. */
-  deliverTo(target: Target, text: string, messageId: string, by?: string): Promise<string | Delivered>;
+  deliverTo(target: Target, text: string, messageId: string, by?: string, images?: { data: string; mimeType: string }[]): Promise<string | Delivered>;
   /** Whether `messageId` is in the agent's chat since `since` (`marker`: the text to look for where ids aren't kept). Null: unknown. */
   arrived(agentId: string, messageId: string, since: string, marker: string): Promise<boolean | null>;
   /** Connect-only: whether Paseo answers, on the worker's one connection, without reading or waking any agent. */
@@ -106,8 +113,10 @@ export class MessageQueue {
   readonly writer: WriteBehind<QueueFile>;
   /** Sends that went out (tests and the harness count them). */
   sends = 0;
-  constructor(readonly directory: string, private courier: Courier, o: { health?: WriteHealth; writeMs?: number } = {}) {
+  private images: QueueImages | null;
+  constructor(readonly directory: string, private courier: Courier, o: { health?: WriteHealth; writeMs?: number; images?: QueueImages } = {}) {
     this.scale = queueTimeScale(directory);
+    this.images = o.images ?? null;
     this.writer = new WriteBehind<QueueFile>({ path: join(directory, QUEUE_FILE), encode: v => JSON.stringify(v), delayMs: o.writeMs ?? 1_000, health: o.health });
   }
 
@@ -156,7 +165,12 @@ export class MessageQueue {
   /** Saves a new message (coalesced write) and arms its workspace's quiet window. An existing id is returned as it is. */
   enqueue(input: NewQueueItem): QueueItem {
     const existing = this.items.get(input.id);
-    if (existing) return existing;
+    if (existing) {
+      // The same message again (a double click): its new copies of the images aren't needed.
+      const extra = (input.images ?? []).filter(r => !existing.images.some(e => e.id === r.id));
+      if (extra.length && this.images) void this.images.remove(extra).catch(() => undefined);
+      return existing;
+    }
     const item = queueItemSchema.parse({ ...input, state: input.state ?? "queued", createdAt: input.createdAt ?? this.iso() });
     this.items.set(item.id, item);
     this.lastEnqueue.set(item.key, this.now());
@@ -164,6 +178,8 @@ export class MessageQueue {
     this.arm(item.key);
     return item;
   }
+  /** Every image id a live item references: the worker's start sweeps the rest (ImageStore.sweep). */
+  imageIds(): string[] { return [...this.items.values()].flatMap(i => i.images.map(r => r.id)); }
   get(id: string): QueueItem | null { return this.items.get(id) ?? this.recent.find(i => i.id === id) ?? null; }
   list(filter: { key?: string; agentId?: string } = {}): { items: QueueItem[]; recent: QueueItem[] } {
     const pick = (i: QueueItem) => (!filter.key || i.key === filter.key) && (!filter.agentId || i.to === filter.agentId || i.envelope?.to === filter.agentId || i.ref.agentId === filter.agentId);
@@ -325,9 +341,12 @@ export class MessageQueue {
     for (const item of items) await this.project(item);
     if (this.stopped) return;
     const by = items.find(i => i.by === "developer")?.by ?? items.find(i => i.by)?.by;
+    // Every part's pasted images ride the envelope, read from their files for this send (a resend reads them again).
+    const refs = items.flatMap(i => i.images);
+    const images = refs.length && this.images ? await this.images.read(refs) : [];
     try {
       this.sends++;
-      const sent = await withDeadline(this.courier.deliverTo(target, envelopeText(items.map(i => i.text)), messageId, by), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
+      const sent = await withDeadline(this.courier.deliverTo(target, envelopeText(items.map(i => i.text)), messageId, by, ...(images.length ? [images] as const : [])), this.attemptMs * this.scale, "Paseo didn't confirm the message in time", this.timers);
       // A stopped worker writes nothing: the next one owns queue.json and reads this send back as uncertain.
       if (this.stopped) return;
       const { to, receipt: real } = typeof sent === "string" ? { to: sent, receipt: null } : sent;
@@ -394,7 +413,9 @@ export class MessageQueue {
     Object.assign(item, { state, reason, to, nextAt: null, settledAt: this.iso() });
     await this.project(item);
     this.items.delete(item.id);
-    this.recent = [...this.recent.filter(i => i.id !== item.id), { ...item, text: "" }].slice(-QUEUE_RECENT);
+    // Delivered or cancelled: its images are done with (a Failed item keeps them for Retry).
+    if (item.images.length && this.images) await this.images.remove(item.images).catch(() => undefined);
+    this.recent = [...this.recent.filter(i => i.id !== item.id), { ...item, text: "", images: [] }].slice(-QUEUE_RECENT);
     this.save();
     if (this.probing && ![...this.items.values()].some(i => this.waitsForPaseo(i))) { this.timers.clear(this.probing.handle); this.probing = null; this.outageSince = null; }
   }

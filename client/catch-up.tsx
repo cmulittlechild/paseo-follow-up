@@ -7,6 +7,8 @@ import { Animated, PanResponder, Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
+import { ImageField, useImageAttachments } from "./image-attach";
+import type { ImageUpload } from "../shared/images";
 import { useQuery } from "@tanstack/react-query";
 import { inboxBriefRpc } from "../shared/contracts";
 import { needsYou } from "../shared/attention";
@@ -125,9 +127,9 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const nextCard = cardOf(session.order[session.pos + 1]);
   useWorkspace(live, nextCard?.s.workspaceId ?? "", { enabled: !!nextCard?.s.workspaceId });
 
-  const ask = async (words: string) => {
+  const ask = async (words: string, images?: ImageUpload[]) => {
     if (!card) return;
-    const out = await extras.askContext({ workspaceId: card.s.workspaceId, agentId: card.s.agentId, cardKey: card.key, card: cardLabel(card, w).slice(0, 300), ask: words });
+    const out = await extras.askContext({ workspaceId: card.s.workspaceId, agentId: card.s.agentId, cardKey: card.key, card: cardLabel(card, w).slice(0, 300), ask: words, ...(images?.length ? { images } : {}) });
     setMore(false);
     // context-never-blocks-the-deck: the workstream waits, the deck moves on.
     if (out.request.state === "asking") setSession(s => park(s, out.request.id, card.key));
@@ -351,7 +353,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
 /** One card: who and what, the ask through its own surface's component, then the deck's moves pinned to the bottom. */
 function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMore, request, waiting, onAsk, sameWorkspace, onDone, onSkip, onSkipWorkspace, wsLeft, onBack, onLater }: {
   card: DeckCard; w: ListWorkspace | undefined; theme: Theme; compact: boolean; deps: CatchUpDeps; navigation: Nav; gone: boolean; more: boolean; setMore: (v: boolean | ((v: boolean) => boolean)) => void;
-  request: ContextRequest | null; waiting: boolean; onAsk: (words: string) => Promise<void>;
+  request: ContextRequest | null; waiting: boolean; onAsk: (words: string, images?: ImageUpload[]) => Promise<void>;
   sameWorkspace: string[]; onDone: () => void; onSkip: () => void; onSkipWorkspace?: () => void; wsLeft: number; onBack?: () => void; onLater: () => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
@@ -425,7 +427,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   // a-move-bar-action-opens-in-view (MOVE_OPENS): More context and Later open where the eye is, a sheet above the
   // phone's bar or a popover on their button on desktop, never appended below the card.
   const closeMore = () => { setMore(false); if (!compact) focusSoon("catch-up-more"); };
-  const moreBlock = more && <MorePanel theme={theme} compact={compact} onClose={closeMore} onAsk={onAsk} />;
+  const moreBlock = more && <MorePanel theme={theme} compact={compact} onClose={closeMore} onAsk={onAsk} target={s.workspaceId ? { kind: "workspace", workspaceId: s.workspaceId } : s.agentId ? { kind: "agent", agentId: s.agentId } : null} />;
   const later = (until: string) => { setLaterOpen(false); if (s.agentId) void deps.sources.inbox.snooze([s.agentId], until); onLater(); };
   const laterBlock = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" accessibilityLabel="Later" style={{ gap: 8 }}>
     <Text style={[t.small, { fontWeight: "600" }]}>Back in your Needs you</Text>
@@ -572,9 +574,15 @@ function NoteRow({ theme, compact, agentId }: { theme: Theme; compact: boolean; 
   const c = theme.colors;
   const agent = useAgentLive(agentId);
   const [words, setWords] = useState("");
-  return <View {...PRIMARY_FORM} style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+  // Pasted images go with the words through Paseo's own send (every-agent-field-takes-images).
+  const img = useImageAttachments({ target: { kind: "agent", agentId } });
+  const send = () => {
+    const images = img.uploads()?.map(i => ({ data: i.data, mimeType: i.mimeType }));
+    void agent.handle?.send(words.trim(), images ? { images } : undefined); setWords(""); img.clear();
+  };
+  return <ImageField model={img} theme={theme} compact={compact}><View {...PRIMARY_FORM} style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
     <TextInput accessibilityLabel="Tell the agent something" placeholder="Tell the agent something" placeholderTextColor={c.foregroundMuted} value={words} onChangeText={setWords} multiline
       style={{ flex: 1, minHeight: compact ? 44 : 36, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
-    <IconButton theme={theme} compact={compact} icon="Send" label="Send to the agent" tooltip={!compact} disabled={!words.trim()} onPress={() => { void agent.handle?.send(words.trim()); setWords(""); }} />
-  </View>;
+    <IconButton theme={theme} compact={compact} icon="Send" label="Send to the agent" tooltip={!compact} disabled={!words.trim() || !!img.blocked} onPress={send} />
+  </View></ImageField>;
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { imageRefSchema, imageUploadsSchema, MAX_IMAGES } from "./images";
 import { classifyLink, linearKey, teamOf } from "./linked";
 import type { LinearIssue, LinearList } from "./linear-issues";
 
@@ -370,6 +371,8 @@ export const dispatchRecordSchema = z.object({
   promptHash: z.string().max(16),
   /** The agent's first message, kept only until it is sent (a queued dispatch resends it after a restart). */
   prompt: z.string().max(INSTRUCTIONS_MAX + BODY_MAX_BYTES * 2 + 4096).nullable(),
+  /** Pasted images (server/image-store.ts refs), kept with the prompt until the agent is created or the dispatch fails. */
+  images: z.array(imageRefSchema).max(MAX_IMAGES).optional(),
   state: z.enum(DISPATCH_STATES),
   /** The step in progress or that failed, in the developer's words. */
   step: z.string().max(200).nullable(),
@@ -454,6 +457,8 @@ export const dispatchInputSchema = z.strictObject({
   note: z.string().max(4000).optional(),
   /** This dispatch's agent, over the action's own and New's default (the dialog's Agent chip). */
   agent: actionAgentSchema.optional(),
+  /** Pasted images (shared/images.ts): they go with the new agent's first message. */
+  images: imageUploadsSchema.optional(),
 });
 export const actionChangeSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("upsert"), action: dispatchActionSchema.omit({ by: true, builtin: true }) }),

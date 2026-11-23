@@ -153,14 +153,14 @@ export class Overseer {
    * The developer's words from the omnibox: start the Overseer if this is the first use (asking is the click), bring
    * it back if it was archived, then send the text unchanged. Sending may load the Overseer; that's the ask.
    */
-  async ask(paseo: OverseerPaseo, text: string): Promise<OverseerState> {
+  async ask(paseo: OverseerPaseo, text: string, images?: { data: string; mimeType: string }[]): Promise<OverseerState> {
     const ask = text.trim();
     if (!ask) throw new Error("Type what you want the Overseer to do.");
     if (!await this.d.enabled()) throw new Error("The Overseer is off. Turn it on in Follow-up settings.");
     let s = await this.state();
     if (!s.agentId) s = await this.start(paseo);
     else if (!await this.alive(paseo, s)) { await this.ensure(paseo); s = await this.state(); }
-    await paseo.agents.ref(s.agentId!).send(ask);
+    await paseo.agents.ref(s.agentId!).send(ask, ...(images?.length ? [{ images }] : []));
     return s;
   }
 

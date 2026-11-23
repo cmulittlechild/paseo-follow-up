@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, TextInput, View } from "react-native";
+import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
 import { Pressable, Text } from "./text";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { homeCounts, type HomeGroupId, type HomeModel } from "../shared/home";
@@ -37,6 +38,8 @@ export type Omnibox = {
   inputRef: React.RefObject<TextInput | null>;
   /** The Overseer is on, so a query can also be an ask. */
   askOn: boolean;
+  /** Images pasted or dropped on the search while the Overseer is on: they go with the ask (every-agent-field-takes-images). */
+  images: ImageAttachments;
 };
 
 /**
@@ -55,6 +58,7 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const searching = query.trim().length > 0;
   const overseer = useSyncExternalStore(sources.extras.subscribe, sources.extras.overseer, sources.extras.overseer);
   const askOn = !!overseer?.enabled;
+  const images = useImageAttachments({ target: askOn ? { kind: "overseer" } : null });
   // Linked keys and titles: fetched only while there's a query (client/linked.tsx explains why).
   const linked = useLinkedIndex(searching);
   // Built lazily: nothing is indexed until the developer types.
@@ -72,7 +76,7 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const token = useSyncExternalStore(sources.extras.subscribe, sources.extras.focusToken, sources.extras.focusToken);
   useEffect(() => { if (sources.extras.takeFocus()) inputRef.current?.focus(); }, [token, sources.extras]);
   const hint = layoutHint((results ?? []).flatMap(r => r.hit ? [r.hit] : []));
-  return { query, setQuery, setPhysical, layoutHint: hint, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn };
+  return { query, setQuery, setPhysical, layoutHint: hint, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn, images };
 }
 
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: unknown; preventDefault(): void };
@@ -171,6 +175,10 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
 export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem | null) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
+  // The bar stays one line: a paste or drop lands here, and Home draws the thumbnails on their own line under it.
+  if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+    slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
+    onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></ImageField>;
   return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} />;
