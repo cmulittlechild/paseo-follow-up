@@ -2823,7 +2823,7 @@ async function newShots({ shoot, call, out, home, billing }) {
       if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
     await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
-    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
+    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ issues? already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
       check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
     await shoot(name("ambiguous"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^OPS-12 /); await dialog(page).getByText("Which project for OPS?").first().waitFor();
       check(`${device} ${theme}: ambiguous blocks every action`, await dialog(page).getByText("Pick a project first; the actions start there.").count() > 0); });
@@ -2862,7 +2862,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   // title) fold into one last row; opened, each is muted and names its workspace, and ↵ opens it. All taken: one line.
   for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) {
     const phone = vp.width < 768;
-    const fold = page => row(page, /^\d+ already ha(s|ve) a workspace/);
+    const fold = page => row(page, /^\d+ issues? already ha(s|ve) a workspace/);
     await shoot(`new-taken-folded-${device}-${theme}`, vp, theme, async page => {
       await openFromHome(page, vp); await fold(page).waitFor();
       check(`${device} ${theme}: a taken issue is not listed until the fold opens`, !(await dialog(page).getByRole("button", { name: /^APP-142 / }).filter({ visible: true }).count()) && !(await dialog(page).getByRole("button", { name: /^APP-160 / }).filter({ visible: true }).count()));
@@ -2870,16 +2870,17 @@ async function newShots({ shoot, call, out, home, billing }) {
     });
     await shoot(`new-taken-open-${device}-${theme}`, vp, theme, async page => {
       await openFromHome(page, vp); await fold(page).click();
-      check(`${device} ${theme}: the PR-named issue names its workspace`, await dialog(page).getByText("Webhook signing · running").count() > 0);
-      await pick(page, /^APP-160 /);
-      check(`${device} ${theme}: a taken issue's ↵ is Open it`, await primary(page, /^Open it/).count() > 0);
-      if (phone) await page.goBack().catch(() => undefined);
+      await dialog(page).getByText("Webhook signing · running").first().waitFor();
+      check(`${device} ${theme}: the PR-named issue names its workspace`, true);
+      // Phones keep the list in view (picking opens the preview screen, which new-existing renders).
+      if (!phone) { await pick(page, /^APP-160 /); check(`${device} ${theme}: a taken issue's ↵ is Open it`, await primary(page, /^Open it/).count() > 0); }
     });
   }
   await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues().filter(i => ["APP-142", "APP-160"].includes(i.id))));
   await call("follow.dispatch-sources", { fresh: true });
   for (const [device, vp, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) await shoot(`new-taken-all-${device}-${theme}`, vp, theme, async page => {
     await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Nothing new to start.").waitFor();
+    if (vp.width >= 768) check(`${device} ${theme}: all taken, the fold is selected and says what ↵ does`, await dialog(page).getByText("shows them").count() > 0);
   });
   await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(newIssues()));
   await call("follow.dispatch-sources", { fresh: true });

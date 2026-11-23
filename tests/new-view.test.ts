@@ -27,7 +27,7 @@ test("an empty field lists the issues you could start, the first preselected; on
   ]);
   const open = newRows(sources, "", NOW, true);
   assert.deepEqual(open.rows.map(r => r.kind === "issue" ? [r.key, r.route.text, r.taken] : [r.id, r.kind === "fold" && r.title]), [
-    ["ACME-142", "→ acme/web", false], ["WEB-77", "→ which project?", false], ["taken", "1 already has a workspace"], ["ACME-151", "Audit export · running", true],
+    ["ACME-142", "→ acme/web", false], ["WEB-77", "→ which project?", false], ["taken", "1 issue already has a workspace"], ["ACME-151", "Audit export · running", true],
   ]);
 });
 
@@ -45,7 +45,7 @@ test("words preselect the best matching issue, then Start from your words, and S
   assert.deepEqual(typed.rows.map(r => r.id), ["WEB-77", "words", "search"]);
   assert.equal(typed.selected, "WEB-77");
   // A match a workspace already has folds, so words never preselect it.
-  assert.deepEqual(newRows(sources, "export", NOW).rows.map(r => r.id), ["words", "taken", "search"]);
+  assert.deepEqual(newRows(sources, "export", NOW).rows.map(r => r.id), ["words", "search", "taken"]);
   const none = newRows(sources, "Rate-limit webhook retries per endpoint", NOW);
   assert.deepEqual(none.rows.map(r => r.id), ["words", "search"]);
   assert.equal(rowSource(none.rows[0]), "Rate-limit webhook retries per endpoint");

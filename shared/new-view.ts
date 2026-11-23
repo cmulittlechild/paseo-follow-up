@@ -11,7 +11,7 @@ import type { LinearIssue } from "./linear-issues";
 export type RowTone = "plain" | "warn" | "open";
 export type NewRow =
   | { kind: "issue"; id: string; key: string; title: string; icon: string; state: string; age: string; route: { text: string; tone: RowTone }; tag: string | null; taken: boolean }
-  /** The last row while some listed issues already have a workspace: "N already have a workspace", opens in place. */
+  /** The last row while some listed issues already have a workspace: "N issues already have a workspace", opens in place. */
   | { kind: "fold"; id: "taken"; count: number; open: boolean; title: string }
   | { kind: "pasted"; id: "pasted"; key: string; title: string; icon: string; sourceKind: SourceKind; raw: string }
   | { kind: "words"; id: "words"; title: string; raw: string }
@@ -58,8 +58,8 @@ function issueRow(issue: LinearIssue, routes: Record<string, SourceRoute>, now: 
   return { kind: "issue", id: issue.key, key: issue.key, title: issue.title, icon: stateIcon(issue.stateType), state: issue.state ?? "", age: shortAge(issue.updatedAt, now), route: routeText(routes[issue.key]), tag, taken: !!routes[issue.key]?.existing };
 }
 
-/** "1 already has a workspace", "3 already have a workspace": the fold's words. */
-export const takenWords = (n: number) => `${n} already ${n === 1 ? "has" : "have"} a workspace`;
+/** "1 issue already has a workspace", "3 issues already have a workspace": the fold's words. */
+export const takenWords = (n: number) => n === 1 ? "1 issue already has a workspace" : `${n} issues already have a workspace`;
 
 /** Startable rows, then (when some are taken) the fold, then the taken rows once it's open. */
 function withFold(rows: NewRow[], taken: NewRow[], open: boolean): NewRow[] {
@@ -76,7 +76,7 @@ export function matchesQuery(issue: Pick<LinearIssue, "key" | "title">, query: s
 /**
  * The left list and its default selection for what's in the field (a-taken-issue-is-not-a-suggestion): My issues lists
  * only issues you could start. One a live workspace already has (`routes[key].existing`, the server's one predicate)
- * folds into a last row, "N already have a workspace", that opens in place (`foldOpen`); preselection and ↑/↓ reach a
+ * folds into a last row, "N issues already have a workspace", that opens in place (`foldOpen`); preselection and ↑/↓ reach a
  * taken row only once it's open. `empty`: the line above the fold when nothing is left to start (the fold right
  * under it says how many).
  * - Empty: My issues, the first startable preselected (the right pane is never empty while Linear is there).
@@ -93,7 +93,8 @@ export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | nu
   const q = query.trim();
   if (!q) {
     const { free, taken } = split(issues);
-    return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? null, empty: !free.length && taken.length ? "Nothing new to start." : null };
+    // All taken: the fold is selected, so ↵ opens it.
+    return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? (taken.length ? "taken" : null), empty: !free.length && taken.length ? "Nothing new to start." : null };
   }
   const parsed = parseSource(q);
   if (parsed.kind !== "text") {
@@ -107,7 +108,8 @@ export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | nu
   const { free: matches, taken } = split(issues.filter(i => matchesQuery(i, q)));
   const words: NewRow = { kind: "words", id: "words", title: parsed.title, raw: q };
   const search: NewRow = { kind: "search", id: "search", query: q };
-  const rows = [...withFold(matches.length ? [matches[0], words, ...matches.slice(1)] : [words], taken, foldOpen), search];
+  // Search all of Linear (⇧↵) stays above the fold, so opening it never pushes the search down.
+  const rows = withFold(matches.length ? [matches[0], words, ...matches.slice(1), search] : [words, search], taken, foldOpen);
   return { rows, selected: rows[0].id, empty: null };
 }
 

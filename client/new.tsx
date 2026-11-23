@@ -296,7 +296,7 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   </Pressable>;
   const routeColor = row.route.tone === "warn" ? c.statusWarning : row.route.tone === "open" && !row.taken ? c.foreground : c.foregroundMuted;
   // A taken issue (inside the open fold) is muted: it's somebody's work already, and ↵ opens its workspace.
-  const ink = row.taken ? c.foregroundMuted : c.foreground;
+  const ink = row.taken && !selected ? c.foregroundMuted : c.foreground;
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${row.key} ${row.title}, ${row.state}, ${row.taken ? `already in ${row.route.text}` : row.route.text}`} onPress={onPress} style={base}>
     <View style={{ paddingTop: 2 }}><Icon name={row.icon} size={15} color={row.icon === "Contrast" && !row.taken ? c.statusWarning : c.foregroundMuted} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -358,6 +358,20 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
           {sources.recent.map(r => <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{r.title} · {r.actionName} · {r.state === "created" ? "started" : r.state}</Text>)}
         </View>}
       </ScrollView>}
+  </View>;
+}
+
+/**
+ * The fold selected (a-taken-issue-is-not-a-suggestion): what it holds and what ↵ does, never a blank pane. Each taken
+ * issue names the workspace that has it; picking one there shows Open it.
+ */
+function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; rows: NewRow[]; c: Colors }) {
+  return <View style={{ padding: 24, gap: 10 }}>
+    <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>{row.title}</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so New doesn't suggest them. Pick one to open its workspace.</Text>
+    {row.open && <View style={{ gap: 4 }}>{rows.filter((r): r is Extract<NewRow, { kind: "issue" }> => r.kind === "issue" && r.taken).map(r =>
+      <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}><Text style={{ color: c.foreground }}>{r.key}</Text>  {r.route.text}</Text>)}</View>}
+    {Platform.OS === "web" && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Kbd c={c} label="↵" /><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{row.open ? "hides them" : "shows them"}</Text></View>}
   </View>;
 }
 
@@ -517,6 +531,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const right = phase.kind === "record" && record ? <RecordPane record={record} c={c} compact={compact} now={now} />
     : planNow ? <Preview plan={planNow} overrides={overrides} setOverrides={setOverrides} c={c} compact={compact} busy={busy} catalog={catalog} loadCatalog={loadCatalog} projects={projects} loadProjects={loadProjects} saveBase={saveBase} instructions={instructions} setInstructions={setInstructions} reopen={reopen} />
     : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
+    : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
       <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>Paste a link or describe the task</Text>
       <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>A Linear key or link, a GitHub issue or pull request, any link, or a sentence. The preview shows here before anything starts.</Text>

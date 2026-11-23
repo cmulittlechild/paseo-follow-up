@@ -1132,7 +1132,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    or one tracking a PR whose branch or title names its key as a whole token, the PR's workspace first, then the most
    recently active. The worker builds it once per read from state it already holds (`issueHolders`, `takenIssues`), so
    invariant 94 still holds. Every surface that offers to start work from an issue reads it: New's list and its
-   preselection (a taken issue folds into "N already have a workspace" and ↵ opens its workspace), dispatch's
+   preselection (a taken issue folds into "N issues already have a workspace" and ↵ opens its workspace), dispatch's
    `existing` (paste, preview, the `dispatch` dry run), `dispatch_sources`' `taken`, Needs you's raised issues
    (`raisedNeeds`) and the brief's Since block. 2026-11-23, on 2.4.0-beta.3: 8 of New's first 9 issues were ones a
    planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a

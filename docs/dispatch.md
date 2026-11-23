@@ -100,7 +100,7 @@ in place (`enterNew`, `index.client.tsx`).
   fill in once one is picked.
 - **A source with a live workspace:** Open it (↵) leads, and starting another stays under the usual gate.
 - **Issues that already have a workspace** (`a-taken-issue-is-not-a-suggestion`, invariant 95) are never suggested:
-  My issues folds them into one quiet last row, "N already have a workspace", that opens in place; each is muted and
+  My issues folds them into one quiet last row, "N issues already have a workspace", that opens in place; each is muted and
   names its workspace, and ↵ opens it. Preselection and ↑/↓ reach them only once the fold is open, and a list with
   nothing else says "Nothing new to start." above the fold. Pasting one's link still shows it first, with
   Open it as ↵. One predicate decides it, `issueWorkspaces` (`shared/issue-workspace.ts`): a live workspace that links

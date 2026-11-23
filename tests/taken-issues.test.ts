@@ -94,7 +94,7 @@ test("all taken: the list says so in one line, never a blank pane", () => {
   const { rows, selected, empty } = newRows(sources, "", NOW);
   assert.equal(empty, "Nothing new to start.", "the fold right under it says how many");
   assert.deepEqual(rows.map(r => r.id), ["taken"]);
-  assert.equal(selected, null);
+  assert.equal(selected, "taken", "all taken: the fold is selected, so ↵ opens it");
 });
 
 test("every surface reads the one predicate: dispatch's existing, New's list, the queue's raised issues", async () => {
