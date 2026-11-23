@@ -188,7 +188,7 @@ export function rowMenu(input: RowMenuInput): RowMenuSection[] {
   const hold = needs.some(i => i.kind === "hold");
   add("fix", w ? [
     hold && { key: "clear_hold", action: "clear_hold", label: "Resume follow-up", icon: "Play" },
-    send?.kind === "send" && { key: `send_repairs:${send.batchId}`, action: "send_repairs", label: send.tasks.length === 1 ? "Send 1 task" : `Send ${send.tasks.length} tasks`, icon: "Send", arg: send.batchId },
+    send?.kind === "send" && { key: `send_repairs:${send.batchId}`, action: "send_repairs", label: `Send ${send.what}`, icon: "Send", arg: send.batchId },
     retry?.kind === "retry" && { key: `retry_batch:${retry.batchId}`, action: "retry_batch", label: "Retry", icon: "RotateCcw", arg: retry.batchId },
   ] : []);
 

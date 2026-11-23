@@ -417,6 +417,6 @@ function HoldLine({ theme, text: line, dense, touch }: { theme: Theme; text: str
 function SendNowButton({ s, theme, touch, onSendNow }: { s: Workstream; theme: Theme; touch: boolean; onSendNow: (s: Workstream) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const n = s.sendNow!.count;
-  return <Button theme={theme} compact={touch} kind="secondary" title="Send now" accessibilityLabel={`Send ${n} task${n === 1 ? "" : "s"} to ${s.title} now`} loading={busy} disabled={busy}
+  return <Button theme={theme} compact={touch} kind="secondary" title="Send now" accessibilityLabel={`Send ${s.sendNow!.what} to ${s.title} now`} loading={busy} disabled={busy}
     onPress={() => { setBusy(true); void onSendNow(s).finally(() => setBusy(false)); }} />;
 }

@@ -90,7 +90,7 @@ export type Workstream = {
   /** A fresh external priority (Priority sort): the one-line reason and its sources. Never invented. */
   priority?: { score: number; reason: string; source: { kind: PrioritySourceKind; label: string } | null } | null;
   /** Sending rows: the Send now the server would take (never one that waits on the developer: that's in Needs you). */
-  sendNow?: { batchId: string; count: number } | null;
+  sendNow?: { batchId: string; count: number; what: string } | null;
   /** Changes whenever anything shown on the row changes, so a memoised row re-renders only then. */
   sig: string;
 };
@@ -202,7 +202,7 @@ function sigOf(s: Omit<Workstream, "sig">): string {
   return [s.group, s.tier, s.icon, s.tone, s.title, s.agent, s.line, s.word, s.at, s.wakeAt ?? "", s.readyToArchive, s.badges.map(b => b.text).join("|"), s.pr ? `${s.pr.label}:${s.pr.checks?.text}` : "",
     s.priority ? `${s.priority.reason}:${s.priority.source?.label}` : "", s.sendNow ? `send:${s.sendNow.batchId}` : ""].join("\u0001");
 }
-const sendNowOf = (s: Sending) => s.state === "queued" && s.canSendNow ? { batchId: s.batchId, count: s.count } : null;
+const sendNowOf = (s: Sending) => s.state === "queued" && s.canSendNow ? { batchId: s.batchId, count: s.count, what: s.what } : null;
 const make = (s: Omit<Workstream, "sig">): Workstream => ({ ...s, sig: sigOf(s) });
 const stripSig = ({ sig: _sig, ...s }: Workstream): Omit<Workstream, "sig"> => s;
 
