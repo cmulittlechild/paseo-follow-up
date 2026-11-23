@@ -92,6 +92,9 @@ export type HomeListProps = {
 
 const noMenu: OpenRowMenu = () => undefined;
 
+/** Where a phone row's text starts: its 14 padding, the 18 glyph, the 10 gap. Older's explainer lines up with it. */
+export const TOUCH_ROW_TEXT = 14 + 18 + 10;
+
 export function HomeList({ model, theme, dense = false, touch, selectedKey, onSelect, briefLine, renderExpanded, header, footer, top, afterNeeds, raised, emptyAction, results, hits = null, activeResult = 0, onResult, filter = null, overseer = null, stackOverseer = false, asking = false, menu, onSendNow, keys, selectedBg }: HomeListProps) {
   const c = theme.colors;
   const [openMenu, setOpenMenu] = useState<RowMenuOpen | null>(null);
@@ -124,7 +127,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
     switch (item.type) {
       // "Archived" heads its results like a group: small caps on desktop, sentence case at 13 on phones (GroupHeader).
       case "label": return <Text accessibilityRole={item.key === "l:archived" ? "header" : undefined} style={{ color: c.foregroundMuted, fontSize: item.key === "l:archived" && !touch ? 11 : 13, fontWeight: item.key === "l:archived" ? "600" : "400",
-        letterSpacing: item.key === "l:archived" && !touch ? 0.6 : 0, textTransform: item.key === "l:archived" && !touch ? "uppercase" : "none", paddingHorizontal: dense ? 8 : 16, paddingTop: 12, paddingBottom: 4 }}>{item.text}</Text>;
+        letterSpacing: item.key === "l:archived" && !touch ? 0.6 : 0, textTransform: item.key === "l:archived" && !touch ? "uppercase" : "none", paddingHorizontal: dense ? 8 : 16, ...(item.key === "l:older" && touch ? { paddingLeft: TOUCH_ROW_TEXT } : null), paddingTop: 12, paddingBottom: 4 }}>{item.text}</Text>;
       case "empty": return <View accessibilityRole="summary" style={{ marginHorizontal: 16, marginTop: 20, gap: 6 }}>
         <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 17, lineHeight: 23, fontWeight: "600" }}>Nothing followed yet</Text>
         <Text style={{ color: c.foregroundMuted, fontSize: 14, lineHeight: 20 }}>Follow a workspace from its Follow-up panel, or turn a project on in Settings so its workspaces join on their own. They show up here once their agents work.</Text>

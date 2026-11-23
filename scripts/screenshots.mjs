@@ -1990,9 +1990,11 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
       await fold(page).waitFor({ timeout: 60_000 });
     };
-    const expand = async page => { await fold(page).click(); await page.getByText(/^Stale/).filter({ visible: true }).first().waitFor({ timeout: 30_000 }); };
+    // Each shot sets the fold it shows instead of toggling it, so no shot depends on the one before (folded is the default).
+    const setFold = async (page, open) => { const f = fold(page); if ((await f.getAttribute("aria-expanded")) !== String(open)) await f.click(); await page.waitForFunction(([want]) => [...document.querySelectorAll('[aria-expanded]')].some(el => /^Agent's tasks: /.test(el.getAttribute("aria-label") ?? "") && el.getAttribute("aria-expanded") === want), [String(open)]); };
+    const expand = async page => { await setFold(page, true); await page.getByText(/^Stale/).filter({ visible: true }).first().waitFor({ timeout: 30_000 }); };
     for (const theme of ["light", "dark"]) {
-      await shoot(`tv-panel-${theme}`, TALL, theme, panel);
+      await shoot(`tv-panel-${theme}`, TALL, theme, async page => { await panel(page); await setFold(page, false); });
       await shoot(`tv-panel-open-${theme}`, TALL, theme, async page => { await panel(page); await expand(page); });
       await shoot(`tv-row-open-${theme}`, TALL, theme, async page => {
         await panel(page); await expand(page);
@@ -2005,7 +2007,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
         await fold(page).waitFor({ timeout: 60_000 });
         await page.setViewportSize(PHONE);
-        await fold(page).click();
+        await setFold(page, true);
         const stale = page.getByText(/^Stale/).filter({ visible: true }).last();
         await stale.waitFor({ timeout: 30_000 });
         await fold(page).evaluate(el => el.scrollIntoView({ block: "start" }));
@@ -2016,8 +2018,9 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await openChat(page, action.title, action.prompt);
         await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
         await page.getByText("A task waits on this. The agent works on the rest").filter({ visible: true }).first().waitFor({ timeout: 60_000 });
-        await fold(page).click();
-        await page.getByText("In Needs you").filter({ visible: true }).first().waitFor();
+        // Folded, as the developer first sees it: "1 open · in Needs you" (the row is the Needs you card above).
+        await setFold(page, false);
+        await page.getByText("1 open · in Needs you").filter({ visible: true }).first().waitFor();
       });
     }
   }
