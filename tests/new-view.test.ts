@@ -16,29 +16,36 @@ const sources: Pick<DispatchSources, "linear" | "routes"> = {
   routes: { "ACME-142": { project: "acme/web", guess: false, existing: null }, "ACME-151": { project: "acme/web", guess: false, existing: { workspaceId: "ws-1", title: "Audit export", state: "tracked" } }, "WEB-77": { project: null, guess: false, existing: null } },
 };
 
-test("an empty field lists My issues with the first preselected, each saying where it goes", () => {
-  const { rows, selected } = newRows(sources, "", NOW);
+test("an empty field lists the issues you could start, the first preselected; one with a workspace folds below", () => {
+  const { rows, selected, empty } = newRows(sources, "", NOW);
   assert.equal(selected, "ACME-142");
-  assert.deepEqual(rows.map(r => r.kind === "issue" ? [r.key, r.icon, r.age, r.route.text, r.route.tone] : null), [
+  assert.equal(empty, null);
+  assert.deepEqual(rows.map(r => r.kind === "issue" ? [r.key, r.icon, r.age, r.route.text, r.route.tone] : [r.id]), [
     ["ACME-142", "Contrast", "2h", "→ acme/web", "plain"],
-    ["ACME-151", "Circle", "2h", "Audit export · running", "open"],
     ["WEB-77", "Circle", "2h", "→ which project?", "warn"],
+    ["taken"],
+  ]);
+  const open = newRows(sources, "", NOW, true);
+  assert.deepEqual(open.rows.map(r => r.kind === "issue" ? [r.key, r.route.text, r.taken] : [r.id, r.kind === "fold" && r.title]), [
+    ["ACME-142", "→ acme/web", false], ["WEB-77", "→ which project?", false], ["taken", "1 already has a workspace"], ["ACME-151", "Audit export · running", true],
   ]);
 });
 
 test("a pasted key that's in the list selects that row; any other paste is a Pasted row on top", () => {
   const listed = newRows(sources, "https://linear.app/acme/issue/ACME-151/export", NOW);
   assert.equal(listed.selected, "ACME-151");
-  assert.equal(listed.rows.length, 3);
+  assert.deepEqual(listed.rows.map(r => r.id), ["ACME-151", "ACME-142", "WEB-77"], "a pasted link is never a suggestion: its row comes first, taken or not");
   assert.equal(listed.rows.find(r => r.id === "ACME-151")?.kind === "issue" && (listed.rows.find(r => r.id === "ACME-151") as { tag: string }).tag, "From your link");
   const gh = newRows(sources, "https://github.com/example/app/issues/77", NOW);
   assert.deepEqual([gh.selected, gh.rows[0].kind, rowSource(gh.rows[0])], ["pasted", "pasted", "https://github.com/example/app/issues/77"]);
 });
 
 test("words preselect the best matching issue, then Start from your words, and Search all of Linear last", () => {
-  const typed = newRows(sources, "export", NOW);
-  assert.deepEqual(typed.rows.map(r => r.id), ["ACME-151", "words", "search"]);
-  assert.equal(typed.selected, "ACME-151");
+  const typed = newRows(sources, "invoice", NOW);
+  assert.deepEqual(typed.rows.map(r => r.id), ["WEB-77", "words", "search"]);
+  assert.equal(typed.selected, "WEB-77");
+  // A match a workspace already has folds, so words never preselect it.
+  assert.deepEqual(newRows(sources, "export", NOW).rows.map(r => r.id), ["words", "taken", "search"]);
   const none = newRows(sources, "Rate-limit webhook retries per endpoint", NOW);
   assert.deepEqual(none.rows.map(r => r.id), ["words", "search"]);
   assert.equal(rowSource(none.rows[0]), "Rate-limit webhook retries per endpoint");
@@ -50,7 +57,7 @@ test("words preselect the best matching issue, then Start from your words, and S
 
 test("no Linear: the list is empty and words still work", () => {
   const missing = { linear: { status: "missing" as const, issues: [] as [], at: NOW, error: "Linear isn't connected.", more: false as const }, routes: {} };
-  assert.deepEqual(newRows(missing, "", NOW), { rows: [], selected: null });
+  assert.deepEqual(newRows(missing, "", NOW), { rows: [], selected: null, empty: null });
   assert.equal(newRows(null, "Fix the login page", NOW).selected, "words");
 });
 

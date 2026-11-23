@@ -89,9 +89,8 @@ Chrome keeps Ctrl/Cmd+Shift+N for a new incognito window and never hands it to a
 and Home's host shows the dialog; on Home already (Paseo hands no new params to the screen that's showing) they open it
 in place (`enterNew`, `index.client.tsx`).
 
-- **Desktop:** the sources on the left (the field, focused, then My issues with the first one that can start
-  preselected; each row says where it
-  would go, "→ which project?" when New would ask, or the workspace that already has it), everything about the selected
+- **Desktop:** the sources on the left (the field, focused, then My issues: only issues you could start, the first
+  preselected; each row says where it would go, or "→ which project?" when New would ask), everything about the selected
   source on the right (Project, From, Workspace, Branch, Title, Agent, Show instructions, a note), and the action bar
   across the bottom. ↵ runs the first action, ⌥↵ the second, ⇧↵ searches all of Linear, ↑↓ move, ⌘I shows the
   instructions, Esc closes. Once created: ⌘↵ opens the workspace, ⌘Z undoes.
@@ -100,6 +99,16 @@ in place (`enterNew`, `index.client.tsx`).
 - **Which project:** the project choices commit at once (up to four, then Other… for the full list); the fields below
   fill in once one is picked.
 - **A source with a live workspace:** Open it (↵) leads, and starting another stays under the usual gate.
+- **Issues that already have a workspace** (`a-taken-issue-is-not-a-suggestion`, invariant 95) are never suggested:
+  My issues folds them into one quiet last row, "N already have a workspace", that opens in place; each is muted and
+  names its workspace, and ↵ opens it. Preselection and ↑/↓ reach them only once the fold is open, and a list with
+  nothing else says "Nothing new to start. N already have a workspace." Pasting one's link still shows it first, with
+  Open it as ↵. One predicate decides it, `issueWorkspaces` (`shared/issue-workspace.ts`): a live workspace that links
+  the issue, or one tracking a PR whose branch or title names its key as a whole token (`acme-12-…`, "ACME-12 …";
+  ACME-12 never matches ACME-123). Several: the PR's workspace over one that only links it, then the most recently
+  active. The worker builds it once per read from state it holds (`issueHolders`, `takenIssues` in `index.server.ts`)
+  for New's list (`taken` in `follow.dispatch-sources` and `dispatch_sources`, with each one's `routes[key].existing`),
+  dispatch's `existing` (paste, preview and the `dispatch` dry run) and the Morning brief's queue.
 - **Failures:** the remedy leads: Change agent when the agent didn't start (the workspace was archived again), Change
   base when a new worktree couldn't be made; Try again otherwise. Home's row for a failure says why first and offers
   Try again (New, on that source).
