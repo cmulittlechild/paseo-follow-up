@@ -246,7 +246,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     {updateSheets}
   </View>;
   if (params.view === "queue") return <View style={{ flex: 1 }}>
-    <QueueScreen theme={theme} compact={compact} onBack={deps.openHome} navigation={navigation} />
+    <QueueScreen theme={theme} compact={compact} onHome={deps.openHome} navigation={navigation} />
     {newHost}
     {updateSheets}
   </View>;

@@ -338,7 +338,8 @@ export const linearQueueInputSchema = z.strictObject({
   open: z.boolean().optional(),
 });
 export const linearQueueRpc = defineRpc({ name: "follow.linear-queue", input: linearQueueInputSchema, output: z.unknown() });
-export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({}), output: z.unknown() });
+// `wait: false` (the queue screen's Sweep now): reply at once with `{ running: true }` and poll the view; agents wait.
+export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({ wait: z.boolean().optional() }), output: z.unknown() });
 // Settings → Morning brief (shared/morning-brief.ts, server/morning-brief.ts): the queue's settings, the plan link and
 // its finder, and the pickers' chat search.
 export const briefSettingsRpc = defineRpc({ name: "follow.brief-settings", input: z.strictObject({}), output: z.unknown() });

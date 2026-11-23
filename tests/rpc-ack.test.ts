@@ -34,6 +34,8 @@ const SLOW_FSYNC_MS = 2_000;
 const INPUT: Record<string, unknown> = {
   "follow.brief-action": { agentId: FIXTURE.agentId, briefId: FIXTURE.briefId, decisionId: "D1", choice: "A", answerId: "rpc-ack-answer-1" },
   "follow.answer-question": { workspaceId: FIXTURE.workspaceId, questionId: FIXTURE.questionId, choice: "A", action: "send" },
+  // The queue screen's Sweep now starts the sweep and replies; the screen polls the view while it runs.
+  "follow.sweep-queue": { wait: false },
 };
 /** The developer's answers: these must succeed in time, not just fail fast. */
 const MUST_SUCCEED = new Set(Object.keys(INPUT));

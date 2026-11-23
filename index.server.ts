@@ -1387,7 +1387,7 @@ export default function contribute(server: PluginServerContext) {
     log: line => console.warn(line),
   });
   handle(rpc.linearQueueRpc, async ({ filter, since, limit, open }) => { await requireReady(); return open ? linearQueue!.open() : linearQueue!.view({ filter, since, limit }); });
-  handle(rpc.sweepQueueRpc, async (_input, context) => { await requireReady(); return linearQueue!.sweepNow(actorOf(context).kind === "agent" ? "agent" : "manual"); });
+  handle(rpc.sweepQueueRpc, async ({ wait }, context) => { await requireReady(); return linearQueue!.sweepNow(actorOf(context).kind === "agent" ? "agent" : "manual", wait === false ? 0 : undefined); });
   handle(rpc.briefSettingsRpc, async () => { await requireReady(); return morningBrief!.view(); });
   handle(rpc.setBriefSettingsRpc, async input => { await requireReady(); return morningBrief!.setQueue(input); });
   handle(rpc.briefPlanRpc, async ({ link }) => { await requireReady(); return link ? { ...await morningBrief!.planView(), preview: await morningBrief!.preview(link) } : morningBrief!.planView(); });

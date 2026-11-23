@@ -49,8 +49,8 @@ function useQueueView(input: { open?: boolean; filter?: Filter }) {
   const load = useCallback(async (filter?: Filter) => {
     const open = !!input.open && !opened.current;
     opened.current = opened.current || open;
-    try { setView(await read({ ...(open ? { open: true } : {}), ...(filter ?? input.filter ? { filter: filter ?? input.filter } : {}) }) as QueueViewData); setError(null); }
-    catch (e) { setError(errorText(e)); }
+    try { const v = await read({ ...(open ? { open: true } : {}), ...(filter ?? input.filter ? { filter: filter ?? input.filter } : {}) }) as QueueViewData; setView(v); setError(null); return v; }
+    catch (e) { setError(errorText(e)); return null; }
   }, [read, input.open, input.filter]);
   useEffect(() => { void load(); }, [load]);
   return { view, error, reload: load };
@@ -197,24 +197,32 @@ function QueueRow({ i, change, c, compact, timeZone, navigation }: { i: QueueIss
 }
 
 /** The queue screen (`?view=queue`): every issue by Linear priority, filters All / No workspace / Changed (Q10). */
-export function QueueScreen({ theme, compact, onBack, navigation }: { theme: Theme; compact: boolean; onBack: () => void; navigation: Nav }) {
+export function QueueScreen({ theme, compact, onHome, navigation }: { theme: Theme; compact: boolean; onHome: () => void; navigation: Nav }) {
   const c = theme.colors; const t = text(c, compact);
   const [filter, setFilter] = useState<Filter>("all");
   const { view, error, reload } = useQueueView({ filter });
   const sweep = useRpc(sweepQueueRpc);
   const toast = useToast();
   const [sweeping, setSweeping] = useState(false);
+  // Sweep now replies at once (`wait: false`): the screen reads the view every 3 s while the sweep runs (up to 2 min),
+  // so a slow Linear never holds the button's RPC.
   const sweepNow = async () => {
     setSweeping(true);
-    try { const r = await sweep({}) as { ok?: boolean; error?: string | null; running?: boolean }; if (r && r.ok === false) toast.error(r.error ?? "The sweep failed."); await reload(); }
-    catch (e) { toast.error(errorText(e)); } finally { setSweeping(false); }
+    try {
+      await sweep({ wait: false });
+      for (let n = 0; n < 40; n++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const v = await reload();
+        if (!v?.status.running) { if (v?.status.last && !v.status.last.ok) toast.error(v.status.last.error ?? "The sweep failed."); break; }
+      }
+    } catch (e) { toast.error(errorText(e)); } finally { setSweeping(false); }
   };
   const tz = view?.status.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const changes = new Map((view?.changes ?? []).map(ch => [ch.key, ch]));
   const swept = view?.status.sweptAt ? `Swept ${hhmm(view.status.sweptAt, tz)}${view.status.complete === false ? " · partial" : ""}` : "Not swept yet";
   return <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 28, gap: 12, maxWidth: 880, width: "100%", alignSelf: "center" }}>
     <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-      {!compact && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowLeft" title="Brief" onPress={onBack} />}
+      {!compact && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowLeft" title="Brief" onPress={onHome} />}
       <Text accessibilityRole="header" style={[t.title, { fontSize: 20, lineHeight: 26, flex: 1 }]}>Your Linear queue</Text>
       {!compact && <Text style={t.meta}>{swept}</Text>}
       <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title={sweeping || view?.status.running ? "Sweeping…" : "Sweep now"} loading={sweeping} disabled={sweeping} onPress={() => void sweepNow()} />

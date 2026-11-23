@@ -113,7 +113,8 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
 - **The queue screen** (`?view=queue`, from "47 issues by priority ›"): every issue by Linear priority (Urgent, High,
   Medium, Low, No priority), with All / No workspace / Changed (decision Q10) and each count. A row is the key, title,
   state and due, the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
-  issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue`. On
+  issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue` with `wait: false`: it replies at once and the screen
+  reads the view every 3 s while the sweep runs, so a slow Linear never holds the RPC. On
   phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.
 - **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
   no workspace (`raisedNeeds`, over the log window) is the first row of Home's Needs you group, shaped like its rows
