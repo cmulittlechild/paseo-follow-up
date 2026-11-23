@@ -14,7 +14,7 @@ Follow-up watches every pull request a Paseo workspace opens until the work is a
 - A Spec link in the header to the page that sums up the workspace, usually the Claude artifact the main agent keeps up to date.
 - An Activity card: repairs sent and finished with how long they took, merges, PR actions and questions.
 - Each stack drawn top to base, merged PRs folded away, and a sheet per PR with checks, reviewers and Merge.
-- Tasks for work that outlives a merge, manual or scheduled after a merge or deploy, with an optional delay.
+- Tasks for work that outlives a merge. Each comes due by fact: its PRs merged or deployed, or a re-check date. A task can also be sent to the agent as a message after a merge or deploy, with an optional delay.
 - A composer pill and a sidebar count that appear only when something needs you; the pill steps through open questions so you can answer without leaving the chat. Home lists every workspace by who is up next, and a larger view opens a workspace in two columns.
 - Compact rows for Follow-up's own tool calls in agent chats, a card for each repair batch, and a card when the agent declares Done.
 
