@@ -64,13 +64,15 @@ export function taskViewRows(w: Workspace, agents: TaskAgents = w.taskAgents ?? 
 
 const WEEK = 7 * 86_400_000;
 
-export type TaskSummary = { open: number; due: number; stale: number; finished: number; finishedThisWeek: number };
+/** `due` counts stale ones too (a stale task is a due one the agent didn't answer); `waiting` is what's in Needs you. */
+export type TaskSummary = { open: number; due: number; stale: number; waiting: number; finished: number; finishedThisWeek: number };
 
 export function taskSummary(w: Workspace, now = Date.now(), rows = taskViewRows(w, undefined, now)): TaskSummary {
   const finished = followUpObligations(w).filter(finishedTask);
   return {
     open: rows.length,
-    due: rows.filter(r => r.kind === "due").length,
+    due: rows.filter(r => r.kind === "due" || r.kind === "stale").length,
+    waiting: rows.filter(r => r.kind === "needs-you").length,
     stale: rows.filter(r => r.kind === "stale").length,
     finished: finished.length,
     finishedThisWeek: finished.filter(o => o.finishedAt && now - Date.parse(o.finishedAt) <= WEEK).length,
@@ -79,6 +81,8 @@ export function taskSummary(w: Workspace, now = Date.now(), rows = taskViewRows(
 
 /** The collapsed line's parts: neutral counts, and the stale count apart so it alone can be amber. */
 export function summaryParts(s: TaskSummary): { neutral: string; stale: string | null } {
+  // Every open task waits on the developer: the fold says where they are, since opening it adds nothing new.
+  if (s.open && s.waiting === s.open) return { neutral: `${s.open} open · in Needs you`, stale: null };
   const parts = [`${s.open} open`, ...(s.due ? [`${s.due} due`] : [])];
   return { neutral: parts.join(" · "), stale: s.stale ? `${s.stale} stale` : null };
 }

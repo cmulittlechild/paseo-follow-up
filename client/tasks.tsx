@@ -77,15 +77,16 @@ function OpenAgentLink({ status, openAgent, theme, compact, lead = true }: { sta
   </Pressable></>;
 }
 
-/** A 6px dot: the due row's mark (foreground, it's next) and the stale one's (amber, the one thing worth a glance). */
+/** A small dot: the due row's mark (muted) and the stale one's (amber, the one thing worth a glance). */
 const Dot = ({ color, size = 6 }: { color: string; size?: number }) => <View style={{ width: 14, height: 14, alignItems: "center", justifyContent: "center" }}><View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} /></View>;
 
 /** One glyph per kind of move, all muted but stale: the shape says what moves it before the words do. */
 function TaskGlyph({ row, w, colors }: { row: TaskViewRow; w: Workspace; colors: Colors }) {
   const muted = colors.foregroundMuted;
   switch (row.kind) {
-    case "stale": return <Dot color={colors.statusWarning} />;
-    case "due": return <Dot color={colors.foreground} />;
+    // Stale is the one mark with colour, and a size step so it never leans on hue alone; due is muted like the rest.
+    case "stale": return <Dot color={colors.statusWarning} size={8} />;
+    case "due": return <Dot color={muted} size={7} />;
     case "working": return row.status.tone === "working" ? <Spinner color={colors.accent} size={13} /> : <Dot color={muted} />;
     case "blocked": return <Icon name="CirclePause" size={14} color={muted} />;
     case "after-pr": return <Icon name="GitPullRequest" size={14} color={muted} />;
@@ -120,7 +121,7 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
   // A row opens in place (no sheet for a two-line fact): the agent's whole note, its agent, and the developer's override.
   const detail = open && !inNeeds;
   const prs = o.afterPrs.map(p => `#${p.split("#")[1]}`).join(", ");
-  return <View style={{ borderTopWidth: 1, borderTopColor: c.border }}>
+  return <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: detail ? c.surface1 : "transparent" }}>
     <Pressable accessibilityRole="button" aria-expanded={inNeeds ? undefined : open} accessibilityState={inNeeds ? undefined : { expanded: open }}
       accessibilityLabel={`Task: ${o.title}. ${row.meta}. ${inNeeds ? "Open it in Needs you" : open ? "Hide details" : "Show details"}`} onPress={onPress}
       style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, minHeight: compact ? 52 : 44, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
@@ -134,8 +135,9 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
     </Pressable>
     {detail && <View style={{ paddingLeft: compact ? 40 : 38, paddingRight: compact ? 14 : 12, paddingBottom: 10, gap: 8 }}>
       {evidence ? <Note text={evidence} theme={theme} full /> : <Text style={t.meta}>No note yet. The agent adds one when it checks or finishes the task.</Text>}
-      {prs ? <Text style={t.meta}>{`Moves with ${prs}`}</Text> : null}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+      {prs ? <Text style={[t.meta, { paddingLeft: 10 }]}>{`Moves with ${prs}`}</Text> : null}
+      {/* Lined up with the note's text, past its rule. */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingLeft: 10 }}>
         <OpenAgentLink status={row.status} openAgent={openAgent} theme={theme} compact={compact} lead={false} />
         {o.status !== "working" && <><Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }} accessibilityElementsHidden importantForAccessibility="no">{row.status.agentId && openAgent ? "·" : ""}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={`Send ${o.title} to the agent on a schedule`} hitSlop={compact ? 12 : 6} onPress={onSchedule}

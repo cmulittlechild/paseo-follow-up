@@ -54,13 +54,14 @@ test("tasks-are-the-agent-s: stale and due first, Needs you's last, each row say
 test("tasks-are-the-agent-s: the folded line counts, due stays neutral, stale stands apart; finished tasks go to Activity", () => {
   const w = fixture();
   const s = taskSummary(w, NOW);
-  assert.deepEqual(summaryParts(s), { neutral: "6 open · 1 due", stale: "1 stale" });
+  assert.deepEqual(summaryParts(s), { neutral: "6 open · 2 due", stale: "1 stale" }, "due counts the stale one: it is a due task nobody answered");
   assert.equal(finishedLine(s), "1 finished this week · in Activity");
-  assert.deepEqual(summaryParts({ open: 2, due: 0, stale: 0, finished: 0, finishedThisWeek: 0 }), { neutral: "2 open", stale: null });
+  assert.deepEqual(summaryParts({ open: 2, due: 0, stale: 0, waiting: 0, finished: 0, finishedThisWeek: 0 }), { neutral: "2 open", stale: null });
+  assert.deepEqual(summaryParts({ open: 1, due: 0, stale: 0, waiting: 1, finished: 0, finishedThisWeek: 0 }), { neutral: "1 open · in Needs you", stale: null });
   const log = activity(w);
   assert.ok(log.some(r => r.key === "task:done" && r.text === "Task done · Task done" && r.detail === "Shipped."), "finished tasks are in Activity");
   assert.ok(log.some(r => r.key === "task:old" && r.text.startsWith("Task waived")));
-  assert.ok(log.some(r => r.key === "asked:Q1" && r.text === "Action · Get alice's pick"), "an action reads as an action, never Q1");
+  assert.ok(log.some(r => r.key === "asked:Q1" && r.text === "Action · Get alice's pick" && r.detail === "Requested" && r.icon === "Hand"), "an action reads as an action, never Q1");
 });
 
 test("tasks-are-the-agent-s: a task waiting on a question points at Needs you; answered, it is the agent's", () => {

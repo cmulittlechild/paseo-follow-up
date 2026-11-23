@@ -53,7 +53,7 @@ export function activity(w: Workspace): Activity[] {
   for (const q of w.questions ?? []) {
     // An action card ("tell me when you've done it") never shows a question id, so its rows don't either.
     const ref = q.need === "action" ? `Action · ${q.title}` : `${q.id} · ${q.title}`;
-    rows.push({ key: `asked:${q.id}`, at: q.askedAt, icon: "MessageCircleQuestion", tone: "warning", text: ref, detail: "Asked", took: null });
+    rows.push({ key: `asked:${q.id}`, at: q.askedAt, icon: q.need === "action" ? "Hand" : "MessageCircleQuestion", tone: "warning", text: ref, detail: q.need === "action" ? "Requested" : "Asked", took: null });
     if (q.answer) {
       // "Answered" only once it reached the agent; until then the shared state ("Copied · not sent yet"…), answerStatus.
       const s = answerStatus(q)!;
