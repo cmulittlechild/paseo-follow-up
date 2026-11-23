@@ -95,7 +95,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Shared copy and errors, scale bounds | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts`, `shared/scale.ts` | [client](docs/client.md) |
 | Tests, checks and README screenshots | `tests/`, `scripts/`, `scripts/screenshots.mjs`, `button-visibility.test.mjs` | [testing](docs/testing.md) |
@@ -1148,6 +1148,19 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a
    workspace" was two rules that counted only links and New listed every issue anyway. Guarded by
    `tests/taken-issues.test.ts` and `tests/new-view.test.ts`.
+96. **New opens where you are** (`new-opens-where-you-are`). A dialog that one of several mounted surfaces draws (New,
+   Report an issue, Rename title with AI) shows on the one on screen, through one registry (`createHostSlot`,
+   `client/host-slot.tsx`): the host showing it keeps it while it's on screen, else the most recently mounted host
+   that's on screen (`pickHost`; web: its probe is laid out and the page visible, `surfaceVisible`), never a hidden
+   one. A request made while no host is on screen is kept until one is (it navigates once, to Home), never lost; one
+   that was shown and then sits off screen for `LEFT_BEHIND_MS` (the developer left that Home) is dropped, so it never
+   comes back on its own, and the New key closes New only while it's on screen (`newShowing`), else it opens it. While
+   open the slot looks again every `HOST_LOOK_MS`, and closed nothing runs. Every New entry point (Home's + New, the
+   sidebar's New, ⌘K, the New key, Try again, the brief's Start…) goes through `openNew`. 2026-11-23, the developer on
+   2.4.0-beta.3 with Paseo 0.17.1: "the 'New' button just stopped working, it takes me to the follow page home page and
+   that's it". New from a chat opened Home as `?new=1`; opening Home again (the sidebar's Follow-up, ⌘K Home) pushed a
+   second Home and Paseo kept the first mounted, hidden; the first mounted host drew every later New in it. Guarded by
+   `tests/new-opens-where-you-are.test.ts`.
 
 98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
    only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`

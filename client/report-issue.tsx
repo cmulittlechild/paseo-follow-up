@@ -10,6 +10,7 @@ import { BRAND_ICONS } from "./brand-icons";
 import { Button, SubmitScope, text } from "./kit";
 import { Spinner } from "./motion";
 import { tint, type Theme } from "./theme";
+import { createHostSlot } from "./host-slot";
 
 /**
  * Report a bug: the small sheet behind Settings → General → Report a bug, ⌘K, /report-issue and every error toast's
@@ -19,25 +20,17 @@ import { tint, type Theme } from "./theme";
 export type ReportKind = "bug" | "feature" | "feedback";
 export type ReportRequest = { kind?: ReportKind; error?: string | null; at?: number; agentId?: string; workspaceId?: string };
 
-let current: (ReportRequest & { token: number }) | null = null;
-let token = 0;
-const listeners = new Set<() => void>();
-let version = 0;
-const emit = () => { version++; for (const l of listeners) l(); };
-const hosts: number[] = [];
-let hostIds = 0;
-let fallback: ((r: ReportRequest) => void) | null = null;
-
-/** Opens the sheet wherever a host is mounted; otherwise asks the plugin to open a surface that has one (Home). */
-export function openReportSheet(request: ReportRequest = {}): void {
-  current = { ...request, token: ++token };
-  if (hosts.length) emit(); else fallback?.(request);
-}
-/** index.client.tsx: how to reach a host when none is mounted (open Home, which mounts one and reads the request). */
-export function setReportFallback(open: ((r: ReportRequest) => void) | null) { fallback = open; }
+const slot = createHostSlot<ReportRequest>();
+/**
+ * Opens the sheet on the surface on screen (new-opens-where-you-are); with none on screen it waits and asks the plugin
+ * to open one that has a host (Home), whose host shows it.
+ */
+export function openReportSheet(request: ReportRequest = {}): void { slot.open(request); }
+/** index.client.tsx: how to reach a host when none is on screen (open Home, which mounts one and shows the request). */
+export function setReportFallback(open: ((r: ReportRequest) => void) | null) { slot.setFallback(open); }
 /** Test seam. */
-export const reportRequestNow = () => current;
-const close = () => { current = null; emit(); };
+export const reportRequestNow = () => slot.now();
+const close = () => slot.close();
 
 const KINDS: { id: ReportKind; label: string; icon: string; placeholder: string }[] = [
   { id: "bug", label: "Bug", icon: "Bug", placeholder: "What went wrong, and what did you expect?" },
@@ -190,15 +183,11 @@ function Footer({ children, compact, theme }: { children: React.ReactNode; compa
     : { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.colors.border }}>{children}</View>;
 }
 
-/** Mount once per surface (Home, the panel, Settings): the first one mounted shows the sheet while a request is open. */
+/** Mount once per surface (Home, the panel, Settings): the one on screen shows the sheet while a request is open. */
 export function ReportSheetHost({ theme, layout, openAgent }: { theme: Theme; layout: PluginHostProps["layout"]; openAgent?: (agentId: string) => void }) {
-  const [id] = useState(() => ++hostIds);
-  useEffect(() => { hosts.push(id); emit(); return () => { hosts.splice(hosts.indexOf(id), 1); emit(); }; }, [id]);
-  // The snapshot is a version, so a host mounting or leaving re-renders the others too (who owns the sheet changes).
-  useSyncExternalStore(l => { listeners.add(l); return () => { listeners.delete(l); }; }, () => version, () => version);
-  const request = current;
-  if (!request || hosts[0] !== id) return null;
-  return <Modal title="Report an issue" open onOpenChange={next => { if (!next) close(); }}>
+  const { request, probe } = slot.useHost();
+  if (!request) return probe;
+  return <><Modal title="Report an issue" open onOpenChange={next => { if (!next) close(); }}>
     <ReportSheet key={request.token} request={request} theme={theme} layout={layout} openAgent={openAgent} onClose={close} />
-  </Modal>;
+  </Modal>{probe}</>;
 }
