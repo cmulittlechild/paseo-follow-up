@@ -63,7 +63,9 @@ export function updateObligation(w: Workspace, input: Update): Obligation {
   if (recheck !== undefined && !Number.isFinite(recheck)) throw new Error("recheck is a date: \"YYYY-MM-DD\" or an ISO time.");
   const finished = ["done", "waived"].includes(status);
   const kept = existing?.recheckAt && Date.parse(existing.recheckAt) > now ? existing.recheckAt : undefined;
-  const recheckAt = finished ? undefined : recheck !== undefined ? new Date(recheck).toISOString() : kept ?? (afterPrs.length ? undefined : new Date(now + RECHECK_DAYS * 86_400_000).toISOString());
+  // A task blocked on the developer gets none by default: the answer (or the question closing) is what moves it, and a
+  // default date would hold that (shared/task-due.ts taskDue). Only a recheck the agent passes holds it.
+  const recheckAt = finished ? undefined : recheck !== undefined ? new Date(recheck).toISOString() : ask ? undefined : kept ?? (afterPrs.length ? undefined : new Date(now + RECHECK_DAYS * 86_400_000).toISOString());
   const finishedAt = finished ? (existing && ["done", "waived"].includes(existing.status) ? existing.finishedAt : undefined) ?? new Date(now).toISOString() : undefined;
   const record = { title, status, afterPrs, evidence: evidence || (destination ? `Reply to ${destination.recipient}: ${destination.threadUrl}` : ""), enable_follow_up: followUp, dependencyStage: stage, category: "follow_up" as const, ...(destination ? { communication: destination } : {}), ...(trigger !== undefined ? { trigger } : {}) };
   // Who is working on it: set whenever status is working (the named agent, else the caller); kept as history otherwise.

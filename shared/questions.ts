@@ -109,6 +109,21 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 export type Answer = z.infer<typeof answerSchema>;
 
 export const isOpen = (q: Pick<Question, "answer" | "closed">) => !q.answer && !q.closed;
+/**
+ * A task blocked on the developer: blocked with a real question for them (`ask`). Only these become questions, flag
+ * Needs you or count as the developer's. A task blocked on a PR or another agent has no ask (agents use waiting).
+ * Invariant a-question-always-asks-the-developer-something.
+ */
+export const blockedOnDeveloper = (o: { status: string; ask?: string }): boolean => o.status === "blocked" && !!o.ask?.trim();
+/**
+ * Still the developer's move: blocked on them, and not on a question they already answered or dismissed
+ * (one-decision-one-card: the agent has that answer and moves the task).
+ */
+export const waitsOnDeveloper = (o: { status: string; ask?: string; coveredBy?: string }, questions: readonly { id: string; answer: unknown; closed: unknown }[]): boolean => {
+  if (!blockedOnDeveloper(o)) return false;
+  const cover = o.coveredBy ? questions.find(q => q.id === o.coveredBy) : undefined;
+  return !cover || (!cover.answer && !cover.closed);
+};
 /** The developer dismissed it (dismissing-a-question-sends-the-agent-nothing): closed, no answer, nothing sent. */
 export const isDismissed = (q: Pick<Question, "answer" | "closed">) => !q.answer && !!q.closed?.dismissed;
 export const DISMISS_REASON = "Dismissed by the developer: it no longer matters.";

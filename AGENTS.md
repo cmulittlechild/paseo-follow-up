@@ -1005,7 +1005,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 
 81. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
    reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
-   its last update). A due task is a nudge to its owner at the Stop hook: at most 3 a turn end, each at most twice for
+   its last update). A task blocked on a question the developer answered or closed is the agent's again
+   (`waitsOnDeveloper`, `coveredBy`): it comes due at the answer ("Due · Q7 answered"), whatever its PRs say, and gets
+   no default re-check while it waits; one still waiting on an open question stays exempt. A due task is a nudge to its owner at the Stop hook: at most 3 a turn end, each at most twice for
    the same fact and once a day, zero words when nothing is due (`taskDue`, `pickNudges`, `shared/task-due.ts`). It is
    never an auto-send and never a done: two unanswered nudges make it stale, still listed, and only a supersede by id
    waives a task for the agent. Finished tasks leave storage 30 days after `finishedAt` unless something still reads

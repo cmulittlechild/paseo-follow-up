@@ -1,6 +1,7 @@
 import type { Obligation, Workspace } from "./model";
 import type { ListObligation, ListWorkspace } from "./list";
 import { deployState } from "./follow-up";
+import { blockedOnDeveloper, waitsOnDeveloper } from "./questions";
 
 // ---------- due by fact (invariant due-by-fact) ----------
 //
@@ -42,11 +43,16 @@ export const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** "Nov 25": the day, as the developer reads it. */
 const shortDay = (ms: number, now: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC", ...(new Date(ms).getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" } : {}) });
 
-/** Whether due-by-fact applies: open, not the developer's (Needs you has it), not on a developer-timed auto-send. */
-export function dueApplies(o: Pick<Obligation, "status" | "ask" | "enable_follow_up" | "trigger">): boolean {
+type Questions = Pick<ListWorkspace, "questions">["questions"];
+
+/**
+ * Whether due-by-fact applies: open, not still the developer's move (Needs you has it), not on a developer-timed
+ * auto-send. A task blocked on a question the developer already answered or closed is the agent's again
+ * (waitsOnDeveloper, one-decision-one-card), so it applies.
+ */
+export function dueApplies(o: Pick<Obligation, "status" | "ask" | "coveredBy" | "enable_follow_up" | "trigger">, questions: Questions): boolean {
   if (o.status === "done" || o.status === "waived") return false;
-  // Blocked on the developer (shared/model.ts blockedOnDeveloper; not imported: model imports this module's importer).
-  if (o.status === "blocked" && !!o.ask?.trim()) return false;
+  if (waitsOnDeveloper(o, questions)) return false;
   return !(o.enable_follow_up && o.trigger);
 }
 
@@ -57,9 +63,22 @@ export function dueApplies(o: Pick<Obligation, "status" | "ask" | "enable_follow
  *   target counts its merge), or when one closed unmerged. A later `recheckAt` holds it until then.
  * - Without: due on `recheckAt`.
  */
-export function taskDue(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: number): TaskDue | null {
-  if (!dueApplies(o)) return null;
+export function taskDue(o: ListObligation, w: Pick<ListWorkspace, "prs" | "questions">, now: number): TaskDue | null {
+  const questions = w.questions ?? [];
+  if (!dueApplies(o, questions)) return null;
   const recheck = time(o.recheckAt);
+  const at = (factAt: number | null, key: string, fact: string): TaskDue => {
+    const dueMs = Math.max(factAt ?? 0, recheck ?? 0);
+    const due = dueMs <= now;
+    const held = recheck !== null && recheck > (factAt ?? 0);
+    return { key: `${key}${held ? `:${o.recheckAt}` : ""}`, fact, dueAt: new Date(dueMs).toISOString(), due, label: due ? `Due · ${fact}` : `${fact[0].toUpperCase()}${fact.slice(1)} · re-check ${shortDay(dueMs, now)}` };
+  };
+  // Blocked on a question the developer answered or closed: that is the fact, whatever the PRs say. The agent acts on
+  // the answer and moves the task (a task waiting on the developer gets no default re-check: server/obligations.ts).
+  if (blockedOnDeveloper(o)) {
+    const q = questions.find(q => q.id === o.coveredBy)!;
+    return at(time(q.answer?.at ?? q.closed?.at), `question:${q.id}`, `${q.id} ${q.answer ? "answered" : "closed"}`);
+  }
   if (!o.afterPrs.length) {
     if (recheck === null) return null;
     const due = recheck <= now;
@@ -69,23 +88,17 @@ export function taskDue(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: n
   const stage = o.dependencyStage ?? "deployed";
   const waiting = { key: "", fact: "", dueAt: null, due: false, label: `After ${refs(w, o.afterPrs)} ${stage === "merged" ? "merge" : "deploy"}${o.afterPrs.length === 1 ? "s" : ""}` };
   if (prs.some(p => !p?.snapshot?.complete)) return waiting;
-  const at = (factAt: number | null, kind: string, fact: string): TaskDue => {
-    const dueMs = Math.max(factAt ?? 0, recheck ?? 0);
-    const due = dueMs <= now;
-    const held = recheck !== null && recheck > (factAt ?? 0);
-    return { key: `${kind}:${o.afterPrs.join(",")}${held ? `:${o.recheckAt}` : ""}`, fact, dueAt: new Date(dueMs).toISOString(), due, label: due ? `Due · ${fact}` : `${fact[0].toUpperCase()}${fact.slice(1)} · re-check ${shortDay(dueMs, now)}` };
-  };
   const closed = prs.find(p => p!.snapshot!.state === "CLOSED");
-  if (closed) return at(null, "closed", `#${closed.number} closed unmerged`);
+  if (closed) return at(null, `closed:${o.afterPrs.join(",")}`, `#${closed.number} closed unmerged`);
   if (prs.some(p => p!.snapshot!.state !== "MERGED")) return waiting;
   const merged = Math.max(...prs.map(p => time(p!.snapshot!.mergedAt) ?? 0));
-  if (stage === "merged") return at(merged || null, "merged", `${refs(w, o.afterPrs)} merged`);
+  if (stage === "merged") return at(merged || null, `merged:${o.afterPrs.join(",")}`, `${refs(w, o.afterPrs)} merged`);
   const states = prs.map(p => deployState(p!, now));
   if (states.some(s => s === "not-deployed" || s === "unconfirmed")) return waiting;
   // No deploy target for a repository: its merge is the last fact Follow-up can see.
-  if (states.every(s => s === "none")) return at(merged || null, "merged", `${refs(w, o.afterPrs)} merged (no deploy check)`);
+  if (states.every(s => s === "none")) return at(merged || null, `merged:${o.afterPrs.join(",")}`, `${refs(w, o.afterPrs)} merged (no deploy check)`);
   const deployedAt = Math.max(...prs.map(p => time(p!.deploymentAnchor?.at) ?? time(p!.snapshot!.mergedAt) ?? 0));
-  return at(deployedAt || null, "deployed", `${refs(w, o.afterPrs)} deployed`);
+  return at(deployedAt || null, `deployed:${o.afterPrs.join(",")}`, `${refs(w, o.afterPrs)} deployed`);
 }
 
 /** Due, and the agent was told twice about this very fact with no change to the task since. */
@@ -98,7 +111,7 @@ export function isStale(o: Pick<Obligation, "nudged" | "revision">, d: TaskDue |
  * Nov 25", "Stale · …". "Re-check" is only ever a date ahead; a passed one says Due since, with the year when it isn't
  * this one.
  */
-export function dueLabel(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: number): string | null {
+export function dueLabel(o: ListObligation, w: Pick<ListWorkspace, "prs" | "questions">, now: number): string | null {
   const d = taskDue(o, w, now);
   if (!d) return null;
   return isStale(o, d) ? `Stale · ${d.fact} · nudged twice, no answer` : d.label;
@@ -109,7 +122,7 @@ const short = (title: string) => title.length <= 60 ? title : `${title.slice(0, 
 
 /** One nudge line for the agent (about 20 tokens plus the id). */
 export function nudgeLine(o: Pick<Obligation, "id" | "title" | "afterPrs">, d: TaskDue): string {
-  const act = o.afterPrs.length ? "Do it and close it with evidence" : "Close it with evidence if it's done";
+  const act = d.key.startsWith("question:") ? "Act on it and close the task with evidence" : o.afterPrs.length ? "Do it and close it with evidence" : "Close it with evidence if it's done";
   return `Task ${o.id} "${short(o.title)}": ${d.fact}. ${act}, or keep it with recheck="YYYY-MM-DD" and why.`;
 }
 
@@ -151,7 +164,8 @@ export function pickNudges(entries: readonly DueEntry[], receipt: NudgeReceipt, 
 
 /**
  * The worker's periodic pass over one workspace, a check first (`apply` false) and then the change:
- * - an open task with no PRs and no re-check date gets one RECHECK_DAYS out (tasks from before due-by-fact);
+ * - an open task with no PRs and no re-check date gets one RECHECK_DAYS out (tasks from before due-by-fact), unless
+ *   it is blocked on the developer: the answer moves that one;
  * - a finished task without `finishedAt` gets now;
  * - the hook's receipt becomes each task's `nudged`;
  * - finished tasks over PRUNE_FINISHED_DAYS old leave storage, unless something still reads them (pruneBlocked).
@@ -162,7 +176,7 @@ export function maintainTasks(w: Workspace, now: number, receipt: NudgeReceipt |
   const stamp = new Date(now).toISOString();
   for (const o of w.obligations) {
     const finished = o.status === "done" || o.status === "waived";
-    if (!finished && !o.afterPrs.length && !o.recheckAt) { changed = true; if (apply) o.recheckAt = new Date(now + RECHECK_DAYS * DAY).toISOString(); }
+    if (!finished && !o.afterPrs.length && !o.recheckAt && !blockedOnDeveloper(o)) { changed = true; if (apply) o.recheckAt = new Date(now + RECHECK_DAYS * DAY).toISOString(); }
     if (finished && !o.finishedAt) { changed = true; if (apply) o.finishedAt = stamp; }
     const r = receipt?.[o.id];
     if (r && (o.nudged?.key !== r.key || o.nudged.count !== r.count || o.nudged.at !== r.at || o.nudged.revision !== r.revision)) { changed = true; if (apply) o.nudged = { ...r }; }

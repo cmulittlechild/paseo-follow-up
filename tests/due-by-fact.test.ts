@@ -11,6 +11,7 @@ import { scopes } from "../server/scopes";
 import { AgentHooks } from "../server/agent-hooks";
 import { INVARIANTS } from "../shared/status-invariants";
 import type { Obligation, State } from "../shared/model";
+import { questionSchema } from "../shared/questions";
 import { clock, pr, snapshot, workspace } from "./fixtures";
 
 /**
@@ -68,6 +69,34 @@ test("due-by-fact: every open task gets a re-check date, the agent can set its o
   assert.equal(a.finishedAt, iso(NOW + 2 * DAY)); assert.equal(a.recheckAt, undefined);
   updateObligation(w, { id: a.id, title: a.title, status: "pending", now: NOW + 3 * DAY });
   assert.equal(a.finishedAt, undefined, "reopened");
+});
+
+test("due-by-fact: a task blocked on a question the developer answered (or closed) is the agent's again and comes due", () => {
+  // #283 review: dueApplies dropped every blocked task with an ask, but question="Q7" makes the question's words the
+  // ask, so after the answer the task stayed blocked+ask and never came due. one-decision-one-card says the agent acts
+  // on the answer and moves the task; waitsOnDeveloper (coveredBy) tells the two apart.
+  const q = (patch = {}) => questionSchema.parse({ id: "Q7", title: "Drop the old table?", question: "May I drop the old table?", askedBy: "main-agent", askedAt: iso(NOW - 2 * DAY), mode: "stop", ...patch });
+  const answer = { choice: "A", at: iso(NOW - 3_600_000), by: "developer", delivery: { state: "sent", to: "main-agent", messageId: null, at: iso(NOW - 3_600_000) } };
+  const blocked = task({ status: "blocked", ask: "Q7: May I drop the old table?", coveredBy: "Q7", afterPrs: ["example/app#1"] });
+  const open = workspace({ prs: [pr()], questions: [q()], obligations: [blocked] });
+  assert.equal(taskDue(blocked, open, NOW), null, "still waiting on an open question: exempt");
+  assert.equal(taskDue(task({ status: "blocked", ask: "May I drop it?" }), workspace({ questions: [q({ answer })] }), NOW), null, "an ask no question covers waits on the developer");
+  const answered = workspace({ prs: [pr()], questions: [q({ answer })], obligations: [blocked] });
+  const d = taskDue(blocked, answered, NOW)!;
+  assert.deepEqual([d.due, d.fact, d.dueAt, d.label], [true, "Q7 answered", answer.at, "Due · Q7 answered"], "due at the answer, whatever its PRs say");
+  assert.match(nudgeLine(blocked, d), /"Check alert emails in staging": Q7 answered\. Act on it and close the task with evidence/);
+  assert.equal(dueByAgent(answered, NOW)["main-agent"]?.[0]?.id, "t1", "the same nudge as any due task");
+  assert.equal(taskSchedule(blocked, answered, NOW).label, "Due · Q7 answered");
+  const closed = workspace({ questions: [q({ closed: { at: iso(NOW - DAY), reason: "superseded", by: null } })], obligations: [blocked] });
+  assert.equal(taskDue(blocked, closed, NOW)!.label, "Due · Q7 closed");
+  const held = task({ ...blocked, recheckAt: iso(NOW + DAY) });
+  assert.equal(taskDue(held, answered, NOW)!.due, false, "a recheck the agent set holds it");
+  assert.deepEqual(INVARIANTS.find(i => i.id === "due-by-fact")!.check(answered, NOW), null);
+  // A task waiting on the developer gets no default re-check (it would hold the answer), from an update or maintenance.
+  const w = workspace({ prs: [pr()], questions: [q()] });
+  const t = updateObligation(w, { title: "Drop the old table", status: "blocked", question: "Q7", now: NOW });
+  assert.equal(t.coveredBy, "Q7"); assert.equal(t.recheckAt, undefined);
+  assert.equal(maintainTasks(workspace({ questions: [q()], obligations: [task({ status: "blocked", ask: "Q7: May I drop the old table?", coveredBy: "Q7" })] }), NOW, null, false), false);
 });
 
 test("due-by-fact: at most 3 a turn end, each at most twice and once a day; zero words when nothing is due", () => {

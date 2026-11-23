@@ -256,8 +256,10 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   "Manual". With `afterPrs` it comes due when every PR reaches `dependencyStage` (merged, or deployed; a repository
   with no deploy target counts its merge), or when one closes unmerged. With no PRs it comes due on `recheckAt`: the
   agent's `recheck` ("YYYY-MM-DD"), else 3 days (`RECHECK_DAYS`) after its last `update_obligation`; a later `recheck`
-  also holds a PR-made fact. A task blocked on the developer (Needs you has it) or on a developer-timed trigger (it is
-  sent as a message) is left out. Due is a nudge, never an auto-send and never a done: the worker lists each agent's
+  also holds a PR-made fact. A task blocked on a question the developer already answered or closed (`coveredBy`,
+  `waitsOnDeveloper`) comes due at that answer ("Due · Q7 answered"): the agent acts on it and moves the task. A task
+  still waiting on the developer (Needs you has it; it gets no default re-check) or on a developer-timed trigger (it
+  is sent as a message) is left out. Due is a nudge, never an auto-send and never a done: the worker lists each agent's
   due tasks in `scopes.json` (`dueByAgent`: the task's working contributor and the main agent, oldest first, at most
   5), and the Stop hook names at most 3 whose time passed (`pickNudges`), each at most twice for the same fact and
   revision and at most once a day, sharing `hook-state/task-nudges-<workspace>.json`: "Task <id> "<title, 60 chars>":
