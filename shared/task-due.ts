@@ -40,7 +40,7 @@ const time = (v?: string | null) => v && Number.isFinite(Date.parse(v)) ? Date.p
 /** "2026-11-25": the day, as the agent writes recheck. */
 export const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** "Nov 25": the day, as the developer reads it. */
-const shortDay = (ms: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const shortDay = (ms: number, now: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC", ...(new Date(ms).getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" } : {}) });
 
 /** Whether due-by-fact applies: open, not the developer's (Needs you has it), not on a developer-timed auto-send. */
 export function dueApplies(o: Pick<Obligation, "status" | "ask" | "enable_follow_up" | "trigger">): boolean {
@@ -63,7 +63,7 @@ export function taskDue(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: n
   if (!o.afterPrs.length) {
     if (recheck === null) return null;
     const due = recheck <= now;
-    return { key: `recheck:${o.recheckAt}`, fact: `re-check ${isoDay(recheck)}`, dueAt: new Date(recheck).toISOString(), due, label: due ? `Due · re-check ${shortDay(recheck)}` : `Re-check ${shortDay(recheck)}` };
+    return { key: `recheck:${o.recheckAt}`, fact: `re-check ${isoDay(recheck)}`, dueAt: new Date(recheck).toISOString(), due, label: due ? `Due since ${shortDay(recheck, now)}` : `Re-check ${shortDay(recheck, now)}` };
   }
   const prs = o.afterPrs.map(key => w.prs.find(p => p.key === key));
   const stage = o.dependencyStage ?? "deployed";
@@ -73,7 +73,7 @@ export function taskDue(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: n
     const dueMs = Math.max(factAt ?? 0, recheck ?? 0);
     const due = dueMs <= now;
     const held = recheck !== null && recheck > (factAt ?? 0);
-    return { key: `${kind}:${o.afterPrs.join(",")}${held ? `:${o.recheckAt}` : ""}`, fact, dueAt: new Date(dueMs).toISOString(), due, label: due ? `Due · ${fact}` : `${fact[0].toUpperCase()}${fact.slice(1)} · re-check ${shortDay(dueMs)}` };
+    return { key: `${kind}:${o.afterPrs.join(",")}${held ? `:${o.recheckAt}` : ""}`, fact, dueAt: new Date(dueMs).toISOString(), due, label: due ? `Due · ${fact}` : `${fact[0].toUpperCase()}${fact.slice(1)} · re-check ${shortDay(dueMs, now)}` };
   };
   const closed = prs.find(p => p!.snapshot!.state === "CLOSED");
   if (closed) return at(null, "closed", `#${closed.number} closed unmerged`);
@@ -93,7 +93,11 @@ export function isStale(o: Pick<Obligation, "nudged" | "revision">, d: TaskDue |
   return !!d?.due && !!o.nudged && o.nudged.key === d.key && o.nudged.revision === o.revision && o.nudged.count >= NUDGE_CAP;
 }
 
-/** The task row's one line for the developer: "Due · #231 merged", "After #232 merges", "Re-check Nov 25", "Stale · …". */
+/**
+ * The task row's one line for the developer: "Due · #231 merged", "Due since Nov 22", "After #232 merges", "Re-check
+ * Nov 25", "Stale · …". "Re-check" is only ever a date ahead; a passed one says Due since, with the year when it isn't
+ * this one.
+ */
 export function dueLabel(o: ListObligation, w: Pick<ListWorkspace, "prs">, now: number): string | null {
   const d = taskDue(o, w, now);
   if (!d) return null;

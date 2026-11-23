@@ -535,7 +535,7 @@ export const INVARIANTS: Invariant[] = [
         const label = taskSchedule(o, w, now).label;
         if (label === "Manual") return `task ${o.id} reads Manual`;
         const d = taskDue(o, w, now);
-        if (d?.due && !o.trigger && !/^(Due|Stale) · /.test(label)) return `task ${o.id} is due (${d.fact}) but reads "${label}"`;
+        if (d?.due && !o.trigger && !/^(Due · |Due since |Stale · )/.test(label)) return `task ${o.id} is due (${d.fact}) but reads "${label}"`;
       }
       return null;
     },

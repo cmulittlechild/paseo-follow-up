@@ -30,7 +30,8 @@ test("due-by-fact: what moves a task, and when it is due", () => {
   const later = taskDue(task({ recheckAt: iso(NOW + 2 * DAY) }), workspace(), NOW)!;
   assert.equal(later.due, false); assert.match(later.label, /^Re-check [A-Z][a-z]{2} \d+$/);
   const passed = taskDue(task({ recheckAt: iso(NOW - 1) }), workspace(), NOW)!;
-  assert.equal(passed.due, true); assert.match(passed.label, /^Due · re-check /);
+  assert.equal(passed.due, true); assert.match(passed.label, /^Due since [A-Z][a-z]{2} \d+$/);
+  assert.equal(taskDue(task({ recheckAt: "2025-12-20T00:00:00Z" }), workspace(), NOW)!.label, "Due since Dec 20, 2025", "a date in another year says the year");
   // PRs: merged (stage merged), deployed (anchor), a repository with no deploy target, closed unmerged, still open.
   const w = (p = merged(1)) => workspace({ prs: [p] });
   assert.equal(taskDue(task({ afterPrs: ["example/app#1"], dependencyStage: "merged" }), w(), NOW)!.label, "Due · #1 merged");
@@ -46,7 +47,7 @@ test("due-by-fact: what moves a task, and when it is due", () => {
   assert.equal(taskDue(task({ status: "blocked", ask: "May I drop the old table?", recheckAt: iso(NOW - DAY) }), workspace(), NOW), null);
   assert.equal(taskDue(task({ enable_follow_up: true, trigger: { event: "now", delayDays: 0 }, recheckAt: iso(NOW - DAY) }), workspace(), NOW), null);
   // The row never says Manual: it says what moves the task.
-  assert.equal(taskSchedule(task({ recheckAt: iso(NOW - 1) }), workspace(), NOW).label.startsWith("Due · "), true);
+  assert.equal(taskSchedule(task({ recheckAt: iso(NOW - 1) }), workspace(), NOW).label.startsWith("Due since "), true);
   assert.equal(taskSchedule(task({ afterPrs: ["example/app#1"], dependencyStage: "merged" }), w(pr()), NOW).label, "After #1 merges");
 });
 
