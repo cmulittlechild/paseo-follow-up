@@ -326,7 +326,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
         <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
           accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           style={{ flex: 1, color: c.foreground, fontSize: compact ? 16 : 14, paddingVertical: 8, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-        {/* After ⌘V, which is the field's own paste hint, so the chip never reads as this button's shortcut. */}
+        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
         {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
         <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
