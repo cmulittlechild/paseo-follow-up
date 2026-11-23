@@ -14,7 +14,7 @@ import { OTHER, OTHER_LABEL, closedLine, isDismissed, answerDraft, answerHeading
 import { ago } from "../shared/attention";
 import { RETRYING_DETAIL, deliveryStatus } from "../shared/queue";
 import { mootNote, sentence } from "../shared/errors";
-import { activity, type ActivityTone } from "../shared/activity";
+import { activity, activityQuestions, type ActivityTone } from "../shared/activity";
 import { Button, Card, CardRow, Chip, FoldRow, IconButton, SubmitScope, errorText, text, type Theme } from "./kit";
 import { Spinner } from "./motion";
 import { DictationField, useCaret, type FieldPad } from "./dictation";
@@ -272,7 +272,6 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   const pinned = dense && !!bodyMaxHeight;
   // Re-keyed by role, so the field that opens on Something else or Add note takes the caret; typing never re-keys it.
   const input = draft.field && <View style={{ gap: 6 }}>
-    {free && !dense && <Text style={t.meta}>No options were given. Write the decision for the agent.</Text>}
     {!!draft.heading && <Text style={[t.small, { fontWeight: "600" }]}>{draft.heading}</Text>}
     {(() => {
       const field = (pad: FieldPad) => <TextInput key={draft.field} accessibilityLabel={draft.label} placeholder={draft.placeholder} placeholderTextColor={c.foregroundMuted}
@@ -454,7 +453,7 @@ const toneColor = (c: Colors, tone: ActivityTone) => tone === "merged" ? mergedC
 export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, onOpenQuestion }: { workspace: Workspace; theme: Theme; compact: boolean; now: number; open: (key: string) => boolean; toggle: (key: string) => void; onOpenQuestion: (id: string) => void }) {
   const c = theme.colors; const t = text(c);
   const rows = activity(w);
-  const questions = [...w.questions].sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || Number(b.id.slice(1)) - Number(a.id.slice(1)));
+  const questions = activityQuestions(w.questions).sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || Number(b.id.slice(1)) - Number(a.id.slice(1)));
   const [tab, setTab] = useState<"timeline" | "questions">("timeline");
   // Activity searches both tabs at once; each tab chip then counts its own matches.
   const search = useSectionSearch<Activity | Question>(w.id, "activity", { theme, compact, items: [...rows, ...questions], fields: x => "askedAt" in x ? questionFields(x) : activityFields(x) });

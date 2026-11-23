@@ -1,0 +1,1 @@
+- Polish in the workspace panel: stale tasks are a clearer amber in light mode, "in Activity" under the tasks is a link, the Questions tab counts only real questions, and a question without options just asks for your answer.

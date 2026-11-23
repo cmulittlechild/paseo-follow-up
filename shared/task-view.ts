@@ -112,6 +112,12 @@ export function summaryParts(s: TaskSummary): { neutral: string; stale: string |
 
 /** The footer: where finished tasks went. Null when none finished. */
 export function finishedLine(s: TaskSummary): string | null {
+  return finishedParts(s)?.text ?? null;
+}
+
+/** The footer in two parts, so "in Activity" can be a link to the card where finished tasks are. */
+export function finishedParts(s: TaskSummary): { count: string; place: string; text: string } | null {
   if (!s.finished) return null;
-  return s.finishedThisWeek ? `${s.finishedThisWeek} finished this week · in Activity` : `${s.finished} finished · in Activity`;
+  const count = s.finishedThisWeek ? `${s.finishedThisWeek} finished this week` : `${s.finished} finished`;
+  return { count, place: "in Activity", text: `${count} · in Activity` };
 }

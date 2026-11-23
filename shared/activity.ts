@@ -21,6 +21,12 @@ export function duration(from: string | null | undefined, to: string | null | un
 }
 
 /**
+ * The Activity card's Questions tab, and its count: the decisions asked here. An action ("tell me when you've done it")
+ * is not a question to the developer, so it lists, and counts, only in the Timeline ("Action · title").
+ */
+export const activityQuestions = <Q extends { need?: string }>(questions: readonly Q[]): Q[] => questions.filter(q => q.need !== "action");
+
+/**
  * What happened in this workspace, newest first, from what Follow-up already stores: repairs sent
  * and finished (with how long they took), PR merges, merge and reviewer actions, questions, finished tasks and Done.
  */
