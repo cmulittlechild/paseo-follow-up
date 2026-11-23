@@ -6,7 +6,7 @@ import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, Settings
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentSettingsRpc, setAgentSettingRpc, setWaitRpc } from "../shared/contracts";
 import { WAIT_HOST_NOTE, WAIT_NOT_ATTACHED, waitNote, waitSwitchCopy } from "../shared/wait";
-import { isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
+import { hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
 import { NO_PROMPT_MODE, SETTINGS_ORDER, isReset, resetEntry } from "../shared/job-rows";
 import { JobRows, agentSettingsKey, useAgentSettings, type JobExtra } from "./job-rows";
 import { Button, errorText, text, type Theme } from "./kit";
@@ -81,7 +81,7 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
   const role = r.role;
   const jobs = isJobRole(role);
   const current = catalog.find(p => p.id === r.provider);
-  const base: SavedRole = { provider: r.provider, model: r.model, thinking: r.thinking, ...(jobs ? {} : { mode: r.mode }), ...(role === "recovery" ? { same: r.same } : {}),
+  const base: SavedRole = { provider: r.provider, model: r.model, thinking: r.thinking, ...(jobs ? {} : { mode: r.mode }), ...(hasSame(role) ? { same: r.same } : {}),
     ...(jobs ? { dailyCap: r.dailyCap ?? undefined, maxPromptChars: r.maxPromptChars ?? undefined } : {}), ...(role === "ranker" ? { cadenceMinutes: r.cadenceMinutes ?? undefined } : {}) };
   const set = (patch: SavedRole) => save({ ...base, ...patch });
   const modes = current?.modes ?? [];
@@ -113,7 +113,7 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
   </>;
 }
 
-const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "overseer" ? "Claude, newest Opus" : role === "about" ? "Claude Haiku" : "Claude Sonnet, hourly";
+const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "dispatch" ? "the Overseer's agent" : role === "overseer" ? "Claude, newest Opus" : role === "about" ? "Claude Haiku" : "Claude Sonnet, hourly";
 /** "Not available in Paseo: Claude and Pi (turned off in Paseo); Antigravity (not installed)." Grouped by reason; a
  * provider whose name is also on a ready one isn't listed, so the line never contradicts the rows. */
 function unavailableLine(providers: readonly { label: string; available: boolean; reason: string | null }[]): string | null {

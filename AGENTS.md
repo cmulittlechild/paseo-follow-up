@@ -79,7 +79,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
-| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx` | [dispatch](docs/dispatch.md) |
+| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
@@ -1034,7 +1034,6 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
    deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
    timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
-
 84. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
    `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
    only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
@@ -1044,6 +1043,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `ASK.items`, with a link only when a reply carries it (`validateItems`). It runs on the Summaries role's fast model,
    once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
    the stored items and never asks. Guarded by `tests/ask.test.ts`.
+
+86. **A raised issue is a Needs-you item** (`raised-is-needs-you`). A Linear issue raised to Urgent or High that is still
+   in the queue and has no workspace (`raisedNeeds`, decision Q8) is a row of Home's Needs you group, first, shaped like
+   its rows, and counted wherever Needs you is counted on Home (the group header and the strip, `HomeModel.raised`). It
+   has the two-click Remove of every Needs-you item (invariant 59: `follow.dismiss {issue}`, agents `dismiss_item
+   {issue}`), and a later raise brings it back. One issue offers one set of actions on screen: while it's in Needs you
+   (Start…), its line in the brief's Since block keeps the news without New's buttons. 2026-11-23, two critiques: it was
+   a card above the strip that Needs you didn't count, with a second action set in the brief. Guarded by
+   `tests/brief-since.test.ts`.
 
 89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
    developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
@@ -1056,14 +1064,31 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
    `tests/tasks-view.test.ts` and `INVARIANTS`.
 
-90. **A raised issue is a Needs-you item** (`raised-is-needs-you`). A Linear issue raised to Urgent or High that is still
-   in the queue and has no workspace (`raisedNeeds`, decision Q8) is a row of Home's Needs you group, first, shaped like
-   its rows, and counted wherever Needs you is counted on Home (the group header and the strip, `HomeModel.raised`). It
-   has the two-click Remove of every Needs-you item (invariant 59: `follow.dismiss {issue}`, agents `dismiss_item
-   {issue}`), and a later raise brings it back. One issue offers one set of actions on screen: while it's in Needs you
-   (Start…), its line in the brief's Since block keeps the news without New's buttons. 2026-11-23, two critiques: it was
-   a card above the strip that Needs you didn't count, with a second action set in the brief. Guarded by
-   `tests/brief-since.test.ts`.
+90. **Dispatch needs a click or a confirmed plan** (`dispatch-needs-a-click-or-a-confirmed-plan`). New creates a
+   workspace only from the developer's click (`follow.dispatch` from the dialog) or an agent's confirmed plan (the
+   `dispatch` tool: a dry run first, then confirm with its plan id). The plan freezes the resolved project and the
+   instructions' hash; a confirm whose project or instructions changed since is refused. Preview, sources and Settings →
+   New work only read. The Overseer's own dispatch also passes its new-workspace gate. Guarded by
+   `tests/dispatch-flow.test.ts` and `tests/overseer.test.ts`.
+91. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
+   icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
+   name when saved), a workspace kind, a branch rule and an agent. No action runs code, names a team, repo or person,
+   or reaches past its own fields; the body a source brings is clipped to 4 KB. Settings → New work and the agent tools
+   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts` and `tests/new-settings.test.ts`.
+92. **New never switches the project silently** (`new-never-switches-the-project-silently`). Every project New picks
+   comes with how and why (`resolveWhere`: the pick, the link's repository, the live workspace, the team's rule, learned,
+   last used as a guess, the only one), and a guess is drawn as one. When none of those holds, New asks ("Which
+   project?") and saves the answer as the team's rule; a rule naming a project that is gone asks again. Guarded by
+   `tests/dispatch-core.test.ts` and `tests/new-view.test.ts`.
+93. **A failed dispatch leaves nothing behind** (`a-failed-dispatch-leaves-nothing-behind`). A workspace Paseo refused
+   is not retried; an agent that can't start archives the workspace just created, and the record says what was left (or
+   where to look if the archive failed too). A worker restarted mid-create marks the dispatch failed and never creates
+   again blind. Guarded by `tests/dispatch-flow.test.ts`.
+94. **New reads nothing while closed** (`new-reads-nothing-while-closed`). Closed, New makes no request: no feed, no
+   timer, no mcpproxy call. Open, it reads the Linear list once (shared for 60 s), one issue per paste, and a search
+   only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
+   closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
+   queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
 
 ## Bugs
 

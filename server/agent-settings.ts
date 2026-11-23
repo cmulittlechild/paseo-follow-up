@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WriteBehind } from "./write-behind";
 import {
-  AGENT_ROLES, EMPTY_AGENT_SETTINGS, isJobRole, parseAgentSettings, resolveAll, resolveRole,
+  AGENT_ROLES, EMPTY_AGENT_SETTINGS, hasSame, isJobRole, parseAgentSettings, resolveAll, resolveRole,
   type AgentRole, type AgentSettingsFile, type Catalog, type CatalogProvider, type RoleConfig, type SavedRole,
 } from "../shared/agent-settings";
 
@@ -73,7 +73,7 @@ function clean(role: AgentRole, entry: SavedRole): SavedRole {
   const out: SavedRole = { ...entry };
   if (isJobRole(role)) { delete out.mode; delete out.same; } else { delete out.dailyCap; delete out.maxPromptChars; }
   if (role !== "ranker") delete out.cadenceMinutes;
-  if (role !== "recovery") delete out.same;
+  if (!hasSame(role)) delete out.same;
   return out;
 }
 

@@ -109,3 +109,22 @@ test("Home's dispatch rows render under the phone's rules and offer Undo only in
   assert.equal(byLabel(r, /^Undo /).length, 1);
   r.unmount();
 });
+
+test("on a phone an action's name is never cut: the alternates' rows wrap and no button is squeezed below its name", async () => {
+  const { ActionRow } = await import("../client/action-row");
+  const btn = (id: string, name: string) => ({ id, name, icon: "file-text", key: null });
+  const bars = [
+    { kind: "existing", workspaceId: "ws-1", title: "ACME-142 Retry failed charges", others: [btn("plan", "Plan as artifact"), btn("investigate", "Investigate")], more: [btn("open", "Just open")], disabled: null },
+    { kind: "actions", primary: btn("pr", "Create PR"), second: btn("plan", "Plan as artifact"), more: [btn("investigate", "Investigate")], disabled: null },
+  ];
+  for (const bar of bars) {
+    const { r, error } = await render(createElement(ActionRow, { bar, c: colors, compact: true, onAction: () => {}, onOpen: () => {} }));
+    assert.equal(error, null, `${bar.kind}: ${(error as Error)?.message}`);
+    const flat = (s: unknown): Record<string, unknown> => Object.assign({}, ...[typeof s === "function" ? s({}) : s].flat(Infinity).filter(Boolean));
+    for (const b of r.root.findAll(n => n.props.accessibilityRole === "button")) assert.notEqual(flat(b.props.style).flexBasis, 0, `${bar.kind}: ${b.props.accessibilityLabel} isn't squeezed to a share of the row`);
+    const rows = r.root.findAll(n => typeof n.type === "string" && flat(n.props.style).flexDirection === "row" && (n as unknown as { findAll(f: (m: Node) => boolean): Node[] }).findAll(m => m.props.accessibilityRole === "button").length > 1);
+    assert.ok(rows.length, `${bar.kind}: a row holds the alternates`);
+    for (const row of rows) assert.equal(flat(row.props.style).flexWrap, "wrap", `${bar.kind}: the alternates' row wraps`);
+    r.unmount();
+  }
+});

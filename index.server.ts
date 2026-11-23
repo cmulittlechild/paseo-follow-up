@@ -1302,9 +1302,11 @@ export default function contribute(server: PluginServerContext) {
       baseCache.set(projectId, { at: Date.now(), value });
       return value;
     },
-    // The action's own agent, else New's default: the Overseer's agent (Settings → Agents) until New has its own row.
+    // The action's own agent, else New's default: Settings → Agents → New work, which is the Overseer's agent until
+    // someone picks one ("Same as the Overseer").
     agent: async action => {
-      const role = await agentSettings.role("overseer").catch(() => null);
+      const own = await agentSettings.role("dispatch").catch(() => null);
+      const role = !own || own.same ? await agentSettings.role("overseer").catch(() => null) : own;
       const provider = action.agent?.provider ?? role?.provider?.split("/")[0] ?? "claude";
       const model = action.agent?.model ?? (action.agent?.provider ? null : role?.model ?? null);
       const mode = action.agent?.mode ?? (action.agent?.provider ? null : role?.mode ?? null) ?? (provider === "claude" ? "bypassPermissions" : null);

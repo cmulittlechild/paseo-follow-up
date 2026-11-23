@@ -75,7 +75,7 @@ export default function contribute(host: PluginClientContext) {
   setReportFallback(() => client.openScreen({ screenId: OVERVIEW }));
   setReportError((message, at) => openReportSheet({ kind: "bug", error: message, at }));
   const reportHost = (props: PluginSurfaceProps | PluginWorkspacePanelProps) => <><ReportSheetHost theme={props.theme} layout={props.layout} openAgent={props.navigation ? agentId => props.navigation!.openAgent({ agentId }) : undefined} /><RenameHost theme={props.theme} compact={props.layout.compact} /></>;
-  const Settings = (props: PluginSurfaceProps & { category?: SettingsCategory }) => <><FollowSettings {...props} openSetup={openSetup} openReport={() => openReportSheet()} />{reportHost(props)}</>;
+  const Settings = (props: PluginSurfaceProps & { category?: SettingsCategory }) => <><FollowSettings {...props} openSetup={openSetup} openReport={() => openReportSheet()} openSettings={category => openSettings(category)} />{reportHost(props)}</>;
   // Paseo 0.16: one settings screen per category (its own tabs); 0.15: one screen with Follow-up's tabs (client/settings-screens.ts).
   const settings = createSettings(client, Settings);
   const openSettings = settings.open;
