@@ -14,7 +14,7 @@ export type Stores = {
   createLiveStore(client: never): { stop(): void; all(): { id: string; title: string }[]; get(id: string): unknown };
   acceptWorkspace(w: unknown): void;
   createInboxStore(client: never): { stop(): void };
-  createHomeExtras(client: never): { stop(): Promise<void>; priorities(): { id: string }[]; usage(): { accounts: unknown[] } };
+  createHomeExtras(client: never): { stop(): Promise<void>; priorities(): { id: string }[]; usage(): { accounts: unknown[] }; queue(): { raised: { key: string }[]; revision: string } };
   contributeDisplay(client: never, context: never): () => void;
 };
 
