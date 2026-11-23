@@ -113,7 +113,7 @@ test("a-brief-without-an-ask-never-sits-beside-needs-you: the headline never say
   type Item = Parameters<typeof flagHeadline>[2] extends (infer U)[] | undefined ? U : never;
   const none = { state: "open", kind: "unknown", source: "none", ask: "No ask stated. Its last paragraph is right above; nothing is guessed." };
   const drawn: Item[] = [
-    { kind: "send", key: "send:b1", batchId: "b1", title: "1 task ready", tasks: ["Fix the lint"], blocker: null } as Item,
+    { kind: "send", key: "send:b1", batchId: "b1", title: "1 repair ready", tasks: ["Fix the lint"], what: "1 repair", blocker: null } as Item,
     { kind: "decision", key: "decision:pr143", title: "#143 is approved", detail: "" } as unknown as Item,
   ];
   const failures: string[] = [];

@@ -1,3 +1,4 @@
+import { sendItems } from "./send-words";
 import { z } from "zod";
 import { OBSERVATION_FRESH_MS } from "./poll";
 import { followUpObligations, deployState, recoveryBatch } from "./follow-up";
@@ -279,7 +280,7 @@ export function completionGate(w: ListWorkspace, now = Date.now()): CompletionGa
   const open = w.batches.filter(b => !recoveryBatch(b) && !completionCheck(b));
   if (open.some(b => ["sending", "sent"].includes(b.state))) add("agent", "Acknowledge the open follow-up batch");
   if (open.some(b => ["blocked", "uncertain"].includes(b.state))) add("developer", "Retry or dismiss the stuck follow-up batch");
-  if (open.some(b => b.state === "pending")) add("developer", "Send or dismiss the queued tasks");
+  if (open.some(b => b.state === "pending")) add("developer", "Send or dismiss the queued repairs");
   if (w.prActions.some(a => ["sending", "uncertain"].includes(a.state))) add("developer", "Check the outstanding PR action");
   for (const q of (w.questions ?? []).filter(questionOpen)) add("developer", `Answer or withdraw ${q.id} (${q.title})`);
   if (w.hold) add("developer", w.hold);
@@ -312,7 +313,7 @@ export function summary(w: ListWorkspace, now = Date.now()): { status: Status; l
   if (w.completion && completionBlockers(w, now).length === 0) return { status: "done", label: "Done", reason: w.completion.summary };
   if (w.runtimeReason) return { status: "waiting", label: "Waiting", reason: w.runtimeReason };
   const batch = w.batches.find(b => !recoveryBatch(b) && ["pending", "sending", "sent"].includes(b.state) && !(b.state === "pending" && completionCheck(b)));
-  if (batch) return { status: batch.state === "pending" ? "active" : "handling", label: batch.state === "pending" ? w.enable_auto_sends ? "Auto queued" : "Ready to send" : "Agent handling", reason: `${batch.tasks.length} follow-up task${batch.tasks.length === 1 ? "" : "s"} ${batch.state === "pending" ? "queued" : batch.recipientAgentId && batch.recipientAgentId !== w.mainAgentId ? "sent to the recovery agent" : "sent to the main agent"}` };
+  if (batch) return { status: batch.state === "pending" ? "active" : "handling", label: batch.state === "pending" ? w.enable_auto_sends ? "Auto queued" : "Ready to send" : "Agent handling", reason: `${sendItems(batch.tasks)} ${batch.state === "pending" ? "queued" : batch.recipientAgentId && batch.recipientAgentId !== w.mainAgentId ? "sent to the recovery agent" : "sent to the main agent"}` };
   const live = liveWorkingTask(w);
   if (w.runtimeBusy || live) return { status: "handling", label: "Agent handling", reason: live?.title ?? (w.mainBusy === null ? "Agents in this workspace are working" : "The main agent is working") };
   if (w.prs.some(pr => !statusKnown(pr))) return { status: "waiting", label: "Waiting", reason: "PR status unavailable; refresh will retry" };

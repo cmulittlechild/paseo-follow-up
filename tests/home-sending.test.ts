@@ -29,23 +29,23 @@ test("queued: in Sending with when and why, the clock glyph, and Send now where 
   const s = row(home([w]), "q");
   assert.equal(s.group, "sending");
   assert.equal(s.icon, "ClockArrowUp", "queued reads as the clock family, never Running's spinner");
-  assert.equal(s.line, `2 tasks queued · ${SETTLE_REASON}`);
+  assert.equal(s.line, `2 repairs queued · ${SETTLE_REASON}`);
   assert.equal(sendingOf(w, clock)!.when, new Date(Date.parse(at(10_000)) + 60_000).toISOString(), "when it goes out on its own");
-  assert.deepEqual(s.sendNow, { batchId: "b-pending", count: 2 });
+  assert.deepEqual(s.sendNow, { batchId: "b-pending", count: 2, what: "2 repairs" });
   assert.deepEqual(violations(w, clock), []);
 });
 
 test("main agent busy: in Sending after its turn, and Send now queues it for the turn's end (Q96 = A)", () => {
   const s = row(home([ws("busy", { runtimeBusy: true })]), "busy");
   assert.equal(s.group, "sending");
-  assert.equal(s.line, "2 tasks queued · sends when the main agent's turn ends, so it isn't interrupted");
-  assert.deepEqual(s.sendNow, { batchId: "b-pending", count: 2 });
+  assert.equal(s.line, "2 repairs queued · sends when the main agent's turn ends, so it isn't interrupted");
+  assert.deepEqual(s.sendNow, { batchId: "b-pending", count: 2, what: "2 repairs" });
 });
 
 test("in flight: the send glyph, what it waits for, and no Send now", () => {
   const w = ws("out", { batches: [batch("sent")], runtimeBusy: true });
   const s = row(home([w]), "out");
-  assert.deepEqual([s.group, s.icon, s.line, s.sendNow], ["sending", "Send", "Main agent is working on 2 tasks", null]);
+  assert.deepEqual([s.group, s.icon, s.line, s.sendNow], ["sending", "Send", "Main agent is working on 2 repairs", null]);
   assert.deepEqual({ state: sendingOf(w, clock)!.state, why: sendingOf(w, clock)!.why, when: sendingOf(w, clock)!.when }, { state: "sent", why: "waiting for it to report back", when: at(60_000) });
 });
 
@@ -71,18 +71,18 @@ test("cap reached: the capped task moves to Needs you and the workspace leaves S
 
 test("after a failed or unacknowledged send, the row says what happens next", () => {
   const unacked = ws("again", { batches: [batch("completed", { id: "b-old", unacknowledged: true }), batch("pending", { createdAt: at(10_000) })] });
-  assert.equal(row(home([unacked]), "again").line, `2 tasks queued · ${UNACKNOWLEDGED_NOTE} · ${SETTLE_REASON}`);
+  assert.equal(row(home([unacked]), "again").line, `2 repairs queued · ${UNACKNOWLEDGED_NOTE} · ${SETTLE_REASON}`);
   const refused = ws("refused", { batches: [batch("pending", { refusal: { at: at(5_000), reason: "the agent was busy" } } as Partial<Batch>)] });
   assert.match(row(home([refused]), "refused").line, /didn't send: the agent was busy · tries again shortly$/);
 });
 
 test("the machine-wide hold: one line above Sending, only while it has rows; queued rows wait for it to ease", () => {
-  const line = "Auto-sends are paused on this machine · Paseo is at 78% of its memory limit. Queued tasks go out when it eases; Send now still sends.";
+  const line = "Auto-sends are paused on this machine · Paseo is at 78% of its memory limit. Queued repairs go out when it eases; Send now still sends.";
   const held = home([ws("held"), ws("out", { batches: [batch("sent")] })], { hold: line });
   assert.equal(held.hold, line);
-  assert.equal(row(held, "held").line, `2 tasks queued · ${HELD_REASON}`);
-  assert.deepEqual(row(held, "held").sendNow, { batchId: "b-pending", count: 2 }, "Send now still sends while auto-sends are held");
-  assert.equal(row(held, "out").line, "Main agent is working on 2 tasks", "a message already out isn't held");
+  assert.equal(row(held, "held").line, `2 repairs queued · ${HELD_REASON}`);
+  assert.deepEqual(row(held, "held").sendNow, { batchId: "b-pending", count: 2, what: "2 repairs" }, "Send now still sends while auto-sends are held");
+  assert.equal(row(held, "out").line, "Main agent is working on 2 repairs", "a message already out isn't held");
   const empty = home([ws("calm", { batches: [] })], { hold: line });
   assert.equal(empty.hold, null, "no hold line without Sending rows");
   assert.ok(!empty.groups.some(g => g.id === "sending"), "an empty group is hidden");
@@ -93,7 +93,7 @@ test("the machine-wide hold: one line above Sending, only while it has rows; que
 test("the hold line: the same words everywhere, the percentage only when it is real and current", () => {
   const r = (patch: Partial<Resources>): Resources => ({ memoryPct: 78, memoryBytes: null, memoryHighBytes: null, cpuPct: 20, memoryPressure: 0, cpuPressure: 0, level: "constrained", at: at(10_000), ...patch });
   assert.equal(autoSendHold(r({ level: "ok" }), clock), null);
-  assert.equal(autoSendHold(r({}), clock), "Auto-sends are paused on this machine · Paseo is at 78% of its memory limit. Queued tasks go out when it eases; Send now still sends.");
+  assert.equal(autoSendHold(r({}), clock), "Auto-sends are paused on this machine · Paseo is at 78% of its memory limit. Queued repairs go out when it eases; Send now still sends.");
   assert.match(autoSendHold(r({ at: at(10 * 60_000) }), clock)!, /Paseo is near its memory limit\./, "an old reading drops the %");
   assert.match(autoSendHold(r({ memoryPct: 40, memoryPressure: 30 }), clock)!, /memory is under pressure/);
   assert.match(autoSendHold(r({ memoryPct: 40, cpuPressure: 80 }), clock)!, /CPU is under sustained load/);
@@ -143,7 +143,7 @@ test("say it once: while the hold line shows, the memory meter keeps its reading
 test("the Needs-you Send with Auto off says how much waits and why, never the title", () => {
   const w = ws("off", { enable_auto_sends: false });
   const s = row(home([w]), "off");
-  assert.deepEqual([s.group, s.word, s.line], ["needs", "Send", "2 tasks ready · auto-send is off here"]);
+  assert.deepEqual([s.group, s.word, s.line], ["needs", "Send", "2 repairs ready · auto-send is off here"]);
 });
 
 test("phones: the status strip has its row to itself, so no chip hides behind the version", async () => {

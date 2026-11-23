@@ -86,16 +86,16 @@ test("merge readiness matches the PR controls and waits for queued or recent mer
 test("headline, live line and pill read the same state", () => {
   const w = workspace({ prs: stack(), batches: [batch()] });
   assert.deepEqual(headline(w, clock).map(p => p.text), ["1 of 4 PRs merged", "1 needs you", "1 to fix"]);
-  assert.equal(workspaceHeadline(needsYou(w, clock))?.label, "Send 1 task", "the pill names the top item, never \"N need you\"");
+  assert.equal(workspaceHeadline(needsYou(w, clock))?.label, "Send 1 repair", "the pill names the top item, never \"N need you\"");
   assert.equal(workspaceHeadline(needsYou(workspace({ prs: [pr({ snapshot: snapshot({ reviewDecision: "APPROVED", graphiteMergeStatus: "READY_TO_MERGE_AS_STACK" }) })] }), clock))?.label, "Merge #1");
   assert.equal(workspaceHeadline(needsYou(workspace({ prs: [pr()] }), clock)), null, "no pill unless something needs you");
   const sent = { ...w, batches: [batch({ state: "sent", sentAt: new Date(clock - 120_000).toISOString() })] };
   assert.equal(liveLine(sent, clock).icon, "sent", "in flight reads as the send glyph, never Running's spinner (Q51)");
-  assert.match(liveLine(sent, clock).text, /Main agent is working on 1 task/);
+  assert.match(liveLine(sent, clock).text, /Main agent is working on 1 repair/);
   // The line says why repairs wait, never "sends when the agent is idle" while it is idle.
-  assert.equal(liveLine({ ...w, enable_auto_sends: true }, clock).text, "1 task queued · going out now");
-  assert.equal(liveLine({ ...w, enable_auto_sends: true, runtimeBusy: true }, clock).text, "1 task queued · sends when the main agent's turn ends, so it isn't interrupted");
-  assert.equal(liveLine({ ...w, enable_auto_sends: true, sendWait: "unloaded" }, clock).text, "1 task queued · the agent is idle; Follow-up doesn't wake it");
+  assert.equal(liveLine({ ...w, enable_auto_sends: true }, clock).text, "1 repair queued · going out now");
+  assert.equal(liveLine({ ...w, enable_auto_sends: true, runtimeBusy: true }, clock).text, "1 repair queued · sends when the main agent's turn ends, so it isn't interrupted");
+  assert.equal(liveLine({ ...w, enable_auto_sends: true, sendWait: "unloaded" }, clock).text, "1 repair queued · the agent is idle; Follow-up doesn't wake it");
 });
 
 test("done workspaces read as shipped and sort into Done", () => {

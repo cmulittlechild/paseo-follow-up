@@ -21,7 +21,6 @@ import { RichText } from "./rich-text";
 const AUTO_OFF_HINT = "Off: it stays here for you";
 /** "14:32": a time on this device's clock. */
 const clock = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-const tasks = (n: number) => `${n} task${n === 1 ? "" : "s"}`;
 
 /** The status column reads one way for every task: dashed ring = queued, send glyph = sent (accent while the agent works on it). Never Running's spinner (Q51). */
 export function DeliveryGlyph({ state, w, colors }: { state: "queued" | "sent"; w: Workspace; colors: Colors }) {
@@ -31,8 +30,8 @@ export function DeliveryGlyph({ state, w, colors }: { state: "queued" | "sent"; 
 
 /** The strip's one line: who, how many, and when and why (Queued), or when it went out and what Follow-up waits for (Sent). */
 export function stripLine(s: MessageStrip): { lead: string; rest: string } {
-  if (s.phase === "sent") return { lead: `Sent to ${s.to}`, rest: `${s.at ? ` at ${clock(s.at)}` : ""} · ${tasks(s.count)} · ${s.reason}` };
-  return { lead: `Next message to ${s.to}`, rest: ` · ${tasks(s.count)} · ${s.reason === SETTLE_REASON && s.at ? `sends at ${clock(s.at)} · ` : ""}${s.reason}` };
+  if (s.phase === "sent") return { lead: `Sent to ${s.to}`, rest: `${s.at ? ` at ${clock(s.at)}` : ""} · ${s.what} · ${s.reason}` };
+  return { lead: `Next message to ${s.to}`, rest: ` · ${s.what} · ${s.reason === SETTLE_REASON && s.at ? `sends at ${clock(s.at)} · ` : ""}${s.reason}` };
 }
 
 /** Always the first row of Tasks while a message is queued or out. Preview and Send now are quiet; the normal case needs no click. */
@@ -56,7 +55,7 @@ function StripRow({ strip, w, theme, compact, onPreview, openAgent }: { strip: M
     <Text style={[t.meta, { flexGrow: 1, flexShrink: 1, flexBasis: compact ? "80%" : 240, minWidth: 0 }]}><Text style={{ color: c.foreground, fontWeight: "500" }}>{line.lead}</Text>{line.rest}</Text>
     <View style={{ flexDirection: "row", gap: 8, marginLeft: "auto" }}>
       {strip.phase === "queued" && <Button theme={theme} compact={compact} title="Preview" accessibilityLabel={`Preview the next message to ${strip.to}`} onPress={onPreview} />}
-      {strip.phase === "queued" && strip.sendNow && <Button theme={theme} compact={compact} title="Send now" accessibilityLabel={`Send ${tasks(strip.count)} to ${strip.to} now`} loading={busy} disabled={busy} onPress={() => void sendNow()} />}
+      {strip.phase === "queued" && strip.sendNow && <Button theme={theme} compact={compact} title="Send now" accessibilityLabel={`Send ${strip.what} to ${strip.to} now`} loading={busy} disabled={busy} onPress={() => void sendNow()} />}
       {strip.phase === "sent" && openAgent && <Button theme={theme} compact={compact} title="Open agent" accessibilityLabel={`Open ${strip.to}`} onPress={() => openAgent(strip.recipientId)} />}
     </View>
   </View>;
@@ -90,11 +89,11 @@ function RepairGlyph({ row, w, colors }: { row: RepairRow; w: Workspace; colors:
   return <DeliveryGlyph state={row.state} w={w} colors={colors} />;
 }
 
-/** A task Follow-up found on a PR, in the same row as every other task: status glyph, title, PR chip and one state. */
+/** A repair Follow-up found on a PR: status glyph, title, PR chip and one state. */
 function RepairTaskRow({ row, w, theme, compact, onOpen }: { row: RepairRow; w: Workspace; theme: Theme; compact: boolean; onOpen: () => void }) {
   const c = theme.colors; const t = text(c);
   const label = row.state === "done" && row.at ? `${row.text} ${clock(row.at)}` : row.text;
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Task: ${row.task.title}. ${label}. Open details`} onPress={onOpen}
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Repair: ${row.task.title}. ${label}. Open details`} onPress={onOpen}
     style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: 12, paddingVertical: 9, minHeight: compact ? 52 : 44, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <View style={{ width: 16, paddingTop: 2, alignItems: "center" }}><RepairGlyph row={row} w={w} colors={c} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
@@ -119,12 +118,12 @@ function RepairSheet({ row, w, strip, theme, compact, onClose }: { row: RepairRo
   const setAuto = async (auto: boolean) => {
     if (!row) return;
     setSaving(true);
-    try { await control({ workspaceId: w.id, taskAuto: { key: row.task.key, auto } }); toast.show(auto ? "Follow-up sends this task" : "This task stays with you"); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't change Auto-send for this task."); }
+    try { await control({ workspaceId: w.id, taskAuto: { key: row.task.key, auto } }); toast.show(auto ? "Follow-up sends this repair" : "This repair stays with you"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't change Auto-send for this repair."); }
     finally { setSaving(false); void cache.invalidateQueries(); }
   };
   const where = row?.state === "queued" && strip?.phase === "queued" ? ` · in the next message to ${strip.to}${strip.reason === SETTLE_REASON && strip.at ? `, at ${clock(strip.at)}` : ""}` : row?.state === "sent" && strip?.phase === "sent" ? ` · ${stripLine(strip).lead.toLowerCase()}${strip.at ? ` at ${clock(strip.at)}` : ""}` : "";
-  return <Modal title="Task" icon={<Icon name="ListTodo" size={18} color={c.foreground} />} open={!!row} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title="Repair" icon={<Icon name="Wrench" size={18} color={c.foreground} />} open={!!row} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 14 }}>
       {row && <>
         <View style={{ gap: 6 }}>

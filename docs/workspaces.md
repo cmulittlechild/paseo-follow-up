@@ -153,11 +153,14 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
 The repair wording follows the PR workflow ([prs.md](prs.md)): the review-fix command (e.g. `/fix-pr`), and GitHub
 retargeting instead of Graphite restacks.
 
-## Repairs are tasks (Q49)
+## Repairs (Q49, Q141)
 
-A PR condition Follow-up finds (a conflict, review feedback, a failing required check, a restack) is a task row in the
+A PR condition Follow-up finds (a conflict, review feedback, a failing required check, a restack) is a repair: a row in the
 panel's Messages to the agent card, with the message it rides (`shared/task-rows.ts`, `client/messages.tsx`); the agent's own
-tasks are a separate card (tasks-are-the-agent-s). Nothing
+tasks are a separate card (tasks-are-the-agent-s). On screen the two never share a word (Q141): every count or line
+about a queued or sent message says "repairs" (`sendItems`, `shared/send-words.ts`: "2 repairs", "2 repairs and 1 task"
+when an Auto task rides along), and "tasks" means the agent's list. The message the agent receives keeps its own
+wording. Nothing
 is stored per repair: a row comes from the message it rides (the pending or sent batch), the tasks `reconcile` held
 back (`heldTasks`), or a settled message (Done). The batch is the internal delivery record and never shows.
 

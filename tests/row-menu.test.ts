@@ -18,7 +18,7 @@ const s = { key: "agent:a1", agentId: "a1", workspaceId: "workspace", title: "Mi
 const base: RowMenuInput = { s, flagged: false, w: workspace(), needs: [], branch: "tom/migration", canAsk: true };
 const keys = (input: RowMenuInput) => rowMenu(input).map(sec => [sec.key, sec.items.map(i => i.key)] as const);
 const hold: NeedItem = { kind: "hold", key: "hold", title: "Follow-up is paused", detail: "Paused" };
-const send = (blocker: string | null): NeedItem => ({ kind: "send", key: "send:b1", batchId: "b1", title: "Send", tasks: ["Fix lint", "Rebase"], blocker });
+const send = (blocker: string | null): NeedItem => ({ kind: "send", key: "send:b1", batchId: "b1", title: "Send", tasks: ["Fix lint", "Rebase"], what: "2 repairs", blocker });
 const retry = (exhausted: boolean): NeedItem => ({ kind: "retry", key: "retry:b2", batchId: "b2", title: "Retry", detail: "", exhausted });
 const question = (id: string): NeedItem => ({ kind: "question", key: `question:${id}`, questionId: id, title: `${id} · Pick a rollout`, detail: "Which one?", state: "stopped", big: null });
 
@@ -48,7 +48,7 @@ test("a quiet or snoozed row has no triage moves", () => {
 test("fix moves appear only when they apply", () => {
   const all = keys({ ...base, needs: [hold, send(null), retry(false)] }).find(([k]) => k === "fix")!;
   assert.deepEqual(all[1], ["clear_hold", "send_repairs:b1", "retry_batch:b2"]);
-  assert.equal(rowMenu({ ...base, needs: [send(null)] }).find(x => x.key === "fix")!.items[0].label, "Send 2 tasks");
+  assert.equal(rowMenu({ ...base, needs: [send(null)] }).find(x => x.key === "fix")!.items[0].label, "Send 2 repairs");
   assert.ok(!keys({ ...base, needs: [send("The agent is busy"), retry(true)] }).some(([k]) => k === "fix"), "a blocked send and an exhausted retry are hidden");
   assert.ok(!keys({ ...base, w: null, needs: [hold] }).some(([k]) => k === "fix"), "untracked rows have nothing to fix");
 });

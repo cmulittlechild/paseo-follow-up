@@ -161,7 +161,7 @@ export const personHeld = (w: Pick<Workspace, "batches">, t: Pick<Task, "key" | 
   return w.batches.some(b => b.state === "completed" && !!b.humanOnly && b.tasks.some(x => conditionId(x) === id));
 };
 
-/** Blocked or unconfirmed: a repair batch whose outcome the developer is shown (Needs you's "The tasks didn't finish"). */
+/** Blocked or unconfirmed: a repair batch whose outcome the developer is shown (Needs you's "The repairs didn't finish"). */
 export const stuckRepair = (b: Pick<Batch, "state" | "tasks">) =>
   ["blocked", "uncertain"].includes(b.state) && !recoveryBatch(b) && !(b.tasks.length > 0 && b.tasks.every(t => t.kind === "completion"));
 
