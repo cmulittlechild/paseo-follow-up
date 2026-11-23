@@ -77,7 +77,7 @@ test("health: turned off, quarantined, waiting for a sign-in, not connected, a f
   assert.deepEqual([row(`mcp:${FAKE_SERVERS.issues}`).health, row(`mcp:${FAKE_SERVERS.issues}`).detail], ["failed", "Linear didn't answer in time."]);
   assert.deepEqual([row(`mcp:${FAKE_SERVERS.calendar}`).health, row(`mcp:${FAKE_SERVERS.calendar}`).detail], ["off", "Off in the brief."]);
   assert.deepEqual([row(`mcp:${FAKE_SERVERS.mail}`).on, row(`mcp:${FAKE_SERVERS.mail}`).detail], [false, "Off by default: it reads your inbox."], "mail is off by default");
-  assert.equal(row(`mcp:${FAKE_SERVERS.db}`).kind, "unknown"); assert.equal(row(`mcp:${FAKE_SERVERS.db}`).canToggle, false);
+  assert.equal(row(`mcp:${FAKE_SERVERS.db}`).kind, "ask"); assert.equal(row(`mcp:${FAKE_SERVERS.db}`).canToggle, true, "a server with read tools but no recipe is an Ask source");
   assert.equal(row("gh").adds, "Review requests on your 2 gh accounts");
   assert.equal(row("paseo").canToggle, false);
   assert.deepEqual(sourcesLine(rows), { tone: "warn", text: "Linear failed" });
@@ -88,7 +88,7 @@ test("changes: unknown ids, Paseo and sources with no recipe are refused", () =>
   const rows = briefSources({ upstreams: [], matched: matchServers(tools()), on: {}, reads: {}, github: { accounts: 1 } });
   assert.deepEqual(applySourcesChange({}, rows, { on: { [`mcp:${FAKE_SERVERS.mail}`]: true, gh: false } }), { ok: true, on: { [`mcp:${FAKE_SERVERS.mail}`]: true, gh: false } });
   assert.match((applySourcesChange({}, rows, { on: { paseo: false } }) as { error: string }).error, /always read/);
-  assert.match((applySourcesChange({}, rows, { on: { [`mcp:${FAKE_SERVERS.db}`]: true } }) as { error: string }).error, /no recipe/);
+  assert.match((applySourcesChange({}, rows, { on: { [`mcp:${FAKE_SERVERS.db}`]: true } }) as { error: string }).error, /Preview acme-db first/);
   assert.match((applySourcesChange({}, rows, { on: { "mcp:nope": true } }) as { error: string }).error, /No source/);
 });
 

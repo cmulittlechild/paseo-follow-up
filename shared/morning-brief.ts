@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { type Clock, BRIEF_SETTINGS_DEFAULT, QUEUE_STATE_TYPES, SINCE_MODES, WEEKDAYS, briefSettingsSchema, isZone, type BriefSettings } from "./linear-queue";
+import { ASK, askCallSchema, askItemSchema } from "./ask";
 
 /**
  * Settings → Morning brief (docs/morning-brief.md#settings): the Linear queue's settings and this week's plan link,
@@ -68,11 +69,15 @@ export const morningBriefFileSchema = z.object({
     on: z.record(z.string(), z.boolean()).default({}),
     checkedAt: z.string().nullable().default(null),
     reads: z.record(z.string(), z.object({ at: z.string(), ok: z.boolean(), error: z.string().max(300).nullable() })).default({}),
-  }).default({ on: {}, checkedAt: null, reads: {} }),
+    /** Ask (shared/ask.ts): each server's plan of reads, reused for a week while its tools are the same. */
+    plans: z.record(z.string(), z.object({ at: z.string(), hash: z.string(), calls: z.array(askCallSchema).max(ASK.calls) })).default({}),
+    /** Ask: each source's last ask, a preview or a morning's: its items, the reads it ran, or why it failed. */
+    asked: z.record(z.string(), z.object({ at: z.string(), preview: z.boolean(), items: z.array(askItemSchema).max(ASK.items), calls: z.array(askCallSchema).max(ASK.calls), error: z.string().max(300).nullable() })).default({}),
+  }).default({ on: {}, checkedAt: null, reads: {}, plans: {}, asked: {} }),
 });
 export type MorningBriefFile = z.infer<typeof morningBriefFileSchema>;
 export const emptyMorningBrief = (): MorningBriefFile => ({
-  version: 1, queue: { ...BRIEF_SETTINGS_DEFAULT }, plan: planSettingsSchema.parse({}), found: null, previous: null, check: null, findDay: null, importedAt: null, sources: { on: {}, checkedAt: null, reads: {} },
+  version: 1, queue: { ...BRIEF_SETTINGS_DEFAULT }, plan: planSettingsSchema.parse({}), found: null, previous: null, check: null, findDay: null, importedAt: null, sources: { on: {}, checkedAt: null, reads: {}, plans: {}, asked: {} },
 });
 
 /** A claude.ai artifact link without a query string or fragment, so no share key travels. */
