@@ -3,7 +3,10 @@
 ## Settings → Agents (`agents.json`)
 
 - **Roles.** `shared/agent-settings.ts` defines the roles (`AGENT_ROLES`: `about`, `overseer`, `recovery`,
-  `ranker`), their defaults (`ROLE_DEFAULTS`) and lenient parsing. A missing or invalid entry means the default.
+  `ranker`, `dispatch`), their defaults (`ROLE_DEFAULTS`) and lenient parsing. A missing or invalid entry means the
+  default. `dispatch` is Settings → Agents → New work, the agent New starts for an action without its own
+  ([dispatch.md](dispatch.md#settings)); like recovery it has `same` (`hasSame`), here "Same as the Overseer", its
+  default. It's in Settings only, not setup's Helper agents step.
   The file also holds `enable_wait` ([wait.md](wait.md)).
 - **Store.** `server/agent-settings.ts` has the store (`AgentSettingsStore`, with serialized atomic writes) and
   `ProviderCatalog`.
@@ -19,7 +22,7 @@
 - **Names.** `ROLE_INFO` holds each role's title and what it does, the one copy both surfaces use. The ranker is
   **AI priority** in all user-facing copy; code and files keep `ranker`.
 - **Recommendations** (`shared/recommend.ts`). `ROLE_TIER` says what size of model each job needs (Summary small,
-  AI priority mid, the Overseer strong, recovery the same as the main agent) and `ROLE_NEED` says it in one line.
+  AI priority mid, the Overseer strong, recovery the same as the main agent, New work the same as the Overseer) and `ROLE_NEED` says it in one line.
   `recommend(role, catalog)` picks:
   - with Claude available, the declared `ROLE_DEFAULTS`;
   - otherwise the first ready provider (Claude, then Codex, then the rest), and in it the model whose description

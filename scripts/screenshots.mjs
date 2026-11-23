@@ -1035,8 +1035,8 @@ const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 /** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
 const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
-const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", display: "display", brief: "brief" };
-const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", display: "Inbox & display", brief: "Morning brief" };
+const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", new: "new", display: "display", brief: "brief" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Morning brief" };
 /** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
 async function openSettingsAt(page, category, vp = page.viewportSize()) {
   if (nativeSettingsTabs) {
@@ -2630,7 +2630,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`new: ${name}`); log(`new check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
   const linear = mode => fs.writeFile(join(home, "linear-fixture.json.mode"), mode);
-  // New's default agent is the Overseer's (until Settings → Agents has its own row): the fixture provider here.
+  // New's default agent copies the Overseer's (Settings → Agents → New work, "Same as the Overseer"): the fixture provider here.
   await call("follow.set-agent-setting", { role: "overseer", entry: { provider: "followup-fixture", model: "fixture" } });
   const settings = await call("follow.dispatch-settings", {});
   const project = name => settings.projects.find(p => p.name === name || p.name.endsWith(`/${name}`));
@@ -2768,6 +2768,52 @@ async function newShots({ shoot, call, out, home, billing }) {
       await openSettingsAt(page, "display", DESKTOP);
       const r = page.getByText("New from anywhere", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
     });
+    // Settings → New work, whole (a tall window, so every section is in one frame), and Agents → New work.
+    for (const [device, vp] of [["desktop", { width: 1440, height: 1700 }], ["phone", { width: 390, height: 2300 }]]) {
+      await shoot(`new-work-settings-${device}-${theme}`, vp, theme, async page => {
+        if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: "develop" } });
+        // Frames open at desktop size: size the window first (tall, so every section is in one frame).
+        await page.setViewportSize(vp);
+        await openSettingsAt(page, "new", vp);
+        await page.getByText("Where work goes", { exact: true }).filter({ visible: true }).first().waitFor();
+        await page.getByText("Create PR", { exact: true }).filter({ visible: true }).first().waitFor();
+        check(`${theme} ${device}: Settings → New work lists the actions with their keys`, await page.getByText("⌥↵", { exact: true }).filter({ visible: true }).count() > 0);
+        check(`${theme} ${device}: an added action says so`, await page.getByText("Try elsewhere", { exact: true }).filter({ visible: true }).count() > 0 && await page.getByText("Added", { exact: true }).filter({ visible: true }).count() > 0);
+        // A name is never cut: Add a rule's "Pick a project" shows whole (it once rendered "Pi…" squeezed beside the key).
+        const pick = page.getByText("Pick a project", { exact: true }).filter({ visible: true }).first();
+        check(`${theme} ${device}: Add a rule's project select shows "Pick a project" whole`, await pick.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().width >= 60).catch(() => false));
+        check(`${theme} ${device}: WEB's rule is listed`, await page.getByText("WEB issues", { exact: true }).filter({ visible: true }).count() > 0);
+        check(`${theme} ${device}: the saved base shows`, await page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first().inputValue().catch(() => "") === "develop");
+        await page.evaluate(() => window.scrollTo(0, 0));
+      });
+      // The states a resting frame doesn't show: an edited built-in (Reset to built-in), Delete asked in place, a rule
+      // being added (both fields), a base edited but not saved (Save).
+      await shoot(`new-work-states-${device}-${theme}`, vp, theme, async page => {
+        const pr = (await call("follow.dispatch-actions", {})).actions.find(a => a.id === "pr");
+        const { builtin: _b, by: _by, ...edit } = pr;
+        await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { ...edit, instructions: pr.instructions + "\nRun the linter before the PR." } } });
+        await page.setViewportSize(vp);
+        await openSettingsAt(page, "new", vp);
+        await page.getByText("Reset to built-in", { exact: true }).filter({ visible: true }).first().waitFor();
+        check(`${theme} ${device}: an edited built-in says Edited and offers Reset`, await page.getByText("Edited", { exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("button", { name: "Delete", exact: true }).filter({ visible: true }).first().click();
+        check(`${theme} ${device}: Delete asks in place`, await page.getByRole("button", { name: "Keep it", exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("textbox", { name: "Team key" }).filter({ visible: true }).first().fill("ops");
+        const base = page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first();
+        await base.fill("release");
+        check(`${theme} ${device}: an edited base offers Save`, await page.getByRole("button", { name: /^Save/ }).filter({ visible: true }).count() > 0);
+        await page.evaluate(() => window.scrollTo(0, 0));
+      });
+      await call("follow.set-dispatch-actions", { change: { op: "reset", id: "pr" } });
+      await shoot(`new-work-agent-${device}-${theme}`, device === "phone" ? PHONE : DESKTOP, theme, async page => {
+        await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
+        await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);
+        // The row's title, not the tab of the same name.
+        const r = page.getByText("Starts the work you begin from New", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+        check(`${theme} ${device}: Agents → New work copies the Overseer by default`, await page.getByText("Same as the Overseer").filter({ visible: true }).count() > 0);
+      });
+    }
+    if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
   }
   await fs.writeFile(join(out, "new.json"), JSON.stringify({ checks }, null, 2));
 }

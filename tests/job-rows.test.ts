@@ -36,8 +36,9 @@ const view = (role: AgentRole, saved: SavedRole | undefined = undefined) => {
   return { ...r, summary: roleSummary(r) };
 };
 
-test("the same job reads the same on both surfaces: order is the only difference", () => {
-  assert.deepEqual([...SETUP_ORDER].sort(), [...SETTINGS_ORDER].sort());
+test("the same job reads the same on both surfaces: order is the only difference, and New work is Settings only", () => {
+  // New work copies the Overseer until someone picks one, so setup doesn't ask about it.
+  assert.deepEqual([...SETUP_ORDER].sort(), SETTINGS_ORDER.filter(r => r !== "dispatch").sort());
   const cat = catalog(CODEX);
   for (const role of SETUP_ORDER) assert.deepEqual(jobRow(view(role), cat), jobRow(view(role), cat));
 });
@@ -112,3 +113,15 @@ test("Reset to defaults never leaves a job that won't run: without Claude it res
   assert.equal(isReset(view("about", { ...about.entry!, dailyCap: 20 }), noClaude), false, "a changed limit still resets");
   assert.equal(isReset(view("about"), catalog(CLAUDE)), true);
 });
+
+test("New work copies the Overseer by default and says so; a pick of its own is a normal job row", () => {
+  const cat = catalog(CLAUDE, CODEX);
+  const d = jobRow(view("dispatch"), cat);
+  assert.equal(d.title, "New work");
+  assert.equal(d.pick, "Same as the Overseer");
+  assert.ok(d.recommended && !d.notice, JSON.stringify(d));
+  // Codex-only host: New work still copies the Overseer, so it never adds a warning of its own.
+  const codex = catalog(CODEX);
+  assert.equal(jobRow(view("dispatch"), codex).notice, null);
+});
+

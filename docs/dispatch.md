@@ -2,8 +2,7 @@
 
 New (internal name: dispatch) starts a workspace and an agent from a source, with an action. The source is a Linear
 issue, a GitHub issue or PR link, another link, or the developer's own words. The action says what the agent is asked
-to do. Phase 1 ships in three PRs: the core and the agent tools, the dialog and its entry points, and then Settings → New
-work.
+to do. Phase 1 shipped in three PRs: the core and the agent tools, the dialog and its entry points, and Settings → New work.
 
 ## Files
 
@@ -16,6 +15,8 @@ work.
 | `client/new.tsx` | The dialog (`NewDialog`), its host on Home (`NewHost`: a dialog over everything on desktop web, a full screen on a phone), `openNew`, and Home's dispatch rows with Undo (`DispatchRows`). |
 | `client/action-row.tsx` | The action row (`ActionRow`): ↵ the first action, ⌥↵ the second, More, or Open it. It starts nothing itself (the caller's `onAction`), so any surface can mount it (the Morning brief's queue). |
 | `client/new-entry.tsx` | The sidebar's New row (`addSidebarHeaderItem`, id `new`). |
+| `shared/new-settings.ts` | Settings → New work as pure data: each action row (its ↵/⌥↵ key, PRs only, Edited, Added by an agent, Reset and Delete), the learned teams offered as rules, the category's line. |
+| `client/new-settings.tsx` | Settings → New work (`NewWorkCategory`): Actions, Where work goes, Bases. |
 | `server/dispatch.ts` | `DispatchStore` (`dispatch.json`) and `DispatchService`: sources, preview, dispatch, the background create, retries, cancel, Undo, and the action and settings edits. Every outside effect is an injected dependency, so tests run it on a fake Paseo. |
 
 ## Actions
@@ -72,6 +73,8 @@ never creates again blind, which could make a second workspace.
   resolved project and the instructions' hash, and confirm is refused if what it would send has changed.
 - `a-failed-dispatch-leaves-nothing-behind`: see above.
 - `new-reads-nothing-while-closed`: Linear is read only when New asks; the one timer is a queued dispatch's retry.
+  Settings → New work reads New's own settings once when the tab opens, never Linear.
+- `an-action-is-data` and `new-never-switches-the-project-silently`: see AGENTS.md's invariants.
 - The Overseer's own dispatches keep its new-workspace gate: the developer's latest message must ask for or approve a
   new workspace. Its `start_workspace` is an alias of `dispatch` with Create PR for one release.
 
@@ -108,6 +111,24 @@ in place (`enterNew`, `index.client.tsx`).
 
 `new-reads-nothing-while-closed`: closed, New makes no request (no feed, no timer). Open, it reads the list once, a
 preview per selection, and one record a second only while a dispatch is starting.
+
+## Settings
+
+Settings → New work has three sections. It reads `follow.dispatch-actions` and `follow.dispatch-settings` when the tab
+opens and never polls; every change goes through `follow.set-dispatch-actions` and `follow.set-dispatch-settings`, the
+RPCs the agent tools `set_dispatch_actions` and `set_dispatch_settings` run.
+
+- **Actions**: every action in New's order, with its key (↵ for the first shown for an issue, ⌥↵ for the second), "PRs
+  only", "Edited" or "Added by an agent". Each row moves up or down and shows or hides; an edited built-in has Reset to
+  built-in, an added one has Delete (asked twice). Reset all to built-in restores the shipped list.
+- **Where work goes**: the no-team rule ("The project you used last" or "Ask which project"), each team's rule (change
+  it or remove it), Add a rule (a team key and a project), and each team whose history points at one project without a
+  rule, offered as "Make it a rule".
+- **Bases**: the base branch per project that can take a worktree; empty is the repository's default branch.
+
+The agent New starts for an action without its own is **Settings → Agents → New work** (role `dispatch`). Its default
+is "Same as the Overseer": the Overseer's provider, model, mode and effort. A pick of its own is a normal row (provider,
+model, effort, permissions). The New-from-anywhere key is in Settings → Inbox & display ([settings.md](settings.md)).
 
 ## Agent tools
 
