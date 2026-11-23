@@ -18,7 +18,7 @@ import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
 import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
-import { QueueScreen, RaisedRows, SinceBlock, useRaised } from "./brief-since";
+import { QueueScreen, RaisedRows, SinceBlock } from "./brief-since";
 import type { NewKey } from "./search-key";
 import { DockedPane } from "./docked-pane";
 import type { DockState } from "./dock";
@@ -111,12 +111,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const { inbox } = deps.sources;
   const c = theme.colors;
   const compact = layout.compact;
-  const base = useHomeModel(deps.sources);
-  // Decision Q8: raised Linear issues are Needs-you items with no workspace row; they count in Needs you (the header and
-  // the strip) and head that group. Catch up's deck and model.needs stay workspaces only.
-  const raised = useRaised();
-  const raisedKeys = useMemo(() => new Set(raised.raised.map(r => r.key)), [raised.raised]);
-  const model = useMemo(() => raised.raised.length ? { ...base, raised: raised.raised.length } : base, [base, raised.raised.length]);
+  // Decision Q8: raised Linear issues are Needs-you items with no workspace row. The worker sends them on the home
+  // feed; the model counts them (model.raised) and they head the group. Catch up's deck and model.needs stay workspaces.
+  const model = useHomeModel(deps.sources);
+  const queue = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.queue, deps.sources.extras.queue);
+  const raisedKeys = useMemo(() => new Set(queue.raised.map(r => r.key)), [queue.raised]);
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
@@ -257,7 +256,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     : current
     ? <DetailPane key={current.key} s={current} model={model} theme={theme} compact={compact} deps={deps} openFull={openFull} signOffNext={signOffNext} ask={ask?.key === current.key ? ask : null} onBack={compact && !route ? () => setSelected(null) : undefined} />
     : <BriefPane theme={theme} compact={compact} pane={pane} catchUp={deps.openCatchUp} deckSize={deckSize} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources}
-      queue={deps.openQueue ? <SinceBlock theme={theme} compact={compact} openQueue={deps.openQueue} onStarted={() => deps.sources.extras.refreshDispatches()} navigation={navigation} raised={raisedKeys} /> : null} />;
+      queue={deps.openQueue ? <SinceBlock theme={theme} compact={compact} openQueue={deps.openQueue} onStarted={() => deps.sources.extras.refreshDispatches()} navigation={navigation} raised={raisedKeys} revision={queue.revision} /> : null} />;
   // Nothing followed at all: no sort, no meters, just the empty state and its action.
   const nothing = model.groups.every(g => !g.items.length);
   // Enter on a row: its chat, as Open full does. The brief has nothing to open; the Overseer opens once it runs.
@@ -279,7 +278,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         <View style={{ flexDirection: "row", paddingHorizontal: 6 }}><VersionMark theme={theme} touch openSettings={deps.openSettings} /></View></View>
       : undefined}
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
-    raised={<RaisedRows theme={theme} compact={compact} data={raised} />}
+    raised={<RaisedRows theme={theme} compact={compact} data={queue} onDismissed={deps.sources.extras.refreshQueue} />}
     afterNeeds={compact && model.needs > 0 && props.onboarding?.offer ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
     top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>

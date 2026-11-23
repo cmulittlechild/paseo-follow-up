@@ -183,3 +183,39 @@ test("Q8 on Home: raised issues head Needs you and count in it, making the group
   const closed = listEntries({ model, closed: new Set(["needs"]), openProjects: new Set(), pages: {}, briefLine: undefined, results: null, hits: null, filter: null, overseer: false, touch: false, afterNeeds: false });
   assert.deepEqual(closed.map(e => e.type), ["header"]);
 });
+
+test("raised-is-needs-you: the sidebar badge counts the raised issues from the same model as Home (one server-side count)", async () => {
+  const { buildHome, homeCounts } = await import("../shared/home");
+  const model = buildHome({ rows: [], tracked: [], paseo: [], now: Date.now(), raised: 1 });
+  assert.equal(homeCounts(model).needs, 1, "a raise alone makes Needs you 1");
+  // Home and the sidebar item both count homeCounts(useHomeModel(...)), and useHomeModel takes the worker's raised list
+  // from the home feed's store: no per-surface read that could disagree or go stale.
+  const live = await readFile(new URL("../client/live.tsx", import.meta.url), "utf8");
+  assert.match(live, /const count = homeCounts\(useHomeModel\(sources\)\)\.needs;/);
+  const data = await readFile(new URL("../client/home-data.ts", import.meta.url), "utf8");
+  assert.match(data, /extras\.queue\(\)\.raised\.length/);
+  assert.match(data, /buildHome\(\{[^}]*raised \}\)/);
+  const home = await readFile(new URL("../client/home.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(home, /useRaised|linearQueueRpc/, "Home reads no queue of its own for Needs you");
+});
+
+test("raised-is-needs-you: the worker's needs() is the home feed's answer; a sweep that raises an issue changes it and calls onChange (the feed's push)", async t => {
+  const r = reader([{ key: "ACME-142", priority: 4 }]);
+  const directory = await mkdtemp(join(tmpdir(), "brief-since-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const time = { now: MON - 72 * H };
+  let changes = 0;
+  const queue = new LinearQueue({ store: testStore(LinearQueueStore, directory), linear: r, clock: async () => CLOCK, now: () => time.now, workspaces: async () => new Map(), onChange: () => { changes++; } });
+  await queue.sweepNow("manual");
+  const before = await queue.needs();
+  assert.deepEqual(before.raised, []);
+  time.now = MON - 2 * H;
+  r.set([{ key: "ACME-142", priority: 2 }]);
+  const pushed = changes;
+  await queue.sweepNow("manual");
+  assert.ok(changes > pushed, "the sweep told the feed");
+  const after = await queue.needs();
+  assert.deepEqual(after.raised.map(n => n.key), ["ACME-142"]);
+  assert.notEqual(after.revision, before.revision, "the revision moves, so an open brief pane re-reads");
+  assert.equal(after.timeZone, CLOCK.timeZone);
+});

@@ -119,7 +119,10 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
 - **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
   no workspace (`raisedNeeds`, over the log window) is the first row of Home's Needs you group, shaped like its rows
   (amber ↑, the key, "Raised", "Low → High · title · no workspace yet", the raise's age), and counts in the group's
-  header and the strip (`HomeModel.raised`; Catch up's deck stays workspaces). It has Start… and the same two-click
+  header, the strip, the brief line and the sidebar badge from one number: the worker's (`LinearQueue.needs`), pushed on
+  `follow.home-feed` (`queue`) when a sweep or a dismissal changes it, and on 0.15 carried by the priorities poll
+  (`HomeModel.raised`; Catch up's deck stays workspaces). An open Home shows a morning raise without a remount, and an
+  open brief pane re-reads its Since block when the feed's queue revision moves. It has Start… and the same two-click
   Remove as every Needs-you item (`follow.dismiss` with `issue`; agents: `dismiss_item {issue}`).
   Dismissing records the key and the raise's sweep time (`linear-queue.json` `dismissed`), so a later raise brings it
   back; a workspace for it, a raise taken back, or the issue leaving ends it without one. `linear_queue` returns them

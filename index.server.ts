@@ -1594,7 +1594,8 @@ export default function contribute(server: PluginServerContext) {
   const agentActions = new AgentActions({ timeZone: () => clientTimeZone, autoSendsHeld: () => !governor.allowsBackground(), store, prActions: actions, engine, inbox, priorities: priorityStore, about, agentSettings, wait: { status: currentWait }, prWorkflows: () => prWorkflowView(), rpc: rpcBridge, display: displayBridge, report: { run: (caller, args) => reportKit.reporter.run(caller, args) }, agentTitle: async id => (await api?.agents.ref(id).refresh().catch(() => null))?.agent?.title ?? null,
     // The directory's agent list (metadata only): a claim never loads or refreshes the main agent.
     agentInfo: async agentId => { const row = gateway.directory.cached(agentId) ?? (await gateway.directory.read()).agents.find(r => r.agent.id === agentId)?.agent; return row ? { status: row.status, activeTurn: row.activeTurn, pendingPermissions: row.pendingPermissions, archivedAt: row.archivedAt } : null; } });
-  handle(rpc.prioritiesRpc, async () => ({ items: await priorityStore.read() }));
+  // 0.15 polls priorities once a minute; the raised issues (Q8) ride the same answer instead of a read of their own.
+  handle(rpc.prioritiesRpc, async () => ({ items: await priorityStore.read(), queue: await linearQueue?.needs().catch(() => undefined) }));
   // The chat's created cards: the engine's directory snapshot as it stands (never waits on or asks the daemon, wakes
   // nothing) and the store. Before the engine's first read the cards just show no state yet.
   // The engine's snapshot as it stands, plus remembered archived agents; ids it lacks are looked up once, not awaited.
@@ -1682,9 +1683,9 @@ export default function contribute(server: PluginServerContext) {
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches() };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches(), queue: await linearQueue?.needs().catch(() => undefined) };
     },
-    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats, v.dispatches]),
+    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats, v.dispatches, v.queue]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
     onFirst: () => { usageWatch = usage.watch(() => void homeFeed.changed()); },
     onLast: () => { usageWatch?.close(); usageWatch = null; },

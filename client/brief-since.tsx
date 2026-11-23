@@ -7,6 +7,7 @@ import { dispatchActionsRpc, dispatchRpc, linearQueueRpc, sweepQueueRpc } from "
 import { changeChip, queueRowMeta, raisedRow, sinceBlock, type SinceChange, type SinceLine } from "../shared/brief-since";
 import { actionIcon, stateIcon } from "../shared/new-view";
 import type { RaisedNeed } from "../shared/linear-queue";
+import type { QueueNeeds } from "./home-view";
 import type { DispatchAction } from "../shared/dispatch";
 import { errorText } from "../shared/errors";
 import { age } from "../shared/inbox";
@@ -108,9 +109,12 @@ function Line({ l, c, compact, actions, onStarted, navigation }: { l: SinceLine;
 }
 
 /** The brief pane's "Since Friday · your Linear queue" block. Opening it is the developer's read (follow.linear-queue open). */
-export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, raised }: { theme: Theme; compact: boolean; openQueue: () => void; onStarted: () => void; navigation: Nav; raised: ReadonlySet<string> }) {
+export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, raised, revision }: { theme: Theme; compact: boolean; openQueue: () => void; onStarted: () => void; navigation: Nav; raised: ReadonlySet<string>; revision: string }) {
   const c = theme.colors; const t = text(c, compact);
-  const { view, error } = useQueueView({ open: true });
+  const { view, error, reload } = useQueueView({ open: true });
+  // The home feed's queue revision moved (a sweep ended, or a dismissal): an open brief pane re-reads, no timer.
+  const seen = useRef(revision);
+  useEffect(() => { if (seen.current === revision) return; seen.current = revision; void reload(); }, [revision, reload]);
   const actions = useActions();
   if (error && !view) return <View style={{ gap: 4, marginTop: 6 }}>
     <Text accessibilityRole="header" style={t.section}>Your Linear queue</Text>
@@ -250,26 +254,15 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
 
 // ---------- decision Q8: raised issues in Needs you ----------
 
-export type Raised = { raised: RaisedNeed[]; timeZone: string; reload: () => void };
-
-/**
- * Home's raised issues (Q8), read once per mount; reading never moves the brief's "since". Home counts them in Needs
- * you (HomeModel.raised), draws them first in that group (RaisedRows), and the brief's Since block leaves their lines
- * without actions, since the Needs-you item carries Start….
- */
-export function useRaised(): Raised {
-  const { view, reload } = useQueueView({});
-  return { raised: view?.raised ?? [], timeZone: view?.status.timeZone ?? "UTC", reload: () => void reload() };
-}
-
 /**
  * The raised issues as Needs-you rows, shaped like Home's: amber ↑, the key, "Raised", then "Low → High · title · no
  * workspace yet", New's Start…, and the age where the small x reveals (invariant 59, follow.dismiss `issue`).
  */
-export function RaisedRows({ theme, compact, data }: { theme: Theme; compact: boolean; data: Raised }) {
+export function RaisedRows({ theme, compact, data, onDismissed }: { theme: Theme; compact: boolean; data: QueueNeeds; onDismissed: () => void }) {
   const c = theme.colors;
-  // The same Dismiss as every Needs-you item (invariant 59): two clicks in place, one toast with Undo.
-  const dismiss = useDismiss(data.reload);
+  // The same Dismiss as every Needs-you item (invariant 59): two clicks in place, one toast with Undo. The worker
+  // pushes the new list on the home feed; without the feed, onDismissed reads it once.
+  const dismiss = useDismiss(onDismissed);
   const now = Date.now();
   return <>{data.raised.map(r => {
     const row = raisedRow(r, now, data.timeZone);

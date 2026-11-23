@@ -221,7 +221,9 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   /** The machine-wide hold line (autoSendHold in shared/sending.ts), null when auto-sends aren't held. */
   hold?: string | null;
   /** The machine holds auto-sends without a line to show (the agent tools): queued Sending rows still say so. */
-  autoSendsHeld?: boolean }): HomeModel {
+  autoSendsHeld?: boolean;
+  /** Decision Q8: how many raised Linear issues are in Needs you (the worker's count, on the home feed). */
+  raised?: number }): HomeModel {
   const held = !!input.hold || !!input.autoSendsHeld;
   // Workspaces Follow-up keeps off the list (the Overseer's own): no row, no count.
   const hidden = new Set(input.hidden ?? []);
@@ -339,7 +341,7 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   }
   const groups = HOME_GROUPS.map(id => ({ id, title: GROUP_TITLE[id], items: byGroup.get(id)! })).filter(g => g.items.length > 0);
   const hold = input.hold && byGroup.get("sending")!.length ? input.hold : null;
-  return { groups, needs: byGroup.get("needs")!.length, byKey: new Map(finished.map(s => [s.key, s])), hold, sort, rankedAt: fresh.rankedAt };
+  return { groups, needs: byGroup.get("needs")!.length, byKey: new Map(finished.map(s => [s.key, s])), hold, sort, rankedAt: fresh.rankedAt, ...(input.raised ? { raised: input.raised } : {}) };
 }
 
 /**

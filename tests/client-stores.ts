@@ -58,14 +58,14 @@ const ANSWERS: Record<string, unknown> = {
 export type SubscribeMode = "serve" | "refuse" | "throw" | "flap";
 type Sub = { name: string; push(event: unknown): void; close(error?: Error): void; open: boolean };
 
-export function fakeHost(withFeeds: boolean) {
+export function fakeHost(withFeeds: boolean, answers: Record<string, unknown> = {}) {
   const calls: { at: number; name: string }[] = [];
   const subscriptions: string[] = [];
   const subscribed: { at: number; name: string }[] = [];
   const open: Sub[] = [];
   let mode: (name: string) => SubscribeMode = () => "serve";
   const client: Record<string, unknown> = {
-    rpc: async (contract: { name: string }) => { calls.push({ at: Date.now(), name: contract.name }); return ANSWERS[contract.name] ?? (contract.name.endsWith(".read") ? { status: "ready", revision: "r1", values: {} } : {}); },
+    rpc: async (contract: { name: string }) => { calls.push({ at: Date.now(), name: contract.name }); return answers[contract.name] ?? ANSWERS[contract.name] ?? (contract.name.endsWith(".read") ? { status: "ready", revision: "r1", values: {} } : {}); },
     paseo: { agents: { subscribe: () => () => undefined, list: async () => ({ entries: [], pageInfo: { nextCursor: null }, subscription: { release: async () => undefined } }) } },
     addSidebarHeaderItem: () => () => undefined,
   };

@@ -217,6 +217,16 @@ export class LinearQueue {
   }
 
   /**
+   * Home's part of Needs you (Q8, invariant raised-is-needs-you): the raised issues, the zone their dates read in, and
+   * the queue's revision. The worker carries it on follow.home-feed, so every Needs-you count reads one number and a
+   * morning sweep's raise reaches an open Home without a read of its own.
+   */
+  async needs(): Promise<{ raised: RaisedNeed[]; timeZone: string; revision: string }> {
+    const [file, clock, workspaces] = await Promise.all([this.read(), this.d.clock(), this.d.workspaces?.().catch(() => new Map()) ?? Promise.resolve(new Map())]);
+    return { raised: raisedNeeds(file, key => workspaces.has(key)), timeZone: clock.timeZone, revision: `${file.last?.at ?? ""}|${current(file)?.at ?? ""}|${file.dismissed.length}` };
+  }
+
+  /**
    * Decision Q8: dismiss a raised issue's Needs-you item (its small x, or `dismiss_item {issue}`), or bring it back.
    * Only this record changes; nothing is sent. The item returns if the issue is raised again.
    */
