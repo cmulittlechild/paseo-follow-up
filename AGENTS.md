@@ -83,6 +83,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
+| Compass: the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx` | [compass](docs/compass.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -987,7 +988,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
    governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
    fresh install; nothing else reads Linear on a schedule. Find it for me and the sources check (mcpproxy asked again)
-   ride the same loop, once a workday after the sweep time. The zone is the setting's, else the developer's device's,
+   ride the same loop, once a workday after the sweep time, and so does Compass's morning read (`Compass.tick`). The zone is the setting's, else the developer's device's,
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
@@ -1034,7 +1035,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the job's grant before it runs, whatever `--allowedTools` or the text say; the default grant is nothing and the
    plan reader's (and Settings' title read) is the Artifact tool's `read` only. A refused call is logged by tool and
    action name only (`ai-jobs.jsonl` `refused`) and the job still completes on what it read. Codex jobs run in a
-   read-only sandbox without the shell tool. A job on any other provider (`server/job-agent.ts`) runs as a Paseo agent
+   read-only sandbox without the shell tool. Compass's extraction runs only on those two: with Summaries on any other provider it reads nothing at all and says why (compass-text-is-data). A job on any other provider (`server/job-agent.ts`) runs as a Paseo agent
    with that provider's own tools and has no such guard yet: an open gap, not an exemption. 2026-11-23:
    the plan reader kept the Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
    `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete).
@@ -1147,6 +1148,43 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a
    workspace" was two rules that counted only links and New listed every issue anyway. Guarded by
    `tests/taken-issues.test.ts` and `tests/new-view.test.ts`.
+
+98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
+   only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`
+   (the chat tool's own ids, never a name in code). It reads through `SourceDirectory.call` (`tool-read`, invariant 81),
+   finds the tool by shape (the chat recipe's `history` role, invariant 82), and reads by cursor in time order, never a
+   relevance search for "since": the history read newest page first, else the message search sorted by time, one day at
+   a time, said on the place. Only the source's people reach the model; the developer's replies come along as context
+   and never become a note; anyone else in the place is dropped first. A read that fails keeps the cursor, so a missed
+   read is never "nothing said". It reads once a workday after the sweep time, on Read now and over the last week when
+   a place is added (invariant 78). 2026-11-23, the developer: priorities come from a product lead's DM, so Follow-up
+   ranked work without what decided it. Guarded by `tests/compass-read.test.ts`.
+99. **A workflow lives in config** (`a-workflow-lives-in-config`, widening 82). Readers, roles, presets, default reading
+   notes and copy name no tool, server, company, person or workflow; a developer's setup is a `compass` value, and the
+   developer's words are "How to read this". A preset only fills a source's fields, and one whose reader isn't in this
+   release or that no connected tool can serve is listed with one line of why, never offered; a change naming a place
+   kind with no reader is refused, never saved to sit unread. Guarded by `tests/compass-extract.test.ts` (presets) and
+   the name scans (`tests/brief-sources.test.ts`, `tests/no-real-names.test.ts`).
+100. **Compass instructions only interpret** (`compass-instructions-only-interpret`). "How to read this" (at most 600
+   characters a source, 1000 for all) is plain text, control characters stripped, given to the extraction model after
+   the rules and before the fenced data. It can't add a place, a tool, an output field or a destination: places are
+   config, the job has no tools, the reply is parsed into a fixed schema and every note still passes validation.
+   Guarded by `tests/compass-extract.test.ts`.
+101. **A Compass note quotes its source** (`a-compass-note-quotes-its-source`). Every note carries a quote that is a
+   verbatim substring of the message it came from (whitespace folded), and that message's author, time and link,
+   never the model's. Its keys are written in the message or come from the glossary. Its date comes from the words
+   (`resolveUntil`, which wins unless the developer's reading notes name the phrase) or lies within 60 days. The model
+   proposes and validation decides; a refused note is logged by rule code only. Guarded by
+   `tests/compass-extract.test.ts`.
+102. **Compass text is data** (`compass-text-is-data`). Extraction runs with no tools: the job guard's empty grant on
+   Claude, the read-only sandbox on Codex; with Summaries on any other provider Compass reads nothing at all, not even
+   the conversation, and Settings and `compass` say why in one line. The prompt fences the messages as data. The text
+   read is never written to disk or a log: `compass.json` keeps a note's quote (at most 280 characters) until 7 days
+   after it ends, and `ai-jobs.jsonl` keeps no text. Guarded by `tests/compass-read.test.ts`.
+103. **A Compass note ends** (`a-compass-note-ends`). Every note has an end: its date plus `graceDays`, `undatedDays`
+   after it was last said, a retraction, or a newer note from the same source on the same subject. An ended note leaves
+   AI priority at once. Notes from different people that disagree are all kept, attributed: Follow-up never picks
+   between people. Guarded by `tests/compass-extract.test.ts`.
 
 ## Bugs
 

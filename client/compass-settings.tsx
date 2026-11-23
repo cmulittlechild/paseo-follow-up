@@ -1,0 +1,322 @@
+import { useEffect, useState } from "react";
+import { ActivityIndicator, TextInput, View } from "react-native";
+import { useRpc } from "@getpaseo/plugin/client";
+import { Icon, SettingsSection, useToast } from "@getpaseo/plugin/client/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pressable, Text } from "./text";
+import { Button, Switch, errorText, text, type Theme } from "./kit";
+import { raised, tint } from "./theme";
+import { compassFindRpc, compassRpc, readCompassRpc, setCompassRpc } from "../shared/contracts";
+import {
+  COMPASS, ROLES, ROLE_INFO, type CompassChange, type CompassNote, type CompassSource, type GlossaryEntry, type Place, type Preset, type PresetView, type Role, type Who,
+} from "../shared/compass";
+
+export const compassKey = ["follow-up", "compass"];
+
+type View_ = {
+  settings: { sources: CompassSource[]; instructions: string; glossary: GlossaryEntry[] };
+  readers: { conversation: boolean; history: boolean };
+  presets: PresetView[];
+  blocked: string | null;
+  places: Record<string, { status: string; readAt: string | null; at: string | null; error: string | null }>;
+  notes: CompassNote[];
+  workspaces: Record<string, string>;
+  unplaced: number;
+  lastRead: { at: string; trigger: string; ok: boolean; notes: number; error: string | null } | null;
+  today: { extractions: number; cap: number };
+  running: boolean;
+};
+type Found = { id: string; name: string; place: Place };
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const placeName = (p: Place) => p.kind === "conversation" ? (p.sub === "dm" ? `DM with ${p.name}` : `#${p.name}`) : p.name;
+/** "DM with Dana" when the source is one person read in their DM; else "Dana in #planning, DM with Avi". */
+const whoWhere = (s: CompassSource) => s.who.kind === "person" && s.places.length === 1 && s.places[0].kind === "conversation" && s.places[0].sub === "dm" && s.places[0].id === s.who.person.id
+  ? placeName(s.places[0]) : `${whoName(s.who)} in ${s.places.map(placeName).join(", ")}`;
+const day = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+const whoName = (w: Who) => w.kind === "person" ? w.person.name : w.kind === "people" ? w.people.map(p => p.name).join(", ") : w.kind === "me" ? "You" : "Everyone";
+
+/**
+ * Settings → Morning brief → Compass (docs/compass.md): the people and places that set the developer's priorities, how
+ * to read them, and the glossary. One editor for every source; presets only fill its fields. Every change goes through
+ * the RPC `set_compass` runs, and Read now through `read_compass`.
+ */
+export function CompassSection({ theme, compact }: { theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const read = useRpc(compassRpc); const write = useRpc(setCompassRpc); const readNow = useRpc(readCompassRpc);
+  const cache = useQueryClient(); const toast = useToast();
+  const query = useQuery({ queryKey: compassKey, queryFn: async () => await read({}) as View_, refetchInterval: q => q.state.data?.running ? 2_000 : 30_000 });
+  const change = useMutation({
+    mutationFn: async (input: CompassChange) => await write(input) as View_,
+    onSuccess: value => cache.setQueryData(compassKey, value),
+    onError: error => toast.error(errorText(error)),
+  });
+  const reading = useMutation({
+    mutationFn: async () => await readNow({}) as { running: boolean; view: View_ },
+    onSuccess: r => cache.setQueryData(compassKey, r.view),
+    onError: error => toast.error(errorText(error)),
+  });
+  const [editing, setEditing] = useState<string | "new" | null>(null);
+  const data = query.data;
+  const full = !!data && data.settings.sources.length >= COMPASS.sources;
+  return <SettingsSection title="Compass" info="The people and places that set your priorities. Follow-up reads what they say each workday morning, keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads it. Agents can set it up too.">
+    {query.isPending && <ActivityIndicator accessibilityLabel="Loading Compass" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+    {query.error && <Text style={[t.meta, { color: c.statusWarning }]}>{`Couldn't load Compass: ${errorText(query.error)}`}</Text>}
+    {data?.blocked && <Line icon="TriangleAlert" tone={c.statusWarning} text={data.blocked} theme={theme} compact={compact} />}
+    {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
+      {data.settings.sources.length === 0 && editing !== "new" && <View style={{ padding: compact ? 14 : 12, gap: 4 }}>
+        <Text style={[t.label, { color: c.foreground }]}>Nobody sets your priorities here yet</Text>
+        <Text style={t.meta}>Add the person whose words decide what you work on first, like your product lead's DM. Or ask the Overseer to set it up for you.</Text>
+      </View>}
+      {data.settings.sources.map((s, i) => editing === s.id
+        ? <SourceEditor key={s.id} view={data} source={s} first={i === 0} busy={change.isPending} theme={theme} compact={compact} onCancel={() => setEditing(null)}
+            onSave={input => change.mutate(input, { onSuccess: () => setEditing(null) })} onRemove={() => change.mutate({ remove: s.id }, { onSuccess: () => setEditing(null) })} />
+        : <SourceRow key={s.id} view={data} source={s} first={i === 0} busy={change.isPending} theme={theme} compact={compact} onEdit={() => setEditing(s.id)}
+            onToggle={on => change.mutate({ source: { id: s.id, enabled: on } })} />)}
+      {editing === "new" && <SourceEditor view={data} first={data.settings.sources.length === 0} busy={change.isPending} theme={theme} compact={compact} onCancel={() => setEditing(null)}
+        onSave={input => change.mutate(input, { onSuccess: () => setEditing(null) })} />}
+    </View>}
+    {data && editing !== "new" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      {full
+        ? <Text style={t.meta}>{`Compass holds ${COMPASS.sources} sources. Remove one to add another.`}</Text>
+        : <Button title="Add a source" icon="Plus" theme={theme} compact={compact} disabled={!!editing} onPress={() => setEditing("new")} />}
+      {data.settings.sources.length > 0 && <Button title="Read now" icon="RotateCcw" kind="ghost" theme={theme} compact={compact} loading={reading.isPending || data.running} disabled={!!data.blocked} onPress={() => reading.mutate()} />}
+      {data.settings.sources.length > 0 && <Text style={t.meta}>{statusLine(data)}</Text>}
+    </View>}
+    {data && <ReadingNotes value={data.settings.instructions} busy={change.isPending} theme={theme} compact={compact} onSave={v => change.mutate({ instructions: v })} />}
+    {data && <Glossary entries={data.settings.glossary} busy={change.isPending} theme={theme} compact={compact} onSave={g => change.mutate({ glossary: g })} />}
+  </SettingsSection>;
+}
+
+/** "Read 09:02 · 3 notes live · 1 not matched to a workspace", or why the last read failed. */
+function statusLine(v: View_): string {
+  if (v.running) return "Reading…";
+  // One source already shows its count on its row; the total is news only with several.
+  const parts = [v.lastRead ? `Read ${clock(v.lastRead.at)}` : "Not read yet", ...(v.settings.sources.length > 1 ? [`${v.notes.length} note${v.notes.length === 1 ? "" : "s"} live`] : [])];
+  if (v.unplaced) parts.push(`${v.unplaced} not matched to a workspace`);
+  if (v.today.extractions >= v.today.cap) parts.push(`paused until tomorrow: ${v.today.cap} reads today`);
+  return parts.join(" · ");
+}
+
+function Line({ icon, tone, text: line, theme, compact }: { icon: string; tone: string; text: string; theme: Theme; compact: boolean }) {
+  const t = text(theme.colors, compact);
+  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={icon} size={12} color={tone} /></View>
+    <Text style={[t.meta, { color: tone, flex: 1 }]}>{line}</Text>
+  </View>;
+}
+
+/** One source, read-only: who, where, its roles, its reading notes' first line, how its places read. Edit opens the editor in place. */
+function SourceRow({ view, source, first, busy, onEdit, onToggle, theme, compact }: { view: View_; source: CompassSource; first: boolean; busy: boolean; onEdit: () => void; onToggle: (on: boolean) => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const notes = view.notes.filter(n => n.source === source.id); const live = notes.length;
+  const [open, setOpen] = useState(false);
+  const bad = source.places.map(p => view.places[`${p.kind}:${p.id}`]).find(p => p && (p.status === "failed" || p.status === "paused"));
+  const slow = source.places.some(p => view.places[`${p.kind}:${p.id}`]?.status === "slow-path");
+  return <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: compact ? 14 : 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
+    <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+      <Text style={[t.label, { color: source.enabled ? c.foreground : c.foregroundMuted }]}>{source.label}</Text>
+      <Text style={t.meta}>{whoWhere(source)}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {source.roles.map(r => <View key={r} style={{ paddingHorizontal: 8, minHeight: 20, justifyContent: "center", borderRadius: 999, backgroundColor: c.surface2 }}>
+          <Text style={[t.meta, { color: c.foreground }]}>{ROLE_INFO[r].label}</Text>
+        </View>)}
+      </View>
+      {source.instructions ? <Text numberOfLines={2} style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</Text> : null}
+      {source.enabled && (live
+        ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${open ? "Hide" : "Show"} ${live} note${live === 1 ? "" : "s"} from ${source.label}`} onPress={() => setOpen(o => !o)} hitSlop={compact ? 0 : 6}
+            style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 20 }}>
+            <Text style={[t.meta, { color: c.foreground }]}>{`${live} note${live === 1 ? "" : "s"} live`}</Text>
+            <Icon name={open ? "ChevronUp" : "ChevronDown"} size={12} color={c.foregroundMuted} />
+            {slow && <Text style={t.meta}>· read by search, the slower path</Text>}
+          </Pressable>
+        : <Text style={t.meta}>{["No notes live", slow ? "read by search, the slower path" : null].filter(Boolean).join(" · ")}</Text>)}
+      {source.enabled && open && <NoteList notes={notes} view={view} theme={theme} compact={compact} />}
+      {source.enabled && bad?.error && <Line icon="TriangleAlert" tone={c.statusWarning} text={bad.error} theme={theme} compact={compact} />}
+      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${source.label}`} onPress={onEdit} disabled={busy} hitSlop={compact ? 0 : 6}
+        style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 20 }}>
+        <Icon name="Pencil" size={12} color={c.accent} />
+        <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>Edit</Text>
+      </Pressable>
+    </View>
+    <Switch theme={theme} compact={compact} label={compact ? "" : source.enabled ? "On" : "Off"} accessibilityLabel={`Read ${source.label}`} value={source.enabled} disabled={busy} onChange={onToggle} />
+  </View>;
+}
+
+/**
+ * What Compass understood from a source: each live note, the words it quotes, its date and where it went. The quote is
+ * the proof (a-compass-note-quotes-its-source), so it is always shown.
+ */
+function NoteList({ notes, view, theme, compact }: { notes: CompassNote[]; view: View_; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const where = (n: CompassNote) => n.match.workspace ? view.workspaces[n.match.workspace] ?? "its workspace" : n.match.issue ? n.match.issue : "not matched to a workspace";
+  return <View style={{ gap: 10, paddingTop: 2 }}>
+    {notes.map(n => <View key={n.id} style={{ gap: 2, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: c.border }}>
+      <Text style={[t.body, { color: c.foreground }]}>{n.what}</Text>
+      {n.quote && <Text numberOfLines={3} style={[t.meta, { fontStyle: "italic" }]}>{`“${n.quote}”`}</Text>}
+      <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{[n.until ? `Until ${day(n.until)}` : null, ROLE_INFO[n.role].label, where(n)].filter(Boolean).join(" · ")}</Text>
+    </View>)}
+  </View>;
+}
+
+/**
+ * The one editor for adding and changing a source. A preset only fills the fields. Who and where are picked from the chat
+ * tool's own search (compass_find), so every place has the tool's own id; a person's DM comes with the person.
+ */
+function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, theme, compact }: { view: View_; source?: CompassSource; first: boolean; busy: boolean; onSave: (c: CompassChange) => void; onCancel: () => void; onRemove?: () => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const [preset, setPreset] = useState<Preset | null>(source ? null : view.presets.find(p => p.offered) ?? null);
+  const [people, setPeople] = useState<Found[]>(source ? source.who.kind === "person" ? [{ id: source.who.person.id, name: source.who.person.name, place: null! }] : source.who.kind === "people" ? source.who.people.map(p => ({ id: p.id, name: p.name, place: null! })) : [] : []);
+  const [me, setMe] = useState(source?.who.kind === "me" || preset?.who === "me");
+  const [places, setPlaces] = useState<Place[]>(source?.places ?? []);
+  const [roles, setRoles] = useState<Role[]>(source?.roles ?? preset?.roles ?? ["priorities"]);
+  const [label, setLabel] = useState(source?.label ?? "");
+  const [notes, setNotes] = useState(source?.instructions ?? "");
+  const [picking, setPicking] = useState<"people" | "channels" | null>(null);
+  const usePreset = (p: Preset) => { setPreset(p); setRoles(p.roles); setMe(p.who === "me"); if (p.who === "me") setPeople([]); };
+  const dmOnly = preset?.sub === "dm";
+  const addPerson = (f: Found) => {
+    setPicking(null);
+    setPeople(ps => ps.some(p => p.id === f.id) || ps.length >= COMPASS.people ? ps : [...ps, f]);
+    // A person's DM preset: their DM is the place.
+    if (dmOnly) setPlaces(ps => ps.some(p => p.id === f.id) ? ps : [...ps, f.place].slice(0, COMPASS.places));
+    if (!label && !source) setLabel(f.name);
+  };
+  const who: Who | null = me ? { kind: "me" } : people.length === 1 ? { kind: "person", person: { id: people[0].id, name: people[0].name } } : people.length > 1 ? { kind: "people", people: people.map(p => ({ id: p.id, name: p.name })) } : null;
+  const ready = !!who && places.length > 0 && roles.length > 0;
+  const save = () => who && onSave({ source: { ...(source ? { id: source.id } : {}), ...(label.trim() ? { label: label.trim() } : {}), who, places, roles, instructions: notes } });
+  const chip = (title: string, onRemoveChip: () => void, key: string) => <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: compact ? 44 : 28, paddingLeft: 10, paddingRight: 4, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface0 }}>
+    <Text style={t.body}>{title}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${title}`} onPress={onRemoveChip} hitSlop={6} style={{ minWidth: compact ? 36 : 22, minHeight: compact ? 36 : 22, alignItems: "center", justifyContent: "center" }}>
+      <Icon name="X" size={12} color={c.foregroundMuted} />
+    </Pressable>
+  </View>;
+  const labelCol = (s: string) => <Text style={[t.meta, { width: compact ? undefined : 96, minWidth: compact ? 64 : undefined }]}>{s}</Text>;
+  const row = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 } as const;
+  return <View style={{ padding: compact ? 14 : 12, gap: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
+    {!source && <View style={{ gap: 6 }}>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Start from</Text>
+      <View style={row}>
+        {view.presets.filter(p => p.offered).map(p => <Pressable key={p.id} accessibilityRole="radio" accessibilityState={{ checked: preset?.id === p.id }} onPress={() => usePreset(p)}
+          style={state => ({ minHeight: compact ? 44 : 30, paddingHorizontal: 12, borderRadius: 6, justifyContent: "center", borderWidth: 1, borderColor: preset?.id === p.id ? c.accent : c.border,
+            backgroundColor: preset?.id === p.id ? tint(c.accent, c) : (state as { hovered?: boolean }).hovered ? c.surface2 : c.surface0 })}>
+          <Text style={{ color: c.foreground, fontSize: 13, fontWeight: "500" }}>{p.label}</Text>
+        </Pressable>)}
+      </View>
+      {preset && <Text style={t.meta}>{preset.hint}</Text>}
+      {view.presets.some(p => !p.offered) && <Text style={t.meta}>{`Not yet: ${view.presets.filter(p => !p.offered).map(p => p.label.toLowerCase()).join(", ")}. Compass reads conversations in this release.`}</Text>}
+    </View>}
+    <View style={row}>
+      {labelCol("Whose words")}
+      {me ? <Text style={t.body}>Yours</Text> : people.map(p => chip(p.name, () => { setPeople(ps => ps.filter(x => x.id !== p.id)); if (dmOnly) setPlaces(ps => ps.filter(x => x.id !== p.id)); }, p.id))}
+      {!me && people.length < COMPASS.people && <Button title={people.length ? "Add a person" : "Pick a person"} icon="Plus" kind={people.length ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === "people" ? null : "people")} />}
+    </View>
+    {picking === "people" && <FindPicker kind="people" theme={theme} compact={compact} onCancel={() => setPicking(null)} onPick={addPerson} />}
+    <View style={row}>
+      {labelCol("Where")}
+      {places.map(p => chip(placeName(p), () => setPlaces(ps => ps.filter(x => x !== p)), `${p.kind}:${p.id}`))}
+      {places.length < COMPASS.places && !dmOnly && <Button title={places.length ? "Add" : "Pick a channel"} icon="Plus" kind={places.length ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === "channels" ? null : "channels")} />}
+      {dmOnly && !places.length && <Text style={t.meta}>Their DM with you, once you pick them.</Text>}
+    </View>
+    {picking === "channels" && <FindPicker kind="channels" theme={theme} compact={compact} onCancel={() => setPicking(null)} onPick={f => { setPicking(null); setPlaces(ps => ps.some(p => p.id === f.id) ? ps : [...ps, f.place]); }} />}
+    <View style={{ gap: 6 }}>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>What they tell you</Text>
+      <View style={row}>
+        {ROLES.map(r => { const on = roles.includes(r); return <Pressable key={r} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setRoles(rs => on ? rs.filter(x => x !== r) : [...rs, r])}
+          style={state => ({ minHeight: compact ? 44 : 28, paddingHorizontal: 10, borderRadius: 999, justifyContent: "center", borderWidth: 1, borderColor: on ? c.accent : c.border,
+            backgroundColor: on ? tint(c.accent, c) : (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
+          <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: 12, fontWeight: "500" }}>{ROLE_INFO[r].label}</Text>
+        </Pressable>; })}
+      </View>
+    </View>
+    <View style={{ gap: 6 }}>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>How to read this</Text>
+      <TextInput accessibilityLabel="How to read this source" multiline value={notes} onChangeText={v => setNotes(v.slice(0, COMPASS.sourceInstructions))} placeholder="P0 means today, P1 this week. Ignore hiring talk."
+        placeholderTextColor={c.foregroundMuted} style={{ minHeight: 64, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
+      <Text style={t.meta}>{`Your words for the model that reads it. They change how messages are read, never what is read. ${notes.length}/${COMPASS.sourceInstructions}`}</Text>
+    </View>
+    <View style={row}>
+      {labelCol("Name")}
+      <TextInput accessibilityLabel="Source name" value={label} onChangeText={setLabel} placeholder="Dana · product" placeholderTextColor={c.foregroundMuted}
+        style={{ flex: 1, minWidth: 160, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
+    </View>
+    <View style={[row, { justifyContent: "space-between" }]}>
+      <View style={row}>
+        <Button title={source ? "Save" : "Add source"} kind="primary" theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
+        <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+      </View>
+      {onRemove && <Button title="Remove source" kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}
+    </View>
+    {!ready && <Text style={t.meta}>{!who ? "Pick whose words count." : !places.length ? "Pick where to read them." : "Give it at least one role."}</Text>}
+  </View>;
+}
+
+/** People or channels from the chat tool's own search (compass_find): only results with the tool's own id can be picked. */
+function FindPicker({ kind, onPick, onCancel, theme, compact }: { kind: "people" | "channels"; onPick: (f: Found) => void; onCancel: () => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const find = useRpc(compassFindRpc);
+  const [q, setQ] = useState(""); const [debounced, setDebounced] = useState("");
+  useEffect(() => { const id = setTimeout(() => setDebounced(q.trim()), 350); return () => clearTimeout(id); }, [q]);
+  const results = useQuery({ queryKey: ["follow-up", "compass-find", kind, debounced], enabled: debounced.length >= 2, staleTime: 60_000,
+    queryFn: async () => await find({ kind, query: debounced }) as { results: Found[]; error: string | null } });
+  return <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0, overflow: "hidden" }}>
+    <View style={{ flexDirection: "row", gap: 8, padding: 8, alignItems: "center" }}>
+      <TextInput autoFocus accessibilityLabel={kind === "people" ? "Search people" : "Search channels"} value={q} onChangeText={setQ} placeholder={kind === "people" ? "Search people by name" : "Search channels by name"}
+        placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
+        style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface1 }} />
+      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+    </View>
+    {results.isFetching && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>Searching…</Text>}
+    {results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8, color: c.statusWarning }]}>{results.data.error}</Text>}
+    {(results.data?.results ?? []).map(r => <Pressable key={r.id} accessibilityRole="button" onPress={() => onPick(r)}
+      style={state => ({ minHeight: compact ? 44 : 34, paddingHorizontal: 12, justifyContent: "center", borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
+      <Text style={t.body}>{kind === "people" ? r.name : `#${r.name}`}</Text>
+    </Pressable>)}
+    {debounced.length >= 2 && !results.isFetching && !results.data?.results.length && !results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>{`Nothing matches "${debounced}".`}</Text>}
+  </View>;
+}
+
+/** "How to read your Compass": the developer's words for every source, saved on Save. */
+function ReadingNotes({ value, busy, onSave, theme, compact }: { value: string; busy: boolean; onSave: (v: string) => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const dirty = draft.trim() !== value.trim();
+  return <View style={{ gap: 6 }}>
+    <Text style={[t.label, { color: c.foreground }]}>How to read your Compass</Text>
+    <TextInput accessibilityLabel="How to read your Compass" multiline value={draft} onChangeText={v => setDraft(v.slice(0, COMPASS.instructions))} placeholder="P0 means today. 'The renewal' is the acme renewal. Customer asks wait for the plan unless they name a date."
+      placeholderTextColor={c.foregroundMuted} style={{ minHeight: 72, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <Text style={[t.meta, { flex: 1, minWidth: 180 }]}>{`For every source. ${draft.length}/${COMPASS.instructions}`}</Text>
+      {dirty && <Button title="Save" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onSave(draft)} />}
+    </View>
+  </View>;
+}
+
+/** The glossary: your words → an issue key. Matching reads it before anything else, word for word. */
+function Glossary({ entries, busy, onSave, theme, compact }: { entries: GlossaryEntry[]; busy: boolean; onSave: (g: GlossaryEntry[]) => void; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const [words, setWords] = useState(""); const [key, setKey] = useState("");
+  const means = (g: GlossaryEntry) => "issue" in g.means ? g.means.issue : "workspace" in g.means ? `workspace ${g.means.workspace}` : g.means.account;
+  const field = { minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 } as const;
+  const add = () => { onSave([...entries, { words: words.trim(), means: { issue: key.trim().toUpperCase() } }]); setWords(""); setKey(""); };
+  return <View style={{ gap: 6 }}>
+    <Text style={[t.label, { color: c.foreground }]}>Glossary</Text>
+    <Text style={t.meta}>Your own words for your work. When a note says one, it goes to that issue's workspace.</Text>
+    {entries.map(g => <View key={g.words} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 28 }}>
+      <Text style={[t.body, { color: c.foreground }]}>{`“${g.words}”`}</Text>
+      <Icon name="ArrowRight" size={12} color={c.foregroundMuted} />
+      <Text style={[t.body, { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }]}>{means(g)}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${g.words}`} disabled={busy} onPress={() => onSave(entries.filter(x => x !== g))} hitSlop={6}
+        style={{ minWidth: compact ? 44 : 22, minHeight: compact ? 44 : 22, alignItems: "center", justifyContent: "center" }}>
+        <Icon name="X" size={12} color={c.foregroundMuted} />
+      </Pressable>
+    </View>)}
+    {entries.length < COMPASS.glossary && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <TextInput accessibilityLabel="Word" value={words} onChangeText={setWords} placeholder="Phoenix" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 120, minWidth: 0 }]} />
+      <Icon name="ArrowRight" size={12} color={c.foregroundMuted} />
+      <TextInput accessibilityLabel="Issue key" value={key} onChangeText={setKey} placeholder="ACME-40" autoCapitalize="characters" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 100, minWidth: 0, fontFamily: "ui-monospace, Menlo, monospace" }]} />
+      <Button title="Add" icon="Plus" theme={theme} compact={compact} loading={busy} disabled={words.trim().length < 2 || key.trim().length < 3} onPress={add} />
+    </View>}
+  </View>;
+}
