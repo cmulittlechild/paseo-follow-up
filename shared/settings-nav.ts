@@ -11,7 +11,9 @@ export const SETTINGS_CATEGORIES = [
   { id: "following", title: "Following", icon: "Radar", blurb: "Projects, workspaces, auto-send" },
   { id: "reviewers", title: "Reviewers", icon: "UserCheck", blurb: "Default and per-repo lists" },
   { id: "agents", title: "Agents", icon: "Bot", blurb: "Questions, Overseer, models" },
+  { id: "new", title: "New work", icon: "SquarePlus", blurb: "New's actions, where work goes, bases" },
   { id: "display", title: "Inbox & display", icon: "Inbox", blurb: "Sidebar, pills, Needs-you inbox" },
+  { id: "brief", title: "Morning brief", icon: "Sunrise", blurb: "This week's plan, the Linear queue" },
 ] as const;
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]["id"];
 export const DEFAULT_CATEGORY: SettingsCategory = "general";
@@ -88,7 +90,7 @@ export const homeFoldKey = (group: string) => `follow-up.home.fold.${group}`;
 export const homeGroupOpen = (group: string, store: KeyValue = deviceStorage): boolean => {
   if (group === "needs") return true;
   const v = store.get(homeFoldKey(group));
-  return v === "1" ? true : v === "0" ? false : group !== "quiet";
+  return v === "1" ? true : v === "0" ? false : group !== "quiet" && group !== "older";
 };
 export const writeHomeGroupOpen = (group: string, open: boolean, store: KeyValue = deviceStorage) => { if (group !== "needs") store.set(homeFoldKey(group), open ? "1" : "0"); };
 /** Every key that is view state: what a device copies into its document the first time (never home_sort). */

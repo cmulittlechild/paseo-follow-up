@@ -156,14 +156,15 @@ retargeting instead of Graphite restacks.
 ## Repairs are tasks (Q49)
 
 A PR condition Follow-up finds (a conflict, review feedback, a failing required check, a restack) is a task row in the
-workspace's Tasks, next to the developer's and agents' own tasks (`shared/task-rows.ts`, `client/tasks.tsx`). Nothing
+panel's Messages to the agent card, with the message it rides (`shared/task-rows.ts`, `client/messages.tsx`); the agent's own
+tasks are a separate card (tasks-are-the-agent-s). Nothing
 is stored per repair: a row comes from the message it rides (the pending or sent batch), the tasks `reconcile` held
 back (`heldTasks`), or a settled message (Done). The batch is the internal delivery record and never shows.
 
 - **One rule for every task in a message.** Repairs and Auto tasks (obligations with Auto and a due trigger) ride the
   same message and get the same states: Queued, Sent, Needs you (capped), Done. The Done check isn't a task: it stays
   "Ready to finish" in Needs you.
-- **Say it once.** The strip at the top of Tasks ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
+- **Say it once.** The strip at the top of the Messages to the agent card ("Next message to Billing fix · 4 tasks · sends at 14:32 · waits a
   minute so new changes join the same message", with Preview and Send now) carries when and why, from `sendDecision`.
   A row in the message says only Queued or Sent (invariant `message-rows-say-it-once`). Send now shows only where the
   server takes it (`canSendNow`) and the send doesn't wait on the developer (then Send lives in Needs you only). While
@@ -227,6 +228,19 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 
 ## Tasks (obligations)
 
+**The developer's view: Agent's tasks** (`shared/task-view.ts`, `client/tasks.tsx`, invariant `tasks-are-the-agent-s`).
+Tasks are the agent's to-do list, so the panel folds them to one line by default, in every state: "Agent's tasks ·
+6 open · 2 due · 1 stale". Due is the agent's normal work and stays neutral; only stale (due, nudged twice, no answer)
+is amber. Opened, a row per open task: a glyph per kind of move (a dot for due, amber for stale, a PR for "After #232
+merges", a calendar for a re-check, a pause for blocked, a hand or question bubble for one in Needs you), the title, and
+one line saying what moves it (`taskViewRows`). Stale and due come first, oldest first, each with the agent's note under
+it; a task waiting on the developer reads "In Needs you" (no question id) and opens it there, and comes last. A row
+opens in place: the whole note, its agent, and "Send on a schedule…", the developer's override (`update_obligation`
+`trigger` is the agent's way). Finished tasks leave the card for Activity ("Task done · …", with the evidence); the
+footer says "3 finished this week · in Activity". The send queue and the repairs are the Messages to the agent card
+(`client/messages.tsx`). The header's live line names the task the agent owes ("Due: …", "Stale: …") before any
+waiting one, and a waiting one says what moves it ("Check alert emails in staging · after #232 deploys").
+
 - **Who is working on a task** (invariant `a-task-only-says-working-when-its-agent-is`). `update_obligation` with
   `status: working` records the calling agent as `workingAgentId`, or the agent it names with `workingAgentId` (an
   orchestrator's subagent; refused unless Paseo knows that agent). The record keeps it after the task moves on, and
@@ -249,9 +263,34 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
 
 - **Writing tasks.** `update_obligation` writes tasks (`server/obligations.ts`). `afterPrs` uses `owner/repo#number`
   keys.
+- **Duplicates at write time** (invariant `a-new-task-is-checked-once`, `shared/task-dup.ts`). A write without an id is
+  checked once against the workspace's open tasks, by token Jaccard on the first 60 characters of the titles. The same
+  agent's exact whole title updates its task (a repeated write); a similar one (0.5 or more) is refused with up to 3 lines,
+  `Similar open task: <id> "<title>" (<status>). Update it by id, or pass new=true for a separate task.`, and `new: true`
+  adds it anyway. Clean writes add nothing. Renames keep the id and are never checked.
 - **Triggers** (`shared/task-trigger.ts`): `now`, `merge` or `deploy`, with an optional `delayDays`. Deploy state
   comes from `server/deployments.ts` and `server/deployment-anchor.ts`, only for configured repositories; elsewhere
   it stays unknown.
+- **Due by fact** (`shared/task-due.ts`, invariant `due-by-fact`). Every open task knows what moves it, and none is
+  "Manual". With `afterPrs` it comes due when every PR reaches `dependencyStage` (merged, or deployed; a repository
+  with no deploy target counts its merge), or when one closes unmerged. With no PRs it comes due on `recheckAt`: the
+  agent's `recheck` ("YYYY-MM-DD"), else 3 days (`RECHECK_DAYS`) after its last `update_obligation`; a later `recheck`
+  also holds a PR-made fact. A task blocked on a question the developer already answered or closed (`coveredBy`,
+  `waitsOnDeveloper`) comes due at that answer ("Due · Q7 answered"): the agent acts on it and moves the task. A task
+  still waiting on the developer (Needs you has it; it gets no default re-check) or on a developer-timed trigger (it
+  is sent as a message) is left out. Due is a nudge, never an auto-send and never a done: the worker lists each agent's
+  due tasks in `scopes.json` (`dueByAgent`: the task's working contributor and the main agent, oldest first, at most
+  5), and the Stop hook names at most 3 whose time passed (`pickNudges`), each at most twice for the same fact and
+  revision and at most once a day, sharing `hook-state/task-nudges-<workspace>.json`: "Task <id> "<title, 60 chars>":
+  #231 deployed. Do it and close it with evidence, or keep it with recheck="YYYY-MM-DD" and why." Nothing due adds
+  nothing. Every 10 minutes the worker reads that receipt into each task's `nudged` (`maintainTasks`); two nudges with
+  no change to the task make it **stale** (`isStale`: "Stale · #231 deployed · nudged twice, no answer"), and it is
+  never closed for the agent (only a supersede by id waives one). The task row says the moving fact: "Due · #231
+  merged", "After #232 merges", "Re-check Nov 25", "Due since Nov 22" (`dueLabel` through `taskSchedule`). The same pass stamps tasks from
+  before due-by-fact (a re-check 3 days out, `finishedAt` now) and prunes finished tasks 30 days after `finishedAt`
+  unless something still reads them (`pruneBlocked`): every task finished in a workspace not yet declared done (the
+  completion batch's fingerprint lists every task), an unsettled batch carrying it, an open question naming it.
+  Batches and Activity keep their own copy of a task's title.
 - **Lifecycle-only tasks.** `shared/follow-up.ts` drops approve, merge and deploy checklist tasks (`lifecycleOnly`),
   and decides `deployed` and recovery batches. `server/deployment-anchor.ts` pins the merge commit a deploy was
   seen for.
@@ -265,6 +304,36 @@ The invariants in `shared/status-invariants.ts` check these over a grid of state
   An ask set while blocked is kept by blocked updates that leave it out. Invariant
   `a-question-always-asks-the-developer-something` (`tests/task-question-asks.test.ts`): 2026-11-12, Q48 put a task's
   evidence in the developer's Needs you as a question with no options while the task waited on a PR.
+- **One decision, one card** (`one-decision-one-card`). A blocked task makes a card only when no question already asks
+  its decision. `findTaskCover` (`shared/questions.ts`) looks for one the ask names ("Q1: may I …?", or
+  `update_obligation` `question: "Q1"`, which also writes the ask), one asked with `task` set to it, or an open one that
+  reads the same (`findOpenMatch`); a superseded question is followed to its replacement and a withdrawn one covers
+  nothing. `syncTaskQuestions` records it on the task (`coveredBy`), closes a card the task made before as "Already asked
+  as Q1." (or "Already answered as Q1."), and Needs you shows no decision item for it. An answered question keeps
+  covering the task while its ask is unchanged: the agent has the answer and moves the task, so the task reads "Due · Q1
+  answered" in Tasks (due-by-fact) and doesn't count as the developer's (`waitsOnDeveloper`, `shared/model.ts`).
+  A changed ask drops the cover and looks again. `update_obligation` says "Already asked as Q1" (or answered) in its
+  reply's `note`, and `ask_question` and `needs_you` run the sync at once, so a card the task made closes when the
+  richer question arrives. 2026-11-22, Tom: "a lot of the time, 2 questions are created for the same thing"; live data
+  had 33 of 96 task-made questions repeating an `ask_question` question, 19 while it was open and 13 after it was
+  answered. Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS`.
+- **One ask, one item** (`one-ask-one-item`). A blocked task's card is shaped by what its ask wants (`taskNeed`,
+  `shared/questions.ts`): a decision keeps the free answer, and an action the developer takes and reports back ("Share
+  the decision page with alice and tell me when they've picked") gets one Done option (`TASK_DONE`), with Something else
+  for anything more, never "Write the decision for the agent". `update_obligation` `need` says which; without it the ask
+  decides (it asks to be told when something is done, or opens with something to do and asks no question). A card from
+  before that framed an action as a decision is reshaped in place and keeps its id. The agent's turn-end brief folds into
+  the task's card instead of standing beside it: `needsYouQuestions` points an action or decision `needs_you` at every
+  open task card it names ("Q3") and every card it restates (`taskCardsFor`: half of the card's words; for a card made
+  during that turn, `turn.at`, where the agent blocked the task and is reporting it, two shared words and 0.3 of the
+  card's words), as `questions: ["Q3"]` would, so `needsYouBlock` draws the card once with the brief's context. A card
+  the brief doesn't name or restate never hides it, even one made in the same turn: both show. The fold is the server's, so `update_obligation` says nothing about the task's own
+  card: the agent reads zero extra words. An action card is answered by one Done button (`isDoneOnly`) in the panel, on
+  Home and in the chat brief, never an option to pick and then Send; a brief's Done on it answers the card (A).
+  2026-11-22, the developer: an Action brief and its blocked task's card showed the same ask,
+  and the card read "Write the decision" for an action; live, 7 of 9 open task cards sat beside an open action or
+  decision brief from the same agent, and none was pointed at. Guarded by `tests/one-ask-one-item.test.ts` and
+  `INVARIANTS`.
 - **The activity log.** `shared/activity.ts` builds it from stored state.
 
 ## Questions

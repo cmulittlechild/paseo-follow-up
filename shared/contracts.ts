@@ -1,4 +1,6 @@
 import { queueViewSchema } from "./queue";
+import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
+import { sourcesChangeSchema } from "./brief-sources";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -8,10 +10,12 @@ import { usageSchema } from "./usage";
 import { aboutViewSchema } from "./about";
 import { LINKED_KINDS, linkedItemSchema } from "./linked";
 import { AGENT_ROLES, agentSettingsViewSchema, savedRoleSchema } from "./agent-settings";
+import { prStatsInputSchema, prStatsOutputSchema, setPrStatsInputSchema, statsRepoName, statsSettingsViewSchema, statsStatusSchema } from "./pr-stats-settings";
 import { defineRpc, type PluginSubscriptionContract } from "@getpaseo/plugin";
 import { CONTEXT_ANSWER_MAX, CONTEXT_TARGETS, contextRequestSchema } from "./catch-up";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS, checksSchema, onboardingViewSchema } from "./onboarding";
 import { z } from "zod";
+import { actionChangeSchema, dispatchActionSchema, dispatchInputSchema, dispatchRecordSchema, settingsChangeSchema } from "./dispatch";
 import { inboxRowSchema } from "./inbox";
 import { briefSchema } from "./brief";
 import { idSchema, textSchema, workspaceSchema } from "./model";
@@ -45,7 +49,7 @@ export const agentStatusRpc = defineRpc({ name: "follow.agent-status", input: z.
 export const syncWorkspaceRpc = defineRpc({ name: "follow.sync", input: z.strictObject({ agentId: idSchema, summary: z.string().trim().min(1).max(1000) }), output: z.object({ workspaceId: idSchema, synced: z.literal(true) }) });
 export const enrollRpc = defineRpc({ name: "follow.enroll", input: z.strictObject({ workspaceId: idSchema.optional(), agentId: idSchema, goal: textSchema }), output: workspaceSchema });
 export const registerPrRpc = defineRpc({ name: "follow.register-pr", input: z.strictObject({ agentId: idSchema, repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), number: z.number().int().positive(), stack: textSchema, parentNumber: z.number().int().positive().nullable().optional(), disposition: z.string().max(2000).optional(), agentMerges: z.boolean().optional() }), output: workspaceSchema });
-export const obligationRpc = defineRpc({ name: "follow.obligation", input: z.strictObject({ agentId: idSchema, workingAgentId: idSchema.optional(), id: idSchema.optional(), title: textSchema, status: z.enum(["pending", "waiting", "working", "blocked", "done", "waived"]), afterPrs: z.array(idSchema).optional(), dependencyStage: z.enum(["merged", "deployed"]).optional(), evidence: z.string().max(4000).optional(), ask: z.string().trim().min(1).max(1000).optional(), enable_follow_up: z.boolean().optional(), communication: agentCommunicationSchema.optional(), trigger: taskTriggerSchema.strict().nullable().optional() }), output: workspaceSchema.extend({ updatedObligationId: idSchema }) });
+export const obligationRpc = defineRpc({ name: "follow.obligation", input: z.strictObject({ agentId: idSchema, workingAgentId: idSchema.optional(), id: idSchema.optional(), title: textSchema, status: z.enum(["pending", "waiting", "working", "blocked", "done", "waived"]), afterPrs: z.array(idSchema).optional(), dependencyStage: z.enum(["merged", "deployed"]).optional(), evidence: z.string().max(4000).optional(), ask: z.string().trim().min(1).max(1000).optional(), question: z.string().regex(/^Q\d+$/).optional(), need: z.enum(["decision", "action"]).optional(), enable_follow_up: z.boolean().optional(), communication: agentCommunicationSchema.optional(), trigger: taskTriggerSchema.strict().nullable().optional(), recheck: z.string().trim().min(1).max(40).optional(), new: z.boolean().optional() }), output: workspaceSchema.extend({ updatedObligationId: idSchema, note: z.string().optional() }) });
 export const declareDoneRpc = defineRpc({ name: "follow.done", input: z.strictObject({ agentId: idSchema, summary: textSchema }), output: z.object({ workspace: workspaceSchema, blockers: z.array(z.string()), unconfirmed: z.array(z.string()).default([]), alreadyDone: z.boolean().default(false), next: z.string().default("") }) });
 export const acknowledgeRpc = defineRpc({ name: "follow.acknowledge", input: z.strictObject({ agentId: idSchema, batchId: idSchema, outcome: z.enum(["completed", "blocked"]), result: textSchema, /** With blocked: only a person can move what is still open (Batch.humanOnly). */ humanOnly: z.boolean().optional() }), output: workspaceSchema });
 export const controlRpc = defineRpc({ name: "follow.control", input: z.object({ workspaceId: idSchema, enable_auto_sends: z.boolean().optional(), clearHold: z.boolean().optional(), retryBatchId: idSchema.optional(), /** Retry one capped task (Q49): its key. */ retryTask: z.string().max(400).optional(), /** Auto per task: a task key and whether Follow-up sends it. */ taskAuto: z.object({ key: z.string().max(400), auto: z.boolean() }).optional(), /** The developer's "Make main agent": one of the workspace's other root agents. */ mainAgentId: idSchema.optional(),
@@ -230,6 +234,12 @@ export const contextListRpc = defineRpc({ name: "follow.context-list", input: z.
 export const catchUpDeckRpc = defineRpc({ name: "follow.catch-up-deck", input: z.strictObject({}), output: z.object({
   cards: z.array(z.object({ key: z.string(), kind: z.string(), workspaceId: z.string().nullable(), agentId: z.string().nullable(), title: z.string(), line: z.string(),
     questionId: z.string().nullable(), item: z.string().nullable(), context: contextRequestSchema.pick({ id: true, state: true, target: true }).nullable() })) }) });
+/**
+ * Wait for checks (docs/wait-for-checks.md): the caller's PRs whose checks it waits on. `prs`: URLs, owner/repo#N or
+ * numbers; none means every open PR of the caller's workspace. `cancel` stops waiting. One message comes after the turn.
+ */
+export const waitForChecksRpc = defineRpc({ name: "follow.wait-for-checks", input: z.strictObject({ agentId: z.string().min(1).max(200), prs: z.array(z.string().trim().min(1).max(2000)).max(SCALE.perWorkspace).optional(), minutes: z.number().int().min(1).max(720).optional(), cancel: z.boolean().optional() }),
+  output: z.object({ text: z.string(), waiting: z.array(z.string()), done: z.array(z.object({ pr: z.string(), result: z.string(), text: z.string() })), notFollowed: z.array(z.string()) }) });
 export const contextReplyRpc = defineRpc({ name: "follow.context-reply", input: z.strictObject({ agentId: z.string().min(1).max(200), requestId: z.string().min(1).max(80), text: z.string().trim().min(1).max(CONTEXT_ANSWER_MAX) }), output: z.object({ ok: z.boolean() }) });
 export const rankStatusSchema = z.object({ enabled: z.boolean(), running: z.boolean(), lastRunAt: z.string().nullable(), healthLine: z.string(), error: z.string().nullable(), costUsd: z.number().nullable(), notStarted: z.number().int(),
   last: z.object({ ok: z.boolean(), skipped: z.string().nullable(), top: z.string().nullable(), provider: z.string().nullable(), inputTokens: z.number().nullable(), outputTokens: z.number().nullable() }).nullable() });
@@ -254,6 +264,10 @@ export const onboardingChecksRpc = defineRpc({ name: "follow.onboarding-checks",
  * Settings → Following → Shipping PRs, and onboarding's "How do you ship PRs?": the global default, each repository's
  * setting and what auto detected (filesystem checks only, cached; `refresh` re-checks). Never polled.
  */
+// PR statistics (docs/pr-stats.md): the model the page and pr_stats read, Settings → PR statistics, and its writes.
+export const prStatsRpc = defineRpc({ name: "follow.pr-stats", input: prStatsInputSchema, output: prStatsOutputSchema });
+export const prStatsSettingsRpc = defineRpc({ name: "follow.pr-stats-settings", input: z.object({ repo: statsRepoName.optional(), estimate: z.boolean().optional() }), output: statsSettingsViewSchema });
+export const setPrStatsRpc = defineRpc({ name: "follow.set-pr-stats", input: setPrStatsInputSchema, output: statsSettingsViewSchema });
 export const prWorkflowRpc = defineRpc({ name: "follow.pr-workflow", input: z.object({ refresh: z.boolean().optional() }), output: prWorkflowViewSchema });
 /** `{ repo, setting }` sets one repository (`setting: null` inherits the default); `default` sets the default. */
 export const setPrWorkflowRpc = defineRpc({ name: "follow.set-pr-workflow", input: setPrWorkflowInputSchema, output: prWorkflowViewSchema });
@@ -300,6 +314,40 @@ export const reportLinkRpc = defineRpc({ name: "follow.report-issue-link", input
  */
 const followLineSchema = z.object({ question: z.object({ id: z.string(), title: z.string() }).nullable(),
   chips: z.array(z.object({ text: z.string(), tone: z.enum(["success", "danger", "warning", "merged", "muted"]) })), line: z.string().nullable() });
+// New (shared/dispatch.ts, server/dispatch.ts): start work from a Linear issue, a GitHub issue or PR, a link or the
+// developer's words. The dispatch records and replies; the workspace and agent start after the reply.
+const dispatchIdInput = z.strictObject({ dispatchId: idSchema });
+export const dispatchSourcesRpc = defineRpc({ name: "follow.dispatch-sources", input: z.strictObject({ fresh: z.boolean().optional(), query: z.string().trim().min(1).max(200).optional() }), output: z.unknown() });
+export const dispatchPreviewRpc = defineRpc({ name: "follow.dispatch-preview", input: dispatchInputSchema, output: z.unknown() });
+export const dispatchRpc = defineRpc({ name: "follow.dispatch", input: dispatchInputSchema.extend({ expectHash: z.string().max(40).optional() }), output: z.unknown() });
+export const dispatchRecordsRpc = defineRpc({ name: "follow.dispatch-records", input: z.strictObject({}), output: z.object({ records: z.array(dispatchRecordSchema) }) });
+export const dispatchUndoRpc = defineRpc({ name: "follow.dispatch-undo", input: dispatchIdInput, output: dispatchRecordSchema });
+export const dispatchActionsRpc = defineRpc({ name: "follow.dispatch-actions", input: z.strictObject({}), output: z.object({ actions: z.array(dispatchActionSchema), edited: z.boolean() }) });
+export const setDispatchActionsRpc = defineRpc({ name: "follow.set-dispatch-actions", input: z.strictObject({ change: actionChangeSchema }), output: z.object({ actions: z.array(dispatchActionSchema) }) });
+export const dispatchSettingsRpc = defineRpc({ name: "follow.dispatch-settings", input: z.strictObject({}), output: z.unknown() });
+export const setDispatchSettingsRpc = defineRpc({ name: "follow.set-dispatch-settings", input: settingsChangeSchema, output: z.unknown() });
+// The Morning brief's Linear queue (shared/linear-queue.ts, server/linear-queue.ts, docs/morning-brief.md). `open` is the
+// developer opening the brief: it marks the read "since" stands on and sweeps when the snapshot is older than 6 h.
+// Agents read without `open` (linear_queue), so an agent never moves the developer's "since".
+export const linearQueueInputSchema = z.strictObject({
+  filter: z.enum(["all", "no-workspace", "changed"]).optional(),
+  since: z.string().datetime({ offset: true }).nullable().optional(),
+  limit: z.number().int().min(1).max(1000).optional(),
+  open: z.boolean().optional(),
+});
+export const linearQueueRpc = defineRpc({ name: "follow.linear-queue", input: linearQueueInputSchema, output: z.unknown() });
+export const sweepQueueRpc = defineRpc({ name: "follow.sweep-queue", input: z.strictObject({}), output: z.unknown() });
+// Settings → Morning brief (shared/morning-brief.ts, server/morning-brief.ts): the queue's settings, the plan link and
+// its finder, and the pickers' chat search.
+export const briefSettingsRpc = defineRpc({ name: "follow.brief-settings", input: z.strictObject({}), output: z.unknown() });
+export const setBriefSettingsRpc = defineRpc({ name: "follow.set-brief-settings", input: queueChangeSchema, output: z.unknown() });
+export const briefPlanRpc = defineRpc({ name: "follow.brief-plan", input: briefPlanInputSchema, output: z.unknown() });
+export const setBriefPlanRpc = defineRpc({ name: "follow.set-brief-plan", input: planChangeSchema, output: z.unknown() });
+// The brief's sources (shared/brief-sources.ts, server/brief-sources.ts): `check` asks mcpproxy what it has now (Settings
+// sends it on open).
+export const briefSourcesRpc = defineRpc({ name: "follow.brief-sources", input: z.strictObject({ check: z.boolean().optional() }), output: z.unknown() });
+export const setBriefSourcesRpc = defineRpc({ name: "follow.set-brief-sources", input: sourcesChangeSchema, output: z.unknown() });
+export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
 export const createdItemsRpc = defineRpc({ name: "follow.created-items",
   input: z.strictObject({ agentIds: z.array(idSchema).max(40), workspaceIds: z.array(idSchema).max(40) }),
   output: z.object({
@@ -324,6 +372,19 @@ export const homeFeed = subscription("follow.home-feed", z.object({}), z.object(
   usageLive: z.boolean(),
   /** Catch up's More context asks (pushed when one is asked or answered); absent from an older worker. */
   context: z.array(contextRequestSchema).optional(),
+  /** New's recent dispatches (Home's row: in progress, failed, Undo); absent from an older worker. */
+  dispatches: z.array(dispatchRecordSchema).optional(),
+  /** Whether any repository has PR statistics (on or paused): Home's PR stats icon shows only then. Absent from an older worker. */
+  prStats: z.boolean().optional(),
 }));
 export const displayFeed = subscription("follow.display-feed", z.object({}), z.object({ status: z.string(), revision: z.string().optional(), values: z.unknown().optional() }));
-export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed] as const;
+/**
+ * The PR stats page's feed for one repository: its sync status, pushed when a run ends or a setting changes. While it
+ * is open the repository syncs every 5 minutes instead of hourly (`PrStats.watching`); the page re-reads its model
+ * when the status moves. Only the page subscribes, and only while it is on screen.
+ */
+export const prStatsFeed = subscription("follow.pr-stats-feed", z.object({ repo: statsRepoName }), z.object({
+  repo: z.string(), state: z.enum(["on", "paused", "off"]), lastSyncAt: z.number().nullable(), records: z.number().int(), coveredTo: z.number().nullable(),
+  waiting: statsStatusSchema.shape.waiting, error: statsStatusSchema.shape.error,
+}));
+export const FEEDS = [workspacesFeed, inboxFeed, homeFeed, displayFeed, prStatsFeed] as const;

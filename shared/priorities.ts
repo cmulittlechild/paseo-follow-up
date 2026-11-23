@@ -5,9 +5,9 @@ import { z } from "zod";
  * CPO's planning artifact) calls `set_priorities`; Home's Priority sort uses them while they're fresh. Follow-up never
  * makes one up: with none, or only stale ones, Priority falls back to urgency and says so.
  */
-export const PRIORITY_SOURCES = ["linear", "slack", "planning", "github", "paseo"] as const;
+export const PRIORITY_SOURCES = ["linear", "slack", "planning", "github", "paseo", "calendar", "mail", "other"] as const;
 export type PrioritySourceKind = typeof PRIORITY_SOURCES[number];
-export const PRIORITY_SOURCE_LABEL: Record<PrioritySourceKind, string> = { linear: "Linear", slack: "Slack", planning: "Planning", github: "GitHub", paseo: "Paseo" };
+export const PRIORITY_SOURCE_LABEL: Record<PrioritySourceKind, string> = { linear: "Linear", slack: "Slack", planning: "Planning", github: "GitHub", paseo: "Paseo", calendar: "Calendar", mail: "Mail", other: "Other source" };
 
 export const prioritySourceSchema = z.strictObject({
   kind: z.enum(PRIORITY_SOURCES),

@@ -74,3 +74,24 @@ test("More context on a question outside Catch up (the panel, Home, the pill on 
   }
   await act(async () => { setContextSource(null); });
 });
+
+test("the PR stats page on a phone renders under the phone's rules: the leaderboard, its empty period and a person", async () => {
+  const { Leaderboard, PersonView } = await import("../client/pr-stats");
+  const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+  const sum = (n: number, median: number | null) => ({ n, median, p75: median });
+  const row = (login: string, opened: number) => ({ login, opened, openedStacks: opened, merged: opened - 1, wait: sum(opened, opened * 3600), reviews: 4, reviewStacks: 4, turnaround: sum(2, 3600) });
+  const team = { opened: 9, openedStacks: 7, merged: 6, wait: sum(9, 7200), timeToMerge: sum(0, null), reviewToMerge: sum(0, null), waitingNow: 1, reviews: 8, mergedWithoutReview: 0, deletedUsers: 0, bots: 0, sizes: {} };
+  const out = (people: unknown[]) => ({ repo: "example/app", repos: [{ repo: "example/app", state: "on" }, { repo: "example/web", state: "paused" }], period: "week", range: { start: 1_767_996_000, end: 1_768_118_400 }, clock: "calendar", timeZone: "Africa/Cairo", hours: { days: [0, 1, 2, 3, 4], from: 540, to: 1080 },
+    model: { team, people, waiting: [], stale: 0 }, person: { login: "alice", row: people[0] ?? null, prs: [{ number: 412, url: "https://github.com/example/app/pull/412", title: "Add audit events", state: "M", created: 1, wait: 3600, waiting: false, firstResponder: "bob", merged: 2, size: "S" }], reviewed: [{ number: 410, url: "https://github.com/example/app/pull/410", author: "bob", title: "Split the migration", at: 1_768_000_000 }] },
+    sync: { records: 120, coveredTo: 1_760_000_000, backfillDone: false, coversPeriod: false, lastSyncAt: 1_768_118_000, waiting: { reason: "budget", until: null }, error: null, cappedTo: null }, teamNotice: null, empty: null });
+  const props = { theme, compact: true, now: 1_768_118_400, period: "week", sort: "opened", onSort: () => {}, onPeriod: () => {}, onRepo: () => {}, onPerson: () => {} };
+  for (const [name, el] of [
+    ["the leaderboard", createElement(Leaderboard, { ...props, out: out([row("alice", 5), row("bob", 3), row("carol", 1)]) })],
+    ["an empty period", createElement(Leaderboard, { ...props, out: out([]) })],
+    ["one person", createElement(QueryClientProvider, { client: new QueryClient() }, createElement(Leaderboard, { ...props, out: out([row("alice", 5)]) }))],
+    ["a person's screen", createElement(PersonView, { theme, compact: true, out: out([row("alice", 5)]), login: "alice" })],
+  ] as const) {
+    const { error } = await render(el as never);
+    assert.equal(error, null, `${name} crashed on a phone: ${(error as Error)?.message}`);
+  }
+});

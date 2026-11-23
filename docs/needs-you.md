@@ -30,6 +30,19 @@
   plain finish doesn't flag (F7's settle sees "running"), its row sits in Running with `backgroundWork`, and
   `liveFlag` hides an older "finished" until the work ends (shown again after, not erased). Invariant
   `background-work-is-running` in `rowViolations`. On 0.15 the field is absent and nothing changes.
+- **Briefs from closed agents** (`flagFate`, invariant `briefs-from-closed-agents`). Home decides at render, from facts
+  it already holds, what a flag nobody may be waiting on does; nothing is stored or deleted, so `inbox_list` still lists
+  it. A flag **drops** when its workspace is archived (tracked `archived`) or gone from Paseo's workspace list (the row's
+  `workspaceTitle` is null) and the agent isn't running, or when a closed agent's flag asks nothing: no brief that
+  asks (no open brief, or kind `unknown`/`done`, or source `none`) and no question, and only `finished`, `pr_merged` or
+  `pr_closed` reasons. A closed agent's real ask (action, decision, review, an error) with nothing new for 3 days
+  (`OLDER_AFTER_MS`) moves to Home's **Older** group, right under Needs you and folded until opened, out of the Needs-you
+  count, the sidebar badge and the brief's headline. It comes back the moment the agent runs or idles again, or a new
+  flag comes. A running or idle agent's ask always shows, and an Older row whose workspace has a live item (an open
+  question, a blocked task) stays in Needs you; a dropped row never hides a workspace item, which the workspace's own
+  row then carries. Live on 2026-11-22: 49 flagged rows; 19 drop (16 closed agents that asked nothing, 3 in archived
+  or gone workspaces), 13 fold into Older, 17 stay. "Next" follows the same rule: Sign off & next, `/ok next` and the
+  Command Center's Next needs-you (`nextAfter`) open only a row Home shows, never a dropped or Older one.
 - **Pure logic** is in `shared/inbox.ts`: the reducer, `REASONS` in urgency order (permission, error, paused, ci,
   review, reviewers, finished, pr_closed, pr_merged), snoozes (`next-event`, an ISO time, or `pr:<repo#n>`), finish flags, and
   undo. A registered PR that leaves OPEN (`prEndEvent`, shared by the worker and the invariants) flags `pr_merged`
@@ -139,6 +152,9 @@
   clears) and collapses the card to `Done · <ask>`. The card collapses at once; `runUndoable` (`client/toast-store.ts`)
   holds the send for the toast's Undo window, since a sent message can't be taken back. With no ToastHost mounted it
   sends at once. Only Action briefs take it; reviews, decisions and failed turns are refused.
+  A brief that folded into a task's action card (`isDoneOnly`) answers that card instead: Done sends the card's A
+  through `follow.answer-question` (with the note, when one is open), the brief settles when the card does, and no
+  `Done: <ask>` goes out beside it. Such a card draws no option rows: Done, Add note and Reply instead (one-ask-one-item).
   During the window the composer pill reads Done and its Undo cancels the same toast (`client/done-windows.ts`, one
   window per agent); Ctrl+Z (Cmd+Z on a Mac) presses the showing toast's Undo, never inside a text field.
 - **`needs_you`** (`follow.needs-you`) is the agent's end-of-turn statement.
@@ -374,6 +390,9 @@ card beside a question list.
   questions' cards: the question's title, its Q chip and asked age, the brief's context, the options with Send, and
   what the agent does meanwhile as the footer. A brief that points at no open question keeps its own card, drawn bare
   as the block's first section (unless every question it points at is settled: it is resolving).
+  A `needs_you` that reports a blocked task points at that task's card even when the agent didn't name it: cards it
+  names or restates, with a lower bar for a card made during the turn (`taskCardsFor`, `one-ask-one-item`), so the
+  brief and the task never both ask. A card it doesn't name or restate never hides the brief's ask: both show.
 - **Every other open question** gets the same card. The first is open, the rest are headers that open in place.
 - **Rows** follow: every other decision (send, merge, retry, a check), never a question.
 - **One answer path.** A question card, the pill, the question dialog and the chat's brief card all answer a stored

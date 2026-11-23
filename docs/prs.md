@@ -99,11 +99,15 @@ mergeability, or a content change in the last 5 minutes. The developer's Refresh
 `a-turn-end-never-reads-other-workspaces-prs`; until 2026-11-12 each one re-read every tracked PR fresh). A settled open PR's change shows within 75 s, inside the completion gate's 120 s
 freshness; the `poll-backoff-never-hides-a-moving-pr` invariant holds both. Opening a workspace's panel refreshes it.
 
+**Waited-for PRs.** A PR an agent waits on with `wait_for_checks` is due once after its wait began, then at the
+running-checks cadence even when it looks settled, inside the reserve; the agent hears from these reads, never from one
+of its own ([wait-for-checks.md](wait-for-checks.md)).
+
 **Long-running checks.** Checks still running 10 minutes after a PR's last change (or since Follow-up first saw it)
 are read every 2 minutes instead of 30 s (invariant `long-running-checks-read-every-2-min`; 2026-11-12, 25 stacked
 PRs with checks running for hours cost ~3000 GraphQL points an hour).
 
-**Budget.** Each query asks for `rateLimit { cost remaining resetAt limit }`. Under 40 % of the limit (2000 of 5000),
+**Budget.** Each query asks for `rateLimit { cost remaining resetAt limit }`. PR statistics feed the same per-owner budget (`Github.noteRateLimit`, `Github.noteLimited`) and stop already under 40 % (invariant 67, [pr-stats.md](pr-stats.md)). Under 40 % of the limit (2000 of 5000),
 settled PRs wait 5 minutes and only in repositories with something moving. Under 20 % (the reserve, 1000), Follow-up's
 background reads stop until the reset, so agents, gt and other plugins keep the rest (2026-11-19 live: Follow-up read
 the account down to 100 left and agents' `gh` calls failed first); the developer's Refresh and foreground reads (agent
@@ -151,7 +155,7 @@ the cold start's spawns and compares).
   opens the PR sheet's confirm instead. Merge is offered only when every PR it would merge can merge, and once per stack: on the highest ready PR, whose
   button names the PRs under it (a lower PR's own merge stays in its PR sheet). An approved PR
   held by one under it isn't an ask (that PR is the agent's repair) but never goes quiet: `heldMerges`
-  (`shared/attention.ts`) puts "#143 approved · waits on #142 (checks failing)" in the panel's Pull requests card and
+  (`shared/attention.ts`) puts "#143 approved · waits on #142 (checks failed)" in the panel's Pull requests card and
   Home's detail pane (`HeldMerges`, `client/merge-button.tsx`), both numbers linked.
   After a click the button, the toast and Activity read one outcome (`mergeWords`, `shared/merge-click.ts`): Merged
   only when GitHub merged, Queued, or Merge requested (Graphite). A GitHub merge also marks its PRs merged in the

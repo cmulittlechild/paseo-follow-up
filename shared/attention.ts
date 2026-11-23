@@ -5,6 +5,8 @@ import { blockedOnDeveloper, completionCheck, liveWorkingTask, statusKnown, summ
 import type { ListBatch as Batch, ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { IDLE_REASON, MAIN_WAIT, NO_PROGRESS_CAP, QUIET_WAIT, mainWait } from "./send-decision";
 import { workingLine } from "./task-status";
+import { owedTask } from "./task-view";
+import { taskDue } from "./task-due";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { orderedStacks, prLink, settledForDisplay, type PrLink } from "./presentation";
 import { downstackScan, githubApproved, graphiteReady, isGithubFlow, mergeBlockers, prActionBlocks } from "./pr-actions";
@@ -336,8 +338,9 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
       detail: inChat ? "It's in the agent's chat. Send it there, or from here." : "You copied it. Paste it into the agent's chat, or send it from here." });
   }
   for (const q of open.filter(q => questionState(q) !== "stopped")) items.push({ kind: "question", key: `question:${q.id}`, questionId: q.id, title: `${q.id} · ${q.title}`, detail: q.question, state: questionState(q), big: q.big });
-  // A blocked task is a question once the server mirrors it; until then it still shows as a decision.
-  for (const o of followUpObligations(w).filter(o => blockedOnDeveloper(o) && !questions.some(q => q.taskId === o.id && q.taskRevision !== null)))
+  // A blocked task is a question once the server mirrors it, or the question that covers it (one-decision-one-card);
+  // until then it still shows as a decision.
+  for (const o of followUpObligations(w).filter(o => blockedOnDeveloper(o) && !o.coveredBy && !questions.some(q => q.taskId === o.id && q.taskRevision !== null)))
     items.push({ kind: "decision", key: `decision:${o.id}`, obligationId: o.id, title: o.title, detail: o.ask! });
   // Repairs Auto won't send (an idle agent Follow-up doesn't wake) wait on you just like hand-sent ones (shared/status.ts).
   const view = batchView(w, now);
@@ -382,12 +385,12 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   return items.filter(i => i.kind !== "merge" || !covered.has(i.prKey));
 }
 
-/** Why a downstack PR holds a merge, in a few words ("checks failing"). */
+/** Why a downstack PR holds a merge, in a few words, in the rows' words ("checks failed"). */
 function holdReason(p: Pr): string {
   const s = p.snapshot;
   if (!s?.complete || p.error) return "status unknown";
   if (s.conflict) return "conflicts";
-  if (s.failedChecks?.length) return "checks failing";
+  if (s.failedChecks?.length) return "checks failed";
   if (s.checksPending) return "checks running";
   if (s.draft) return "a draft";
   if (s.threads?.length) return "open threads";
@@ -397,7 +400,7 @@ function holdReason(p: Pr): string {
 /**
  * Approved PRs that Merge isn't offered on because a PR under them can't merge yet (a-click-on-merge-merges: a Merge
  * row merges its whole downstack). Needs you leaves them out (the PR below is the agent's repair), so the panel's
- * Pull requests card and Home's detail pane say it: "#143 approved · waits on #142 (checks failing)". An approved PR
+ * Pull requests card and Home's detail pane say it: "#143 approved · waits on #142 (checks failed)". An approved PR
  * never goes quiet.
  */
 export function heldMerges(w: Workspace, now = Date.now()): { pr: Pr; by: Pr; line: string }[] {
@@ -441,7 +444,7 @@ export function headline(w: Workspace, now = Date.now()): HeadlinePart[] {
 export type LiveIcon = "spinner" | "sent" | "done" | "paused" | "waiting" | "alert" | "failing" | "idle";
 /** What is happening right now, in one line, with the time it started when known. */
 /**
- * The panel header's live line. Say it once (Q49): while a message is queued, the Tasks strip right below carries when
+ * The panel header's live line. Say it once (Q49): while a message is queued, the Messages to the agent card below carries when
  * and why, so the header says only who and what. Home has no strip and keeps liveLine's full line.
  */
 export function headerLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text: string; since: string | null } {
@@ -472,12 +475,17 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   // Otherwise it says what the task row says: "<agent> idle", "<agent> closed", "Agent unavailable" or "In progress", with no spinner.
   const live = liveWorkingTask(w);
   if (live) return { icon: "spinner", text: live.title, since: null };
+  // A due task is what the agent owes next, so the line names it, not whichever task comes first (a waiting one whose
+  // PR is still in review). Stale says so: the agent was told twice and didn't answer.
+  const owed = owedTask(w, now);
+  if (owed) return { icon: "waiting", text: `${owed.stale ? "Stale" : "Due"}: ${owed.o.title}`, since: null };
   const working = followUpObligations(w).find(o => o.status === "working");
   if (working) return { icon: "waiting", text: `${working.title} · ${workingLine(working, w.taskAgents ?? {}).text}`, since: null };
   // A wait the agent declared (a waiting task: a release, a reload window, a detached job) says what it waits on. The
   // waiting icon, Home's Waiting group and the brief's "Waiting on others" already say it waits, so the line doesn't.
+  // With what moves it ("· after #232 merges"), so the line never reads as if that task were happening now.
   const waiting = followUpObligations(w).find(o => o.status === "waiting");
-  if (waiting) return { icon: "waiting", text: waiting.title, since: null };
+  if (waiting) { const d = taskDue(waiting, w, now); const moves = d && !d.due ? d.label : null; return { icon: "waiting", text: moves ? `${waiting.title} · ${moves[0].toLowerCase()}${moves.slice(1)}` : waiting.title, since: null }; }
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
   // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
   const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);

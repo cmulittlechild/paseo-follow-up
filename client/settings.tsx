@@ -13,6 +13,13 @@ import { DisplaySections, PermissionsSection } from "./display";
 import { ReviewerSettings, reviewerSettingsKey } from "./reviewers";
 import { AgentSettings, WaitSettings, agentSettingsKey } from "./agents";
 import { ShippingSettings } from "./shipping";
+import { MorningBriefCategory, briefSettingsKey, briefSourcesKey } from "./morning-brief-settings";
+import type { SourcesView } from "../shared/brief-sources";
+import { briefSummary, type BriefSettingsView } from "../shared/morning-brief";
+import { PrStatsSettings } from "./pr-stats-settings";
+import { NewWorkCategory, newActionsKey, newSettingsKey } from "./new-settings";
+import { newWorkSummary, type SettingsView as NewSettingsView } from "../shared/new-settings";
+import type { DispatchAction } from "../shared/dispatch";
 import { UpdatesSections, useUpdates } from "./updates";
 import { generalSummary } from "../shared/updates";
 import { BackHeader, CategoryList, CategoryTabs, Disclosure } from "./settings-shell";
@@ -83,6 +90,7 @@ function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean 
       </SettingsCard>}
     </SettingsSection>
     <ShippingSettings theme={theme} compact={compact} />
+    <PrStatsSettings theme={theme} compact={compact} />
     <PermissionsSection theme={theme} />
     <ProjectsFold theme={theme} compact={compact} />
     {data && (data.workspaces.length
@@ -213,16 +221,22 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
   const changed = agents?.roles.filter(r => !r.isDefault).length ?? 0;
   // General's line reads the updates view (local files, no npm request), so the phone list shows it before a drill-in.
   const updates = useUpdates().data;
+  const brief = useQuery({ queryKey: briefSettingsKey, queryFn: skipToken }).data as BriefSettingsView | undefined;
+  const sources = useQuery({ queryKey: briefSourcesKey, queryFn: skipToken }).data as SourcesView | undefined;
+  const newActions = useQuery({ queryKey: newActionsKey, queryFn: skipToken }).data as { actions: DispatchAction[] } | undefined;
+  const newSettings = useQuery({ queryKey: newSettingsKey, queryFn: skipToken }).data as NewSettingsView | undefined;
   return {
     general: updates ? generalSummary(updates) : null,
     following: follow ? followingSummary(follow) : null,
     reviewers: reviewers ? reviewersSummary(reviewers.config) : null,
     agents: agents ? agentsSummary(agents, changed) : null,
+    brief: brief ? briefSummary(brief, Date.now(), sources?.line) : null,
+    new: newWorkSummary(newActions?.actions ?? null, newSettings ?? null),
   };
 }
 
 /**
- * Follow-up's settings, in five categories. Desktop: tabs under the host's own settings nav, the last one remembered
+ * Follow-up's settings, in seven categories. Desktop: tabs under the host's own settings nav, the last one remembered
  * on this device. Phone: the category list, drilling in with a back row. Only the open category mounts, so only its
  * data loads.
  */
@@ -231,7 +245,7 @@ const REVIEWERS_INFO = "Who Add reviewers asks on a PR: a list per repository, o
 /** Settings → General → Help → Report a bug. */
 export const REPORT_HINT = "Or an idea or feedback. An agent writes it up and shows you the issue before filing it.";
 
-export function FollowSettings({ theme, layout, openSetup, openReport, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void;
+export function FollowSettings({ theme, layout, openSetup, openReport, openSettings, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void; openSettings?: (category: SettingsCategory) => void;
   /** Paseo 0.16: this screen is one category, and Paseo's own tabs switch between them (client/settings-screens.ts). */
   category?: SettingsCategory }) {
   const compact = layout.compact;
@@ -261,6 +275,9 @@ export function FollowSettings({ theme, layout, openSetup, openReport, category:
       <ReviewerSettings theme={theme} compact={compact} />
     </View>
     : category === "agents" ? <AgentsCategory theme={theme} compact={compact} />
+    : category === "brief" ? <MorningBriefCategory theme={theme} compact={compact} />
+    // settings-link-lands-on-its-category: under Paseo's tabs the link opens the Agents screen; on 0.15 it picks the tab.
+    : category === "new" ? <NewWorkCategory theme={theme} compact={compact} openAgents={() => openSettings ? openSettings("agents") : pick("agents")} />
     : <DisplaySections theme={theme} />;
   // Phones: the shared gutter and the bottom inset (the gesture bar), like every other Follow-up surface.
   const page = { padding: compact ? space(true).gutter : 24, gap: 18, maxWidth: 720, width: "100%" as const, alignSelf: "center" as const, paddingBottom: 40 };

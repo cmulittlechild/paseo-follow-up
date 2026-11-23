@@ -23,9 +23,9 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | Session | Tools |
 | --- | --- |
 | Tracked main agent | Core tools (below), the action tools, and `needs_you` while the inbox is on. |
-| Contributor (another root agent of a tracked workspace) | `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, and `make_main_agent` (its claim rules apply). |
+| Contributor (another root agent of a tracked workspace) | `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, `wait_for_checks`, and `make_main_agent` (its claim rules apply). |
 | Recovery agent | Core tools except `declare_done`, `sync_workspace`, the question tools, `set_spec`, `link_item` and `unlink_item`. No action tools. |
-| Untracked root agent | The action tools, and `needs_you` while the inbox is on. |
+| Untracked root agent | The action tools, `wait_for_checks` (it names where else to wait), and `needs_you` while the inbox is on. |
 | Overseer | `needs_you`, the action tools and the Overseer tools. |
 | Subagents | None (Wait still applies: [wait.md](wait.md)). |
 | Any interactive Claude session | `wait_prepare_job`, `wait_for_job`, `wait_get_job` while Wait is on. |
@@ -44,13 +44,14 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 | `enroll_workspace` | `follow.enroll` | Refines the goal of a workspace the developer activated. |
 | `register_pr` | `follow.register-pr` | Registers a submitted PR and its stack and parent. `agentMerges: true` marks a PR the agent merges itself: Follow-up never asks the developer to review or merge it. In a No review repository every PR counts as `agentMerges` unless the agent sets it false ([review mode](prs.md#review-mode)). |
 | `exclude_stack` | `follow.exclude-stack` | Removes a wrongly registered stack, with an audit (`server/exclusions.ts`). |
-| `update_obligation` | `follow.obligation` | Creates or updates a task (an obligation), with an optional trigger and communication receipt. `status: working` records the caller as the task's agent, or `workingAgentId` (another agent Paseo knows). `ask`, with `blocked`, is the question the developer must answer; only then does the task ask them. |
+| `update_obligation` | `follow.obligation` | Creates or updates a task (an obligation), with an optional trigger and communication receipt. `status: working` records the caller as the task's agent, or `workingAgentId` (another agent Paseo knows). `ask`, with `blocked`, is the question the developer must answer; only then does the task ask them. `question: "Q<n>"`, with `blocked`, points at a question already asked with `ask_question` instead: no second card (`one-decision-one-card`), and the reply's `note` says when the task is already asked or answered as a question; the card a task makes itself is never named (the turn's `needs_you` folds into it on the server). `need` (`decision` or `action`), with `blocked` and `ask`, says whether the developer decides or does something and reports back; an action's card has Done (`one-ask-one-item`). Without `id`, a title close to an open task's is refused with that task's id (`a-new-task-is-checked-once`); `new: true` adds it anyway, and the caller's own exact title updates its task. |
 | `acknowledge_batch` | `follow.acknowledge` | Records a repair batch's result: completed or blocked; blocked with `humanOnly` when only a person can move it (a PR item for the developer, not an agent failure). |
 | `ask_question`, `record_answer`, `withdraw_question` | `follow.ask-question`, `follow.record-answer`, `follow.withdraw-question` | Questions for the developer (`server/questions.ts`). |
 | `set_spec` | `follow.set-spec` | The agent's spec link. The developer's own link wins over it. |
 | `link_item`, `unlink_item` | `follow.link-item`, `follow.unlink-item` | Links what the work is about (a Linear key is confirmed with Linear first; a PR is refused), or removes one for good ([linked-items.md](linked-items.md)). Main and contributors. |
 | `needs_you` | `follow.needs-you` | The end-of-turn brief: what the developer must do next. |
 | `declare_done` | `follow.done` | Declares the goal fulfilled and returns any blockers. |
+| `wait_for_checks` | `follow.wait-for-checks` | Waits for a PR's checks without polling: answers at once from the caller's own workspace read, then sends one message after the turn when the checks on the current head finish (or it merges, closes or conflicts). Every root agent (main, contributors, untracked); not recovery. PRs Follow-up can't see get the way on (Paseo's `subscribe_change_request` on 0.17+) ([wait-for-checks.md](wait-for-checks.md)). |
 | `context_reply` | `follow.context-reply` | Answers the developer's Catch up More context ask with the `requestId` the ask carried; only the agent it was asked of (or the Overseer, for its asks) may answer ([needs-you.md](needs-you.md#catch-up)). Not offered to recovery sessions or contributors. |
 
 ## Action tools (agent parity)
@@ -87,6 +88,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `follow_settings`, `set_follow_settings` | `follow.follow-settings`, `follow.set-follow-settings` | read / planned |
 | `project_settings`, `set_project_tracking` | `follow.project-settings`, `follow.set-project-tracking` | read / planned |
 | `pr_workflow`, `set_pr_workflow` | `follow.pr-workflow`, `follow.set-pr-workflow` | read / planned |
+| `pr_stats` | `follow.pr-stats` | read: one repository's PR statistics for a period (people, team numbers, PRs waiting for a first review now with their urls), a person's drill-down with `person`, and `fresh: true` for one sync first ([pr-stats.md](pr-stats.md)) |
+| `pr_stats_settings`, `set_pr_stats` | `follow.pr-stats-settings`, `follow.set-pr-stats` | read / planned: Settings → Following → PR statistics; turning a repository on shows the estimate (`estimate: true`) as the dry run's `before` |
 | `reviewer_settings`, `reviewer_suggestions`, `save_reviewers` | `follow.reviewer-settings`, `follow.reviewer-suggestions`, `follow.save-reviewers` | read / planned |
 | `onboarding_status`, `onboarding_checks`, `set_onboarding` | `follow.onboarding`, `follow.onboarding-checks`, `follow.set-onboarding` | read / planned |
 | `priorities`, `set_priorities` | `follow.priorities` | read / planned |
@@ -104,6 +107,17 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `set_workspace_spec` | `follow.workspace-spec` | planned |
 | `set_task_trigger` | `follow.set-task-trigger` | planned |
 | `ai_rename` | `follow.rename-status` (the dry run: name now, suggestion, undoable rename), `follow.rename-workspace` (rename or `undo`) | planned. `title` skips the model; `undo=true` restores the name before the last rename for 24 h. |
+| `dispatch` | `follow.dispatch-preview` (the dry run: source, action, project and why, base, branch, agent, the exact instructions), `follow.dispatch` (confirm) | planned. New's start from a Linear key or link, a GitHub issue or PR link, another link or words; confirm is refused when the instructions changed since the dry run ([dispatch.md](dispatch.md)). |
+| `dispatch_sources`, `dispatch_records` | `follow.dispatch-sources` (open Linear issues, or `query` to search, plus the latest starts), `follow.dispatch-records` (the last 50) | read |
+| `dispatch_undo` | `follow.dispatch-undo` | planned. Cancels a start still waiting for Paseo, or archives what it created within 10 minutes. |
+| `dispatch_actions`, `set_dispatch_actions` | `follow.dispatch-actions`, `follow.set-dispatch-actions` (upsert, move, hide, reset, delete, reset-all) | read / planned |
+| `dispatch_settings`, `set_dispatch_settings` | `follow.dispatch-settings`, `follow.set-dispatch-settings` (team rules, bases, the no-team rule) | read / planned |
+| `linear_queue` | `follow.linear-queue` | read: the Morning brief's queue by priority (`filter` all, no-workspace, changed; `limit`), each issue's workspace or none and its change, the changes since the developer last read the brief (or `since`), and the sweep's time and health. The brief's own read (`open: true`, not on the tool) marks the read "since" stands on ([morning-brief.md](morning-brief.md)). |
+| `sweep_queue` | `follow.sweep-queue` | planned: sweeps every page now (Sweep now) and returns the summary, or `running` past 45 s. |
+| `brief_settings`, `set_brief_settings` | `follow.brief-settings`, `follow.set-brief-settings` | read / planned: Settings → Morning brief. The queue's states, sweep time, `since` (read or workday), time zone and workdays, and the zone and week in use; the read includes the plan (as `brief_plan`). |
+| `brief_plan`, `set_brief_plan` | `follow.brief-plan`, `follow.set-brief-plan` | read / planned: this week's plan link. Mode (auto: Find it for me, link, off), person and channels, replace-when-newer, `find` (search now); the link in use and where it came from (env, link, found, previous). `brief_plan {link}` reads that link's title first, and is `set_brief_plan`'s dry run. Settings reads the plan through `follow.brief-settings`. |
+| `brief_sources`, `set_brief_sources` | `follow.brief-sources`, `follow.set-brief-sources` | read / planned: the brief's sources. Every mcpproxy server matched by its tools (a recipe's source, one with no recipe yet, one with no read tools) plus GitHub and Paseo, with health (ok, sign-in, failed, off), what each adds, its cost and whether it's on. `check` asks mcpproxy again (Settings sends it on open). The change turns sources on or off (`on: {id: bool}`; an Ask source only after a preview under 24 h old), Retries one (`retry`), checks again (`check`) or previews an Ask source (`preview`: one ask, nothing turned on); a check, Retry or preview runs after the reply and the read says `checking` / `retrying` / `previewing`. |
+| `brief_chat_search` | `follow.brief-chat-search` | read: people or channels from the chat source's own search, for Find it for me's pickers. |
 | `link_items`, `set_linked_items` | `follow.linked-items`, `follow.set-linked-items` (add, remove, undo) | read / planned. The Linked sheet calls both; `link_item` and `unlink_item` also count for `follow.set-linked-items`. |
 | `link_items` (per workspace) | `follow.linked-index` | read. Home's search over every workspace's linked keys and titles, fetched only while the search field has text. |
 | `pr_controls`, `browser_status` | `follow.pr-control-status`, `follow.browser-status` | read |
@@ -138,7 +152,7 @@ Only in the Overseer's session, through `follow.overseer-act` (`server/overseer.
 | `agent_digest` | One agent's last steps. Reads the transcript on disk when the agent isn't loaded. |
 | `route_candidates` | Scores workspaces for an ask. |
 | `send_to_agent` | Forwards the developer's words to the agent that owns the work. |
-| `start_workspace` | Starts a new workspace. Dry run, then confirm. |
+| `start_workspace` | Starts a new workspace as New's Create PR (an alias of `dispatch`, with the Overseer's new-workspace gate). Dry run, then confirm. |
 | `rerank` | Re-ranks Home's Priority sort. |
 
 ## Wait tools
@@ -170,8 +184,9 @@ nothing. On 0.15 there is no `client.subscribe`, and the client polls the RPCs a
 | --- | --- | --- |
 | `follow.workspaces-feed` | `follow.list` every 15 s | Store saves and the engine tick (the revision diff, plus the worker's error) |
 | `follow.inbox-feed` | `follow.inbox-list` every 15 s, and its nudge on agent activity | Inbox hooks and actions, and the inbox tick (wake-ups, directory titles) |
-| `follow.home-feed` | `follow.priorities`, `follow.rank-status`, `follow.usage` every 60 s, `follow.overseer-status` every 15 s, Re-rank's 3 s loop, and Catch up's More context asks (`context`, so an answer arriving needs no poll) | A More context ask or answer, priority writes, ranker start and finish, the inbox tick (the Overseer), and Smart Session's accounts directory, watched only while someone subscribes (`USAGE_WATCH_DEBOUNCE_MS`, 5 s: a burst of writes is one read; the key is the meters as shown). The worker's live resources aren't in it: Home reads `follow.usage` once when it opens. With no directory to watch, `usageLive` is false and the client reads usage every 60 s |
+| `follow.home-feed` | `follow.priorities`, `follow.rank-status`, `follow.usage` every 60 s, `follow.overseer-status` every 15 s, Re-rank's 3 s loop, Catch up's More context asks (`context`, so an answer arriving needs no poll), and whether Home shows the PR stats icon (`prStats`) | A More context ask or answer, priority writes, ranker start and finish, the inbox tick (the Overseer), and Smart Session's accounts directory, watched only while someone subscribes (`USAGE_WATCH_DEBOUNCE_MS`, 5 s: a burst of writes is one read; the key is the meters as shown). The worker's live resources aren't in it: Home reads `follow.usage` once when it opens. With no directory to watch, `usageLive` is false and the client reads usage every 60 s |
 | `follow.display-feed` | the Display settings read every 60 s (sidebar, pills, `home_sort`) | The settings' own subscription |
+| `follow.pr-stats-feed` | the PR stats page re-reading on a timer | One per repository on screen: a sync run's end or a stats settings write (`PrStats.onChange`). While subscribed the repository syncs every 5 minutes (`PrStats.watching`); the page re-reads `follow.pr-stats` when the status moves ([pr-stats.md](pr-stats.md#reads-and-the-feed)) |
 
 `follow.browser-status` is read once when a PR sheet, the panel or the pill's popover opens; nothing polls it.
 

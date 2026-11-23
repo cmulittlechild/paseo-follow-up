@@ -19,7 +19,7 @@ const deployed = (at: number) => snapshot({ state: "MERGED", mergeCommit: "squas
 test("legacy enabled tasks and empty dependencies never enter a repair batch", () => {
   const w = workspace({ prs: [pr({ snapshot: snapshot({ conflict: true, threads: [{ id: "feedback", updatedAt: "now" }], failedChecks: ["build"] }) })], obligations: [obligation(), obligation({ id: "dependent", afterPrs: ["example/app#1"], dependencyStage: "merged" })] });
   assert.deepEqual(tasksFor(w, clock).map(t => t.kind), ["conflict", "review", "checks"]);
-  assert.equal(taskSchedule(w.obligations[0], w, clock).label, "Manual");
+  assert.equal(taskSchedule(w.obligations[0], w, clock).label, "Open", "due-by-fact: never \"Manual\"; a task with no re-check date yet (maintenance stamps one) reads Open");
   w.obligations[0].trigger = { event: "deploy", delayDays: 14 };
   assert.equal(taskSchedule(w.obligations[0], w, clock).ready, false);
   w.obligations[0].trigger = { event: "merge", delayDays: 0 };

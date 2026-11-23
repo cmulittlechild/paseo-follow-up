@@ -8,12 +8,13 @@ import { waitStatusSchema } from "./wait";
  * - `ranker`: AI priority, the ranker behind Home's Priority sort, a one-shot job.
  * - `overseer`: the long-lived Overseer agent in Paseo.
  * - `recovery`: the agent Follow-up starts to rebuild a workspace's tracking; "Same as main agent" by default.
+ * - `dispatch`: "New work", the agent New starts for an action without its own; "Same as the Overseer" by default.
  *
  * Every entry is optional and parsed on its own: a missing or invalid entry (or field) falls back to today's default,
  * so nothing changes for anyone who never opens the screen.
  */
 
-export const AGENT_ROLES = ["about", "overseer", "recovery", "ranker"] as const;
+export const AGENT_ROLES = ["about", "overseer", "recovery", "ranker", "dispatch"] as const;
 export type AgentRole = typeof AGENT_ROLES[number];
 /**
  * One-shot jobs run on any Paseo provider. These two have a headless CLI fast path (server/ai-jobs.ts); every other
@@ -21,9 +22,13 @@ export type AgentRole = typeof AGENT_ROLES[number];
  */
 export const CLI_JOB_PROVIDERS = ["claude", "codex"] as const;
 export const isJobRole = (role: AgentRole) => role === "about" || role === "ranker";
+/** The roles that can copy another agent: recovery (the workspace's main agent) and dispatch (the Overseer). */
+export const hasSame = (role: AgentRole) => role === "recovery" || role === "dispatch";
+/** What a role's "same" copies, in the picker's words. */
+export const SAME_LABEL: Partial<Record<AgentRole, string>> = { recovery: "Same as main agent", dispatch: "Same as the Overseer" };
 
 const name = z.string().trim().min(1).max(120).regex(/^[\w.:@/[\]-]+$/);
-/** What the developer saved for one role. `model: null` means the provider's default; `same` is recovery only. */
+/** What the developer saved for one role. `model: null` means the provider's default; `same` is recovery and dispatch only. */
 export const savedRoleSchema = z.object({
   provider: name.optional(),
   model: name.nullable().optional(),
@@ -45,9 +50,9 @@ export type RoleConfig = {
   provider: string;
   model: string | null;
   thinking: string | null;
-  /** Paseo agents only (overseer, recovery). */
+  /** Paseo agents only (overseer, recovery, dispatch). */
   mode: string | null;
-  /** Recovery only: copy the main agent's provider, model, mode and thinking. */
+  /** Recovery: copy the main agent's provider, model, mode and thinking. Dispatch: copy the Overseer's. */
   same: boolean;
   /** Jobs only. */
   dailyCap: number | null;
@@ -62,6 +67,7 @@ export const ROLE_DEFAULTS: Record<AgentRole, Omit<RoleConfig, "role" | "isDefau
   overseer: { provider: "claude", model: null, thinking: null, mode: "bypassPermissions", same: false, dailyCap: null, maxPromptChars: null, cadenceMinutes: null },
   recovery: { provider: "claude", model: null, thinking: null, mode: "bypassPermissions", same: true, dailyCap: null, maxPromptChars: null, cadenceMinutes: null },
   ranker: { provider: "claude", model: "sonnet", thinking: null, mode: null, same: false, dailyCap: 24, maxPromptChars: 60_000, cadenceMinutes: 60 },
+  dispatch: { provider: "claude", model: null, thinking: null, mode: "bypassPermissions", same: true, dailyCap: null, maxPromptChars: null, cadenceMinutes: null },
 };
 
 /** Each job's name and what it does: the one copy setup's Helper agents step, Settings → Agents and agent tools share. */
@@ -70,6 +76,7 @@ export const ROLE_INFO: Record<AgentRole, { title: string; does: string }> = {
   overseer: { title: "Overseer", does: "One agent you ask about all your workspaces, from Home's search. Starts only when you click Start on Home." },
   recovery: { title: "Recovery", does: "Rebuilds a workspace's tracking when Follow-up lost track of it. Runs only when you ask." },
   ranker: { title: "AI priority", does: "Sorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays." },
+  dispatch: { title: "New work", does: "Starts the work you begin from New, unless an action picks its own agent." },
 };
 
 /** Reads the file leniently: anything unreadable becomes empty, each role and field is checked on its own. */
@@ -107,7 +114,7 @@ export function resolveRole(file: AgentSettingsFile | null | undefined, role: Ag
   const out: RoleConfig = {
     role, provider, model: pick("model"), thinking: pick("thinking"),
     mode: jobs ? null : pick("mode") ?? (sameProvider ? base.mode : null),
-    same: role === "recovery" ? saved.same ?? base.same : false,
+    same: hasSame(role) ? saved.same ?? base.same : false,
     dailyCap: jobs ? saved.dailyCap ?? base.dailyCap : null,
     maxPromptChars: jobs ? saved.maxPromptChars ?? base.maxPromptChars : null,
     cadenceMinutes: role === "ranker" ? saved.cadenceMinutes ?? base.cadenceMinutes : null,
@@ -137,8 +144,8 @@ export function modelName(model: string | null, label?: string | null): string {
 }
 /** "Claude · Haiku", "Same as main agent", "Codex · GPT-6-Luna · low". */
 export function roleSummary(c: RoleConfig, labels?: { provider?: string | null; model?: string | null; thinking?: string | null }): string {
-  if (c.role === "recovery" && c.same) return "Same as main agent";
-  const parts = [providerName(c.provider, labels?.provider), c.model || c.role !== "overseer" || c.provider !== "claude" ? modelName(c.model, labels?.model) : "Newest Opus"];
+  if (hasSame(c.role) && c.same) return SAME_LABEL[c.role]!;
+  const parts = [providerName(c.provider, labels?.provider), c.model || (c.role !== "overseer" && c.role !== "dispatch") || c.provider !== "claude" ? modelName(c.model, labels?.model) : "Newest Opus"];
   if (c.thinking) parts.push(labels?.thinking ?? c.thinking);
   return parts.join(" · ");
 }

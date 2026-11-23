@@ -274,6 +274,26 @@ test("a new workspace waits for the developer's approval", async t => {
   await assert.rejects(f.overseer.act(f.paseo, f.ov, "start_workspace", { confirm: true, planId: plan.planId }), /expired or was used/);
 });
 
+test("start_workspace runs as New's Create PR once New's dispatch is wired (an alias of dispatch)", async t => {
+  const f = await overseerFixture(t, [], {});
+  const calls: { op: string; input: Record<string, unknown>; actor: unknown }[] = [];
+  f.overseer.dispatcher = {
+    preview: async (input, actor) => { calls.push({ op: "preview", input, actor }); return { blockers: [], hash: "h1", title: "ACME-1400 Fix the CSV export", branch: "acme-1400-fix-the-csv-export", base: { name: "main" }, where: { projectName: "acme-app", projectId: "p" }, instructions: "Work on ACME-1400." }; },
+    dispatch: async (input, actor) => { calls.push({ op: "dispatch", input, actor }); return { dispatchId: "d1", record: { title: "ACME-1400 Fix the CSV export", branch: "acme-1400-fix-the-csv-export", projectName: "acme-app" } }; },
+    projects: async () => [{ id: "p", name: "acme-app" }],
+  };
+  const plan = await f.overseer.act(f.paseo, f.ov, "start_workspace", { task: "ACME-1400 fix the CSV export", project: "acme-app" }) as { planId: string; plan: { project: string; firstMessage: string } };
+  assert.ok(plan.planId);
+  assert.deepEqual([plan.plan.project, plan.plan.firstMessage], ["acme-app", "Work on ACME-1400."]);
+  assert.deepEqual(calls[0].input, { source: "ACME-1400", note: "ACME-1400 fix the CSV export", actionId: "pr", projectId: "p" });
+  assert.deepEqual(calls[0].actor, { kind: "agent", agentId: f.ov, title: "Overseer" });
+  const done = await f.overseer.act(f.paseo, f.ov, "start_workspace", { confirm: true, planId: plan.planId }) as { started: boolean; dispatchId: string };
+  assert.deepEqual([done.started, done.dispatchId], [true, "d1"]);
+  assert.equal(calls[1].op, "dispatch");
+  assert.equal(calls[1].input.expectHash, "h1", "confirm sends exactly what the dry run showed");
+  assert.equal(f.created.filter(c => c.kind === "workspace").length, 1, "the Overseer itself creates nothing: New does");
+});
+
 test("the pinned row: start once, then idle, working, or asking", () => {
   assert.equal(overseerRowState({ enabled: false, agentId: null, error: null }, null), null);
   assert.equal(overseerRowState({ enabled: true, agentId: null, error: null }, null)?.state, "start");

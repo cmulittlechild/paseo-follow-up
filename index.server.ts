@@ -10,7 +10,7 @@ import { moveData, dataDirs, writeLegacyHeartbeat, type DataMove } from "./serve
 import { isRecovery, withRuntimePrelude, invokeSelf, PLUGIN_ID } from "./shared/legacy";
 import { displayPreferences } from "./shared/display";
 import { DEFAULT_QUESTION_MODE, QUESTION_DEDUPE_MIGRATION, awaitingSend, collapseDuplicateQuestions, questionPreferences, signedOffAnswers, type QuestionMode } from "./shared/questions";
-import { answerRecipients, askQuestion, needsYouQuestions, recordAnswer, syncTaskQuestions, withdrawQuestion } from "./server/questions";
+import { answerRecipients, askQuestion, coverNote, needsYouQuestions, recordAnswer, syncTaskQuestions, withdrawQuestion } from "./server/questions";
 import { dismissItem, dismissedNeeds, undoDismissItem } from "./server/dismiss";
 import { agentSetSpec, developerSetSpec } from "./server/spec";
 import type { PluginServerContext, PluginHandlerContext, PluginHookContext, PluginSessionOpenRequest } from "@getpaseo/plugin/server";
@@ -46,6 +46,7 @@ import { TurnTimeline } from "./server/turn-timeline";
 import { nextMessageInfo } from "./shared/task-rows";
 import { sendingOf } from "./shared/sending";
 import { Github } from "./server/github";
+import { PrStats } from "./server/pr-stats";
 import { ReviewerConfigStore, ReviewerSuggestions } from "./server/reviewer-config";
 import { repoKey } from "./shared/reviewers";
 import { Graphite } from "./server/graphite";
@@ -77,6 +78,7 @@ import { HistoryCache } from "./server/history-cache";
 import { Governor } from "./server/governor";
 import { ListCache } from "./server/list-cache";
 import { scopeWriter, workflowSummary } from "./server/scopes";
+import { maintainTasks, type NudgeReceipt } from "./shared/task-due";
 import { PrWorkflowStore } from "./server/pr-workflow";
 import { commandName, handsMergeBack, noReviewRepoList, noReviewRepos } from "./shared/pr-workflow";
 import { projectRepo } from "./server/daemon";
@@ -89,15 +91,25 @@ import { Overseer, OVERSEER_TOOLS, type OverseerPaseo, type OverseerTool, provid
 import { OVERSEER_LABEL, isOverseerAgent } from "./shared/overseer";
 import { withDaemon } from "./server/daemon";
 import { RenameService, RenameStore, renameDaemon } from "./server/rename";
+import { DispatchService, DispatchStore, type ActionChange, type DispatchPaseo, type DispatchProject } from "./server/dispatch";
+import { LinearIssues } from "./server/linear-issues";
+import { LinearQueue, LinearQueueStore } from "./server/linear-queue";
+import { teamOf } from "./shared/linked";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostFeature, type ServerInfo } from "./server/host-features";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
+import { CheckWatches } from "./server/check-watches";
+import { waitForChecksAnswer } from "./server/wait-for-checks";
 import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
-import { liveRankSources, planningUrl, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
+import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
+import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
+import { askSource } from "./server/ask";
+import { BriefSources } from "./server/brief-sources";
+import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
 import { workspaceRefs } from "./shared/linked-extract";
@@ -228,6 +240,17 @@ export default function contribute(server: PluginServerContext) {
   const actions = new PrActions(store, github, graphite, browser);
   actions.savedMethod = repo => prWorkflow.current().repos[repoKey(repo)]?.mergeMethod ?? null;
   const engine = new Engine(store, github, gateway);
+  // Wait for checks (docs/wait-for-checks.md): judged after each engine pass from the reads it made; a verdict is one
+  // queued message. The agent is read from the directory's list (no load), live only when the list lacks it.
+  const checkWatches = new CheckWatches(directory, {
+    snapshot: () => store.snapshot(),
+    quietSince: key => github.quietSince(key),
+    agent: async id => {
+      const a = gateway.directory.cached(id) ?? (await gateway.directory.read({ fresh: "agents" })).agents.find(r => r.agent.id === id)?.agent;
+      return a ? { status: a.status, archived: !!a.archivedAt, workspaceId: a.workspaceId ?? null } : null;
+    },
+  });
+  engine.checkWatches = checkWatches;
   engine.wording = { reviewFix: repo => commandName(prWorkflow.reviewFix(repo)) };
   actions.settleTasks = w => engine.settleTasks(w);
   const governor = new Governor();
@@ -246,6 +269,9 @@ export default function contribute(server: PluginServerContext) {
   gateway.linkRefs = batch => void linked.note(batch).catch(() => undefined);
   const listCache = new ListCache();
   engine.paused = () => !governor.allowsBackground();
+  // PR statistics (docs/pr-stats.md): every request through the stats gate, which reads and feeds the PR poller's budget.
+  const prStats = new PrStats({ directory, api: githubApi(), clientTimeZone: () => clientTimeZone, graphite: repo => prWorkflow.cachedWorkflow(repo) === "graphite",
+    gate: { budget: owner => github.budget(owner), noteRateLimit: (owner, rate) => github.noteRateLimit(owner, rate), noteLimited: (owner, at) => github.noteLimited(owner, at), allowsBackground: () => governor.allowsBackground() } });
   engine.autoSendsHeld = () => onboarding.holdsAutoSends();
   const archive = batchArchive(directory);
   engine.archive = archive;
@@ -269,6 +295,9 @@ export default function contribute(server: PluginServerContext) {
   const trackedMain = async (agentId: string) => (await store.snapshot()).workspaces.find(w => w.enable_tracking && !w.archived && w.mainAgentId === agentId) ?? null;
   let overseer: Overseer | null = null;
   let ranker: Ranker | null = null;
+  let linearQueue: LinearQueue | null = null;
+  let morningBrief: MorningBrief | null = null;
+  let briefSources: BriefSources | null = null;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -324,6 +353,7 @@ export default function contribute(server: PluginServerContext) {
   // a-message-is-saved-before-sent-and-arrives-once: every message to an agent goes through one queue (queue.json).
   const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth });
   engine.attachQueue(queue);
+  checkWatches.attachQueue(queue);
   inbox.attachQueue(queue);
   // Overseer forwards and reports handed to an agent: no record of their own, so the queue item is their status
   // (follow_queue_list). Archived agents cancel, with the reason on the item.
@@ -381,6 +411,12 @@ export default function contribute(server: PluginServerContext) {
     if (overseer) { await overseer.backstopDigest().catch(() => undefined); if (api) await overseer.ensure(api as unknown as OverseerPaseo, { periodic: true }).catch(() => undefined); }
     // The ranker's scheduled run (window, cadence, cap and the governor are its own checks). Never awaited: it can take minutes.
     if (ranker) void ranker.tick().catch(() => undefined);
+    // The Morning brief's sweep, once a workday at its time (the-brief-has-one-timer: this loop, no timer of its own).
+    if (linearQueue) void linearQueue.tick().catch(() => undefined);
+    // This week's plan: Find it for me looks again once a workday after the sweep time (same loop, same rule).
+    if (morningBrief) void morningBrief.tick().catch(() => undefined);
+    // The brief's sources: mcpproxy is asked again once a workday after the sweep time (same loop, same rule).
+    if (briefSources) void briefSources.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
     feeds.inbox(); feeds.home();
@@ -394,6 +430,27 @@ export default function contribute(server: PluginServerContext) {
   const startedTurns = new Map<string, string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let hookTimer: ReturnType<typeof setInterval> | null = null;
+  let dueTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * due-by-fact, every 10 minutes: the agent hook's nudge receipts become each task's `nudged` (stale needs two), tasks
+   * from before due-by-fact get their re-check date and finished time, and finished tasks over 30 days old leave
+   * storage (`maintainTasks`). A workspace with nothing to change is only read, never copied.
+   */
+  const maintainDue = async () => {
+    const now = Date.now();
+    const due = new Map<string, NudgeReceipt | null>();
+    for (const w of (await store.snapshot()).workspaces) {
+      if (!w.enable_tracking || w.archived || !w.obligations.length) continue;
+      const raw = /^[\w-]+$/.test(w.id) ? await readFile(join(directory, "hook-state", `task-nudges-${w.id}.json`), "utf8").then(t => JSON.parse(t) as unknown, () => null) : null;
+      const receipt = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as NudgeReceipt : null;
+      if (maintainTasks(w, now, receipt, false)) due.set(w.id, receipt);
+    }
+    if (!due.size) return;
+    // One mutation for the whole pass: the first pass after an upgrade stamps every workspace's tasks, and one
+    // mutateWorkspace each (a copy, a write and a re-derive per workspace) left the scale check's idle worker
+    // ~100 MB higher (#283 CI). The draft copies only the workspaces it changes (`find` by id copies nothing).
+    await store.mutate(state => { for (const [id, receipt] of due) { const d = state.workspaces.find(w => w.id === id); if (d) maintainTasks(d, now, receipt, true); } }).catch(() => undefined);
+  };
   let hooksStarted = false;
   let loadError: string | null = null;
   /**
@@ -483,6 +540,8 @@ export default function contribute(server: PluginServerContext) {
     hooksStarted = true;
     await agentHooks.start().catch(() => { hookError = "Automatic sidebar instructions could not be registered for every provider. Check Claude/Codex hook settings; following still works."; });
     hookTimer = setInterval(() => void agentHooks.heartbeat().catch(() => {}), 30_000);
+    await maintainDue().catch(() => undefined);
+    dueTimer = setInterval(() => void maintainDue().catch(() => undefined), 10 * 60_000);
     await writeBriefState().catch(() => undefined);
     // The message queue: answers recorded before a reload (or before the upgrade from 2.0's per-answer senders) join it,
     // a send a reload cut off is read back from the agent's chat before it goes again, and everything due goes now.
@@ -544,6 +603,8 @@ export default function contribute(server: PluginServerContext) {
     if (stopped || loadError) return;
     await engine.tick({ background: true });
     feeds.workspaces();
+    // Due PR-stats syncs ride this loop (no timer of their own) and are never awaited here.
+    prStats.tick();
     // Startup is done once the first tick is: release what it grew, then return what each later burst grows
     // (memory-returns-after-a-burst, server/memory.ts) and report the worker's memory in heartbeat.json.
     if (!compacted) { compacted = true; compactHeap(); if (!stopped) memoryWatch = watchMemory({ heartbeatFile: join(directory, "heartbeat.json") }); }
@@ -718,7 +779,9 @@ export default function contribute(server: PluginServerContext) {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const obligation = updateObligation(w, { ...input, caller: agentId, workingAgentId });
       syncTaskQuestions(w, Date.now());
-      changed(w); return { ...w, updatedObligationId: obligation.id };
+      // one-decision-one-card: say so when the blocked task is already asked (or answered) as a question.
+      const note = coverNote(w, obligation.id);
+      changed(w); return { ...w, updatedObligationId: obligation.id, ...(note ? { note } : {}) };
     });
     void engine.nudge(result.id); return result;
   });
@@ -730,7 +793,8 @@ export default function contribute(server: PluginServerContext) {
       const w = agentWorkspace(state, agentId, "write", workspaceId);
       const { supersedes, ...ask } = input;
       const { question, instruction, outcome, of } = askQuestion(w, agentId, ask, mode, Date.now(), { via: "ask", ...(supersedes ? { supersedes } : {}) });
-      if (outcome !== "duplicate") changed(w);
+      // A card a blocked task made for this decision closes now (one-decision-one-card), not on the next tick.
+      if (outcome !== "duplicate") { syncTaskQuestions(w, Date.now()); changed(w); }
       return { workspaceId: w.id, question, mode, instruction, outcome, of };
     });
   });
@@ -932,6 +996,23 @@ export default function contribute(server: PluginServerContext) {
     void engine.nudge();
     return prWorkflowView();
   });
+  // PR statistics: reads load a repository's records for that read only; writes save stats.json behind the reply.
+  handle(rpc.prStatsRpc, async input => { await requireReady(); return prStats.read(input); });
+  // The repositories Follow-up knows from what it already holds (tracked PRs, workspaces, Shipping PRs), never a Paseo read:
+  // Settings answers while Paseo or GitHub hang (an-ack-never-waits-on-the-disk's sibling, tests/rpc-ack.test.ts).
+  const statsRepos = async () => new Set([...knownRepos(await store.snapshot()), ...Object.keys(prWorkflow.current().repos)]);
+  handle(rpc.prStatsSettingsRpc, async ({ repo, estimate }) => { await requireReady(); return prStats.view(await statsRepos(), { repo, estimate }); });
+  handle(rpc.setPrStatsRpc, async input => {
+    await requireReady();
+    const before = input.repo ? (await prStats.settings()).repos[input.repo] : undefined;
+    await prStats.set(input);
+    if (input.repo && input.enable === true && !before?.enable_stats) {
+      // The first sync starts on this tick's hook; the estimate (1 point) is kept for the page's "≈ N of M PRs".
+      const repo = input.repo;
+      void prStats.estimate(repo).then(e => prStats.noteEstimate(repo, e)).catch(() => undefined).finally(() => prStats.tick());
+    }
+    return prStats.view(await statsRepos());
+  });
   handle(rpc.reviewerSettingsRpc, async () => { await requireReady(); return reviewerSettings(); });
   handle(rpc.saveReviewersRpc, async ({ repo, reviewers }) => { await requireReady(); await reviewerStore.save(repo, reviewers); return reviewerSettings(); });
   handle(rpc.reviewerSuggestionsRpc, async ({ repo }) => { await requireReady(); return reviewerSuggestions.suggest(repo); });
@@ -1005,6 +1086,16 @@ export default function contribute(server: PluginServerContext) {
     }) };
   });
   handle(rpc.contextListRpc, async ({ workspaceId }) => ({ requests: await contextRequests.list(workspaceId ? { workspaceId } : {}) }));
+  // Paseo 0.17's own PR watch (subscribe_change_request): named only for PRs Follow-up can't see. No feature flag says
+  // it's there; server_info's version does, read from the connection's last hello (no request).
+  const hostVersion = async () => { try { return String(((await withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.())) as { version?: unknown } | null)?.version ?? ""); } catch { return ""; } };
+  handle(rpc.waitForChecksRpc, async (input, { paseo }) => {
+    await requireReady();
+    return waitForChecksAnswer(input, {
+      state: () => store.snapshot(), watches: checkWatches, nudge: id => engine.nudge(id), hostVersion,
+      register: (repo, number) => handlers.get(rpc.registerPrRpc.name)!.run({ agentId: input.agentId, repo, number, stack: `${repo}#${number}` }, { paseo } as PluginHandlerContext) as Promise<unknown>,
+    });
+  });
   handle(rpc.contextReplyRpc, async ({ agentId, requestId, text }) => {
     await requireReady();
     await contextRequests.reply(requestId, agentId, text);
@@ -1146,6 +1237,184 @@ export default function contribute(server: PluginServerContext) {
     if (!(OVERSEER_TOOLS as readonly string[]).includes(tool)) throw new Error(`Unknown Overseer tool ${tool}.`);
     return overseer!.act(paseo as unknown as OverseerPaseo, agentId, tool as OverseerTool, args);
   });
+  // New (server/dispatch.ts, docs/dispatch.md): start work from a Linear issue, a GitHub issue or PR, a link or the
+  // developer's words. Linear is read through mcpproxy only when New asks (new-reads-nothing-while-closed).
+  const linearIssues = new LinearIssues(undefined, Date.now);
+  const baseCache = new Map<string, { at: number; value: Promise<string | null> }>();
+  const dispatchProjects = async (): Promise<DispatchProject[]> => {
+    const rows = await gateway.directory.projects(60_000);
+    return rows.map(p => ({ id: p.projectId, name: p.projectCustomName || p.projectDisplayName, repo: p.projectKind === "git" ? projectRepo(p.projectKey) : null, worktree: p.projectKind === "git", path: p.projectRootPath }));
+  };
+  const linkedOf = async () => Object.entries((await linkedStore.read()).workspaces);
+  const dispatcher = new DispatchService({
+    store: new DispatchStore(directory),
+    linear: linearIssues,
+    github: async (kind, repo, number) => {
+      const j = await githubApi().rest(repo, `repos/${repo}/${kind === "pr" ? "pulls" : "issues"}/${number}`) as { title?: unknown; body?: unknown; state?: unknown; merged_at?: unknown } | null;
+      if (!j || typeof j.title !== "string") return null;
+      return { title: j.title, body: typeof j.body === "string" ? j.body : null, state: j.merged_at ? "merged" : typeof j.state === "string" ? j.state : null };
+    },
+    projects: dispatchProjects,
+    // Team → project → workspaces with an issue of that team linked: where the developer already starts that team's work.
+    learned: async () => {
+      const rows = await gateway.directory.read().catch(() => null);
+      const projectOf = new Map((rows?.workspaces ?? []).map(w => [w.id, (w as { projectId?: string | null }).projectId ?? null]));
+      const out: Record<string, Record<string, number>> = {};
+      for (const [workspaceId, links] of await linkedOf()) {
+        const projectId = projectOf.get(workspaceId);
+        if (!projectId) continue;
+        for (const team of new Set(links.items.filter(i => i.kind === "linear").map(i => teamOf(i.key)))) {
+          const t = out[team] ??= {};
+          t[projectId] = (t[projectId] ?? 0) + 1;
+        }
+      }
+      return out;
+    },
+    existing: async source => {
+      const state = await store.snapshot();
+      const live = (id: string) => state.workspaces.find(w => w.id === id && !w.archived) ?? null;
+      // The project it's in (Paseo's directory, cached): a source already being worked on goes there (resolveWhere).
+      const projectOf = async (id: string) => (await gateway.directory.read().catch(() => null))?.workspaces.find(w => w.id === id)?.projectId ?? null;
+      if (source.kind === "pr" && source.repo && source.number) {
+        const owner = prOwner(state, source.repo, source.number);
+        const w = owner ? live(owner.workspaceId) : null;
+        return w ? { workspaceId: w.id, title: w.title, state: "tracked", projectId: await projectOf(w.id) } : null;
+      }
+      if (source.kind !== "linear" || !source.key) return null;
+      for (const [workspaceId, links] of await linkedOf()) {
+        if (!links.items.some(i => i.kind === "linear" && i.key === source.key)) continue;
+        const w = live(workspaceId);
+        if (w) return { workspaceId: w.id, title: w.title, state: w.enable_tracking ? "tracked" : "untracked", projectId: await projectOf(w.id) };
+      }
+      return null;
+    },
+    // The repository's default branch (origin/HEAD), read from the checkout once an hour.
+    defaultBase: async projectId => {
+      const hit = baseCache.get(projectId);
+      if (hit && Date.now() - hit.at < 3_600_000) return hit.value;
+      const value = (async () => {
+        const project = (await dispatchProjects()).find(p => p.id === projectId);
+        if (!project?.worktree) return null;
+        const out = await new Promise<string>((resolve, reject) => execFile("git", ["-C", project.path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { timeout: 5_000 }, (error, stdout) => error ? reject(error) : resolve(String(stdout))));
+        return out.trim().replace(/^origin\//, "") || null;
+      })().catch(() => null);
+      baseCache.set(projectId, { at: Date.now(), value });
+      return value;
+    },
+    // The action's own agent, else New's default: Settings → Agents → New work, which is the Overseer's agent until
+    // someone picks one ("Same as the Overseer").
+    agent: async action => {
+      const own = await agentSettings.role("dispatch").catch(() => null);
+      const role = !own || own.same ? await agentSettings.role("overseer").catch(() => null) : own;
+      const provider = action.agent?.provider ?? role?.provider?.split("/")[0] ?? "claude";
+      const model = action.agent?.model ?? (action.agent?.provider ? null : role?.model ?? null);
+      const mode = action.agent?.mode ?? (action.agent?.provider ? null : role?.mode ?? null) ?? (provider === "claude" ? "bypassPermissions" : null);
+      const thinking = action.agent?.thinking ?? (action.agent?.provider ? null : role?.thinking ?? null);
+      const selection = model ? `${provider}/${model}` : api ? await providerModel(api as unknown as OverseerPaseo, provider) : provider;
+      return {
+        config: { provider: selection, ...(mode ? { modeId: mode } : {}), ...(thinking ? { thinkingOptionId: thinking } : {}) },
+        label: model ? `${provider} ${model}` : provider.charAt(0).toUpperCase() + provider.slice(1),
+        picked: { provider, ...(model ? { model } : {}), ...(mode ? { mode } : {}), ...(thinking ? { thinking } : {}) }, isDefault: !action.agent,
+      };
+    },
+    multiplicity: () => hostMultiplicity(),
+    paseo: async () => api ? {
+      workspaces: {
+        create: o => (api!.workspaces as unknown as DispatchPaseo["workspaces"]).create(o),
+        archive: id => (api!.workspaces as unknown as { ref(id: string): { archive(): Promise<unknown> } }).ref(id).archive(),
+      },
+    } : null,
+    // The Overseer's own dispatch needs the developer's ask or approval, as start_workspace always did.
+    gate: async actor => {
+      if (actor.kind !== "agent" || !overseer) return null;
+      const s = await overseer.state().catch(() => null);
+      if (!s?.agentId || s.agentId !== actor.agentId || !api) return null;
+      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo);
+    },
+    afterCreate: async (record, source) => {
+      if (!record.workspaceId) return;
+      const ref = source.kind === "linear" ? source.key : source.url;
+      if (ref) await linked.link(record.workspaceId, ref, { origin: "manual", by: record.by, title: source.title || null }).catch(() => undefined);
+    },
+    onChange: () => feeds.home(),
+    log: line => console.warn(`[follow-up] ${line}`),
+  });
+  void ready.then(() => { if (!stopped && !loadError) return dispatcher.start(); }).catch(() => undefined);
+  // Settings → Morning brief (server/morning-brief.ts): the queue's settings, the brief's clock and this week's plan
+  // link. The plan reader is the ranker's (built below); the skill registry is imported once.
+  // One store for the brief's settings and its sources (morning-brief.json).
+  const morningBriefStore = new MorningBriefStore(directory);
+  // The chat search follows the brief's Chat switch: a chat source turned off isn't searched.
+  const chatAllowed = async () => {
+    const g = await briefSources!.gate("chat");
+    if (!g.on) throw new Error("Chat is off in Settings → Morning brief.");
+    return g.allowed;
+  };
+  morningBrief = new MorningBrief({
+    store: morningBriefStore, chat: mcpproxyChat(undefined, { allowed: chatAllowed }), env: () => process.env.FOLLOW_UP_PLAN_URL, deviceZone: () => clientTimeZone,
+    // From what discovery last found (never a call of its own: Settings must answer at once); unknown yet counts as ready.
+    chatReady: async () => {
+      const found = sourceDirectory().cached();
+      const g = await briefSources!.gate("chat", { cachedOnly: true });
+      return g.on && (!found || found.matched.some(m => m.recipe === "chat" && (!g.allowed || g.allowed(m.server))));
+    },
+    readPlan: url => ranker!.readPlan(url),
+    lastRead: async () => { const p = (await ranker!.state()).planning; return p ? { url: p.url, at: p.at, title: p.value.title, items: p.value.items.length } : null; },
+    onChange: () => feeds.home(), log: line => console.warn(line),
+  });
+  // The Morning brief's Linear queue (server/linear-queue.ts, docs/morning-brief.md): the whole queue swept each workday
+  // morning through the same Linear reader, diffed against the last complete sweep. Its clock is the setting's zone,
+  // else the developer's device's, else the host's; never a fixed one.
+  const briefClock = () => morningBrief!.clock();
+  linearQueue = new LinearQueue({
+    store: new LinearQueueStore(directory),
+    linear: linearIssues,
+    settings: () => morningBrief!.settings(),
+    clock: briefClock,
+    // Unarchived workspaces with the key linked: "has a workspace" in the queue (dispatcher.existing's rule).
+    workspaces: async () => {
+      const state = await store.snapshot();
+      const live = new Map(state.workspaces.filter(w => !w.archived).map(w => [w.id, w.title]));
+      const out = new Map<string, { workspaceId: string; title: string }>();
+      for (const [workspaceId, links] of await linkedOf()) {
+        const title = live.get(workspaceId);
+        if (title === undefined) continue;
+        for (const i of links.items) if (i.kind === "linear" && i.key && !out.has(i.key)) out.set(i.key, { workspaceId, title });
+      }
+      return out;
+    },
+    tight: () => !governor.allowsBackground(),
+    onChange: () => feeds.home(),
+    log: line => console.warn(line),
+  });
+  handle(rpc.linearQueueRpc, async ({ filter, since, limit, open }) => { await requireReady(); return open ? linearQueue!.open() : linearQueue!.view({ filter, since, limit }); });
+  handle(rpc.sweepQueueRpc, async (_input, context) => { await requireReady(); return linearQueue!.sweepNow(actorOf(context).kind === "agent" ? "agent" : "manual"); });
+  handle(rpc.briefSettingsRpc, async () => { await requireReady(); return morningBrief!.view(); });
+  handle(rpc.setBriefSettingsRpc, async input => { await requireReady(); return morningBrief!.setQueue(input); });
+  handle(rpc.briefPlanRpc, async ({ link }) => { await requireReady(); return link ? { ...await morningBrief!.planView(), preview: await morningBrief!.preview(link) } : morningBrief!.planView(); });
+  handle(rpc.setBriefPlanRpc, async input => {
+    await requireReady();
+    const before = await morningBrief!.planUrl();
+    const view = await morningBrief!.setPlan(input);
+    // A new link: read it now in the background, so Settings shows its title and the next ranking has it.
+    if (view.url && view.url !== before) void ranker!.readPlan(view.url).then(() => feeds.home(), () => undefined);
+    return view;
+  });
+  handle(rpc.briefChatSearchRpc, async ({ kind, query }) => { await requireReady(); return morningBrief!.searchChat(kind, query); });
+  handle(rpc.dispatchSourcesRpc, async ({ fresh, query }) => { await requireReady(); return dispatcher.sources({ fresh, query }); });
+  handle(rpc.dispatchPreviewRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.preview(input, actorOf(context)); });
+  handle(rpc.dispatchRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.dispatch(input, actorOf(context)); });
+  handle(rpc.dispatchRecordsRpc, async () => { await requireReady(); return { records: await dispatcher.records() }; });
+  handle(rpc.dispatchUndoRpc, async ({ dispatchId }, context) => { await requireReady(); seen(context.paseo); return dispatcher.undo(dispatchId); });
+  handle(rpc.dispatchActionsRpc, async () => { await requireReady(); return dispatcher.actions(); });
+  handle(rpc.setDispatchActionsRpc, async ({ change }, context) => { await requireReady(); return dispatcher.setActions(change as ActionChange, actorOf(context)); });
+  handle(rpc.dispatchSettingsRpc, async () => { await requireReady(); return dispatcher.settings(); });
+  handle(rpc.setDispatchSettingsRpc, async input => { await requireReady(); return dispatcher.setSettings(input); });
+  overseer!.dispatcher = {
+    preview: (input, actor) => dispatcher.preview(input as never, actor),
+    dispatch: (input, actor) => dispatcher.dispatch(input as never, actor),
+    projects: dispatchProjects,
+  };
   // Summary: small model jobs through the shared runner, cached per workspace in about.json.
   const aiJobs = new AiJobs({ concurrency: 1, logPath: join(directory, "ai-jobs.jsonl"), generic: jobAgentRunner({ paseo: () => api as unknown as JobPaseo | null, directory }) });
   // The ranker behind Home's Priority sort (1.4.0-beta.0). Its provider, model and limits come from the ranker role
@@ -1155,9 +1424,35 @@ export default function contribute(server: PluginServerContext) {
     const r = await agentSettings.role("ranker");
     return { provider: r.provider, model: r.model, thinking: r.thinking, dailyCap: r.dailyCap ?? RANKER_ROLE_DEFAULT.dailyCap, maxPromptChars: r.maxPromptChars ?? RANKER_ROLE_DEFAULT.maxPromptChars, cadenceMinutes: r.cadenceMinutes ?? RANKER_ROLE_DEFAULT.cadenceMinutes };
   };
+  // Every outside source is gated by Settings → Morning brief's switches (shared/brief-sources.ts).
+  const rankSources = liveRankSources(aiJobs, { queue: linearQueue, gate: id => briefSources!.gate(id), model: async () => { const r = await rankerRole(); return r.provider === "claude" ? r.model : null; } });
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
-    workstreams: () => overseer!.workstreams(), planningUrl: () => planningUrl(process.env.FOLLOW_UP_PLAN_URL),
-    sources: liveRankSources(aiJobs, { model: async () => { const r = await rankerRole(); return r.provider === "claude" ? r.model : null; } }) });
+    workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
+    windows: async () => { const q = await morningBrief!.settings(); return { chatHours: q.chatHours, calendarDays: q.calendarDays }; },
+    sources: { ...rankSources, asks: () => briefSources!.askedItems() } });
+  // The brief's sources (server/brief-sources.ts): what mcpproxy has, the switches, each source's health, Retry.
+  briefSources = new BriefSources({
+    store: morningBriefStore, tools: sourceDirectory(), deviceZone: () => clientTimeZone,
+    ranker: async () => { const s = await ranker!.state(); return { lastRunAt: s.lastRunAt, health: s.health, errors: s.errors }; },
+    sweep: () => linearQueue!.lastSweep(),
+    githubAccounts: () => githubApi().accounts(),
+    probe: async id => {
+      if (id === "linear") { const r = await linearQueue!.sweepNow("manual"); if ("ok" in r && !r.ok) throw new Error(r.error ?? "The sweep failed."); return; }
+      if (id === "github") { await rankSources.github(); return; }
+      if (id === "chat") { await rankSources.slack(Date.now() - 3_600_000); return; }
+      if (id === "mail") { const now = Date.now(); await rankSources.mail!(now - 86_400_000, now); return; }
+      const now = Date.now();
+      await rankSources.calendar!({ start: new Date(now).toISOString(), end: new Date(now + 86_400_000).toISOString(), timeZone: (await briefClock()).timeZone });
+    },
+    // Ask (server/ask.ts): the Summary's role, a fast model; the reads go through the same directory (tool-read only).
+    ask: (server, opts) => askSource({ tools: sourceDirectory(), jobs: aiJobs, role: () => agentSettings.role("about") }, server, { ...opts, now: Date.now() }),
+    tight: () => !governor.allowsBackground(),
+    // Today's Ask items reach today's rank: the ranker's next tick (this loop) runs once, inside its cadence or not.
+    onAsked: () => ranker?.markDue(),
+    onChange: () => feeds.home(), log: line => console.warn(line),
+  });
+  handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });
+  handle(rpc.setBriefSourcesRpc, async input => { await requireReady(); return briefSources!.set(input); });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });
   // Returns at once: the run can take minutes on a slow model; Home polls rank-status and shows "Ranking…".
   handle(rpc.rankNowRpc, async ({ force }) => { await requireReady(); return { ...ranker!.start({ trigger: "manual", force: !!force }), running: true }; });
@@ -1378,15 +1673,17 @@ export default function contribute(server: PluginServerContext) {
   const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => waiting ?? loadError ?? hookError ?? writeHealth.message() ?? engine.error);
   const inboxFeed = new ValueFeed({ read: async () => { await requireReady(); return inboxAnswer({ ...await inbox.list(), error: inboxError }, undefined); }, key: v => v.etag ?? JSON.stringify(v) });
   let usageWatch: { close(): void } | null = null;
+  // New's dispatches for Home's row: the last hour's (the client drops what its clock says is over), at most 5.
+  const homeDispatches = async () => (await dispatcher.records().catch(() => [])).filter(r => Date.now() - Date.parse(r.at) < 3_600_000).slice(0, 5);
   const homeFeed = new ValueFeed({
     read: async () => {
       await requireReady();
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list() };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches() };
     },
-    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context]),
+    key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats, v.dispatches]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
     onFirst: () => { usageWatch = usage.watch(() => void homeFeed.changed()); },
     onLast: () => { usageWatch?.close(); usageWatch = null; },
@@ -1408,6 +1705,24 @@ export default function contribute(server: PluginServerContext) {
   serve(rpc.inboxFeed, (_input, push, signal) => inboxFeed.serve(push, signal));
   serve(rpc.homeFeed, (_input, push, signal) => homeFeed.serve(push, signal));
   serve(rpc.displayFeed, (_input, push, signal) => displayFeed.serve(push, signal));
+  // The PR stats page (docs/pr-stats.md): one feed per repository on screen. While a subscriber is open the repository
+  // syncs every 5 minutes instead of hourly; a run's end or a settings write pushes its status, and the page re-reads.
+  const statsFeeds = new Map<string, ValueFeed<Awaited<ReturnType<typeof prStats.feedState>>>>();
+  prStats.onChange = repo => {
+    if (repo === null) { for (const feed of statsFeeds.values()) void feed.changed(); } else void statsFeeds.get(repo)?.changed();
+    feeds.home();
+  };
+  serve(rpc.prStatsFeed, (input, push, signal) => {
+    const repo = input.repo;
+    let feed = statsFeeds.get(repo);
+    if (!feed) {
+      let release: (() => void) | null = null;
+      const made = new ValueFeed({ read: async () => { await requireReady(); return prStats.feedState(repo); },
+        onFirst: () => { release = prStats.watching(repo); }, onLast: () => { release?.(); release = null; if (statsFeeds.get(repo) === made) statsFeeds.delete(repo); } });
+      statsFeeds.set(repo, feed = made);
+    }
+    feed.serve(push, signal);
+  });
   handle(rpc.needsYouRpc, async ({ agentId, ...input }, { paseo }) => {
     await requireReady(); seen(paseo);
     if (!(await inboxSettings()).enable_inbox) throw new Error("The Needs-you inbox is off, so there's no brief to fill. Finish with your normal reply.");
@@ -1433,7 +1748,8 @@ export default function contribute(server: PluginServerContext) {
       const mode = await questionMode();
       const linked = await store.mutate(state => {
         const w = findWorkspace(state, tracked.id);
-        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null);
+        const result = needsYouQuestions(w, agentId, call, mode, Date.now(), sameTurn ? previous : null, turn?.at ?? null);
+        if (result.createdIds.length) syncTaskQuestions(w, Date.now());
         if (result.questionIds.length || sameTurn) changed(w);
         return { ...result, ask: foldedAsk(call.ask, result.questionIds, w.questions) };
       });
@@ -1655,11 +1971,11 @@ export default function contribute(server: PluginServerContext) {
   const stop = () => stopping ??= (async () => {
     process.off("disconnect", hostGone);
     restoreConsole();
-    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
+    stopped = true; wait.close(); updater.stop(); pluginMove.stop(); governor.stop(); if (timer) clearTimeout(timer); if (aboutTimer) clearTimeout(aboutTimer); if (linkedTimer) clearTimeout(linkedTimer); if (titleTimer) clearTimeout(titleTimer); aiJobs.stop(); dispatcher.stop(); ranker = null; if (inboxTimer) clearTimeout(inboxTimer); inbox.stop(); queue.stop(); rpcTiming.stop(); if (hookTimer) clearInterval(hookTimer); if (dueTimer) clearInterval(dueTimer); memoryWatch?.stop(); displayOff?.(); usageWatch?.close(); removers.forEach(remove => remove());
     // One deadline for every wait (worker-stop-never-waits-on-a-stuck-pass, server/teardown.ts): start-up and the work
     // in flight may be stuck on a daemon or CLI that never answers. Work that ends inside the deadline is saved; what
     // outlives it can't write, because the store closes before the lock is released.
-    await stopWorker({ files: [contextRequests, reviewerStore, agentSettings, prWorkflow, queue], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
+    await stopWorker({ files: [contextRequests, checkWatches, reviewerStore, agentSettings, prWorkflow, queue, prStats], ready, hooks: hooksStarted ? () => agentHooks.stop() : undefined, actions, closeConnections, engine, store, inbox: inbox.store, unlock });
   })();
   return stop;
 }

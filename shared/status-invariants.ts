@@ -4,10 +4,10 @@ import type { Actor } from "./actor";
 import { ANY_HOOK_TEXT_PREFIXES } from "./message-sender";
 import { BATCH_PREFIXES, RECOVERY_TITLES } from "./legacy";
 import type { ListWorkspace as Workspace } from "./list";
-import { answerMessage, awaitingSend, duplicateOpenQuestions, isOther, parseAnswerMessage, parseAnswersMessage } from "./questions";
+import { answerMessage, awaitingSend, duplicateOpenQuestions, findTaskCover, isOpen, isOther, TASK_DONE, taskCardsFor, taskNeed, parseAnswerMessage, parseAnswersMessage } from "./questions";
 import { briefAnswer, briefAnswers, briefAsks, briefStep, reviewersBriefPr, shouldReopen, type Brief } from "./brief";
 import { workspaceHeadline, sayNew, repeatsRow, flagHeadline, HEADLINE_WORD } from "./headline";
-import { newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
+import { flagFate, newEntry, prEndEvent, REASONS, reduce, type InboxRow } from "./inbox";
 import { blockedOnDeveloper, completionCheck, liveWorkingTask, summary } from "./model";
 import { liveLine, needsYou, reviewersAskStands, type NeedItem } from "./attention";
 import { HOME_GROUPS, homeCounts, prChip, trackedGroup, type HomeModel } from "./home";
@@ -24,6 +24,9 @@ import { compactPrStatus, prLink, prPresentation } from "./presentation";
 import { agentMerges } from "./pr-workflow";
 import { mergeScope } from "./merge-click";
 import { GONE_REASON } from "./queue";
+import { taskSchedule } from "./task-trigger";
+import { taskDue } from "./task-due";
+import { taskViewRows } from "./task-view";
 
 /**
  * Status invariants: what must hold for any workspace, whatever path changed it. Pure, no IO, and never throwing:
@@ -38,7 +41,7 @@ const lines = (w: Workspace, now: number) => [liveLine(w, now).text, agentCard(w
 export const INVARIANTS: Invariant[] = [
   {
     id: "a-pr-summary-says-the-worst",
-    why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs.",
+    why: "2026-11-22: a 126-PR workspace with four PRs failing checks read \"#1001+125 ✓\" on Home (the chip took the first open PR's state) and \"Checks are running\" in the panel header (running outranked failing). A line or chip that sums up a workspace's PRs says the worst of its open PRs, and the chip counts failing PRs as the live line does.",
     check(w, now) {
       const open = w.prs.filter(p => p.snapshot?.state === "OPEN");
       const failing = open.filter(p => p.snapshot!.failedChecks?.length);
@@ -47,6 +50,8 @@ export const INVARIANTS: Invariant[] = [
       const problem = open.length > 1 && open.some(p => !p.snapshot!.complete || p.snapshot!.failedChecks?.length || p.snapshot!.threads?.length);
       const chip = problem ? prChip(w) : null;
       if (chip?.checks?.tone === "success") return `the PR chip reads ${chip.checks.text} while an open PR has failing checks, threads or an unknown status`;
+      // The chip and the live line count the same thing: PRs with failed checks, not checks.
+      if (chip && failing.length && chip.checks?.text !== `✗ ${failing.length}`) return `the PR chip reads ${chip.checks?.text ?? "nothing"} while ${failing.length} PR(s) fail checks`;
       if (failing.length && liveLine(w, now).text === "Checks are running") return `the live line says checks are running while ${failing.length} PR(s) fail checks`;
       return null;
     },
@@ -435,6 +440,48 @@ export const INVARIANTS: Invariant[] = [
     },
   },
   {
+    id: "one-ask-one-item",
+    why: "2026-11-22, the developer, on 2.4.0-beta.0: one ask showed twice in Needs you, the agent's Action brief and its blocked task's card, and the card framed an action (\"share the page and tell me when they've picked\") as \"Write the decision\". A task card is shaped by what it asks (taskNeed: an action gets Done), and a brief that restates or reports a task card points at it, so it folds into that one card (taskCardsFor, needsYouBlock).",
+    check(w, now) {
+      const items = needsYou(w, now);
+      for (const q of w.questions ?? []) {
+        if (q.via !== "task" || !isOpen(q)) continue;
+        const o = w.obligations.find(o => o.id === q.taskId);
+        if (!o?.ask) continue;
+        const need = taskNeed(o.ask, o.need);
+        if ((q.need ?? "decision") !== need) return `${q.id} is shaped as a ${q.need ?? "decision"} but its task asks for a${need === "action" ? "n action" : " decision"}`;
+        if (need === "action" && !(q.options.length === 1 && q.options[0].label === TASK_DONE.label)) return `${q.id} asks for an action without its Done`;
+        // A brief restating the card points at it and folds into it: one item.
+        const brief = { kind: "action", ask: q.question };
+        if (!taskCardsFor(brief, w.questions ?? [], null).includes(q)) return `a brief restating ${q.id} wouldn't point at it`;
+        const block = needsYouBlock(items, { questionIds: [q.id], kind: "action" }, w.questions);
+        if (block.cards.some(c => c.kind === "brief")) return `a brief pointing at ${q.id} still draws its own card`;
+      }
+      return null;
+    },
+  },
+  {
+    id: "one-decision-one-card",
+    why: "2026-11-22, the developer: \"a lot of the time, 2 questions are created for the same thing\". An agent asked Q1 with options and marked its task blocked with ask \"Q1: may I …?\"; Follow-up made Q2 from the task, the same decision with no options (live: 33 of 96 task-made questions). A blocked task covered by a question (it names it, it was asked with task set, or it reads the same) makes no card and no decision item (shared/questions.ts findTaskCover, server/questions.ts syncTaskQuestions).",
+    check(w, now) {
+      const questions = w.questions ?? [];
+      for (const o of w.obligations) {
+        if (!blockedOnDeveloper(o)) continue;
+        const own = questions.find(q => q.taskId === o.id && q.taskRevision !== null && isOpen(q));
+        if (o.coveredBy) {
+          if (!questions.some(q => q.id === o.coveredBy)) return `task ${o.title} is covered by ${o.coveredBy}, which isn't in this workspace`;
+          if (own) return `${own.id} repeats ${o.coveredBy} for task ${o.title}`;
+        }
+        if (!own) continue;
+        // Uncovered but asked: the same rule the sync uses (findTaskCover), so the check and the fix can't disagree.
+        const twin = findTaskCover(o, questions, w.mainAgentId);
+        if (twin && isOpen(twin)) return `${own.id} repeats ${twin.id} for task ${o.title}`;
+      }
+      const decision = needsYou(w, now).find(i => i.kind === "decision" && w.obligations.find(o => o.id === i.obligationId)?.coveredBy);
+      return decision && decision.kind === "decision" ? `Needs you asks task ${decision.title}'s decision beside the question that covers it` : null;
+    },
+  },
+  {
     id: "a-github-limit-never-blanks-a-known-pr",
     why: "2026-11-12 live 2.0.1-beta.1: merged PRs with a complete snapshot kept an error from beta.0's RATE_LIMIT failures, the panel let the error win and merged-is-final never re-read them, so they read Unknown for good. A complete snapshot always shows its own status (shared/presentation.ts), and a merged one never stores an error (shared/model.ts prSchema, server/github.ts finalMerged).",
     check(w) {
@@ -479,6 +526,33 @@ export const INVARIANTS: Invariant[] = [
     check(w) {
       const stop = w.interruption;
       return stop?.kind === "canceled" && automaticHold(w) && stop.cause && stop.cause !== "stop" ? `holds for a ${stop.cause} turn ${stop.turnId ?? "?"}` : null;
+    },
+  },
+  {
+    id: "due-by-fact",
+    why: "2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged and nobody ran the check, because a task without developer timing read \"Manual\" and never came due. A task's line says what moves it, and a due task says Due (or Stale).",
+    check(w, now) {
+      for (const o of w.obligations) {
+        const label = taskSchedule(o, w, now).label;
+        if (label === "Manual") return `task ${o.id} reads Manual`;
+        const d = taskDue(o, w, now);
+        if (d?.due && !o.trigger && !/^(Due · |Due since |Stale · )/.test(label)) return `task ${o.id} is due (${d.fact}) but reads "${label}"`;
+      }
+      return null;
+    },
+  },
+  {
+    id: "tasks-are-the-agent-s",
+    why: "2026-11-22 critique of the Tasks card: tasks are the agent's to-do list, yet the card mirrored Needs you (\"Q1 · waiting on your answer\"), sorted a due task last, and the header named a waiting task while the due one went unmentioned. A row points at Needs you without a question id, stale and due rows come first, and the live line names the task the agent owes.",
+    check(w, now) {
+      const rows = taskViewRows(w, w.taskAgents ?? {}, now);
+      for (const r of rows) if (/^Q\d+ · /.test(r.meta) || r.meta === "Manual") return `task ${r.o.id} reads "${r.meta}"`;
+      const firstOther = rows.findIndex(r => r.kind !== "stale" && r.kind !== "due");
+      if (firstOther >= 0 && rows.slice(firstOther).some(r => r.kind === "stale" || r.kind === "due")) return "a stale or due task sorts below one that isn't";
+      const owed = rows.find(r => r.kind === "stale" || r.kind === "due");
+      const live = liveLine(w, now);
+      if (owed && followUpObligations(w).some(o => o.status === "waiting" && live.text === o.title)) return `the live line names a waiting task while ${owed.o.id} is ${owed.kind}`;
+      return null;
     },
   },
 ];
@@ -622,6 +696,28 @@ export function homeViolations(model: Pick<HomeModel, "byKey"> & Partial<Pick<Ho
     else if (model.byKey.get(keys[0])!.priority!.reason !== p.reason) out.push({ id: "row-lines-own-row", detail: `${keys[0]} shows another reason than ${workspaceId}'s` });
   }
   return [...counted, ...out];
+}
+
+/**
+ * `briefs-from-closed-agents` (AGENTS.md 80): Home against the inbox rows it was built from. A dropped flag has no
+ * row, an Older row is a closed agent's with nothing new for 3 days and no live workspace item, and every other
+ * flagged row (a running or idle agent's above all) is in Needs you. 2026-11-22: 49 flagged rows, 42 of them closed.
+ */
+export function closedFlagViolations(model: Pick<HomeModel, "byKey">, rows: readonly InboxRow[], tracked: readonly Workspace[], now: number): { id: string; detail: string }[] {
+  const out: { id: string; detail: string }[] = [];
+  const archived = new Set(tracked.filter(w => w.archived).map(w => w.id));
+  for (const row of rows) {
+    if (!row.needs || row.snooze) continue;
+    const s = model.byKey.get(`agent:${row.agentId}`);
+    const fate = flagFate(row, now, !!row.workspaceId && archived.has(row.workspaceId));
+    const w = tracked.find(w => w.id === row.workspaceId && !w.archived);
+    const live = !!w && needsYou(w, now).length > 0;
+    if (!s) continue;
+    if (fate === "drop") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} asks nothing anyone can act on but shows in ${s.group}` });
+    else if (s.group === "older" && (fate !== "older" || live)) out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId} is in Older but ${live ? "its workspace has a live item" : `is ${row.status} with a flag from the last 3 days`}` });
+    else if (fate === "show" && s.group !== "needs") out.push({ id: "briefs-from-closed-agents", detail: `${row.agentId}'s live ask is in ${s.group}, not Needs you` });
+  }
+  return out;
 }
 
 /**

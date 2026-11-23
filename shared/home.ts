@@ -4,7 +4,7 @@ import { liveLine, needsYou, prTone, stackOrder, workspaceSnoozed, type NeedItem
 import { activity, type Activity } from "./activity";
 import { followUpObligations, recoveryBatch } from "./follow-up";
 import { sayNew, flagHeadline, HEADLINE_ICON, HEADLINE_TONE, HEADLINE_WORD, workspaceHeadline, withoutBriefQuestions, type Headline, type HeadlineKey, type HeadlineTone } from "./headline";
-import { rowTitle, sectionOf, type InboxRow } from "./inbox";
+import { flagFate, rowTitle, sectionOf, type InboxRow } from "./inbox";
 import { settled, summary } from "./model";
 import type { ListPr as Pr, ListWorkspace as Workspace } from "./list";
 import { isOpen as questionOpen } from "./questions";
@@ -19,10 +19,10 @@ import { messageSender, notificationText, senderLabel, workItems } from "./messa
  * agent; a workspace with several flagged root agents shows one row per agent.
  */
 
-export const HOME_GROUPS = ["needs", "sending", "running", "waiting", "later", "quiet"] as const;
+export const HOME_GROUPS = ["needs", "older", "sending", "running", "waiting", "later", "quiet"] as const;
 export type HomeGroupId = typeof HOME_GROUPS[number];
 export const GROUP_TITLE: Record<HomeGroupId, string> = {
-  needs: "Needs you", sending: "Sending", running: "Running", waiting: "Waiting on others", later: "Later", quiet: "Quiet",
+  needs: "Needs you", older: "Older", sending: "Sending", running: "Running", waiting: "Waiting on others", later: "Later", quiet: "Quiet",
 };
 
 /** Inside Needs you: blocking asks first, then decisions only the developer makes, then finished turns to sign off. */
@@ -44,7 +44,8 @@ export function recentMainChange(w: Pick<Workspace, "mainHistory" | "mainAgentId
   const last = w.mainHistory?.at(-1);
   return last && last.by !== "developer" && last.to === w.mainAgentId && now - Date.parse(last.at) < 24 * 60 * 60_000 ? last : null;
 }
-export type PrChip = { label: string; tone: PrTone; checks: { text: string; tone: BadgeTone } | null; url: string | null };
+/** `checks.spoken`: what a screen reader says for `text` when the glyph alone would be ambiguous ("4 PRs with failed checks"). */
+export type PrChip = { label: string; tone: PrTone; checks: { text: string; tone: BadgeTone; spoken?: string } | null; url: string | null };
 /** A Paseo workspace as Home needs it. Untracked workspaces still get a row, in Quiet. */
 export type PaseoWorkspaceLite = {
   id: string; name: string; project: string | null; activityAt: string | null;
@@ -113,11 +114,21 @@ function prChecks(s: Pr["snapshot"]): ChipChecks | null {
   return !s?.complete ? null
     : s.state === "MERGED" ? { text: "merged", tone: "merged" }
     : s.state === "CLOSED" ? { text: "closed", tone: "muted" }
-    : s.failedChecks?.length ? { text: `✗ ${s.failedChecks.length}`, tone: "danger" }
+    : s.failedChecks?.length ? { text: `✗ ${s.failedChecks.length}`, tone: "danger", spoken: plural(s.failedChecks.length, "failed check") }
     : s.checksPending ? { text: "running", tone: "muted" }
     : s.draft ? { text: "draft", tone: "muted" }
     : s.threads?.length ? { text: plural(s.threads.length, "thread"), tone: "warning" }
-    : { text: "✓", tone: "success" };
+    : { text: "✓", tone: "success", spoken: "checks passed" };
+}
+/**
+ * The PR chip as a screen reader says it, the same on every surface that draws it (a Home row's label, the detail
+ * pane's chip, the phone's meta line): "Pull request #1029 and 125 more, 4 PRs with failed checks". The glyph alone
+ * is ambiguous: "✗ 4" counts PRs on a chip for many open PRs and checks on a chip for one.
+ */
+export function prChipSpoken(pr: PrChip): string {
+  const [, number, more] = /^(#\d+)(?:\+(\d+))?$/.exec(pr.label) ?? [, pr.label, undefined];
+  const name = `Pull request ${number}${more ? ` and ${more} more` : ""}`;
+  return pr.checks ? `${name}, ${pr.checks.spoken ?? pr.checks.text}` : name;
 }
 /** How bad an open PR's checks are, worst first: failing, open threads, unknown, running, draft, clear. */
 function chipRank(s: Pr["snapshot"]): number {
@@ -127,8 +138,9 @@ function chipRank(s: Pr["snapshot"]): number {
 /**
  * The PR chip (`a-pr-summary-says-the-worst`): the workspace's PRs in one chip, so it says the worst of its open PRs,
  * never the first one's. It names the first open PR in stack order with the worst state ("#1058+125"), else the first
- * that hasn't settled, else the last; "+n" counts the rest. Its checks add up across the open PRs at that worst
- * state ("✗ 7": seven failing checks), and an open PR whose status isn't known keeps it from saying ✓. 2026-11-22: a
+ * that hasn't settled, else the last; "+n" counts the rest. At failing checks it counts the PRs failing ("✗ 4", spoken
+ * "4 PRs with failed checks"), the same number as the panel's "Checks failed on 4 PRs"; at open threads it adds up the
+ * threads. An open PR whose status isn't known keeps it from saying ✓. 2026-11-22: a
  * 126-PR workspace with four PRs failing checks read "#1001+125 ✓", the first PR's state.
  */
 export function prChip(w: Workspace | undefined): PrChip | null {
@@ -145,7 +157,7 @@ export function prChip(w: Workspace | undefined): PrChip | null {
   const at = open.filter((_, i) => ranks[i] === worst);
   const pr = worst < 5 ? at[0]! : open[0]!;
   const sum = (f: (s: NonNullable<Pr["snapshot"]>) => number) => at.reduce((n, p) => n + f(p.snapshot!), 0);
-  const checks: ChipChecks | null = worst === 0 ? { text: `✗ ${sum(s => s.failedChecks?.length ?? 0)}`, tone: "danger" }
+  const checks: ChipChecks | null = worst === 0 ? { text: `✗ ${at.length}`, tone: "danger", spoken: `${plural(at.length, "PR")} with failed checks` }
     : worst === 1 ? { text: plural(sum(s => s.threads?.length ?? 0), "thread"), tone: "warning" }
     : worst === 2 ? null
     : prChecks(pr.snapshot);
@@ -226,9 +238,13 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   /** Any root agent per workspace, so a workspace row can still show the agent's tail. */
   const anyAgent = new Map<string, string>();
 
+  const archived = new Set(input.tracked.filter(w => w.archived).map(w => w.id));
   for (const row of rows) {
     if (row.workspaceId && !anyAgent.has(row.workspaceId)) anyAgent.set(row.workspaceId, row.agentId);
     const section = sectionOf(row, now);
+    // briefs-from-closed-agents: a flag nobody can act on leaves the list; a closed agent's old ask folds into Older.
+    const fate = section === "needs" ? flagFate(row, now, !!row.workspaceId && archived.has(row.workspaceId)) : "show";
+    if (fate === "drop") continue;
     const w = row.workspaceId ? tracked.get(row.workspaceId) : undefined;
     // Paseo's live workspace list names the workspace (a rename shows at once); the inbox's copy can be a minute old.
     const live = row.workspaceId && row.workspaceTitle ? paseo.get(row.workspaceId)?.name : undefined;
@@ -241,7 +257,9 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
       if (!h) continue;
       // a-headline-says-only-what-is-new: the row's chip names its PR, so the line drops that ref ("on #240").
       const chip = prChip(w); const line = sayNew(h.line, { chip: chip?.label });
-      out.push(make({ ...base, group: "needs", tier: tierOf(h.key), icon: HEADLINE_ICON[h.key], tone: HEADLINE_TONE[h.key], word: HEADLINE_WORD[h.key],
+      // An Older row never carries a live workspace item: with one, it stays in Needs you.
+      const group = fate === "older" && !(w && needsYou(w, now).length) ? "older" : "needs";
+      out.push(make({ ...base, group, tier: tierOf(h.key), icon: HEADLINE_ICON[h.key], tone: HEADLINE_TONE[h.key], word: HEADLINE_WORD[h.key],
         line: line === HEADLINE_WORD[h.key] ? "" : line, badges: badges({ headline: h, row, workspace: w, items }), pr: chip, at: row.needs!.since }));
       if (row.workspaceId) covered.add(row.workspaceId);
     } else if (section === "later") {

@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { browserStatusRpc, controlRpc, inboxBriefRpc, sendRpc } from "../shared/contracts";
 import { needsYou, workspaceSnoozed } from "../shared/attention";
 import { briefAsks, briefCardShown, liveBrief } from "../shared/brief";
-import { briefPane, followUpLog, lastWorkdayEnd, nextNeeds, paneButtons, sameText, sinceLabel, tailSteps, type HomeGroupId, type HomeModel, type LogLine, type TailStep, type Workstream } from "../shared/home";
+import { briefPane, followUpLog, lastWorkdayEnd, nextNeeds, paneButtons, prChipSpoken, sameText, sinceLabel, tailSteps, type HomeGroupId, type HomeModel, type LogLine, type TailStep, type Workstream } from "../shared/home";
 import { age, backLabel, snoozeUntil, type InboxRow } from "../shared/inbox";
 import { errorText } from "../shared/errors";
 import { isLoaded, type LoadSignals } from "../shared/agent-load";
@@ -17,12 +17,16 @@ import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
+import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
+import type { NewKey } from "./search-key";
 import { DockedPane } from "./docked-pane";
 import type { DockState } from "./dock";
 import { NeedsYouBlock } from "./needs-you";
 import { HeldMerges } from "./merge-button";
 import { PrSheet } from "./pr-sheet";
+import { StatsPage, type StatsParams } from "./pr-stats";
 import { QuestionSheet } from "./questions";
+import { isDoneOnly } from "../shared/questions";
 import { DismissReveal } from "./dismiss";
 import { Age, BadgeView, BRIEF_KEY, glyphColor, HomeList, OVERSEER_KEY, PrChipView, PrSummaryText, type OverseerRowState } from "./home-list";
 import { answerLine, overseerRowState } from "../shared/overseer";
@@ -70,12 +74,16 @@ export type HomeDeps = {
   openLog(): void;
   /** Catch up: Needs you one card at a time (`?view=catchup`). */
   openCatchUp?(): void;
+  /** The PR stats page (`?view=stats`, docs/pr-stats.md#the-page); a phone's person opens as its own screen. */
+  openStats?(params?: StatsParams): void;
   openHome(): void;
   /** Phones: open one Home item as its own screen, so the host's ← (and Android back) returns to the list. */
   openItem?(key: string, extra?: { question?: string }): void;
   briefDeps: BriefDeps;
   /** The search-from-anywhere key (client/search-key.ts), for the search field's chip. */
   searchKey?: SearchKey;
+  /** New from anywhere's key, for Home's + New tooltip. */
+  newKey?: NewKey;
 };
 
 /**
@@ -104,7 +112,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
-  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup");
+  useSlashToFocus(omnibox, params.view !== "log" && params.view !== "catchup" && params.view !== "stats");
   const [filter, setFilter] = useState<HomeGroupId | null>(null);
   const [selected, setSelected] = useState<string | null>(() => params.item ?? (params.select ? `agent:${params.select}` : null));
   const openAgentRow = useMemo(() => navigation ? (row: InboxRow) => navigation.openAgent({ agentId: row.agentId }) : undefined, [navigation]);
@@ -113,7 +121,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     navigation.openWorkspace({ workspaceId });
     if (compact) deps.openPanel(workspaceId); else setTimeout(() => deps.openPanel(workspaceId), 900);
   } : undefined, [navigation, compact, deps]);
-  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay);
+  const archivedIds = useCallback(() => new Set(deps.sources.live.archived().map(w => w.id)), [deps.sources.live]);
+  useNextRelay(inbox, params, openAgentRow, openWorkspaceRelay, archivedIds);
   useEffect(() => { if (params.select) setSelected(`agent:${params.select}`); }, [params.select]);
   // An already-open Home asked to show an item (the sidebar view's Overseer row: Start and Restart live here). `at` makes
   // the same item twice a second request.
@@ -132,6 +141,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const pane = useMemo(() => briefPane({ model, rows, tracked: deps.sources.live.all(), now: Date.now() }), [model, rows, tracked, deps.sources.live]);
   const rank = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.rank, deps.sources.extras.rank);
   const overseerStatus = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.overseer, deps.sources.extras.overseer);
+  const prStatsOn = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.prStatsOn, deps.sources.extras.prStatsOn);
+  const openStats = prStatsOn && deps.openStats ? () => deps.openStats!() : undefined;
   const overseerInbox = useInbox(inbox, () => inbox.overseer());
   const overseer = overseerRowState(overseerStatus, overseerInbox);
   const toast = useToast();
@@ -169,6 +180,16 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
   // ⌘K "Follow-up: Ask the Overseer" opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
   // shared state, so it works whether Home was already open or mounts fresh.
+  // New (client/new.tsx): every entry point opens Home with `?new=<nonce>` (and `source` when it carries one).
+  useEffect(() => { if (params.new) openNew(params.source ? { source: params.source } : {}); }, [params.new]); // eslint-disable-line react-hooks/exhaustive-deps
+  const newLabel = useSyncExternalStore(deps.newKey?.subscribe ?? noSubscribe, deps.newKey?.label ?? noLabel, deps.newKey?.label ?? noLabel);
+  const dispatches = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.dispatches, deps.sources.extras.dispatches);
+  // New closing may have started one: without the feed, Home reads them then (home-view refreshDispatches).
+  const newOpen = useNewOpen();
+  const wasOpen = useRef(newOpen);
+  useEffect(() => { if (wasOpen.current && !newOpen) deps.sources.extras.refreshDispatches(); wasOpen.current = newOpen; }, [newOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dispatchRows = <DispatchRows records={dispatches} theme={theme} compact={compact} navigation={navigation} />;
+  const newHost = <NewHost theme={theme} layout={layout} navigation={navigation} openSettings={() => deps.openSettings()} />;
   const [replyFocus, setReplyFocus] = useState(0);
   useEffect(() => {
     if (!params.ask) return;
@@ -211,6 +232,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     <CatchUp theme={theme} compact={compact} deps={{ sources: deps.sources, briefDeps: deps.briefDeps, openHome: deps.openHome, openPanel: deps.openPanel }} navigation={navigation as never} onExit={deps.openHome} />
     {updateSheets}
   </View>;
+  if (params.view === "stats") return <View style={{ flex: 1 }}>
+    <StatsPage key={params.n ?? "stats"} theme={theme} compact={compact} params={{ repo: params.repo, period: params.period, person: params.person, sort: params.sort }}
+      deps={{ onHome: deps.openHome, openSettings: () => deps.openSettings("following"), openStats: p => deps.openStats?.(p) }} />
+    {updateSheets}
+  </View>;
   if (params.view === "log") return <LogView theme={theme} compact={compact} sources={deps.sources} onHome={deps.openHome} onOpen={key => { setSelected(key); deps.openHome(); }} />;
 
   const detail = selected === OVERSEER_KEY && overseer
@@ -239,17 +265,20 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         <View style={{ flexDirection: "row", paddingHorizontal: 6 }}><VersionMark theme={theme} touch openSettings={deps.openSettings} /></View></View>
       : undefined}
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
-    afterNeeds={compact && model.needs > 0 ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
+    afterNeeds={compact && model.needs > 0 && props.onboarding?.offer ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
-    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} />}>
+    top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>
       {/* zIndex: on web every View is its own stacking context, so the sort menu only paints and hit-tests above the
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
         <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} anywhereKey={anywhereKey} />
+        {compact && <IconButton theme={theme} compact icon="Plus" label="New" onPress={() => openNew()} />}
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
+        {compact && openStats && <IconButton theme={theme} compact icon="ChartNoAxesColumn" label="PR stats" onPress={openStats} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>
       <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
+      {!omnibox.results && dispatchRows}
       {!compact && !omnibox.results && <StatusStrip theme={theme} model={model} filter={filter} onFilter={setFilter} touch={compact} dense={compact} />}
       {!compact && !omnibox.results && <UsageMeters theme={theme} sources={deps.sources} dense={compact} hold={!!model.hold} />}
       {!compact && !omnibox.results && <SetupOffer theme={theme} compact={compact} view={props.onboarding} />}
@@ -269,6 +298,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     {current || selected === OVERSEER_KEY && overseer || selected === BRIEF_KEY ? detail : list}
     {updateSheets}
     <View style={{ position: "absolute", left: 12, right: 12, bottom: bottomGap(true) + (current || selected === OVERSEER_KEY ? 132 : 0) }}><UndoBar store={inbox} theme={theme} touch /></View>
+    {newHost}
   </View>;
   return <View ref={homeRef} style={{ flex: 1, flexDirection: "row", backgroundColor: c.surface0 }}>
     <HomeSplit theme={theme} detail={detail} main={<View style={{ flex: 1, minWidth: 0 }}>
@@ -281,6 +311,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       { title: "In the search", keys: HOME_KEYS.filter(k => k.when === "search").map(k => k.key === "/" && anywhereKey ? { ...k, key: `/ or ${anywhereKey}` } : k) },
       { title: "Answering", keys: HOME_KEYS.filter(k => k.when === "pane") },
     ]} />}
+    {newHost}
   </View>;
 }
 
@@ -321,7 +352,7 @@ export function DisplaySplit({ theme, main, side, field, defaultFraction, range,
 const HOME_DETAIL_MIN_PX = 360;
 const HOME_LIST_MIN_PX = 480;
 
-function ListHeader({ theme, compact, onSettings, onKeys }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void }) {
+function ListHeader({ theme, compact, onSettings, onKeys, onStats, onNew, newLabel }: { theme: Theme; compact: boolean; onSettings: () => void; onKeys?: () => void; onStats?: () => void; onNew?: () => void; newLabel?: string | null }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16 }}>
     {/* Home first, the version second: a muted caption on the title's line, never a control beside the cog. */}
@@ -329,8 +360,12 @@ function ListHeader({ theme, compact, onSettings, onKeys }: { theme: Theme; comp
       <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: compact ? 17 : 15, fontWeight: "600" }}>Home</Text>
       <VersionMark theme={theme} touch={compact} openSettings={onSettings} />
     </View>
+    {/* New first, then the other header controls. */}
+    {onNew && <Button theme={theme} compact={compact} kind="secondary" icon="Plus" title="New" keyHint={newLabel ?? undefined} accessibilityLabel={newLabel ? `New (${newLabel})` : "New"} onPress={onNew} />}
     {/* The keys sheet's way in for the mouse (S from the keyboard); desktop web, where the keys are. */}
     {onKeys && Platform.OS === "web" && <IconButton theme={theme} compact={compact} icon="Keyboard" label="Keys (S)" tooltip onPress={onKeys} />}
+    {/* Shown once a repository has PR statistics (docs/pr-stats.md#where-it-opens-from). */}
+    {onStats && <IconButton theme={theme} compact={compact} icon="ChartNoAxesColumn" label="PR stats" tooltip onPress={onStats} />}
     <IconButton theme={theme} compact={compact} icon="Settings" label="Follow-up settings" onPress={onSettings} />
   </View>;
 }
@@ -459,7 +494,12 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const [laterSheet, setLaterSheet] = useState(false);
   // A snoozed row keeps its moves: Sign off is a normal end for something put off, and Later changes the time.
   const flagged = !!row?.needs;
-  const plan = paneButtons({ permissions: agent.permissions.length, decisions: !!b?.decisions.some(d => d.options.length), items, flagged, hasAgent: !!s.agentId });
+  // one-done-button: while an action card waits here, Done tells the agent and Sign off doesn't, so Sign off yields:
+  // never the primary, and the row's ✕ instead of a ✓ that would read as Done.
+  const actionOpen = !!w && asks.some(i => i.kind === "question" && w.questions.some(q => q.id === i.questionId && isDoneOnly(q)));
+  const signOffIcon = actionOpen ? "X" : "Check";
+  const planned = paneButtons({ permissions: agent.permissions.length, decisions: !!b?.decisions.some(d => d.options.length), items, flagged, hasAgent: !!s.agentId });
+  const plan = actionOpen && planned.primary === "sign_off" ? { ...planned, primary: "item" as const } : planned;
   const run = async (key: string, work: () => Promise<unknown>, done?: string) => {
     if (busy) return; setBusy(key);
     try { await work(); if (done) toast.show(done, { variant: "success" }); inbox.refresh(); } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); }
@@ -489,7 +529,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
     {!writing && s.workspaceId && w && <View style={{ marginTop: 6 }}><ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact /></View>}
     {!writing && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
       <Icon name={s.icon} size={14} color={color} />
-      <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0 }]}>
+      {/* Read as one line, with the PR summary in words: a nested Text can't carry its own label. */}
+      <Text numberOfLines={1} accessibilityLabel={[s.word, metaRest, s.pr && prChipSpoken(s.pr)].filter(Boolean).join(" · ")} style={[t.meta, { flex: 1, minWidth: 0 }]}>
         {!!s.word && <Text style={{ color, fontWeight: "600" }}>{s.word}</Text>}
         {metaRest ? (s.word ? ` · ${metaRest}` : metaRest) : ""}
         <PrSummaryText s={s} c={c} lead=" · " />
@@ -516,7 +557,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const canMove = plan.buttons.includes("sign_off") || plan.buttons.includes("later");
   const actionBar = !compact && (plan.buttons.includes("sign_off") || plan.buttons.includes("later")) && <View style={{ gap: 8 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      <Button nativeID={PANE_PRIMARY} theme={theme} compact={compact} kind={plan.primary === "sign_off" ? "primary" : "secondary"} icon="Check" title="Sign off" loading={busy === "sign_off"}
+      <Button nativeID={PANE_PRIMARY} theme={theme} compact={compact} kind={plan.primary === "sign_off" ? "primary" : "secondary"} icon={signOffIcon} title="Sign off" loading={busy === "sign_off"}
         onPress={() => void run("sign_off", () => inbox.signOff([s.agentId!]))} />
       <Button theme={theme} compact={compact} icon="ArrowRight" title="Sign off & next" onPress={() => signOffNext(s)} />
       <Button theme={theme} compact={compact} icon="AlarmClock" title="Later…" onPress={() => setLaterOpen(v => !v)} />
@@ -550,7 +591,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   const narrow = useWindowDimensions().width < 380;
   // The dock's extras step aside while a field in the pane has focus (DockedPane, a-focused-field-and-its-send-stay-in-view).
   const moves = compact && canMove && <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 }}>
-    <View style={{ flex: 1 }}><Button nativeID={PANE_PRIMARY} theme={theme} compact grow kind={plan.primary === "sign_off" && !itemFirst ? "primary" : "secondary"} icon={narrow ? undefined : "Check"} title="Sign off" loading={busy === "sign_off"}
+    <View style={{ flex: 1 }}><Button nativeID={PANE_PRIMARY} theme={theme} compact grow kind={plan.primary === "sign_off" && !itemFirst ? "primary" : "secondary"} icon={narrow ? undefined : signOffIcon} title="Sign off" loading={busy === "sign_off"}
       onPress={() => void run("sign_off", () => inbox.signOff([s.agentId!]))} /></View>
     <View style={{ flex: 1.3 }}><Button theme={theme} compact grow icon={narrow ? undefined : "ArrowRight"} title="Sign off & next" onPress={() => signOffNext(s)} /></View>
     <IconButton theme={theme} compact icon="AlarmClock" label="Later…" onPress={() => setLaterSheet(true)} />

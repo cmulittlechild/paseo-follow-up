@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "archive"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -67,7 +67,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -199,8 +199,11 @@ for (const m of query.matchAll(/(p\\d+):pullRequest\\(number:(\\d+)\\)/g)) {
     reviewThreads: { pageInfo: { hasNextPage: false }, nodes: Array.from({ length: p.threads ?? 0 }, (_, i) => ({ id: "thread-" + n + "-" + i, isResolved: false, comments: { nodes: [{ updatedAt: "2026-03-04T08:30:00Z" }] } })) },
     commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: p.checks ?? [] } } } }] } };
 }
+// pr-stats-settings: the opt-in sheet's estimate (search issueCount + repository id, with GitHub's rateLimit).
+const stats = query.includes("search(") ? { search: { issueCount: d._statsSearch ?? 0 }, rateLimit: d._rate ?? { cost: 1, remaining: 4800, resetAt: new Date(Date.now() + 3600000).toISOString(), limit: 5000 } } : {};
+if (stats.search) repository.id = "R_kgDOexample";
 // --github-wait-review: the fixture's _rate is GitHub's rateLimit answer (a budget under Follow-up's reserve).
-console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}), repository } }));
+console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}), repository, ...stats } }));
 }
 `;
 }
@@ -209,6 +212,26 @@ console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}),
  * A fake `claude` for Rename title with AI's review shots (--rename-review): it answers only the rename prompt, as
  * `claude -p --output-format json` does, and the mode file picks the state: ready, slow (still suggesting) or fail.
  */
+/**
+ * A fake `claude` for the Ask shots only: Ask's plan call gets one read of the fictional tracker, its items call two
+ * items from that read. Anything else fails at once, as an unlogged-in CLI does.
+ */
+function fakeAskClaude() {
+  return `#!/usr/bin/env node
+const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
+const items = process.argv.some(a => a.startsWith("You turn read-only lookup results"));
+if (!plan && !items) { process.stderr.write("not logged in"); process.exit(1); }
+let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
+  const value = plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
+    : { items: [
+      { title: "T-7: review the retry limits for soft declines", why: "Waiting on your review, due tomorrow", url: "https://tracker.example/T-7", due: "2026-03-03" },
+      { title: "T-12: bob asked about the refund export", why: "A question waiting on you since yesterday", url: "https://tracker.example/T-12", due: null },
+    ] };
+  process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0004, usage: { input_tokens: 900, output_tokens: 80 } }));
+});
+`;
+}
+
 function fakeClaude(modeFile) {
   return `#!/usr/bin/env node
 const fs = require("node:fs");
@@ -226,7 +249,7 @@ let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end
 
 /**
  * What the fake `mcpproxy` knows of Linear. Linked items only show a Linear key once Linear confirms it, and the worker
- * asks through `mcpproxy call tool-read --tool-name=linear:get_issue`; these answer it. Any other key is "not found",
+ * asks through `mcpproxy call tool-read` for the server whose tools look like Linear's; these answer it. Any other key is "not found",
  * so keys extracted from the other workspaces' goals are rejected and never render (whenever the linked loop runs).
  */
 function linearIssues() {
@@ -236,18 +259,87 @@ function linearIssues() {
     "APP-151": { title: "Dunning email copy for failed renewals", status: "Todo" },
   };
 }
-/** A fake `mcpproxy`: Linear's get_issue and list_teams from the fixture file, a tool error for everything else. */
-function fakeMcpproxy(file) {
-  return `#!/usr/bin/env node
-const issues = JSON.parse(require("fs").readFileSync(${JSON.stringify(file)}, "utf8"));
-const flag = name => (process.argv.find(a => a.startsWith("--" + name + "=")) || "").slice(name.length + 3);
-const tool = flag("tool-name"); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
-const reply = (text, isError = false) => { console.log(JSON.stringify({ content: [{ type: "text", text }], isError })); process.exit(0); };
-if (tool === "linear:list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
-if (tool === "linear:get_issue") {
-  const i = issues[args.id];
-  reply(i ? JSON.stringify({ identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
+/**
+ * New's list (`--only new`): the developer's open issues, newest update first, as Linear's list_issues answers them
+ * (issues[], hasNextPage, cursor). Fictional keys and titles; `minute` is after BASE.
+ */
+function newIssues() {
+  const issue = (key, title, status, statusType, minute, description = "") => ({ id: key, title, url: "https://linear.app/example/issue/" + key, gitBranchName: `dana/${key.toLowerCase()}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32).replace(/-+$/, "")}`,
+    status, statusType, team: key.startsWith("APP") ? "App" : key.startsWith("WEB") ? "Web" : "Ops", updatedAt: new Date(at(minute)).toISOString(), priority: { value: 2, name: "High" }, assignee: "Dana", description });
+  return [
+    issue("APP-151", "Dunning email copy for failed renewals", "Todo", "unstarted", 175, "The dunning email after the last retry still says \"your card was declined\". Rewrite it for failed renewals and link the billing page."),
+    issue("APP-142", "Retry failed charges with exponential backoff", "In Progress", "started", 160, "Charges that fail with a network error are retried once. Retry up to 4 times with backoff."),
+    issue("WEB-31", "Invoice PDF rounds VAT wrong for CHF totals", "In Progress", "started", 120, "CHF totals round VAT per line instead of per invoice."),
+    issue("OPS-12", "Rotate the staging database password", "Todo", "unstarted", 90, "Rotate it and update the deploy secret."),
+    issue("APP-163", "Rate-limit webhook retries per endpoint", "Todo", "unstarted", 30, "One slow endpoint holds every retry."),
+  ];
 }
+/**
+ * A fake `mcpproxy` with fictional servers (found by their tools, as on a real host): an issue tracker, a chat, a
+ * calendar and a database with no recipe. Linear's get_issue and list_teams come from the fixture file;
+ * `sources-fixture.json` beside it can change a server's state (a sign-in needed, turned off) for the Sources renders.
+ */
+function fakeMcpproxy(file, listFile) {
+  return `#!/usr/bin/env node
+const fs = require("fs"), path = require("path");
+const issues = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, "utf8"));
+let list = []; try { list = JSON.parse(fs.readFileSync(${JSON.stringify(listFile)}, "utf8")); } catch {}
+let mode = "ok"; try { mode = fs.readFileSync(${JSON.stringify(file + ".mode")}, "utf8").trim(); } catch {}
+const flag = name => (process.argv.find(a => a.startsWith("--" + name + "=")) || "").slice(name.length + 3);
+const qualified = flag("tool-name"); const tool = qualified.slice(qualified.indexOf(":") + 1); let args = {}; try { args = JSON.parse(flag("json_args") || "{}"); } catch {}
+const reply = (text, isError = false) => { console.log(JSON.stringify({ content: [{ type: "text", text }], isError })); process.exit(0); };
+let over = {}; try { over = JSON.parse(fs.readFileSync(path.join(path.dirname(${JSON.stringify(file)}), "sources-fixture.json"), "utf8")); } catch {}
+const t = (server_name, name, props, description = "") => ({ server_name, name, description, annotations: { readOnlyHint: true }, schema: { type: "object", properties: Object.fromEntries(props.map(p => [p, { type: "string" }])) } });
+if (process.argv[2] === "tools" && process.argv[3] === "list") {
+  console.log(JSON.stringify([
+    t("issues", "list_issues", ["assignee", "state", "orderBy", "limit", "fields", "cursor", "query"]), t("issues", "get_issue", ["id", "fields"]), t("issues", "get_user", ["query"]), t("issues", "list_teams", []),
+    t("team-chat", "search_public_and_private", ["keywords", "filters", "natural_language_query", "sort", "sort_dir", "limit", "include_context", "response_format"], "Search messages. Current logged in user's user_id is UALICE0001."),
+    t("team-chat", "search_users", ["keywords", "natural_language_query", "limit", "response_format"]), t("team-chat", "search_channels", ["keywords", "natural_language_query", "limit", "channel_types", "response_format"]),
+    t("calendar", "list-events", ["timeMin", "timeMax", "timeZone"], "List the user's events."),
+    t("warehouse", "run_query", ["sql"]), t("warehouse", "list_tables", []),
+    // An Ask source (no recipe fits): a ticket tracker, shown only in the Ask shots (over.ask).
+    ...(over.ask ? [t("tracker", "search_tickets", ["query", "limit"], "Search tickets."), t("tracker", "get_ticket", ["id"], "One ticket.")] : []),
+    ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
+  ]));
+  process.exit(0);
+}
+if (process.argv[2] === "upstream" && process.argv[3] === "list") {
+  const up = name => ({ name, enabled: true, connected: true, authenticated: true, oauth: null, quarantined: false, tool_count: 4, health: { level: "healthy", summary: "Connected", action: null }, ...(over.upstreams || {})[name] });
+  console.log(JSON.stringify(["issues", "team-chat", "calendar", "warehouse", "notes", ...(over.mail ? ["mailbox"] : []), ...(over.ask ? ["tracker"] : [])].map(up)));
+  process.exit(0);
+}
+// The morning sweep, only for the Sources shots (over.linear): an empty queue, so the card reads Linear as fine. Other
+// shots seed their queue and must not have it replaced by a sweep.
+if (over.linear && tool === "list_issues") reply(JSON.stringify({ issues: [], hasNextPage: false }));
+if (over.linear && tool === "get_user") reply(JSON.stringify({ id: "user-alice", name: "alice" }));
+if (tool === "list_teams") reply(JSON.stringify({ teams: [{ key: "APP", name: "App" }, { key: "WEB", name: "Web" }] }));
+// New's list (--only new): the fixture list, filtered by the search words; .mode makes Linear down or absent.
+if (mode === "missing") { console.error("server linear not found"); process.exit(1); }
+if (mode === "error") { console.error("Linear API timed out"); process.exit(1); }
+if (tool === "list_issues") {
+  const q = (args.query || "").toLowerCase();
+  const found = q ? list.filter(i => (i.id + " " + i.title).toLowerCase().includes(q)) : list;
+  reply(JSON.stringify({ issues: found, hasNextPage: false, cursor: null }));
+}
+if (tool === "get_issue") {
+  const listed = list.find(i => i.id === args.id);
+  if (listed) reply(JSON.stringify(listed));
+  const i = issues[args.id];
+  reply(i ? JSON.stringify({ id: args.id, identifier: args.id, title: i.title, status: i.status, url: "https://linear.app/example/issue/" + args.id }) : "Issue not found");
+}
+// Settings → Morning brief's chat search (fictional): the reply chat-fixture.json says, the pickers' fixed results.
+if (/search_public_and_private$/.test(tool)) {
+  let chat = {}; try { chat = JSON.parse(require("fs").readFileSync(require("path").join(require("path").dirname(${JSON.stringify(file)}), "chat-fixture.json"), "utf8")); } catch {}
+  if (chat.error) { console.error("Command failed: chat search timed out"); process.exit(1); }
+  reply(JSON.stringify({ results: chat.messages || "No results found.", pagination_info: "" }));
+}
+// The Ask shots' tracker (fictional): two tickets waiting on the developer.
+if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
+  { id: "T-7", title: "Review the retry limits for soft declines", status: "Waiting on alice", url: "https://tracker.example/T-7", due: "2026-03-03" },
+  { id: "T-12", title: "Answer bob's question on the refund export", status: "Waiting on alice", url: "https://tracker.example/T-12" },
+] }));
+if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
+if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
 reply("not available in the screenshot fixture", true);
 `;
 }
@@ -389,7 +481,21 @@ const NEEDS_YOU_STATES = [
       rpc("follow.obligation", { title: "Pick who gets usage alerts", status: "blocked", ask: "Should usage alerts go to the workspace owner only, or to every admin?", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Wire alert thresholds", status: "blocked", evidence: "Waits for #232's review before the thresholds move to config", enable_follow_up: false }),
       rpc("follow.obligation", { title: "Check alert emails in staging", status: "waiting", afterPrs: ["example/app#232"] }),
+      // due-by-fact: a task with no PRs says its re-check date (3 days out by default), and one past it reads Due.
+      rpc("follow.obligation", { title: "Watch the next nightly usage roll-up", status: "pending" }),
+      rpc("follow.obligation", { title: "Confirm the usage export with billing", status: "waiting", recheck: "2026-01-01", evidence: "Ask billing whether the CSV matches their ledger, then close this with their reply." }),
+      // tasks-are-the-agent-s: one due task with the agent's note, and finished ones (they live in Activity).
+      rpc("follow.obligation", { title: "Backfill alert history for existing plans", status: "pending", recheck: "2026-02-28", evidence: "Run the backfill once billing confirms the plan list; it takes about ten minutes." }),
+      rpc("follow.obligation", { title: "Add the usage alert email template", status: "done", evidence: "The template is live in staging." }),
+      rpc("follow.obligation", { title: "Drop the old usage banner", status: "waived", evidence: "Superseded by the alert emails." }),
       msg("Thresholds are in #232. One task needs your call on who gets the alerts.")], flag: false },
+  // one-ask-one-item: a task blocked on something the developer does and reports back, and the turn's Action brief
+  // about it: one Done card, carrying the brief's context, never a brief beside a "write the decision" card.
+  { key: "ny-action", title: "Export layouts", minute: 186, prompt: "WEB-44: ship the export layout the design lead picks.",
+    steps: [rpc("follow.enroll", { goal: "WEB-44 Export layouts" }),
+      rpc("follow.obligation", { title: "Get alice's pick of the export layout", status: "blocked", ask: "Share the layout preview with alice and tell me when they've picked; I read the choice from the page.", enable_follow_up: false }),
+      msg("Both layouts are on the preview page; the export ships whichever alice picks."),
+      rpc("follow.needs-you", { kind: "action", ask: "Still needed: alice's pick on the layout preview", context: "Both layouts are built. Share the preview with alice; once they pick, the export ships that layout." })] },
   { key: "ny-person", title: "Webhook retries", minute: 180, prompt: "APP-195: retry failed invoice webhooks with backoff.", flag: false,
     steps: [rpc("follow.enroll", { goal: "APP-195 Retry failed invoice webhooks" }),
       rpc("follow.register-pr", { repo: "example/app", number: 262, stack: "Webhook retries" }),
@@ -457,10 +563,18 @@ async function seed({ call, home }) {
   // recolor the sidebar on every run.
   // Two projects, so the sidebar and Quiet's folds don't read as one repo.
   const repos = {};
-  for (const name of ["app", "web"]) { repos[name] = join(tmpdir(), "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true }); }
+  // New (`--only new`) starts worktrees, so its projects are Git repositories on main, in folders of their own.
+  for (const name of ["app", "web"]) {
+    repos[name] = join(tmpdir(), only.includes("new") ? "follow-up-shots-fixture-new" : "follow-up-shots-fixture", name); await fs.mkdir(repos[name], { recursive: true });
+    if (only.includes("new") && !existsSync(join(repos[name], ".git"))) {
+      const git = (...a) => exec("git", ["-C", repos[name], ...a], { timeout: 30000 });
+      await git("init", "-q", "-b", "main"); await fs.writeFile(join(repos[name], "README.md"), `# example/${name}\n`);
+      await git("add", "."); await git("-c", "user.name=Dana", "-c", "user.email=dana@example.com", "commit", "-q", "-m", "init");
+    }
+  }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -923,8 +1037,8 @@ const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 /** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
 const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
-const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", display: "display" };
-const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", display: "Inbox & display" };
+const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", new: "new", display: "display", brief: "brief" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Morning brief" };
 /** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
 async function openSettingsAt(page, category, vp = page.viewportSize()) {
   if (nativeSettingsTabs) {
@@ -1776,10 +1890,15 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("icon")) await iconShots({ shoot, billing });
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
+  if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
+  if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
+  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
+  if (only.includes("pr-stats")) await prStatsShots({ shoot });
+  if (only.includes("pr-stats-off")) await prStatsOffShots({ shoot });
   if (only.includes("archive")) await archiveShots({ shoot, call });
   if (only.includes("put-in-chat")) await putInChatShots({ shoot, seeded, call, billing });
   if (only.includes("sending")) await sendingShots({ shoot, seeded, call, home });
@@ -1792,8 +1911,9 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       { state: "two-qs", ...pick("ny-two"), wait: "Limit scope" },
       { state: "q-no-brief", ...pick("ny-lone"), wait: "Missing keys" },
       { state: "just-answered", ...pick("ny-answered"), wait: null },
-      { state: "tasks", ...pick("ny-tasks"), wait: "Wire alert thresholds", homeToo: false },
+      { state: "tasks", ...pick("ny-tasks"), wait: "Agent's tasks", homeToo: false },
       { state: "person", ...pick("ny-person"), wait: "#262 waits on its reviewer" },
+      { state: "task-action", ...pick("ny-action"), wait: "A task waits on this. The agent works on the rest" },
     ];
     const TALL = { width: DESKTOP.width, height: 1300 };
     for (const s of states) for (const theme of ["light", "dark"]) {
@@ -1804,9 +1924,104 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
         await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
         await settleOn(page);
       });
+      // due-by-fact: phones read a workspace's Tasks in the larger view (as tasks-phone): what moves each task.
+      if (s.state === "tasks") await shoot(`ny-tasks-phone-${theme}`, PHONE, theme, async page => {
+        await openChat(page, s.title, s.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+        await page.getByRole("button", { name: /^Agent's tasks: .*Show them$/ }).last().click();
+        const due = page.getByText(/^Due since /).last();
+        await due.waitFor({ timeout: 60000 });
+        await page.setViewportSize(PHONE);
+        await due.evaluate(el => el.scrollIntoView({ block: "center" }));
+        if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("ny-tasks-phone scrolls sideways");
+      });
       if (s.homeToo === false) continue;
       await shoot(`ny-${s.state}-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await (await homeRow(page, s.title)).click(); await settleOn(page); });
       await shoot(`ny-${s.state}-home-phone-${theme}`, PHONE, theme, async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, s.title)).click(); await settleOn(page); });
+    }
+  }
+  if (only.includes("older-briefs")) {
+    // briefs-from-closed-agents: four days on, after a daemon restart closed every agent (Paseo reads unloaded agents as
+    // closed). A closed agent's flag that asks nothing leaves Needs you; its real ask folds into Older, out of the
+    // count; one whose workspace still has a live item (an open question) stays. Home desktop and phone, light and
+    // dark, Older folded and opened.
+    daemon.kill("SIGTERM");
+    for (let i = 0; i < 100 && daemon.exitCode === null; i++) await new Promise(r => setTimeout(r, 100));
+    if (daemon.exitCode === null) daemon.kill("SIGKILL");
+    await respawnDaemon();
+    for (let i = 0; ; i++) { try { await call("follow.inbox-list", {}); break; } catch { if (i > 240) throw new Error("the worker did not come back"); await new Promise(r => setTimeout(r, 250)); } }
+    const LATER = BASE + VIEW + 4 * 24 * 3600_000;
+    await setDaemonClock(LATER);
+    // Home's model runs in the page, on the page's clock: four days on there too.
+    const home = async page => { await page.clock.setFixedTime(LATER); await openHome(page); };
+    const older = page => page.getByRole("button", { name: /^Older, \d+\. (Expand|Collapse)$/ }).first();
+    for (const theme of ["light", "dark"]) {
+      await shoot(`older-briefs-home-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).waitFor({ timeout: 60_000 }); });
+      await shoot(`older-briefs-home-open-${theme}`, DESKTOP, theme, async page => { await home(page); await older(page).click(); await page.getByRole("button", { name: /^Older, \d+\. Collapse$/ }).first().waitFor(); });
+      await shoot(`older-briefs-home-phone-${theme}`, PHONE, theme, async page => { await home(page); await page.setViewportSize(PHONE); await older(page).waitFor(); await page.waitForTimeout(500); await older(page).click(); await page.getByText("Closed agents with nothing new").first().scrollIntoViewIfNeeded(); });
+    }
+  }
+  if (only.includes("tasks-view")) {
+    // tasks-are-the-agent-s: Agent's tasks folded to one line ("6 open · 2 due · 1 stale", stale alone amber), then
+    // open (stale and due first, each with the agent's note; a row says what moves it), a row opened in place, the
+    // phone's larger view, and the action card (ask first; Tasks says "In Needs you", Activity "Action · …").
+    // Stale needs two nudges the agent didn't answer: the hook's receipt says so, and the worker reads it at start.
+    const usage = seeded.workspaces.find(w => w.key === "ny-tasks");
+    const { workspace } = await call("follow.get", { workspaceId: usage.workspaceId });
+    const billing = workspace.obligations.find(o => o.title === "Confirm the usage export with billing");
+    const nudged = { key: `recheck:${billing.recheckAt}`, revision: billing.revision, count: 2, at: new Date(BASE).toISOString() };
+    await fs.mkdir(join(home, "plugin-data", "follow-up", "hook-state"), { recursive: true });
+    await fs.writeFile(join(home, "plugin-data", "follow-up", "hook-state", `task-nudges-${usage.workspaceId}.json`), JSON.stringify({ [billing.id]: nudged }));
+    daemon.kill("SIGTERM");
+    for (let i = 0; i < 100 && daemon.exitCode === null; i++) await new Promise(r => setTimeout(r, 100));
+    if (daemon.exitCode === null) daemon.kill("SIGKILL");
+    await respawnDaemon();
+    for (let i = 0; ; i++) { try { await call("follow.inbox-list", {}); break; } catch { if (i > 240) throw new Error("the worker did not come back"); await new Promise(r => setTimeout(r, 250)); } }
+    for (let i = 0; ; i++) {
+      const read = await call("follow.get", { workspaceId: usage.workspaceId }).catch(() => null);
+      if (read?.workspace?.obligations.find(o => o.id === billing.id)?.nudged?.count === 2) break;
+      if (i > 240) throw new Error("the worker didn't read the nudge receipt"); await new Promise(r => setTimeout(r, 250));
+    }
+    const spec = NEEDS_YOU_STATES.find(w => w.key === "ny-tasks");
+    const action = NEEDS_YOU_STATES.find(w => w.key === "ny-action");
+    const TALL = { width: DESKTOP.width, height: 1300 };
+    const fold = page => page.getByRole("button", { name: /^Agent's tasks: / }).filter({ visible: true }).last();
+    const panel = async page => {
+      await page.setViewportSize(TALL);
+      await openChat(page, spec.title, spec.prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+      await fold(page).waitFor({ timeout: 60_000 });
+    };
+    const expand = async page => { await fold(page).click(); await page.getByText(/^Stale/).filter({ visible: true }).first().waitFor({ timeout: 30_000 }); };
+    for (const theme of ["light", "dark"]) {
+      await shoot(`tv-panel-${theme}`, TALL, theme, panel);
+      await shoot(`tv-panel-open-${theme}`, TALL, theme, async page => { await panel(page); await expand(page); });
+      await shoot(`tv-row-open-${theme}`, TALL, theme, async page => {
+        await panel(page); await expand(page);
+        await page.getByRole("button", { name: /^Task: Backfill alert history/ }).first().click();
+        await page.getByText("Send on a schedule…").filter({ visible: true }).first().waitFor();
+      });
+      await shoot(`tv-phone-${theme}`, PHONE, theme, async page => {
+        await openChat(page, spec.title, spec.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByRole("button", { name: "Open the larger view", exact: true }).last().click();
+        await fold(page).waitFor({ timeout: 60_000 });
+        await page.setViewportSize(PHONE);
+        await fold(page).click();
+        const stale = page.getByText(/^Stale/).filter({ visible: true }).last();
+        await stale.waitFor({ timeout: 30_000 });
+        await fold(page).evaluate(el => el.scrollIntoView({ block: "start" }));
+        if (await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("tv-phone scrolls sideways");
+      });
+      await shoot(`tv-action-panel-${theme}`, TALL, theme, async page => {
+        await page.setViewportSize(TALL);
+        await openChat(page, action.title, action.prompt);
+        await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+        await page.getByText("A task waits on this. The agent works on the rest").filter({ visible: true }).first().waitFor({ timeout: 60_000 });
+        await fold(page).click();
+        await page.getByText("In Needs you").filter({ visible: true }).first().waitFor();
+      });
     }
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
@@ -1998,6 +2213,182 @@ async function archiveShots({ shoot, call }) {
   }, opts());
 }
 
+/**
+ * pr-stats-settings only: stats.json before the daemon starts, one repository in each state Settings words differently.
+ * Every repository that's on synced "tomorrow" on the shots' clock, so none is due and no sync touches the fixture.
+ */
+async function seedPrStatsSettings(dir) {
+  const s = ms => Math.floor(ms / 1000), day = 86_400_000, later = s(BASE + day);
+  const status = o => ({ records: 0, coveredTo: null, backfillDone: true, lastSyncAt: later, lastCost: 1, waiting: null, error: null, cappedTo: null, ...o });
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(join(dir, "stats.json"), JSON.stringify({ repos: {
+    "example/app": { enable_stats: true, windowDays: 90, team: { kind: "people", logins: ["dana", "ravi", "mei", "tomas"] }, ignore: ["deploy-robot", "release-*"], enabledAt: s(BASE - 20 * day), estimate: { prs: 3250, points: 143, at: s(BASE - 20 * day) },
+      status: status({ records: 3250, coveredTo: s(BASE - 90 * day) }) },
+    "example/web": { enable_stats: true, windowDays: 180, team: { kind: "everyone" }, ignore: [], enabledAt: s(BASE - day), estimate: { prs: 4100, points: 181, at: s(BASE - day) },
+      status: status({ records: 1240, coveredTo: s(BASE - 40 * day), backfillDone: false, waiting: { reason: "budget", until: s(BASE + 3600_000) } }) },
+    "example/api": { enable_stats: false, windowDays: 90, team: { kind: "everyone" }, ignore: [], enabledAt: s(BASE - 60 * day), estimate: null,
+      status: status({ records: 812, coveredTo: s(BASE - 90 * day), lastSyncAt: s(BASE - 12 * day) }) },
+    "example/docs": { enable_stats: true, windowDays: 30, team: { kind: "github", team: "example/writers" }, ignore: [], enabledAt: s(BASE - 3 * day), estimate: { prs: 96, points: 5, at: s(BASE - 3 * day) },
+      status: status({ records: 96, coveredTo: s(BASE - 30 * day), error: { message: "not found or no access", status: 404, at: s(BASE - 3600_000) }, teamMembers: { team: "example/writers", logins: null, error: "not visible to this token", at: s(BASE - 3600_000) } }) },
+  }, slice: 0.05, clock: "calendar", enable_stack_aware: true, // A Friday–Saturday-weekend zone, no saved schedule: the Clock row says Sun–Thu.
+    timeZone: "Africa/Cairo", hours: null, weekStart: null }));
+}
+/**
+ * pr-stats only: four fictional repositories' records and stats.json in a Friday–Saturday-weekend zone (Africa/Cairo),
+ * so This week starts on Sunday. example/app: 8 people over 90 days; example/web: its first read, two days in, waiting
+ * on GitHub's limit; example/docs: GitHub refused it and nothing happened this week; example/solo: one person. Every
+ * repository synced two minutes before the browser's time, so nothing is due while the shots run.
+ */
+async function seedPrStats(dir) {
+  const s = ms => Math.floor(ms / 1000), H = 3600, D = 86_400, now = s(BASE + VIEW), synced = now - 120;
+  const PEOPLE = ["alice", "bob", "carol", "dan", "erin", "frank", "grace", "heidi"];
+  const WEIGHT = [7, 5, 4, 3, 2, 2, 1, 1];
+  const WAIT_H = [2.5, 9, 20, 1.5, 6, 14, 4, 3];
+  const TITLES = ["Add audit events for role changes", "Split the roles migration", "Rename the permissions table", "Add a role column to members", "Move invoice exports to the background queue",
+    "Cache the plan lookup", "Fix the empty state on invoices", "Retry webhook deliveries once", "Show the billing contact in settings", "Drop the old export endpoint", "Batch the usage writes", "Tidy the onboarding copy"];
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pick = () => { let r = rnd() * WEIGHT.reduce((a, b) => a + b, 0); for (let i = 0; i < WEIGHT.length; i++) { r -= WEIGHT[i]; if (r < 0) return i; } return 0; };
+  const make = ({ count, from, to, first, people = PEOPLE.length, reviews = true }) => {
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      const ai = Math.min(pick(), people - 1), a = PEOPLE[ai];
+      const c = Math.round(to - (k + rnd() * 0.6) * (to - from) / count);
+      const ask = c + 600;
+      const ri = reviews ? (ai + 1 + Math.floor(rnd() * (PEOPLE.length - 1))) % PEOPLE.length : -1;
+      const wait = Math.round(WAIT_H[ai] * H * (0.4 + rnd() * 1.3));
+      const reviewed = reviews && ask + wait < now - 300;
+      const at = reviewed ? ask + wait : null;
+      const merged = at && at + 4 * H < now && rnd() < 0.85 ? at + Math.round((2 + rnd() * 20) * H) : null;
+      const m = merged && merged < now ? merged : null;
+      const n = first + count - k;
+      const stacked = k > 0 && k % 9 === 0;
+      const rv = at ? [[PEOPLE[ri], "A", at]] : [];
+      const fc = [];
+      out.push({ n, a, t: TITLES[n % TITLES.length], c, u: Math.min(now - 60, Math.max(c, at ?? c, m ?? c)), r: c, k: ask, m, x: m, s: m ? "M" : "O", d: false,
+        add: Math.round(20 + rnd() * 400), del: Math.round(rnd() * 120), f: 1 + Math.floor(rnd() * 9), b: stacked ? `${a}/change-${n + 1}` : "main", h: `${a}/change-${n}`,
+        rq: ri >= 0 ? [[PEOPLE[ri], ask]] : [], rv, fc });
+    }
+    return out;
+  };
+  const meta = (repo, o = {}) => ({ repo, defaultBranch: "main", highWater: synced, incremental: null, backfill: { after: null, done: true, coveredTo: now - 90 * D }, page: 25, windowDays: 90, pendingReviews: [],
+    lastSyncAt: synced, lastCost: 1, lastPages: 1, waiting: null, error: null, cappedTo: null, ...o });
+  const repos = {
+    "example/app": { records: make({ count: 720, from: now - 90 * D, to: now - 1800, first: 1000 }), meta: meta("example/app") },
+    "example/web": { records: make({ count: 40, from: now - 2 * D, to: now - 3600, first: 4000 }), meta: meta("example/web", { backfill: { after: "cursor-70", done: false, coveredTo: now - 2 * D }, waiting: { reason: "budget", until: now + 40 * 60 } }) },
+    "example/docs": { records: make({ count: 14, from: now - 60 * D, to: now - 40 * D, first: 200 }), meta: meta("example/docs", { error: { message: "not found or no access", status: 404, at: now - H } }) },
+    "example/solo": { records: make({ count: 6, from: now - 3 * D, to: now - 2 * H, first: 30, people: 1, reviews: false }), meta: meta("example/solo") },
+  };
+  await fs.mkdir(join(dir, "stats", "example"), { recursive: true });
+  for (const [repo, { records, meta: m }] of Object.entries(repos)) await fs.writeFile(join(dir, "stats", `${repo}.json`), JSON.stringify({ v: 1, meta: m, records }));
+  const status = (repo, o = {}) => { const { records, meta: m } = repos[repo]; return { records: records.length, coveredTo: m.backfill.coveredTo, backfillDone: m.backfill.done, lastSyncAt: m.lastSyncAt, lastCost: 1, waiting: m.waiting, error: m.error, cappedTo: null, ...o }; };
+  const on = (repo, o = {}) => ({ enable_stats: true, windowDays: 90, team: { kind: "everyone" }, ignore: [], enabledAt: now - 30 * D, estimate: null, status: status(repo), ...o });
+  await fs.writeFile(join(dir, "stats.json"), JSON.stringify({ repos: {
+    "example/app": on("example/app"), "example/web": on("example/web", { estimate: { prs: 280, points: 13, at: now - 2 * D } }),
+    "example/docs": on("example/docs"), "example/solo": on("example/solo"),
+  }, slice: 0.05, clock: "calendar", enable_stack_aware: true, timeZone: "Africa/Cairo", hours: null, weekStart: null }));
+}
+/** pr-stats only: the page from Home's icon (and ⌘K), its sort, a person, and each state, both sizes and themes. */
+async function prStatsShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1100 }, PHONE_TALL = { width: PHONE.width, height: 1500 };
+  const healthy = async (page, vp) => {
+    const body = await page.evaluate(() => document.body.innerText);
+    const bad = body.match(/Something went wrong|Invalid input|Couldn't read PR stats|expected/i);
+    if (bad) throw new Error(`pr-stats: the page shows "${bad[0]}"`);
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats: the phone page scrolls sideways");
+    return body;
+  };
+  const open = async (page, vp) => {
+    await page.setViewportSize(vp); await openHome(page);
+    await page.getByRole("button", { name: "PR stats", exact: true }).filter({ visible: true }).first().click({ timeout: 30_000 });
+    await page.getByText("alice", { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    const body = await healthy(page, vp);
+    // Africa/Cairo's week (Friday–Saturday weekend, nothing saved) starts on Sunday: invariant 75.
+    if (!body.includes("Sun, Mar 1 – now")) throw new Error("pr-stats: This week doesn't start on the zone's Sunday");
+  };
+  const repo = async (page, vp, name, wait) => {
+    await open(page, vp);
+    await page.getByRole("button", { name: /^Repository example\/app, change/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name }).filter({ visible: true }).last().click();
+    await page.getByText(wait).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    await healthy(page, vp);
+  };
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", TALL], ["phone", PHONE_TALL]]) {
+    const phone = size === "phone";
+    await shoot(`pst-board-${size}-${theme}`, vp, theme, async page => { await open(page, vp); });
+    await shoot(`pst-sort-wait-${size}-${theme}`, vp, theme, async page => {
+      await open(page, vp);
+      if (phone) { await page.getByRole("button", { name: /^Sorted by PRs opened/ }).filter({ visible: true }).first().click(); await page.getByRole("radio", { name: /Median wait for a first review/ }).filter({ visible: true }).last().click(); }
+      else await page.getByRole("button", { name: /^Sort by Median wait for a first review/ }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(400); await healthy(page, vp);
+    });
+    await shoot(`pst-person-${size}-${theme}`, phone ? PHONE : DESKTOP, theme, async page => {
+      await open(page, vp);
+      await page.getByRole("button", { name: /^alice: / }).filter({ visible: true }).first().click();
+      await page.getByText("Opened by alice").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+      await page.setViewportSize(phone ? PHONE : DESKTOP); await page.waitForTimeout(400); await healthy(page, phone ? PHONE : DESKTOP);
+    });
+    await shoot(`pst-reading-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/web/, /Partly read/); });
+    await shoot(`pst-refused-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/docs/, /GitHub returned 404/); await page.getByText(/No PRs opened or reviewed this week/).first().waitFor(); });
+    await shoot(`pst-solo-${size}-${theme}`, vp, theme, async page => { await repo(page, vp, /^example\/solo/, /Opened by alice/); });
+  }
+}
+/** pr-stats-off only (no stats seeded): the page from ⌘K before any repository is on; Home shows no icon. */
+async function prStatsOffShots({ shoot }) {
+  // Desktop only: with nothing on, a phone has no way in (no command palette, no Home icon, no Settings link). On a
+  // phone the same section is Settings' PR statistics, rendered by pr-stats-settings.
+  for (const theme of ["light", "dark"]) {
+    await shoot(`pst-off-desktop-${theme}`, DESKTOP, theme, async page => {
+      await page.setViewportSize(DESKTOP); await openHome(page);
+      if (await page.getByRole("button", { name: "PR stats", exact: true }).filter({ visible: true }).count()) throw new Error("pr-stats-off: Home shows the PR stats icon with nothing on");
+      await page.keyboard.press("Control+k"); await page.waitForTimeout(400);
+      await page.keyboard.type("Follow-up: PR stats"); await page.waitForTimeout(500); await page.keyboard.press("Enter");
+      await page.getByText(/See who opens, merges/).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    });
+  }
+}
+/** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
+async function prStatsSettingsShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1400 }, PHONE_TALL = { width: PHONE.width, height: 1800 };
+  const section = async (page, vp) => {
+    await page.setViewportSize(vp);
+    await openSettingsAt(page, "following", vp);
+    const heading = page.getByText("PR statistics", { exact: true }).filter({ visible: true }).first();
+    await heading.waitFor({ timeout: 30_000 });
+    await page.getByText("example/docs", { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    await heading.evaluate(el => el.scrollIntoView({ block: "start" }));
+    const body = await page.evaluate(() => document.body.innerText);
+    const bad = body.match(/Something went wrong|Invalid input|Couldn't load PR statistics/i);
+    if (bad) throw new Error(`pr-stats-settings: the page shows "${bad[0]}"`);
+    // No saved schedule in a Friday–Saturday-weekend zone: the Clock row names the zone's own week.
+    if (!body.includes("Sun–Thu 9–18, Africa/Cairo")) throw new Error("pr-stats-settings: the Clock row doesn't say the zone's week (Sun–Thu 9–18, Africa/Cairo)");
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats-settings: the phone page scrolls sideways");
+  };
+  for (const theme of ["light", "dark"]) for (const [size, vp] of [["desktop", TALL], ["phone", PHONE_TALL]]) {
+    await shoot(`pss-section-${size}-${theme}`, vp, theme, async page => { await section(page, vp); });
+    await shoot(`pss-options-${size}-${theme}`, vp, theme, async page => {
+      await section(page, vp);
+      const fold = page.getByRole("button", { name: /^example\/app options, 90 days · 4 people/ }).filter({ visible: true }).first();
+      await fold.click(); await page.getByText("History", { exact: true }).filter({ visible: true }).first().waitFor();
+      // Nothing edited yet: both Saves are off (a Save that saves nothing is a dead invitation).
+      const live = await page.getByRole("button", { name: "Save", exact: true }).filter({ visible: true }).evaluateAll(els => els.filter(e => e.getAttribute("aria-disabled") !== "true" && !e.hasAttribute("disabled")).length);
+      if (live) throw new Error(`pr-stats-settings: ${live} Save button(s) enabled before any edit`);
+      await fold.evaluate(el => el.scrollIntoView({ block: "start" }));
+    });
+    await shoot(`pss-clock-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
+      await section(page, vp);
+      await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
+      await page.getByText("All repositories", { exact: true }).filter({ visible: true }).first().evaluate(el => el.scrollIntoView({ block: "center" }));
+    });
+    await shoot(`pss-optin-${size}-${theme}`, size === "phone" ? PHONE : DESKTOP, theme, async page => {
+      await section(page, vp);
+      await page.getByLabel("Another repository, owner/repo").filter({ visible: true }).first().fill("example/mobile");
+      await page.getByRole("button", { name: /^Add/ }).filter({ visible: true }).first().click();
+      await page.getByText("Turn on PR stats for example/mobile?").filter({ visible: true }).first().waitFor();
+      await page.getByText(/1,840/).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+      await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
+    });
+  }
+}
 async function prScaleShots({ shoot }) {
   const spec = PR_SCALE_STATES[0];
   const TALL = { width: DESKTOP.width, height: 1100 };
@@ -2343,6 +2734,204 @@ async function homeKeysShots({ shoot, out }) {
   if (checks.length) await fs.writeFile(join(out, "home-keys.json"), JSON.stringify(checks, null, 2));
 }
 
+/**
+ * New (`--only new`, docs/dispatch.md#the-dialog): every state of the dialog, desktop and phone, light and dark, from
+ * the fake Linear list (newIssues); the four ways in (Home's + New, ⌘K, the sidebar row, the key in a browser tab and
+ * in the desktop app); the Display setting; Home's row with Undo. Dispatches run on this harness daemon only, into
+ * Git projects of its own. Writes new.json with every check.
+ */
+async function newShots({ shoot, call, out, home, billing }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`new: ${name}`); log(`new check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const linear = mode => fs.writeFile(join(home, "linear-fixture.json.mode"), mode);
+  // New's default agent copies the Overseer's (Settings → Agents → New work, "Same as the Overseer"): the fixture provider here.
+  await call("follow.set-agent-setting", { role: "overseer", entry: { provider: "followup-fixture", model: "fixture" } });
+  const settings = await call("follow.dispatch-settings", {});
+  const project = name => settings.projects.find(p => p.name === name || p.name.endsWith(`/${name}`));
+  if (project("web")) await call("follow.set-dispatch-settings", { rules: { WEB: project("web").id } });
+  // An action whose agent can't start: the agent-failure state (the workspace is archived again).
+  await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { id: "elsewhere", name: "Try elsewhere", icon: "play", description: "On a provider this host lacks",
+    instructions: "Work on {title}.", agent: { provider: "no-such-provider" }, workspace: "worktree", branch: "title", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } } });
+
+  const FIELD = "Paste a link or describe the task";
+  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  const row = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
+  // A preview is up: its instructions toggle, or (project still to pick) the line standing in for the fields.
+  const preview = page => dialog(page).getByText(/^((Show|Hide) instructions|From, branch and agent fill in once you pick a project\.)$/).filter({ visible: true }).first().waitFor();
+  const narrow = async (page, vp) => { if (vp.width < 768) { await page.setViewportSize(vp); await page.waitForTimeout(300); } };
+  const openFromHome = async (page, vp, { list = true } = {}) => {
+    await openHome(page); await narrow(page, vp);
+    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await dialog(page).waitFor();
+    if (list) await row(page, /^APP-151 Dunning/).waitFor();
+  };
+  const type = async (page, text) => { const f = dialog(page).getByRole("textbox", { name: FIELD }).first(); await f.fill(text); await page.waitForTimeout(250); };
+  /** Phones: a row opens the preview screen; desktop: it selects in place. */
+  const pick = async (page, name) => { await row(page, name).click(); await preview(page); };
+  const primary = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
+  // The harness's Paseo makes a worktree in 30 s or more (0.15: slower each time), so a dispatch gets three minutes.
+  const DISPATCH_WAIT = 180_000;
+  const startWords = async (page, vp, words, action = /^Create PR/) => {
+    // A worktree-failure shot saves a base that doesn't exist; a shot that died before clearing it must not fail the rest.
+    if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+    await openFromHome(page, vp); await type(page, words);
+    if (vp.width < 768) await row(page, /^Start from your words/).click();
+    await preview(page);
+    // Words with no last project ask which project (two projects here): pick app, as a developer would.
+    // (Once app has been used, words guess it and there's nothing to pick.)
+    const app = dialog(page).getByRole("button", { name: "Start in app" });
+    if (await app.count()) await app.first().click();
+    await primary(page, action).waitFor();
+    return action;
+  };
+
+  // Linear down and Linear missing first: a failed list is never cached, an answered one is (for the worker's minute).
+  for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await linear("error");
+    await shoot(`new-fail-linear-${device}-${theme}`, vp, theme, async page => { await openFromHome(page, vp, { list: false }); await dialog(page).getByText("Couldn't read Linear").waitFor(); });
+    await linear("missing");
+    await shoot(`new-no-linear-${device}-${theme}`, vp, theme, async page => { await openFromHome(page, vp, { list: false }); await dialog(page).getByText(/once Linear is connected/).waitFor(); });
+  }
+  await linear("ok");
+
+  let n = 0;
+  for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    const name = state => `new-${state}-${device}-${theme}`;
+    const phone = vp.width < 768;
+    await shoot(name("issues"), vp, theme, async page => {
+      await openFromHome(page, vp);
+      if (!phone) { await preview(page); check(`${device} ${theme}: the first issue that can start is preselected (not one with a live workspace)`, await dialog(page).getByText("Invoice PDF rounds VAT wrong for CHF totals").count() >= 2); }
+      check(`${device} ${theme}: an unruled team's row asks which project`, await dialog(page).getByText("→ which project?").count() > 0);
+    });
+    await shoot(name("search"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "webhook"); await row(page, /^Search all of Linear/).waitFor(); });
+    await shoot(name("url"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://linear.app/example/issue/WEB-31/invoice-pdf-rounds-vat");
+      check(`${device} ${theme}: a pasted key in the list selects that row`, await dialog(page).getByText("From your link").count() > 0);
+      if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
+    await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
+    await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
+    await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^APP-142 /);
+      check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
+    await shoot(name("ambiguous"), vp, theme, async page => { await openFromHome(page, vp); await pick(page, /^OPS-12 /); await dialog(page).getByText("Which project for OPS?").first().waitFor();
+      check(`${device} ${theme}: ambiguous blocks every action`, await dialog(page).getByText("Pick a project first; the actions start there.").count() > 0); });
+    await shoot(name("instructions"), vp, theme, async page => { await openFromHome(page, vp); if (phone) await pick(page, /^WEB-31 /); else await preview(page);
+      if (phone) { const show = dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first(); await show.evaluate(el => el.scrollIntoView({ block: "center" })); await show.click(); } else await page.keyboard.press("Control+i");
+      await dialog(page).getByText("Follow-up then adds its usual workspace instructions.").waitFor(); });
+    // A dispatch: its steps, then created (Open workspace, Undo), from the developer's words (a new workspace each time).
+    await shoot(name("created"), vp, theme, async page => {
+      const action = await startWords(page, vp, `Add a CSV export to the audit log page (${++n}).`);
+      await primary(page, action).click();
+      await dialog(page).getByText(/^(Starting|Started) /).first().waitFor();
+      await shoot.now(name("dispatching"), page, theme);
+      await dialog(page).getByText(/^Started /).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: created offers Undo`, await primary(page, /^Undo/).count() > 0);
+    });
+    await shoot(name("fail-worktree"), vp, theme, async page => {
+      const action = await startWords(page, vp, `Fix the export button's spacing (${++n}).`);
+      { const b = dialog(page).getByRole("button", { name: /^Base branch main/ }).filter({ visible: true }).first(); await b.scrollIntoViewIfNeeded(); await b.click(); }
+      const base = dialog(page).getByRole("textbox", { name: "Base branch" }); await base.fill("release/no-such-branch"); await base.press("Enter");
+      await dialog(page).getByRole("button", { name: /^Base branch release\/no-such-branch/ }).waitFor();
+      await primary(page, action).click();
+      await dialog(page).getByText(/didn't start$/).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: a worktree failure says nothing was created`, await dialog(page).getByText("Nothing was created.").count() > 0);
+      if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+    });
+    await shoot(name("fail-agent"), vp, theme, async page => {
+      await startWords(page, vp, `Tidy the audit log filters (${++n}).`);
+      await primary(page, /^More/).click(); await dialog(page).getByRole("button", { name: "Try elsewhere" }).click();
+      await dialog(page).getByText(/didn't start$/).waitFor({ timeout: DISPATCH_WAIT });
+      check(`${device} ${theme}: an agent failure archives the workspace again`, await dialog(page).getByText(/archived again/).count() > 0);
+    });
+    // Home's row for the dispatches just made: Undo inside the window.
+    await shoot(name("home-row"), vp, theme, async page => { await openHome(page); await narrow(page, vp); await page.getByRole("button", { name: /^Undo / }).filter({ visible: true }).first().waitFor(); });
+  }
+
+  // The ways in (desktop): Home's + New, ⌘K, the sidebar row, the key in a browser tab (Ctrl+Shift+O) and in the
+  // desktop app (Ctrl+Shift+N; Chrome keeps Ctrl+Shift+N for incognito, so only the app gets it).
+  for (const theme of ["light", "dark"]) {
+    await shoot(`new-entry-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("button", { name: /^New \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor(); });
+    await shoot(`new-entry-cmdk-${theme}`, DESKTOP, theme, async page => {
+      await openHome(page); await page.keyboard.press("Control+k"); await page.keyboard.type("Follow-up: New");
+      const item = page.getByText("Follow-up: New… (Ctrl+Shift+O)", { exact: true }).filter({ visible: true }).first();
+      await item.waitFor(); await shoot.now(`new-cmdk-row-${theme}`, page, theme);
+      await item.click(); await dialog(page).waitFor();
+    });
+    await shoot(`new-entry-sidebar-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const side = page.getByRole("button", { name: "New", exact: true }).filter({ visible: true }).first();
+      await side.waitFor(); await side.click(); await dialog(page).waitFor();
+      check(`${theme}: the sidebar row opens New`, true);
+    });
+    await shoot(`new-entry-key-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const composer = page.locator("textarea").filter({ visible: true }).last(); await composer.click(); await composer.fill("draft");
+      await page.keyboard.press("Control+Shift+N"); await page.waitForTimeout(800);
+      check(`${theme}: Ctrl+Shift+N does nothing in a browser tab`, await dialog(page).count() === 0);
+      await page.keyboard.press("Control+Shift+O"); await dialog(page).waitFor();
+      check(`${theme}: Ctrl+Shift+O opens New from a chat's composer in a browser tab`, true);
+      await page.keyboard.press("Control+Shift+O"); await page.waitForTimeout(500);
+      check(`${theme}: the key again closes New`, await dialog(page).count() === 0);
+      await page.keyboard.press("Control+Shift+O"); await dialog(page).waitFor();
+    });
+    await shoot(`new-entry-key-app-${theme}`, DESKTOP, theme, async page => {
+      await openChat(page, billing.title, billing.prompt);
+      const composer = page.locator("textarea").filter({ visible: true }).last(); await composer.click();
+      await page.keyboard.press("Control+Shift+N"); await dialog(page).waitFor();
+      check(`${theme}: Ctrl+Shift+N opens New in the desktop app`, true);
+    }, { init: () => { const ua = navigator.userAgent; Object.defineProperty(navigator, "userAgent", { get: () => `${ua} Electron/38.0.0` }); } });
+    await shoot(`new-settings-${theme}`, DESKTOP, theme, async page => {
+      await openSettingsAt(page, "display", DESKTOP);
+      const r = page.getByText("New from anywhere", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+    });
+    // Settings → New work, whole (a tall window, so every section is in one frame), and Agents → New work.
+    for (const [device, vp] of [["desktop", { width: 1440, height: 1700 }], ["phone", { width: 390, height: 2300 }]]) {
+      await shoot(`new-work-settings-${device}-${theme}`, vp, theme, async page => {
+        if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: "develop" } });
+        // Frames open at desktop size: size the window first (tall, so every section is in one frame).
+        await page.setViewportSize(vp);
+        await openSettingsAt(page, "new", vp);
+        await page.getByText("Where work goes", { exact: true }).filter({ visible: true }).first().waitFor();
+        await page.getByText("Create PR", { exact: true }).filter({ visible: true }).first().waitFor();
+        check(`${theme} ${device}: Settings → New work lists the actions with their keys`, await page.getByText("⌥↵", { exact: true }).filter({ visible: true }).count() > 0);
+        check(`${theme} ${device}: an added action says so`, await page.getByText("Try elsewhere", { exact: true }).filter({ visible: true }).count() > 0 && await page.getByText("Added", { exact: true }).filter({ visible: true }).count() > 0);
+        // A name is never cut: Add a rule's "Pick a project" shows whole (it once rendered "Pi…" squeezed beside the key).
+        const pick = page.getByText("Pick a project", { exact: true }).filter({ visible: true }).first();
+        check(`${theme} ${device}: Add a rule's project select shows "Pick a project" whole`, await pick.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().width >= 60).catch(() => false));
+        check(`${theme} ${device}: WEB's rule is listed`, await page.getByText("WEB issues", { exact: true }).filter({ visible: true }).count() > 0);
+        check(`${theme} ${device}: the saved base shows`, await page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first().inputValue().catch(() => "") === "develop");
+        await page.evaluate(() => window.scrollTo(0, 0));
+      });
+      // The states a resting frame doesn't show: an edited built-in (Reset to built-in), Delete asked in place, a rule
+      // being added (both fields), a base edited but not saved (Save).
+      await shoot(`new-work-states-${device}-${theme}`, vp, theme, async page => {
+        const pr = (await call("follow.dispatch-actions", {})).actions.find(a => a.id === "pr");
+        const { builtin: _b, by: _by, ...edit } = pr;
+        await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { ...edit, instructions: pr.instructions + "\nRun the linter before the PR." } } });
+        await page.setViewportSize(vp);
+        await openSettingsAt(page, "new", vp);
+        await page.getByText("Reset to built-in", { exact: true }).filter({ visible: true }).first().waitFor();
+        check(`${theme} ${device}: an edited built-in says Edited and offers Reset`, await page.getByText("Edited", { exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("button", { name: "Delete", exact: true }).filter({ visible: true }).first().click();
+        check(`${theme} ${device}: Delete asks in place`, await page.getByRole("button", { name: "Keep it", exact: true }).filter({ visible: true }).count() > 0);
+        await page.getByRole("textbox", { name: "Team key" }).filter({ visible: true }).first().fill("ops");
+        const base = page.getByRole("textbox", { name: /^Base for .*app$/ }).filter({ visible: true }).first();
+        await base.fill("release");
+        check(`${theme} ${device}: an edited base offers Save`, await page.getByRole("button", { name: /^Save/ }).filter({ visible: true }).count() > 0);
+        await page.evaluate(() => window.scrollTo(0, 0));
+      });
+      await call("follow.set-dispatch-actions", { change: { op: "reset", id: "pr" } });
+      await shoot(`new-work-agent-${device}-${theme}`, device === "phone" ? PHONE : DESKTOP, theme, async page => {
+        await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
+        await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);
+        // The row's title, not the tab of the same name.
+        const r = page.getByText("Starts the work you begin from New", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+        check(`${theme} ${device}: Agents → New work copies the Overseer by default`, await page.getByText("Same as the Overseer").filter({ visible: true }).count() > 0);
+      });
+    }
+    if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+  }
+  await fs.writeFile(join(out, "new.json"), JSON.stringify({ checks }, null, 2));
+}
+
 async function shortcutShots({ shoot, seeded, call, out, billing }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`shortcut: ${name}`); log(`shortcut check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
@@ -2520,7 +3109,7 @@ async function mergeClickShots({ shoot, billing }) {
   }
   // Held: Billing's #143 is approved but sits on #142, whose checks fail, so it has no Merge row; the Pull requests card
   // and Home's detail pane say what holds it, both numbers linked.
-  const held = async page => { const line = page.getByText("#143 approved · waits on #142 (checks failing)").filter({ visible: true }).first(); await line.waitFor({ timeout: 60_000 }); await line.scrollIntoViewIfNeeded(); };
+  const held = async page => { const line = page.getByText("#143 approved · waits on #142 (checks failed)").filter({ visible: true }).first(); await line.waitFor({ timeout: 60_000 }); await line.scrollIntoViewIfNeeded(); };
   await shoot("mc-held-panel-light", TALL, "light", async page => { await page.setViewportSize(TALL); await openChat(page, billing.title, billing.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); await held(page); });
   await shoot("mc-held-home-phone-dark", PHONE, "dark", async page => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, billing.title)).click(); await held(page); });
   // The click: "Merging…" while the fake gh runs, then the toast with the row gone. A submitted merge hides its row
@@ -2919,6 +3508,94 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * "Follow-up: settings" reopens the category last shown). Run on each host: HARNESS_PASEO=0.15.4, 0.16, and 0.17 via
  * PATH. Writes settings-tabs.json; any failed check fails the run.
  */
+/**
+ * Settings → Morning brief (docs/morning-brief.md#settings), every state, desktop and phone, light and dark: the
+ * Sources card (all read; one failed with Retry, one waiting for a sign-in, mail off until turned on), every plan state
+ * (found, the channel picker open, not found, a failed search, a pasted link, off, nothing picked) and the Linear queue
+ * section. The fake mcpproxy's servers are fictional and found by their tools (sources-fixture.json changes their state). Fictional only: alice, #planning, made-up artifact links. The chat search is the fake mcpproxy's
+ * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
+ * last run in the future so no scheduled ranking calls a model.
+ */
+async function morningBriefShots({ shoot, call, home }) {
+  const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
+  const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
+  const setSources = v => fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify(v));
+  let ranHealth = { health: {}, errors: {} };
+  const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, ...ranHealth, notStarted: [], last: null, slackSince: null,
+    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
+  // Sources sit above the plan: the plan's states scroll to it; the Sources states stay at the top.
+  const states = async (name, drive, { top = false } = {}) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      await shoot(`mb-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        const plan = page.getByText("This week's plan", { exact: true }).first();
+        await plan.waitFor();
+        if (!top) await plan.evaluate(e => e.scrollIntoView({ block: "start" }));
+        await drive?.(page);
+        await page.waitForTimeout(300);
+        // Desktop: only Follow-up's pane, from "Back to plugins" (the host's settings sidebar beside it isn't ours).
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  await setChat({ messages: `1. **#planning** alice: This week's plan ${A1} 2026-03-02 09:12:00` });
+  await seedRead(A1, "Week of Mar 2", 18);
+  await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
+  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
+  // Sources: every source read (opening Settings asks the fake mcpproxy again; wait for its answer).
+  const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
+  ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true });
+  await call("follow.sweep-queue", {});
+  await states("sources", sourcesReady, { top: true });
+  // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
+  ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  // Ask: a server no recipe fits (the tracker) shows Preview; the preview (the fake claude plans one read and sums it up)
+  // shows what it would add, with Turn on.
+  ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await setSources({ linear: true, ask: true });
+  const trackerRow = page => page.getByText("tracker", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "center" }));
+  await states("ask-off", async page => { await sourcesReady(page); await page.getByRole("button", { name: /Preview what Ask would read from tracker/ }).first().waitFor(); await trackerRow(page); }, { top: true });
+  await call("follow.brief-sources", { check: true });
+  await new Promise(r => setTimeout(r, 1500));
+  await call("follow.set-brief-sources", { preview: "mcp:tracker" });
+  await states("ask-preview", async page => { await sourcesReady(page); await page.getByText(/would add these 2 to today.s brief/).first().waitFor({ timeout: 30_000 }); await trackerRow(page); }, { top: true });
+  await setSources({});
+  ranHealth = { health: {}, errors: {} };
+  await seedRead(A1, "Week of Mar 2", 18);
+  await states("picker", async page => {
+    await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
+    await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");
+    await page.getByText("#plans-archive").first().waitFor();
+  });
+  await setChat({ messages: "" });
+  await call("follow.set-brief-plan", { find: true });
+  await states("plan-missing", page => page.getByText("No plan this week yet").first().waitFor());
+  await setChat({ error: true });
+  await call("follow.set-brief-plan", { find: true });
+  await states("plan-error", page => page.getByText("Couldn't search").first().waitFor());
+  await setChat({ messages: "" });
+  await call("follow.set-brief-plan", { link: A2, mode: "link" });
+  // Read a minute after it was pasted (the daemon's clock is BASE + VIEW).
+  await seedRead(A2, "Week 10 plan", 14, -60_000);
+  await states("plan-pasted", page => page.getByText("Week 10 plan").first().waitFor());
+  await call("follow.set-brief-plan", { mode: "off" });
+  await states("plan-off", page => page.getByText("No plan", { exact: true }).first().waitFor());
+  await call("follow.set-brief-plan", { mode: "auto", person: null, channels: [] });
+  await states("plan-pick-first", page => page.getByText("Pick who posts it and where").first().waitFor());
+  await states("queue", async page => { const h = page.getByText("Linear queue", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 200); });
+  await states("queue-bottom", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
+}
+
 async function settingsTabsShots({ shoot, out }) {
   const checks = [];
   const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`settings-tabs: ${name}`); log(`settings-tabs check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
@@ -3393,13 +4070,17 @@ try {
   await fs.writeFile(join(fixture, "paseo-plugin.json"), JSON.stringify({ id: "followup-fixture", requirements: { paseo: ">=0.11.0" } }));
   await fs.writeFile(join(fixture, "index.server.ts"), await fs.readFile("scripts/fixture-provider.ts", "utf8"));
   await fs.writeFile(join(root, "clock.cjs"), CLOCK_PRELOAD);
-  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}) }));
+  await fs.writeFile(join(home, "gh-fixture.json"), JSON.stringify({ ...pulls(), ...(only.includes("pr-scale") ? prScalePulls() : {}), ...(only.includes("pr-stats-settings") ? { _statsSearch: 1840 } : {}) }));
+  if (only.includes("pr-stats-settings")) await seedPrStatsSettings(join(home, "plugin-data", "follow-up"));
+  if (only.includes("pr-stats")) await seedPrStats(join(home, "plugin-data", "follow-up"));
   await fs.writeFile(join(bin, "gh"), fakeGh(join(home, "gh-fixture.json"))); await fs.chmod(join(bin, "gh"), 0o700);
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
-  await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") ? newIssues() : []));
+  await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

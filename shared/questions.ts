@@ -98,12 +98,32 @@ export const questionSchema = z.object({
   closed: z.object({ at: z.string(), reason: z.string(), by: z.string().nullable(), dismissed: z.boolean().optional() }).nullable().default(null),
   /** Which path created it (1.4.0-beta.25): ask_question, a needs_you decision, or a blocked task. Older records: null. */
   via: z.enum(["ask", "needs_you", "task"]).nullable().optional(),
+  /**
+   * A blocked task's card that asks the developer to do something and report back ("Share the page with alice and tell
+   * me when they've picked"), not to decide: one Done option (TASK_DONE), never "write the decision" (one-ask-one-item).
+   */
+  need: z.enum(["decision", "action"]).optional(),
 });
 export type Question = z.infer<typeof questionSchema>;
 export type QuestionOption = z.infer<typeof questionOptionSchema>;
 export type Answer = z.infer<typeof answerSchema>;
 
 export const isOpen = (q: Pick<Question, "answer" | "closed">) => !q.answer && !q.closed;
+/**
+ * A task blocked on the developer: blocked with a real question for them (`ask`). Only these become questions, flag
+ * Needs you or count as the developer's. A task blocked on a PR or another agent has no ask (agents use waiting).
+ * Invariant a-question-always-asks-the-developer-something.
+ */
+export const blockedOnDeveloper = (o: { status: string; ask?: string }): boolean => o.status === "blocked" && !!o.ask?.trim();
+/**
+ * Still the developer's move: blocked on them, and not on a question they already answered or dismissed
+ * (one-decision-one-card: the agent has that answer and moves the task).
+ */
+export const waitsOnDeveloper = (o: { status: string; ask?: string; coveredBy?: string }, questions: readonly { id: string; answer: unknown; closed: unknown }[]): boolean => {
+  if (!blockedOnDeveloper(o)) return false;
+  const cover = o.coveredBy ? questions.find(q => q.id === o.coveredBy) : undefined;
+  return !cover || (!cover.answer && !cover.closed);
+};
 /** The developer dismissed it (dismissing-a-question-sends-the-agent-nothing): closed, no answer, nothing sent. */
 export const isDismissed = (q: Pick<Question, "answer" | "closed">) => !q.answer && !!q.closed?.dismissed;
 export const DISMISS_REASON = "Dismissed by the developer: it no longer matters.";
@@ -222,13 +242,14 @@ export const answerTitle = (text: string) => text.replace(/\)/g, "").replace(/[(
 /** The lines Follow-up adds after an answer: the answer and the developer's note run until one of these. */
 const ANSWER_TRAILER = /^(?:The developer added: |None of your options|You were building |Continue|Answered by .+ for the developer\.$)/;
 /** The message sent to the asking agent. It starts with ANSWER_PREFIX so chat rows and history scans recognise it. */
-export function answerMessage(q: Pick<Question, "id" | "title" | "mode" | "big" | "recommend" | "taskId" | "answer"> & { options: readonly { letter: string; label: string }[] }, choice: string, words?: string): string {
+export function answerMessage(q: Pick<Question, "id" | "title" | "mode" | "big" | "recommend" | "taskId" | "answer"> & { need?: Question["need"]; options: readonly { letter: string; label: string }[] }, choice: string, words?: string): string {
   const lines = [`${ANSWER_PREFIX} ${q.id} (${answerTitle(q.title)}): ${answerHead(q, choice, words)}`];
   if (isOther(choice)) lines.push("None of your options: the developer's own answer is in the quotes.");
   else if (words?.trim()) lines.push(`The developer added: ${words.trim()}`);
   if (q.mode === "keep-building" && !q.big && q.recommend && choice !== q.recommend) lines.push(isOther(choice)
     ? `You were building ${q.recommend}. Undo the work built on it and do what the developer described first.`
     : `You were building ${q.recommend}. Undo the work built on it and build ${choice} first.`);
+  else if (q.taskId && q.need === "action") lines.push(isOther(choice) ? "Continue the blocked task with what the developer said and update the task when it moves." : "The developer did it: continue the blocked task and update the task when it moves.");
   else if (q.taskId) lines.push("Continue the blocked task with this decision and update the task when it moves.");
   else lines.push("Continue with this choice. The answer is already recorded, so you don't need to record it.");
   // answer_question by another agent: the receiving agent and every reader know it wasn't the developer's click.
@@ -402,6 +423,135 @@ export function duplicateOpenQuestions<Q extends Matchable>(questions: readonly 
     if (match?.verdict === "same") out.push({ duplicate: q, of: match.question }); else kept.push(q);
   }
   return out;
+}
+
+// ---------- one decision, one card (one-decision-one-card) ----------
+//
+// 2026-11-22, the developer: "a lot of the time, 2 questions are created for the same thing". An agent asked Q1 with options
+// (ask_question, often with task set), then marked the task blocked with ask "Q1: may I …?", and Follow-up made a second
+// card from the task (syncTaskQuestions), with no options. Live data: 33 of 96 task-made questions repeated an
+// ask_question question, 19 while it was still open and 13 after the developer had answered it. A task blocked on the
+// developer is covered by the question it points at; it makes a card only when nothing covers it.
+
+/** The question ids a text names ("Q1: may I …", "see Q12"), in order. */
+export const questionRefs = (text: string): string[] => [...new Set([...text.matchAll(/\bQ(\d+)\b/g)].map(m => `Q${m[1]}`))];
+const SUPERSEDED = /^(?:Superseded by|Duplicate of|Already asked as|Already answered as) (Q\d+)\./;
+/**
+ * Where a decision lives now: the question itself, or the one that replaced it ("Superseded by Q7."). Null when it was
+ * withdrawn (it no longer asks anything) or isn't in this workspace. A dismissed question still stands for its decision.
+ */
+export function currentQuestion<Q extends Pick<Question, "id" | "answer" | "closed">>(questions: readonly Q[], id: string): Q | null {
+  const seen = new Set<string>();
+  let q = questions.find(x => x.id === id) ?? null;
+  while (q && q.closed && !q.answer && !q.closed.dismissed) {
+    const next = SUPERSEDED.exec(q.closed.reason)?.[1];
+    if (!next || seen.has(next)) return null;
+    seen.add(q.id);
+    q = questions.find(x => x.id === next) ?? null;
+  }
+  return q;
+}
+/** The ask leads with this question's id: "Q4: …", "Q4 - …", "Q4 (…", "(Q4) …", never "Q40". */
+const leadsWith = (ask: string, id: string) => new RegExp(`^[\\s(\\[]*${id}(?!\\d)`).test(ask);
+/** True when an ask restates `q` (its words, apart from the Q reference, are mostly the question's, title's or options'). */
+function askRepeats(ask: string, q: QuestionShape): boolean {
+  const words = tokensOf(wordsOf(ask.replace(/\bQ\d+\b/g, " ")), false);
+  if (!words.size) return true;
+  const f = featuresOf(q);
+  const theirs = new Set([...f.both, ...f.options.flatMap(o => [...o])]);
+  return contained(words, theirs) >= 0.5;
+}
+type Coverable = Matchable & Pick<Question, "taskId">;
+/**
+ * The question that already asks a blocked task's decision, if any, so the task makes no card of its own. In order:
+ * a question the ask names (`Q1: may I …`); one asked with `task` set to it; an open question that reads the same
+ * (`findOpenMatch`). Open wins over answered. An answered (or dismissed) one covers only when the ask restates it or
+ * leads with its id: the developer already decided, and the agent has the answer. Task-made questions never cover.
+ */
+export function findTaskCover<Q extends Coverable>(o: { id: string; title: string; ask?: string }, questions: readonly Q[], mainAgentId: string | null): Q | null {
+  const ask = o.ask?.trim();
+  if (!ask) return null;
+  const asked = (q: Q | null): q is Q => !!q && q.taskRevision === null;
+  let settled: Q | null = null;
+  const consider = (q: Q, restated: boolean): Q | null => {
+    if (isOpen(q)) return q;
+    if (!settled && restated) settled = q;
+    return null;
+  };
+  // A reference links only when the ask leads with the id ("Q1: may I …?", "Q1 - …", "(Q1) …"), restates the question,
+  // or the question was asked for this task. A mention in passing ("ship the Q4 report") links nothing: covering the task
+  // with an unrelated question would drop its decision, which is worse than a second card.
+  for (const id of questionRefs(ask)) {
+    const named = questions.find(x => x.id === id);
+    const q = currentQuestion(questions, id);
+    if (!asked(q)) continue;
+    const links = leadsWith(ask, id) || askRepeats(ask, q) || q.taskId === o.id || named?.taskId === o.id;
+    if (!links) continue;
+    const hit = consider(q, true);
+    if (hit) return hit;
+  }
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const q = questions[i];
+    if (q.taskId !== o.id || !asked(q) || (q.closed && !q.answer && !q.closed.dismissed)) continue;
+    const hit = consider(q, askRepeats(ask, q) || !!compareQuestions({ title: o.title, question: ask, options: [] }, q));
+    if (hit) return hit;
+  }
+  const match = findOpenMatch(questions, { title: o.title, question: ask, options: [] }, mainAgentId);
+  return match?.question ?? settled;
+}
+
+// ---------- one ask, one item (one-ask-one-item) ----------
+//
+// 2026-11-22, the developer, on 2.4.0-beta.0: one ask showed twice in Needs you: the agent's turn-end Action brief
+// ("Still needed: alice's pick on the decision page …", Done) and the card its blocked task made ("Share the decision
+// page with alice and tell me when they've picked"), which read "No options were given. Write the decision for the
+// agent." although nothing was to be decided. Live: 7 of 9 open task cards sat beside an open action or decision brief
+// from the same agent, and no brief pointed at them; 4 of those cards were made in the brief's own turn.
+
+/** The one option of an action-shaped task card: the developer did it. Something else stays for "I can't" and more. */
+export const TASK_DONE = { letter: "A", label: "Done", consequence: "Tells the agent it's done. Add a note if there's more to say." } as const;
+/**
+ * one-done-button: a card whose one answer is Done (a blocked task's action, need=action) is answered by one Done
+ * button on every surface, never an option to pick and then Send. Add note and Reply instead stay quiet beside it.
+ */
+export const isDoneOnly = (q: { options: readonly { letter?: string; label?: string }[]; need?: string | null }): boolean =>
+  q.need === "action" && q.options.length === 1 && q.options[0].letter === TASK_DONE.letter && q.options[0].label === TASK_DONE.label;
+const REPORT_BACK = /\b(tell me|let me know|ping me|say when|once (?:you|they)(?:'ve| have)?|when (?:you|they)(?:'ve| have))\b/i;
+const DO_VERB = /^\s*(?:please\s+)?(?:share|run|log ?in|sign ?in|approve|merge|send|invite|grant|add|enable|turn (?:on|off)|create|set up|install|restart|deploy|post|upload|give|rotate|publish|forward|connect|authorize|authorise)\b/i;
+/**
+ * What a blocked task asks of the developer when the agent didn't say (update_obligation `need`): an action when the
+ * ask wants them to do something and report back ("… and tell me when they've picked"), or opens with something to do
+ * and asks no question ("Share the page with alice"); a decision otherwise.
+ */
+export function taskNeed(ask: string, need?: "decision" | "action"): "decision" | "action" {
+  if (need) return need;
+  const text = ask.trim();
+  return REPORT_BACK.test(text) || (DO_VERB.test(text) && !text.endsWith("?")) ? "action" : "decision";
+}
+
+/**
+ * The open task cards an agent's turn-end needs_you is about, so its brief folds into them (needsYouBlock) and the ask
+ * shows once: cards it names ("Q3" in its ask or context), and cards its words restate (half of the card's words or
+ * more; for a card made or asked again during this turn, where the agent blocked the task and is now reporting it, two
+ * shared words and 0.3 of the card's words). Only the main agent's action and decision briefs. A brief's ask is never
+ * hidden by a card it doesn't name or restate: such a card stays its own item and so does the brief.
+ */
+export function taskCardsFor<Q extends QuestionShape & Pick<Question, "id" | "answer" | "closed" | "via" | "askedAt">>(call: { kind: string; ask: string; context?: string | null }, questions: readonly Q[], turnStartedAt: number | null): Q[] {
+  if (call.kind !== "action" && call.kind !== "decision") return [];
+  const text = `${call.ask} ${call.context ?? ""}`;
+  const named = new Set(questionRefs(text));
+  const words = tokensOf(wordsOf(text.replace(/\bQ\d+\b/g, " ")), false);
+  return questions.filter(q => {
+    if (q.via !== "task" || !isOpen(q)) return false;
+    if (named.has(q.id)) return true;
+    const theirs = featuresOf(q).q;
+    let n = 0; for (const t of theirs) if (words.has(t)) n++;
+    if (!n) return false;
+    // A card made or asked again this turn needs less to match (two shared words, and 0.3 of the card's words), never
+    // nothing: a first draft folded every same-turn card, so an unrelated "merge #5" brief vanished behind it.
+    if (turnStartedAt !== null && Date.parse(q.askedAt) >= turnStartedAt) return n >= Math.min(2, theirs.size) && n / theirs.size >= 0.3;
+    return n >= Math.min(3, theirs.size) && n / theirs.size >= 0.5;
+  });
 }
 
 export const QUESTION_DEDUPE_MIGRATION = "dedupe-open-questions-1";

@@ -76,14 +76,20 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | --- | --- | --- |
 | Worker entry, RPC wiring, session attach, teardown | `index.server.ts`, `shared/contracts.ts`, `server/feeds.ts`, `server/rpc-timing.ts`, `server/teardown.ts`, `server/daemon.ts`, `server/shared-file.ts`, `server/directory.ts`, `server/request-trace.ts`, `server/store.ts`, `server/cow.ts`, `server/json-file-store.ts`, `server/write-behind.ts`, `server/list-cache.ts`, `shared/list.ts`, `server/etag.ts` | [architecture](docs/architecture.md) |
 | Discovery, ownership, main agent | `server/discovery.ts`, `server/turn-events.ts`, `server/workspace-agent.ts`, `server/background-agents.ts`, `server/submissions.ts`, `server/pr-owner.ts`, `server/exclusions.ts`, `server/history-cache.ts`, `server/recovery-handoff.ts`, `server/recovery-config.ts`, `shared/settings.ts` | [workspaces](docs/workspaces.md) |
-| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
+| Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/task-dup.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
+| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
+| Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it) | `shared/linear-queue.ts`, `server/linear-queue.ts` | [morning-brief](docs/morning-brief.md) |
+| Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
+| The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
+| PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks | `server/agent-hooks.ts`, `server/agent-hook.mjs` | [hooks](docs/hooks.md) |
+| Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
 | Wait for background jobs | `server/wait.ts`, `server/host-features.ts`, `server/wait-jobs.ts`, `server/wait-runner.sh`, `shared/wait.ts` | [wait](docs/wait.md) |
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
@@ -268,8 +274,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
      agents already make with Paseo's `archive_workspace` tool, so its `ROW_ACTIONS` entry is an exemption naming it.
 4. **Agents act on others, not themselves.** An agent can't sign itself off, answer its own question through
    `answer_question`, or act on its own brief. Goal, tasks, questions and Done belong to the main agent.
-   Contributors get `workspace_status`, `register_pr`, `sync_workspace` and `make_main_agent` (under its claim
-   rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else. `report_send` refuses to send a
+   Contributors get `workspace_status`, `register_pr`, `sync_workspace`, `link_item`, `unlink_item`, `wait_for_checks`
+   and `make_main_agent` (under its claim rules), plus `report_issue` (it changes nothing in Follow-up), and nothing else. `report_send` refuses to send a
    report to the calling agent itself.
 5. **Ownership comes from the daemon.** The caller is `context.agent.id` (native tools) or `PASEO_AGENT_ID` checked
    by the daemon (bridge), never a tool argument. Unknown parent membership grants no new scope.
@@ -354,7 +360,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    lookup costs a set read. Guarded by `tests/review-mode.test.ts` ([docs/prs.md](docs/prs.md#review-mode)).
 18. **An idle open client makes at most one RPC a minute** (`idle-client-makes-at-most-one-rpc-a-minute`). On Paseo
    0.16 the client subscribes to the worker's feeds (`follow.workspaces-feed`, `follow.inbox-feed`, `follow.home-feed`,
-   `follow.display-feed`) instead of polling. The worker serves each topic once, from state it already holds, and
+   `follow.display-feed`, and the PR stats page's `follow.pr-stats-feed` while it is on screen) instead of polling. The worker serves each topic once, from state it already holds, and
    pushes only a value that changed: no polling on the server and no per-subscriber timers (`server/feeds.ts`). On
    0.15 (no `client.subscribe`) the client polls as before. Quiet must not mean stale: a feed the worker closes (a
    restart) or refuses polls until it resubscribes and stays subscribed, and a feed that keeps dropping backs off
@@ -444,7 +450,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    the row. Search breaks a tie by score; the filter keeps its groups and, inside each, the list's own order for a
    tie, so the keyboard walk follows the ranked rows it draws. The Overseer row keeps its own filter rule
    (`overseerMatches`). No surface ranks workspace matches its own way. One matcher everywhere (`tokenMatch`): the
-   workspace panel's section search (Pull requests, Tasks, Activity; `client/section-search.tsx`) filters with it
+   workspace panel's section search (Pull requests, Activity; `client/section-search.tsx`) filters with it
    through `filterItems`, and item lists keep their own order, since a section list is a filter, not a ranking.
    Guarded by `tests/filter-rank.test.ts`, `tests/home-beta2.test.ts` and `tests/section-search.test.ts`.
 29. **Sheet content scrolls with the sheet** (`sheet-content-scrolls-with-the-sheet`). Every client ScrollView and
@@ -866,16 +872,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `tests/check-linear.test.ts`.
 64. **A PR summary says the worst** (`a-pr-summary-says-the-worst`). A chip or line that sums up a workspace's PRs
    says the worst of its open PRs, never the first one's: Home's PR chip names the first open PR in stack order with
-   the worst state and adds up the checks at that state ("#1058+125 ✗ 5"; an open PR with an unknown status keeps it
-   from saying ✓; `prChip`, `shared/home.ts`), and the panel's live line says failing checks before running ones
-   (`liveLine`). 2026-11-22 (the pr-scale stress render): a 126-PR workspace with four PRs failing read
+   the worst state and, at failing checks, counts the PRs failing ("#1058+125 ✗ 4", read aloud "Pull request #1058 and
+   125 more, 4 PRs with failed checks" on every surface that draws it, `prChipSpoken`), the same number as the panel's live line, which says failing checks before running ones ("Checks failed
+   on 4 PRs", `liveLine`); an open PR with an unknown status keeps it from saying ✓ (`prChip`, `shared/home.ts`). A
+   PR that holds a merge says it in the rows' words, "(checks failed)" (`holdReason`). 2026-11-22 (the pr-scale stress render): a 126-PR workspace with four PRs failing read
    "#1001+125 ✓" on Home and "Checks are running" in the panel. Guarded by `INVARIANTS`, `tests/big-stack.test.ts`
    and `tests/home.test.ts`.
 65. **The stack bar reads at any size** (`stack-bar-reads-at-any-size`). The panel's stack bar draws at most
    `STACK_BAR_BUDGET` marks (`barMarks`, `shared/attention.ts`): one per PR up to it; past it, runs of neighbouring PRs
    in the same state, as wide as their share; when even those are too many, equal slices of the stack, each painted
-   its loudest PR. Stack order is kept, a failing PR is never averaged away, every mark is at least 6 px, and a mark
-   opens its loudest PR and names its range. 2026-11-22: 126 PRs drew a dotted 1 px hairline. Guarded by
+   its loudest PR. Stack order is kept, a failing PR is never averaged away, every mark is at least 6 px, and on desktop a
+   mark opens its loudest PR and names its range; on a phone the bar is one progress bar with no per-mark press (its
+   marks are far under 44 pt, and the rows below open every PR). 2026-11-22: 126 PRs drew a dotted 1 px hairline. Guarded by
    `tests/big-stack.test.ts`.
 66. **A long stack shows its problems** (`a-long-stack-shows-its-problems`). In the Pull requests card a stack longer
    than `QUIET_FOLD_FROM` folds each run of at least `QUIET_FOLD_MIN` PRs that are only in review into one
@@ -883,6 +891,207 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    and unknown statuses keep their own rows in stack order. A section search shows its hits unfolded. 2026-11-22: a
    120-PR stack drew about 8000 px of rows with its seven PRs to fix spread through it. Guarded by
    `tests/big-stack.test.ts`.
+67. **PR statistics never spend below low** (`stats-never-spend-below-low`, `stats-stay-in-their-slice`,
+   `stats-wait-for-the-governor`, `stats-take-one-slot`, `stats-feed-the-shared-budget`). PR statistics are the least
+   important thing Follow-up reads from GitHub, so every stats request (page or follow-up) goes through one gate,
+   `StatsGate.run` (`server/pr-stats-gate.ts`), which sends nothing unless the governor allows background work, the
+   account's budget tier is `normal` (≥ 40 % of the limit left; stats stop at `low`, far above invariant 60's 20 %
+   reserve), the stats spending of the rolling hour plus the next page's expected cost stays inside the slice (5 % of
+   the limit by default), and no other stats request is in flight (worker-wide). Every answer's `rateLimit` moves the
+   same per-owner budget the PR poller reads (`Github.noteRateLimit`; a refusal, `Github.noteLimited`), so a burst
+   either one sees throttles both; the poller doesn't count stats' cost as its own. A refused run stores why and until
+   when. Guarded by `tests/pr-stats-gate.test.ts` (zero requests in each closed case) and
+   `tests/pr-stats-budget.test.ts` (six hours of syncs on a 3,250-PR repository: no rolling hour past the slice)
+   ([docs/pr-stats.md](docs/pr-stats.md)).
+68. **PR statistics are computed on read** (`stats-are-computed-on-read`). A repository's records are in memory only
+   while something reads or syncs them: `StatsStore.open` (`server/pr-stats-store.ts`) loads the file into an LRU of
+   `STATS_LOADED_MAX` repositories, each dropped `STATS_KEEP_MS` after its last use, and nothing loads them in case
+   they are read. A save goes through `WriteBehind` as parts, each record's bytes encoded once per record object, so a
+   page re-encodes only the PRs it changed; a record equal to the stored one keeps the stored object. Guarded by
+   `tests/pr-stats-records.test.ts`.
+69. **PR statistics hold no text** (`stats-records-hold-no-text`). A stats record (`statsRecordSchema`,
+   `shared/pr-stats-records.ts`) holds numbers, times, logins, branch names and a title capped at `TITLE_MAX`; the
+   queries never ask for a body, a comment's text, a diff or a file list, and the schema is strict, so nothing else
+   can be stored. Records stay on the host. Guarded by `tests/pr-stats-privacy.test.ts`.
+70. **Waiting for checks adds no GitHub read** (`waiting-for-checks-adds-no-github-read`). `wait_for_checks` answers
+   from the reads Follow-up already makes: a watched PR is due once after its wait began, then at the running-checks
+   cadence (`watchedSince`, `shared/poll.ts`), never past the reserve and never for a merged or closed PR, and every
+   verdict comes from an engine pass's observations (`CheckWatches.evaluate` after `Engine.run`). Measured 2026-11-22:
+   Paseo 0.17's own PR watch reads every watched PR every 15 s, 1 point a read for 1-5 PRs and 6 for 25, so a second
+   poller would cost ~240-1440 points an hour for PRs Follow-up already reads. That day agents ran ~117 polling loops
+   in 24 h (`gh pr checks`, `gh api graphql` every 1-60 s). Guarded by `tests/wait-for-checks.test.ts`
+   ([docs/wait-for-checks.md](docs/wait-for-checks.md)).
+71. **A watch never wakes a closed or archived agent; a waited-for failure is sent once**
+   (`a-watch-never-wakes-a-closed-agent`, `a-waited-for-failure-is-sent-once`). A verdict is one `checks` queue message
+   after the agent's turn; a closed or archived agent's watch ends with nothing sent, and the channel checks again when
+   it goes. An idle agent that asked is messaged even when unloaded (it asked for that message: invariant 1's one
+   exception). A failure a repair will carry (main agent, Auto-send on, its checks task queued or out) ends the watch
+   quietly. Guarded by `tests/wait-for-checks.test.ts`.
+72. **The polling nudge never blocks** (`the-polling-nudge-never-blocks`). The PostToolUse hook (already run for every
+   tool, so no new process) adds context once per turn when a shell command polls GitHub for CI (`pollsGithub`,
+   `server/agent-hook.mjs`); a single `gh pr checks` never nudges, and nothing is ever blocked. Guarded by
+   `tests/wait-for-checks.test.ts` (polling and non-polling shapes, the hook end to end).
+73. **One decision, one card** (`one-decision-one-card`). A task blocked on the developer makes a question card only
+   when no question already asks its decision: one its ask names ("Q1: may I …?", or `update_obligation`
+   `question: "Q1"`), one asked with `task` set to it, or an open one that reads the same (`findTaskCover`,
+   `shared/questions.ts`). The task records that question (`coveredBy`), shows as waiting on it in Tasks, and Needs you
+   shows it once; a card the task made before closes as "Already asked as Q1." An answered question keeps covering the
+   task until its ask changes, so a decision the developer made is never asked again: the agent has the answer and
+   moves the task (`update_obligation` says so in its `note`). Agents are told one way to ask: `ask_question` with
+   `task`, then `update_obligation` blocked with `question`. 2026-11-22, Tom: "a lot of the time, 2 questions are
+   created for the same thing"; 33 of 96 task-made questions on the live host repeated an `ask_question` question.
+   Guarded by `tests/one-decision-one-card.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+74. **PR statistics measure from the ask** (`stats-measure-from-the-ask`). Every review clock (time to first review,
+   waiting now, review turnaround, time to merge) starts at the PR's ask (`k`: its first review request, counted
+   from ready when made on a draft, else ready itself), never at its creation, so drafts and "opened early, asked
+   later" never count as waiting. A stacked PR (based on another PR's head; stack-aware is the default) starts no
+   earlier than its parent's first response, or its parent's merge when that came first without one; until then it is
+   folded under the PR it waits behind ("+N above in its stack"), never listed as waiting. One function derives it
+   (`derive`, `shared/pr-stats.ts`) for every metric. Guarded by `tests/pr-stats-metrics.test.ts`.
+75. **PR statistics learn the team from the data** (`stats-learn-the-team-from-the-data`). Nothing is built in: the
+   team is every person who opened or reviewed a PR in the repository's window, minus bots (by GitHub's type or a
+   `[bot]` login) and the repository's ignore list (case-insensitive, `*` wildcard), never anywhere a metric counts.
+   An optional filter narrows it to picked people or a GitHub team (`org/slug`, read once a day through the stats
+   gate); a token that can't read the team leaves the filter showing everyone and says so in one line ("Can't read the
+   team @example/backend with this GitHub token, so this shows everyone."), never a silent empty list. An empty install
+   has no repository on and reads nothing. Nor is a working week: "This week" starts and working hours count on the
+   zone's usual week (`shared/workweek.ts`: Sun–Thu where the weekend is Friday–Saturday, else Mon–Fri) unless one is
+   saved, and the default is never written to `stats.json`, so a new zone moves it.
+   Guarded by `tests/pr-stats-service.test.ts` and `tests/pr-stats-metrics.test.ts` ([docs/pr-stats.md](docs/pr-stats.md)).
+76. **The queue is whole** (`the-queue-is-whole`). The Morning brief's sweep reads every page of the developer's Linear
+   queue in every queue state, or says it is partial: a page mcpproxy cut off (`parseIssuePage(...).whole` false) is
+   re-read smaller, then marks the sweep partial, and past `QUEUE.pagesMax` pages it is partial too. A partial sweep
+   never replaces a complete one and is diffed against nothing; a failed sweep keeps the last complete snapshot and
+   says which one shows. A missed read is never a change: the walk pages by `createdAt` (an update mid-walk can't move
+   an issue onto a page already read), and an issue missing from the walk that a lookup finds still assigned to the
+   developer (`assigneeId` = the cached viewer id) in a queue state goes back into the sweep, neither "left" nor, next
+   sweep, "new". The ranker reads Linear only from that snapshot (top 40 plus every changed issue), never 75
+   newest updates. 2026-11-22, Tom: "I want the follow-up daily brief to connect to all data sources it can"; the
+   ranker read at most 75 issues and kept no snapshot, so an untouched old issue past them dropped out. Guarded by
+   `tests/linear-queue.test.ts` ([docs/morning-brief.md](docs/morning-brief.md)).
+77. **A change is against what you last saw** (`a-change-is-against-what-you-last-saw`). "Since" in the brief is a
+   stored point: when the developer last read it before this viewing session (`seen.prior`, moved only by the
+   developer's own open, `markSeen`), else the last workday's sweep (`workdaySince`), never a rolling window, and an
+   agent's read never moves it. Changes fold per issue over every sweep since (`changesSince`), so a raise taken back
+   says nothing. Guarded by `tests/linear-queue.test.ts`.
+78. **The brief has one timer** (`the-brief-has-one-timer`). The sweep runs once each workday at the sweep time in the
+   developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
+   governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
+   fresh install; nothing else reads Linear on a schedule. Find it for me and the sources check (mcpproxy asked again)
+   ride the same loop, once a workday after the sweep time. The zone is the setting's, else the developer's device's,
+   else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
+   (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
+   `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
+79. **One ask, one item** (`one-ask-one-item`). Whatever makes an ask (`ask_question`, a `needs_you` decision or
+   action, a blocked task), Needs you shows it once. A blocked task's card is shaped by what it asks (`taskNeed`): an
+   action the developer takes and reports back gets a Done option (`TASK_DONE`), never "Write the decision". An action
+   or decision `needs_you` points at the task cards it reports (named, or restated, with a lower bar for a card made during its turn:
+   `taskCardsFor`), so the brief folds into the card (`needsYouBlock`) instead of standing beside it. A brief's ask is
+   never hidden by a card it doesn't name or restate: an unrelated brief and a card made in the same turn are two items. The fold is the
+   server's: `update_obligation` says nothing about the task's own card, so the agent reads zero extra words. An action
+   card is answered by one Done button on every surface (`isDoneOnly`: no option to pick and then Send; Add note and
+   Reply instead stay quiet), and a brief's Done on it answers the card, never a second "Done: …" message.
+   2026-11-22, the developer: an Action brief and its task's card asked the same thing, the card as "Write the
+   decision"; live, 7 of 9 open task cards sat beside an open brief from the same agent, none pointed at, and Done
+   took two clicks. In review, a first draft folded the brief into any card made in the turn, so an unrelated
+   "merge #5" ask vanished behind it; a hidden ask is worse than a duplicate. Guarded by `tests/one-ask-one-item.test.ts` and `INVARIANTS`
+   ([docs/workspaces.md](docs/workspaces.md)).
+80. **Briefs from closed agents** (`briefs-from-closed-agents`). Needs you lists what someone can still act on. At
+   render, from facts Follow-up already holds (`flagFate`), a flag whose workspace is archived or gone from Paseo's
+   list (agent not running) drops, and so does a closed agent's flag that asks nothing (no asking brief, no question,
+   only finished or PR-closed/merged flags). A closed agent's real ask with nothing new for 3 days folds into Home's
+   Older group, out of the count, and comes back when the agent runs again or a new flag comes. Nothing is stored or
+   deleted. Never hidden: a running or idle agent's ask, an ask under 3 days old, and a workspace's live item (an Older
+   row whose workspace has one stays in Needs you; a dropped row's workspace row carries it). Every reader of Needs you
+   follows the same rule: "next" (`nextAfter`: Sign off & next, `/ok next`, the Command Center's Next needs-you) opens
+   only a row `flagFate` shows, never a dropped or Older one. 2026-11-22, live: 49
+   flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
+   old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
+81. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
+   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
+   through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
+   `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
+   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
+   when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
+   the morning run (the-brief-has-one-timer); never on its own timer. **Discovery heals itself**
+   (`discovery-heals-itself`): a reader whose recipe no server has asks again first, at most once per
+   `MISS_REDISCOVER_MS` (10 min), so an upstream down or still connecting at the first discovery (an mcpproxy restart,
+   an OAuth refresh, a worker started right after an install) is found once it's back, never a day later; a source
+   switched off is not a miss. A failed discovery answers every read with its error for `FAILED_DISCOVERY_MS` (60 s),
+   so a down mcpproxy isn't asked on every read; Check sources again always asks. Guarded by
+   `tests/brief-sources.test.ts`.
+82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
+   channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
+   shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
+   channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
+   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
+   Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
+   for any `mcpproxy` run outside the source directory).
+83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
+   reaching `dependencyStage` (or one closing unmerged), else a re-check date (the agent's `recheck`, else 3 days after
+   its last update). A task blocked on a question the developer answered or closed is the agent's again
+   (`waitsOnDeveloper`, `coveredBy`): it comes due at the answer ("Due · Q7 answered"), whatever its PRs say, and gets
+   no default re-check while it waits; one still waiting on an open question stays exempt. A due task is a nudge to its owner at the Stop hook: at most 3 a turn end, each at most twice for
+   the same fact and once a day, zero words when nothing is due (`taskDue`, `pickNudges`, `shared/task-due.ts`). It is
+   never an auto-send and never a done: two unanswered nudges make it stale, still listed, and only a supersede by id
+   waives a task for the agent. Finished tasks leave storage 30 days after `finishedAt` unless something still reads
+   them (`pruneBlocked`). 2026-11-22, live: 104 open tasks, half unchanged for over 5 days; 35 had every PR merged (22
+   deployed) and nobody ran the check, because the tool text said tasks are manual unless the developer asked for
+   timing. Guarded by `tests/due-by-fact.test.ts` and `INVARIANTS` ([docs/workspaces.md](docs/workspaces.md)).
+84. **Ask is validated** (`ask-is-validated`). A source no recipe fits is read only through Ask (`shared/ask.ts`,
+   `server/ask.ts`), off until the developer (or an agent's confirmed `set_brief_sources`) turns it on per source, and
+   only after a preview under `ASK.previewMs` (24 h) old that didn't fail; a preview turns nothing on and never feeds the
+   ranker. The model only proposes: at most `ASK.calls` reads, each refused unless the tool is one of that server's
+   read tools and every argument is one its schema takes, of its type (`validateCall`, also re-run on a cached plan);
+   Follow-up runs them through `SourceDirectory.callTool` (`tool-read`, sources-are-read-only). Its items are at most
+   `ASK.items`, with a link only when a reply carries it (`validateItems`). It runs on the Summaries role's fast model,
+   once a workday morning with the sources check (the-brief-has-one-timer), its plan reused for a week; the ranker reads
+   the stored items and never asks. Guarded by `tests/ask.test.ts`.
+
+85. **A new task is checked once** (`a-new-task-is-checked-once`). `update_obligation` without an id is the only place
+   a duplicate task is checked: against the workspace's open tasks (p95 7, max 14 live), token Jaccard on the first 60
+   characters of each title (`shared/task-dup.ts`, `newTaskCheck` in `server/obligations.ts`). The caller's own exact
+   whole title (case and punctuation aside, never cut at 60; `createdBy`) updates that task; a title at 0.5 or more is refused with at most 3
+   lines, each naming an open task by id, and nothing is added; `new: true` adds it anyway. A clean write adds no words.
+   No scans, no pairwise passes, no model; renames keep the id and are never checked; Follow-up's own writes (no caller)
+   aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
+   duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
+89. **Tasks are the agent's** (`tasks-are-the-agent-s`). The panel's Tasks card is the agent's to-do list as the
+   developer reads it: "Agent's tasks", folded to one line by default in every state ("6 open · 2 due · 1 stale"; due
+   neutral, only stale amber). Opened, a row per open task says what moves it (`taskViewRows`, `shared/task-view.ts`),
+   stale and due first; a task waiting on the developer says "In Needs you" with no question id and comes last; no
+   section search. Finished tasks are in Activity, the send queue and repairs in the Messages to the agent card
+   (`client/messages.tsx`), the schedule editor behind a row's "Send on a schedule…". The header's live line names a
+   due or stale task before a waiting one, and a waiting one says what moves it. 2026-11-22, two critiques: the card
+   mirrored Needs you ("Q1 · waiting on your answer"), sorted the due task last, carried the send queue and every
+   finished task, and the header named a waiting task while the due one went unmentioned. Guarded by
+   `tests/tasks-view.test.ts` and `INVARIANTS`.
+
+90. **Dispatch needs a click or a confirmed plan** (`dispatch-needs-a-click-or-a-confirmed-plan`). New creates a
+   workspace only from the developer's click (`follow.dispatch` from the dialog) or an agent's confirmed plan (the
+   `dispatch` tool: a dry run first, then confirm with its plan id). The plan freezes the resolved project and the
+   instructions' hash; a confirm whose project or instructions changed since is refused. Preview, sources and Settings →
+   New work only read. The Overseer's own dispatch also passes its new-workspace gate. Guarded by
+   `tests/dispatch-flow.test.ts` and `tests/overseer.test.ts`.
+91. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
+   icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
+   name when saved), a workspace kind, a branch rule and an agent. No action runs code, names a team, repo or person,
+   or reaches past its own fields; the body a source brings is clipped to 4 KB. Settings → New work and the agent tools
+   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts` and `tests/new-settings.test.ts`.
+92. **New never switches the project silently** (`new-never-switches-the-project-silently`). Every project New picks
+   comes with how and why (`resolveWhere`: the pick, the link's repository, the live workspace, the team's rule, learned,
+   last used as a guess, the only one), and a guess is drawn as one. When none of those holds, New asks ("Which
+   project?") and saves the answer as the team's rule; a rule naming a project that is gone asks again. Guarded by
+   `tests/dispatch-core.test.ts` and `tests/new-view.test.ts`.
+93. **A failed dispatch leaves nothing behind** (`a-failed-dispatch-leaves-nothing-behind`). A workspace Paseo refused
+   is not retried; an agent that can't start archives the workspace just created, and the record says what was left (or
+   where to look if the archive failed too). A worker restarted mid-create marks the dispatch failed and never creates
+   again blind. Guarded by `tests/dispatch-flow.test.ts`.
+94. **New reads nothing while closed** (`new-reads-nothing-while-closed`). Closed, New makes no request: no feed, no
+   timer, no mcpproxy call. Open, it reads the Linear list once (shared for 60 s), one issue per paste, and a search
+   only on an explicit press. Home reads dispatches from its own feed (on Paseo 0.15, once at start and when New
+   closes). Settings → New work reads New's own settings once when the tab opens, never Linear. The only timer is a
+   queued dispatch's retry. Guarded by `tests/new-dialog.test.ts` and `tests/new-settings.test.ts`.
 
 ## Bugs
 

@@ -3,7 +3,8 @@ import { OBSERVATION_FRESH_MS } from "./poll";
 import { followUpObligations, deployState, recoveryBatch } from "./follow-up";
 import { communicationSchema, replyRecorded } from "./communication";
 import { taskTriggerSchema } from "./task-trigger";
-import { isOpen as questionOpen, questionSchema } from "./questions";
+import { blockedOnDeveloper, isOpen as questionOpen, questionSchema, waitsOnDeveloper } from "./questions";
+export { blockedOnDeveloper, waitsOnDeveloper };
 import { artifactSchema, specSchema } from "./spec";
 import type { ListPr, ListWorkspace } from "./list";
 
@@ -67,6 +68,17 @@ export const obligationSchema = z.object({
   afterPrs: z.array(idSchema), evidence: z.string().max(4000),
   /** While blocked: the question the developer must answer. Without one, a blocked task waits on nothing of theirs. */
   ask: z.string().max(1000).optional(),
+  /**
+   * While blocked on the developer: the question that already asks this decision (one-decision-one-card), so the task
+   * makes no card of its own. Set by syncTaskQuestions, kept while the ask is unchanged (an answered one still covers it:
+   * the agent has the answer), dropped when the ask changes or the task leaves blocked.
+   */
+  coveredBy: z.string().regex(/^Q\d+$/).optional(),
+  /**
+   * While blocked on the developer: what the ask wants, a decision or an action they take and report back
+   * (one-ask-one-item). Set by update_obligation `need`; without it Follow-up reads the ask (shared/questions.ts taskNeed).
+   */
+  need: z.enum(["decision", "action"]).optional(),
   enable_follow_up: z.boolean().default(false), revision: z.number().int().nonnegative(),
   dependencyStage: z.enum(["merged", "deployed"]).optional(), category: z.enum(["follow_up", "pr_lifecycle"]).optional(),
   previousTitles: z.array(z.string()).optional(),
@@ -77,13 +89,22 @@ export const obligationSchema = z.object({
    * (workingAgentId, e.g. an orchestrator's subagent). The task's line reads that agent's live state (shared/task-status.ts).
    */
   workingAgentId: idSchema.optional(),
+  /** The agent whose update_obligation made it (a-new-task-is-checked-once): its exact-title repeat updates this task. */
+  createdBy: idSchema.optional(),
+  /**
+   * due-by-fact: when a task with no PRs comes due (default 3 days after its last update), or, set by the agent, the
+   * earliest a PR-made due fact nudges it again. ISO time.
+   */
+  recheckAt: z.string().optional(),
+  /** When it was done or waived (ISO). Finished tasks are pruned 30 days later (shared/task-due.ts pruneFinished). */
+  finishedAt: z.string().optional(),
+  /**
+   * The turn-end nudges about this task's current due fact (`key`), as the agent hook recorded them: how many, the last
+   * one, and the task's revision then. Two with no change since make the task stale (shared/task-due.ts).
+   */
+  nudged: z.object({ key: z.string(), count: z.number().int().nonnegative(), at: z.string(), revision: z.number().int().nonnegative() }).optional(),
 });
-/**
- * A task blocked on the developer: blocked with a real question for them (`ask`). Only these become questions, flag
- * Needs you or count as the developer's. A task blocked on a PR or another agent has no ask (agents use waiting).
- * Invariant a-question-always-asks-the-developer-something.
- */
-export const blockedOnDeveloper = (o: { status: string; ask?: string }): boolean => o.status === "blocked" && !!o.ask?.trim();
+// blockedOnDeveloper and waitsOnDeveloper live in shared/questions.ts (task-due reads them too; no import cycle).
 export const taskSchema = z.object({
   key: idSchema, kind: z.enum(["conflict", "review", "checks", "restack", "obligation", "inventory", "completion"]),
   target: idSchema, title: z.string(), fingerprint: z.string(),
@@ -253,7 +274,7 @@ export function completionGate(w: ListWorkspace, now = Date.now()): CompletionGa
     if (pr.snapshot.state === "CLOSED") add("agent", `Settle ${ref} with a disposition`);
     else add("developer", `Settle ${ref}`);
   }
-  for (const o of followUpObligations(w).filter(o => !["done", "waived"].includes(o.status))) add(blockedOnDeveloper(o) ? "developer" : "agent", o.title);
+  for (const o of followUpObligations(w).filter(o => !["done", "waived"].includes(o.status))) add(waitsOnDeveloper(o, w.questions ?? []) ? "developer" : "agent", o.title);
   for (const o of followUpObligations(w).filter(o => o.status === "done" && o.communication && !replyRecorded(o.communication))) add("agent", `Record the sent reply for ${o.title}`);
   const open = w.batches.filter(b => !recoveryBatch(b) && !completionCheck(b));
   if (open.some(b => ["sending", "sent"].includes(b.state))) add("agent", "Acknowledge the open follow-up batch");
@@ -286,7 +307,7 @@ export function summary(w: ListWorkspace, now = Date.now()): { status: Status; l
   if (blocked) return { status: "needs-you", label: "Needs you", reason: blocked.result || "Follow-up needs a decision" };
   const question = (w.questions ?? []).find(questionOpen);
   if (question) return { status: "needs-you", label: "Needs you", reason: `${question.id}: ${question.title}` };
-  const obligation = obligations.find(blockedOnDeveloper);
+  const obligation = obligations.find(o => waitsOnDeveloper(o, w.questions ?? []));
   if (obligation) return { status: "needs-you", label: "Needs you", reason: obligation.title };
   if (w.completion && completionBlockers(w, now).length === 0) return { status: "done", label: "Done", reason: w.completion.summary };
   if (w.runtimeReason) return { status: "waiting", label: "Waiting", reason: w.runtimeReason };

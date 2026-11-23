@@ -19,12 +19,14 @@ export function bigStack(n = 120, patch: (i: number) => Partial<Snapshot> = () =
 }
 const invariant = INVARIANTS.find(i => i.id === "a-pr-summary-says-the-worst")!;
 
-test("a-pr-summary-says-the-worst: Home's PR chip names the worst open PR and adds up its checks", () => {
+test("a-pr-summary-says-the-worst: Home's PR chip names the worst open PR and counts the PRs failing", () => {
   // The first PRs are clear; four further up fail checks, three have open threads.
   const w = bigStack(120, i => [57, 80, 100, 115].includes(i) ? { failedChecks: [{ name: "test" }, { name: "lint" }].slice(0, i === 57 ? 2 : 1) as never } : [20, 30, 40].includes(i) ? { threads: [{ id: `t${i}` }] as never } : {});
   const chip = prChip(w)!;
   assert.equal(chip.checks?.tone, "danger", JSON.stringify(chip));
-  assert.equal(chip.checks?.text, "✗ 5");
+  // Counts PRs, not checks (#1058 fails two): the same 4 as the live line, and says so to a screen reader.
+  assert.equal(chip.checks?.text, "✗ 4");
+  assert.equal(chip.checks?.spoken, "4 PRs with failed checks");
   assert.equal(chip.label, "#1058+119", "names the first failing PR in stack order");
   assert.equal(chip.url, "https://github.com/example/app/pull/1058");
   assert.equal(invariant.check(w, clock), null);
@@ -37,7 +39,7 @@ test("a-pr-summary-says-the-worst: threads beat a clear stack; an unknown PR nev
   const unknown = prChip(bigStack(10, i => i === 3 ? { complete: false } : {}))!;
   assert.equal(unknown.checks, null);
   const clear = prChip(bigStack(10))!;
-  assert.deepEqual([clear.label, clear.checks], ["#1001+9", { text: "✓", tone: "success" }]);
+  assert.deepEqual([clear.label, clear.checks], ["#1001+9", { text: "✓", tone: "success", spoken: "checks passed" }]);
   // One open PR keeps its own words.
   assert.deepEqual(prChip(bigStack(1, () => ({ checksPending: true })))!.checks, { text: "running", tone: "muted" });
 });
@@ -80,4 +82,37 @@ test("a-long-stack-shows-its-problems: a long stack folds its quiet runs; proble
   assert.ok(open[at + 1]?.kind === "pr");
   // A normal stack is never folded.
   assert.ok(quietFold(bigStack(QUIET_FOLD_FROM).prs, () => false).every(i => i.kind === "pr"));
+});
+
+test("a-pr-summary-says-the-worst: the invariant catches a chip that sums checks while the line counts PRs", async () => {
+  const home = await import("../shared/home");
+  const w = bigStack(30, i => [5, 9].includes(i) ? { failedChecks: [{ name: "a" }, { name: "b" }, { name: "c" }] as never } : {});
+  assert.equal(home.prChip(w)!.checks?.text, "✗ 2");
+  assert.equal(invariant.check(w, clock), null);
+});
+
+test("holdReason says the rows' words: checks failed", async () => {
+  const src = (await import("node:fs")).readFileSync(new URL("../shared/attention.ts", import.meta.url), "utf8");
+  assert.match(src, /return "checks failed";/);
+  assert.doesNotMatch(src, /checks failing/);
+});
+
+test("stack-bar-reads-at-any-size: on a phone the bar has no per-mark press", async () => {
+  const src = (await import("node:fs")).readFileSync(new URL("../client/header.tsx", import.meta.url), "utf8");
+  const bars = src.match(/<StackBar [^>]*\/>/g) ?? [];
+  assert.ok(bars.length >= 2, "the header draws the bar");
+  for (const b of bars) assert.match(b, /onOpen=\{compact \? undefined : onOpenPr\}/, b);
+});
+
+test("a-pr-summary-says-the-worst: the chip says what its glyph counts, on every surface", async () => {
+  const { prChip, prChipSpoken } = await import("../shared/home");
+  const many = prChip(bigStack(30, i => [5, 9].includes(i) ? { failedChecks: [{ name: "a" }, { name: "b" }] as never } : {}))!;
+  assert.equal(prChipSpoken(many), "Pull request #1006 and 29 more, 2 PRs with failed checks");
+  const one = prChip(bigStack(1, () => ({ failedChecks: [{ name: "a" }, { name: "b" }] as never })))!;
+  assert.equal(one.checks?.text, "✗ 2");
+  assert.equal(prChipSpoken(one), "Pull request #1001, 2 failed checks");
+  const fs = await import("node:fs");
+  const list = fs.readFileSync(new URL("../client/home-list.tsx", import.meta.url), "utf8");
+  assert.match(list, /testID="follow-up-row-chip" role="img" aria-label=\{prChipSpoken\(s\.pr\)\}/, "the detail pane's chip");
+  assert.match(fs.readFileSync(new URL("../client/home.tsx", import.meta.url), "utf8"), /prChipSpoken\(s\.pr\)/, "the phone's meta line");
 });

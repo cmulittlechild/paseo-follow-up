@@ -173,22 +173,29 @@ export type CardTone = "plain" | "attention" | "success";
  * A raised container with an icon title. Attention cards trade the ring for a warning border. `search`: the section
  * is being searched (client/section-search.tsx), and its field takes the title's place in the header.
  */
-export function Card({ theme, icon, title, tone = "plain", count, right, children, compact = false, style, search }: {
+export function Card({ theme, icon, title, tone = "plain", count, right, children, compact = false, style, search, fold }: {
   theme: Theme; icon: string | PluginSvgIcon; title: string; tone?: CardTone; count?: string | number; right?: ReactNode; children: ReactNode; compact?: boolean; style?: StyleProp<ViewStyle>; search?: ReactNode;
+  /** A card that folds to its header line: the whole header toggles it, with a chevron at the end. */
+  fold?: { open: boolean; onToggle: () => void; label: string };
 }) {
   const c = theme.colors;
   const accent = tone === "attention" ? c.statusWarning : tone === "success" ? c.statusSuccess : null;
+  const head = { flexDirection: "row", alignItems: "center", gap: compact ? 8 : 7, paddingHorizontal: compact ? 14 : 12, paddingTop: 10, paddingBottom: fold && !fold.open ? 10 : 8, minHeight: compact ? 44 : undefined } as const;
+  const inner = <>
+    {typeof icon === "string" ? <Icon name={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} /> : <Icon icon={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} />}
+    {search ?? <>
+      <Text accessibilityRole="header" style={{ color: accent ?? c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, fontWeight: "600" }}>{title}</Text>
+      {count !== undefined && count !== "" && <Chip theme={theme} color={accent ?? c.foregroundMuted} label={String(count)} />}
+      <View style={{ flex: 1 }} />
+      {right}
+      {fold && <Icon name={fold.open ? "ChevronUp" : "ChevronDown"} size={14} color={c.foregroundMuted} />}
+    </>}
+  </>;
   return <View style={[{ marginHorizontal: compact ? 16 : 12, marginTop: 12, borderRadius: 8, overflow: "hidden", backgroundColor: c.surface0 },
     accent ? { borderWidth: 1, borderColor: withAlpha(accent, 0.7) } : raised(c), style]}>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? 8 : 7, paddingHorizontal: compact ? 14 : 12, paddingTop: 10, paddingBottom: 8, minHeight: compact ? 44 : undefined }}>
-      {typeof icon === "string" ? <Icon name={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} /> : <Icon icon={icon} size={compact ? 16 : 14} color={accent ?? c.foregroundMuted} />}
-      {search ?? <>
-        <Text accessibilityRole="header" style={{ color: accent ?? c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, fontWeight: "600" }}>{title}</Text>
-        {count !== undefined && count !== "" && <Chip theme={theme} color={accent ?? c.foregroundMuted} label={String(count)} />}
-        <View style={{ flex: 1 }} />
-        {right}
-      </>}
-    </View>
+    {fold ? <Pressable accessibilityRole="button" aria-expanded={fold.open} accessibilityState={{ expanded: fold.open }} accessibilityLabel={`${title}: ${fold.label}. ${fold.open ? "Hide" : "Show"} them`} onPress={fold.onToggle}
+      style={state => ({ ...head, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>{inner}</Pressable>
+      : <View style={head}>{inner}</View>}
     {children}
   </View>;
 }
@@ -208,8 +215,8 @@ export function Switch({ theme, label, value, onChange, disabled = false, access
   return <Pressable accessibilityRole="switch" aria-checked={value === null ? "mixed" : on} accessibilityLabel={accessibilityLabel ?? label} accessibilityHint={hint}
     accessibilityState={{ checked: value === null ? "mixed" : on, disabled: inactive }} accessibilityValue={{ text: value === null ? "Unknown" : on ? "On" : "Off" }}
     disabled={inactive} onPress={() => onChange(!on)} hitSlop={compact ? 0 : 4}
-    style={({ pressed }) => ({ minHeight: compact ? 44 : 28, flexDirection: "row", alignItems: "center", gap: 8, opacity: inactive ? 0.5 : pressed ? 0.8 : 1 })}>
-    <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{label}</Text>
+    style={({ pressed }) => ({ minHeight: compact ? 44 : 28, minWidth: compact ? 44 : undefined, justifyContent: "center", flexDirection: "row", alignItems: "center", gap: 8, opacity: inactive ? 0.5 : pressed ? 0.8 : 1 })}>
+    {label ? <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{label}</Text> : null}
     <View style={{ width: 30, height: 18, borderRadius: 9, backgroundColor: on ? c.accent : c.surface2, borderWidth: 1, borderColor: on ? c.accent : c.border, justifyContent: "center" }}>
       <View style={{ width: 12, height: 12, borderRadius: 6, marginLeft: value === null ? 8 : on ? 14 : 2, backgroundColor: on ? c.accentForeground : value === null ? c.border : c.foregroundMuted }} />
     </View>

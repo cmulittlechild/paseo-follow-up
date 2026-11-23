@@ -7,9 +7,12 @@
 | Display (header button, sidebar item, composer pill, inbox, closed-PR flags, brief nudge, Overseer, ranker, trust bypass, Home's order) | Paseo host settings document `display` (`displayPreferences`). It's host-scoped and keeps older saved sidebar values. | `shared/display.ts`, `client/display.tsx` |
 | Question mode | host settings `questionPreferences` | `shared/questions.ts` |
 | Following, projects, per-workspace exceptions, active window | `state.json` | `shared/settings.ts`; RPCs `follow.follow-settings`, `follow.set-follow-settings`, `follow.project-settings`, `follow.set-project-tracking` |
-| Agents and Wait | `agents.json` | [ai-roles.md](ai-roles.md), [wait.md](wait.md) |
+| Agents (incl. New work, role `dispatch`) and Wait | `agents.json` | [ai-roles.md](ai-roles.md), [wait.md](wait.md) |
 | Shipping PRs | `pr-workflow.json` | [prs.md](prs.md) |
+| PR statistics (which repositories are on, window, team filter, hidden people, clock, GitHub share) | `stats.json` | [pr-stats.md](pr-stats.md), `client/pr-stats-settings.tsx` |
 | Reviewers | `reviewers.json` | [prs.md](prs.md) |
+| New work: New's actions (order, shown, edits), team rules, bases per project, the no-team rule | `dispatch.json` (with New's records) | [dispatch.md](dispatch.md#settings), `client/new-settings.tsx` |
+| Morning brief: this week's plan link and the Linear queue (states, sweep time, since, time zone, workdays) | `morning-brief.json` | [morning-brief.md](morning-brief.md#settings) |
 | View state: settings category, settings folds, Home group folds, What's new "seen" | Paseo 0.16 device settings document `follow-up-view`, with localStorage as the first-paint cache; on 0.15, localStorage (memory on the phone) | `client/view-store.ts`, `shared/settings-nav.ts` |
 
 - **Booleans** use positive `enable_` names. Fields only ever gain defaults, so documents saved by older versions
@@ -28,6 +31,9 @@
   default when absent or saved as the retired `mod-slash`), `mod-shift-h` or `none`. Settings → Inbox & display → Keyboard picks it (web
   and desktop only); `set_display` sets it with `{ values: { search_shortcut: "none" } }`. No choice is a key Paseo
   binds (`PASEO_BOUND`, `shared/search-key.ts`; invariant `every-shortcut-is-configurable-and-never-paseo-s`).
+- **New from anywhere** is the Display field `new_shortcut`: `mod-shift-n`, `mod-shift-o` or `none`. Unset means the
+  host's default: ⌘⇧N (Ctrl+Shift+N) in Paseo's desktop app, ⌘⇧O (Ctrl+Shift+O) in a browser tab, where Chrome keeps
+  Ctrl/Cmd+Shift+N for a new incognito window. A pick wins everywhere. It opens New ([dispatch.md](dispatch.md#the-dialog)).
 - **Display fields** are read and written by agents through `display_settings` and `set_display`
   (`DISPLAY_TOOLS` in `server/agent-parity.ts`, PARITY key `settings.display`).
 - **View state is per device; settings are per host** (invariant 22, `view-state-is-per-device-settings-are-per-host`).
@@ -48,7 +54,7 @@
     marks it `migrated: true`; a migrated document is never overwritten. Writes still go to localStorage too, as a
     cache and a downgrade path, for one release.
   - **Home group folds** persist per device, except Needs you: it opens on every mount, and closing it holds only for
-    that mount. Quiet starts closed until the developer opens it.
+    that mount. Quiet and Older start closed until the developer opens them.
   - **0.15.** `useSettings` is missing there, so nothing syncs and view state stays in localStorage, else memory.
   - **Manual check (the harness can't drive the phone):** on the phone app, pick a settings category and fold a
     section, close the app fully, reopen it: the same category and folds come back.

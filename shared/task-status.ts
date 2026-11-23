@@ -30,10 +30,22 @@ export type TaskStatus = {
   link?: string | null;
 };
 
+/** A task whose decision waits in Needs you: the row points there, without the question id. */
+export const IN_NEEDS_YOU = "In Needs you";
+export const ANSWERED_TASK = "Answered · waits on the agent";
+
 export const finishedTask = (o: Obligation) => o.status === "done" || o.status === "waived";
 
-/** The question a blocked task became, if the server has mirrored it. */
-export const linkedQuestion = (o: Obligation, w: Workspace) => o.status === "blocked" ? [...(w.questions ?? [])].reverse().find(q => q.taskId === o.id && q.taskRevision !== null) ?? null : null;
+/**
+ * The question a blocked task waits on: the one that covers it (one-decision-one-card: asked once, with ask_question),
+ * else the card the server made from it. The task reads "In Needs you" until it is answered, then "Answered · waits on the
+ * agent" (or, once due-by-fact sees the answer, "Due · Q1 answered").
+ */
+export const linkedQuestion = (o: Obligation, w: Workspace) => {
+  if (o.status !== "blocked") return null;
+  const questions = w.questions ?? [];
+  return (o.coveredBy ? questions.find(q => q.id === o.coveredBy) : undefined) ?? [...questions].reverse().find(q => q.taskId === o.id && q.taskRevision !== null) ?? null;
+};
 
 const name = (live: TaskAgentLive) => live.title?.trim() || "Agent";
 
@@ -74,7 +86,8 @@ export function workingLine(o: Obligation, agents: TaskAgents): TaskStatus {
 export function taskStatus(o: Obligation, w: Workspace, agents: TaskAgents = w.taskAgents ?? {}, now = Date.now()): TaskStatus {
   if (finishedTask(o)) return { text: o.status === "done" ? "Done" : "Waived", tone: o.status === "done" ? "done" : "waived", agentId: null };
   const q = linkedQuestion(o, w);
-  if (q) return { text: q.answer ? `${q.id} · answered, waiting on the agent` : `${q.id} · waiting on your answer`, tone: "question", agentId: null };
+  // No question id: the card in Needs you shows none (an action card has no Q at all), so the row just points there.
+  if (q) return { text: q.answer ? ANSWERED_TASK : IN_NEEDS_YOU, tone: "question", agentId: null };
   if (o.status === "blocked") return blockedOnDeveloper(o) ? { text: "Needs a decision", tone: "blocked", agentId: null } : { text: blockedLine(o, w), tone: "blocked", agentId: null };
   if (o.status === "working") return workingLine(o, agents);
   // An Auto task riding the next message reads like every task in it: just Queued or Sent (the strip says when and why).

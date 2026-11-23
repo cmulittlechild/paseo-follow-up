@@ -3,7 +3,10 @@
 ## Settings → Agents (`agents.json`)
 
 - **Roles.** `shared/agent-settings.ts` defines the roles (`AGENT_ROLES`: `about`, `overseer`, `recovery`,
-  `ranker`), their defaults (`ROLE_DEFAULTS`) and lenient parsing. A missing or invalid entry means the default.
+  `ranker`, `dispatch`), their defaults (`ROLE_DEFAULTS`) and lenient parsing. A missing or invalid entry means the
+  default. `dispatch` is Settings → Agents → New work, the agent New starts for an action without its own
+  ([dispatch.md](dispatch.md#settings)); like recovery it has `same` (`hasSame`), here "Same as the Overseer", its
+  default. It's in Settings only, not setup's Helper agents step.
   The file also holds `enable_wait` ([wait.md](wait.md)).
 - **Store.** `server/agent-settings.ts` has the store (`AgentSettingsStore`, with serialized atomic writes) and
   `ProviderCatalog`.
@@ -19,7 +22,7 @@
 - **Names.** `ROLE_INFO` holds each role's title and what it does, the one copy both surfaces use. The ranker is
   **AI priority** in all user-facing copy; code and files keep `ranker`.
 - **Recommendations** (`shared/recommend.ts`). `ROLE_TIER` says what size of model each job needs (Summary small,
-  AI priority mid, the Overseer strong, recovery the same as the main agent) and `ROLE_NEED` says it in one line.
+  AI priority mid, the Overseer strong, recovery the same as the main agent, New work the same as the Overseer) and `ROLE_NEED` says it in one line.
   `recommend(role, catalog)` picks:
   - with Claude available, the declared `ROLE_DEFAULTS`;
   - otherwise the first ready provider (Claude, then Codex, then the rest), and in it the model whose description
@@ -70,6 +73,12 @@ User-facing copy calls it **Summary** (the Settings → Agents role is "Summarie
     same way. The agent tool's `wait` waits for all of it.
 - **Agent tool:** `workspace_about`.
 - **UI:** `client/about.tsx`. Placement tests: `tests/about-placement.test.ts`.
+
+## Ask for unknown sources
+
+The Morning brief's Ask (docs/morning-brief.md#ask) runs on the Summaries role too: one call plans at most 3 read-only
+reads of a server no recipe fits (weekly, or when its tools change), one turns the replies into at most 5 items. Every
+call and item is validated; the model runs nothing itself. Off until the developer previews and turns a source on.
 
 ## Rename title with AI
 
@@ -135,7 +144,7 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   while background work is paused. The hook injects it at each UserPromptSubmit.
 - **Its tools** come through `follow.overseer-act`: `workstreams`, `agent_digest` (the transcript on disk for an
   unloaded agent, never its timeline), `route_candidates`, `send_to_agent`, `start_workspace` (dry run, then
-  confirm) and `rerank`.
+  confirm; it runs as New's Create PR, [dispatch.md](dispatch.md)) and `rerank`.
 - **What it can't do:** merge, archive or post anywhere.
 - **Overrides.** `FOLLOW_UP_OVERSEER_PROVIDER` overrides the model, for isolated test daemons only.
 - **UI.** Home's Overseer card (`client/home.tsx`) and the Command Center item "Ask the Overseer"
@@ -147,12 +156,19 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   and `liveRankSources`.
 - **Inputs:**
   - Follow-up's own state.
-  - Linear issues assigned to the developer.
+  - The developer's Linear queue, from the Morning brief's snapshot ([morning-brief.md](morning-brief.md)): its top
+    40 issues by priority plus every issue that changed since the last workday's sweep, each with its change ("raised
+    Low → High"). The ranker makes no Linear call of its own; with no snapshot yet it asks for one sweep first.
   - Slack DMs and mentions from the last 48 h, through `mcpproxy call tool-read`.
   - `gh search prs --review-requested=@me`.
-  - The weekly planning artifact, read through one Claude turn with only the Artifact tool.
-- **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on workdays,
-  within the daily cap, while the governor allows background work.
+  - The weekly planning artifact, read through one Claude turn with only the Artifact tool, at most once a day. Its link
+    is Settings → Morning brief's ([morning-brief.md](morning-brief.md#settings)): `FOLLOW_UP_PLAN_URL`, else a pasted
+    link, else the one Find it for me found (or last week's).
+- **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on the
+  developer's workdays, 08:00–20:00 in their zone (the brief's clock: Settings → Morning brief's zone, else the device's, else the host's; the workdays
+  are the zone's usual week), within the daily cap, while the governor allows background work.
+- **Not started** (`notStartedFrom`): issues that are Urgent, or were raised to High or Urgent since the last workday,
+  with no workstream naming their key. Read from the queue, never asked of the model.
 - **Output:** `priorities.json` (`server/priorities.ts`, `shared/priorities.ts`) and `ranker.json`.
 - **One row shows the reason.** A priority is stored per workspace, and its score orders every row of that
   workspace. A workspace can have several Home rows, one per flagged root agent, and the reason was written about

@@ -2,10 +2,15 @@ import { z } from "zod";
 import { AGENT_ROLES, savedRoleSchema } from "../shared/agent-settings";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS } from "../shared/onboarding";
 import { setPrWorkflowInputSchema } from "../shared/pr-workflow";
+import { prStatsInputSchema, setPrStatsInputSchema, statsRepoName } from "../shared/pr-stats-settings";
 import { reviewerListSchema } from "../shared/reviewers";
 import { taskTriggerSchema } from "../shared/task-trigger";
 import { UPDATE_MODES } from "../shared/updates";
 import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
+import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
+import { linearQueueInputSchema } from "../shared/contracts";
+import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
+import { sourcesChangeSchema } from "../shared/brief-sources";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -45,6 +50,11 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   // Settings → Following → Shipping PRs (workflow, merge method and review fixes, per repository or the default)
   { name: "pr_workflow", rpc: "follow.pr-workflow", kind: "read", input: z.strictObject({ refresh: z.boolean().optional() }) },
   { name: "set_pr_workflow", rpc: "follow.set-pr-workflow", kind: "planned", before: { rpc: "follow.pr-workflow" }, input: setPrWorkflowInputSchema.extend(confirm) },
+  // PR statistics (docs/pr-stats.md): the page's model, Settings → PR statistics, and its writes. Turning a repository
+  // on shows the estimate first (the dry run's `before`), like the opt-in sheet.
+  { name: "pr_stats", rpc: "follow.pr-stats", kind: "read", input: prStatsInputSchema },
+  { name: "pr_stats_settings", rpc: "follow.pr-stats-settings", kind: "read", input: z.strictObject({ repo: statsRepoName.optional(), estimate: z.boolean().optional() }) },
+  { name: "set_pr_stats", rpc: "follow.set-pr-stats", kind: "planned", before: { rpc: "follow.pr-stats-settings", input: a => ({ ...(a.repo ? { repo: a.repo } : {}), estimate: a.enable === true }) }, input: setPrStatsInputSchema.extend(confirm) },
   // Settings → Reviewers
   { name: "reviewer_settings", rpc: "follow.reviewer-settings", kind: "read", input: none },
   { name: "reviewer_suggestions", rpc: "follow.reviewer-suggestions", kind: "read", input: z.strictObject({ repo }) },
@@ -142,6 +152,30 @@ export const RPC_TOOLS: readonly RpcTool[] = [
     } },
   // Settings → Permissions: trust bypass agents' approvals
   { name: "trust_bypass_status", rpc: "follow.trust-bypass", kind: "read", input: none },
+  // New (docs/dispatch.md): what it lists, its recent starts and Undo, its actions and where work goes. `dispatch` itself
+  // is AgentActions' own plan (a dry run that freezes what it would send).
+  { name: "dispatch_sources", rpc: "follow.dispatch-sources", kind: "read", input: z.strictObject({ fresh: z.boolean().optional(), query: z.string().trim().min(1).max(200).optional() }) },
+  { name: "dispatch_records", rpc: "follow.dispatch-records", kind: "read", input: none },
+  { name: "dispatch_undo", rpc: "follow.dispatch-undo", kind: "planned", before: { rpc: "follow.dispatch-records", input: () => ({}) }, input: z.strictObject({ dispatchId: id.optional(), ...confirm }) },
+  { name: "dispatch_actions", rpc: "follow.dispatch-actions", kind: "read", input: none },
+  { name: "set_dispatch_actions", rpc: "follow.set-dispatch-actions", kind: "planned", before: { rpc: "follow.dispatch-actions", input: () => ({}) }, input: z.strictObject({ change: actionChangeSchema.optional(), ...confirm }) },
+  { name: "dispatch_settings", rpc: "follow.dispatch-settings", kind: "read", input: none },
+  { name: "set_dispatch_settings", rpc: "follow.set-dispatch-settings", kind: "planned", before: { rpc: "follow.dispatch-settings", input: () => ({}) }, input: settingsChangeSchema.extend(confirm),
+    toRpc: a => ({ rules: a.rules, bases: a.bases, noTeam: a.noTeam }) },
+  // The Morning brief's Linear queue (docs/morning-brief.md). An agent reads without `open`, so it never moves the
+  // developer's "since" (a-change-is-against-what-you-last-saw).
+  { name: "linear_queue", rpc: "follow.linear-queue", kind: "read", input: linearQueueInputSchema.omit({ open: true }) },
+  // Settings → Morning brief: the queue's settings and this week's plan. set_brief_plan's dry run reads the new link's
+  // title first (brief_plan with link).
+  { name: "brief_settings", rpc: "follow.brief-settings", kind: "read", input: none },
+  { name: "set_brief_settings", rpc: "follow.set-brief-settings", kind: "planned", before: { rpc: "follow.brief-settings", input: () => ({}) }, input: queueChangeSchema.extend(confirm) },
+  { name: "brief_plan", rpc: "follow.brief-plan", kind: "read", input: briefPlanInputSchema },
+  { name: "set_brief_plan", rpc: "follow.set-brief-plan", kind: "planned", before: { rpc: "follow.brief-plan", input: a => (typeof a.link === "string" && a.link ? { link: a.link } : {}) }, input: planChangeSchema.extend(confirm) },
+  // The brief's sources: on/off, Retry, check again (set_brief_sources is planned: the dry run shows the sources now).
+  { name: "brief_sources", rpc: "follow.brief-sources", kind: "read", input: z.strictObject({ check: z.boolean().optional() }) },
+  { name: "set_brief_sources", rpc: "follow.set-brief-sources", kind: "planned", before: { rpc: "follow.brief-sources", input: () => ({}) }, input: sourcesChangeSchema.extend(confirm) },
+  { name: "brief_chat_search", rpc: "follow.brief-chat-search", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
+  { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
 
 /** Settings → Display (host-scoped preferences, trust bypass among them): read and planned write, served by the host. */
@@ -170,6 +204,9 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-project-tracking": { tools: ["set_project_tracking"] },
   "follow.pr-workflow": { tools: ["pr_workflow", "agent_settings"] },
   "follow.set-pr-workflow": { tools: ["set_pr_workflow"] },
+  "follow.pr-stats": { tools: ["pr_stats"], note: "The page's leaderboard, a person's drill-down (person) and a refresh (fresh); pr_stats also returns the waiting-now list the page leaves out." },
+  "follow.pr-stats-settings": { tools: ["pr_stats_settings"], note: "With estimate: true it is the opt-in sheet's numbers; set_pr_stats enable shows them as its dry run." },
+  "follow.set-pr-stats": { tools: ["set_pr_stats"] },
   "follow.reviewer-settings": { tools: ["reviewer_settings"] },
   "follow.reviewer-suggestions": { tools: ["reviewer_suggestions"] },
   "follow.save-reviewers": { tools: ["save_reviewers"] },
@@ -181,6 +218,12 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.set-onboarding": { tools: ["set_onboarding"] },
   "follow.priorities": { tools: ["priorities", "set_priorities"] },
   "follow.rank-status": { tools: ["rank_status"] },
+  "follow.brief-settings": { tools: ["brief_settings"] },
+  "follow.set-brief-settings": { tools: ["set_brief_settings"] },
+  "follow.set-brief-plan": { tools: ["set_brief_plan"] },
+  "follow.brief-chat-search": { tools: ["brief_chat_search"] },
+  "follow.brief-sources": { tools: ["brief_sources"] },
+  "follow.set-brief-sources": { tools: ["set_brief_sources"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },
@@ -218,6 +261,16 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.created-items": { tools: ["workspace_status"], note: "Read-only live facts for the chat's created-agent / created-workspace cards; an agent reads them through workspace_status and Paseo's own list_agents." },
   "follow.report-issue-link": { tools: ["report_issue"], note: "Open on GitHub with no agent to send to; report_issue's confirm returns the same prefilled link without GitHub auth." },
   "follow.whats-new-seen": { exempt: "Records that a person closed What's new on a device; an agent reading the notes isn't someone seeing the sheet." },
+  // New (client/new.tsx, docs/dispatch.md).
+  "follow.dispatch-sources": { tools: ["dispatch_sources"], note: "New's list: the developer's Linear issues and where each would go." },
+  "follow.dispatch-preview": { tools: ["dispatch"], note: "The dialog's preview is dispatch's dry run (no confirm): the same plan, instructions and blockers." },
+  "follow.dispatch": { tools: ["dispatch"], note: "confirm=true with the dry run's plan id starts exactly what the preview showed." },
+  "follow.dispatch-records": { tools: ["dispatch_records"], note: "The dialog's progress while a dispatch starts; Home's row reads the same records from the home feed." },
+  "follow.dispatch-undo": { tools: ["dispatch_undo"], note: "Undo in the dialog, the toast and Home's row: cancel a queued dispatch or archive what it created, inside the window." },
+  "follow.dispatch-settings": { tools: ["dispatch_settings"], note: "The Project picker's list of projects, and Settings → New work's rules, bases and no-team rule." },
+  "follow.set-dispatch-settings": { tools: ["set_dispatch_settings"], note: "Changing From saves the base for that project; Settings → New work adds, changes and removes team rules, bases and the no-team rule, as set_dispatch_settings does." },
+  "follow.dispatch-actions": { tools: ["dispatch_actions"], note: "Settings → New work's Actions list: every action in New's order, shown or hidden." },
+  "follow.set-dispatch-actions": { tools: ["set_dispatch_actions"], note: "Settings → New work's move, show/hide, reset, delete and reset-all, the same changes set_dispatch_actions makes." },
 };
 
 /**

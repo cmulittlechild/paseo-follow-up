@@ -50,6 +50,7 @@ const EXEMPT: Record<string, string> = {
   "follow.rename-status": "Reads the workspace's name from Paseo and, with suggest, waits on the model; changes nothing but the day's count.",
   "follow.rename-workspace": "Setting Paseo's workspace title is the action; on a timeout the name and the undo ledger stay as they were.",
   // Settings screens: reads, or a toggle saved before the slow part.
+  "follow.brief-chat-search": "Settings → Morning brief's person and channel pickers search the chat source through mcpproxy as the developer types; read-only, the picker shows Searching… and keeps the typed query.",
   "follow.project-settings": "The project list comes from Paseo; read-only.",
   "follow.set-project-tracking": "Checks the project against Paseo's list before saving the toggle.",
   "follow.agent-settings": "Settings → Agents reads Paseo's provider catalog (cached ten minutes); read-only.",
@@ -58,6 +59,12 @@ const EXEMPT: Record<string, string> = {
   "follow.onboarding-checks": "Getting started's readiness checks run gh and ask Paseo; read-only.",
   "follow.updates": "Settings → General asks Paseo for this install's source and npm for a newer version; read-only.",
   "follow.set-updates": "Saves the update mode, then returns the view above.",
+  // New (docs/dispatch.md): reads while the dialog is open; the dispatch itself records and replies before any create.
+  "follow.dispatch-sources": "New's list reads the developer's Linear issues through mcpproxy (one shared read a minute) and Paseo's projects; read-only.",
+  "follow.dispatch-preview": "New's preview reads the source (one get_issue, or GitHub) and Paseo's projects; read-only, nothing is created.",
+  "follow.dispatch": "Resolves the plan (Paseo's project list, the source) before recording it, so a blocked dispatch is refused, never recorded; the workspace and agent start after the reply.",
+  "follow.dispatch-settings": "The Project picker's list comes from Paseo; read-only.",
+  "follow.set-dispatch-settings": "Saves the base or rule, then returns the view with Paseo's project names.",
   "follow.dismiss-update-notice": "Dismisses the notice, then returns the view above.",
   "follow.install-update": "Checks the install's source with Paseo before the detached install.",
   "follow.release-notes": "What's new asks Paseo for this install's version and source; read-only.",

@@ -74,13 +74,14 @@ Nothing polls while the app is hidden.
 | `client/large.tsx` | The panel as a two-column screen. |
 | `client/header.tsx` | The stack bar and the header status. |
 | `client/stacks.tsx` | Stacks drawn top to base. |
-| `client/section-search.tsx`, `shared/section-search.ts` | Section search in the panel's Pull requests, Tasks and Activity. See [Section search](#section-search). |
+| `client/section-search.tsx`, `shared/section-search.ts` | Section search in the panel's Pull requests and Activity. See [Section search](#section-search). |
 | `client/pr-sheet.tsx`, `client/pr-controls.tsx` | One PR's sheet, with merge and reviewer controls. |
 | `client/reviewers.tsx` | Reviewer lists and the picker. |
 | `client/needs-you.tsx` | The workspace's one Needs you block: the asks (question cards, the brief), then the decision rows (Send repairs, Merge, Resume, Retry, Check). |
 | `client/questions.tsx` | The question dialog and answer form (`QuestionBody`), the one answer flow every question surface draws; its field's role comes from `answerDraft` (`one-answer-flow-for-every-question`). Send, then Put in chat with Copy as an icon on Paseo 0.16 (Copy keeps its label on 0.15). |
 | `client/put-in-chat.ts` | Paseo 0.16's composer controls, feature-detected (`hasComposers`, `useChatComposer`); the insert rule is `shared/put-in-chat.ts`. |
-| `client/tasks.tsx` | Tasks and their triggers. Repairs are task rows too (Q49): the next-message strip first (Preview, Send now, Open agent while sent), PR-condition rows with their PR chip, the repair task sheet (per-task Auto-send, the message with its line highlighted). Rows come from `shared/task-rows.ts`. |
+| `client/tasks.tsx` | Agent's tasks (tasks-are-the-agent-s): one folded line ("6 open · 2 due · 1 stale"), opened a row per open task saying what moves it (`shared/task-view.ts`), stale and due first with the agent's note, a row opening in place, and the "Send on a schedule…" sheet (the trigger editor). |
+| `client/messages.tsx` | The Messages to the agent card: the send queue's strip (who, how many, when and why; Preview, Send now, Open agent while sent) and the open repairs with their PR chip and sheet (per-task Auto-send, the message with its line highlighted). Rows come from `shared/task-rows.ts`. |
 | `client/spec.tsx` | The spec link chip, row and sheet. The chip sits in the references line (`client/linked.tsx`). |
 | `client/linked.tsx`, `shared/linked-display.ts` | Linked items on screen: the references line (Spec and Linked chips), the Linked sheet, the disclosure row, and Home search's index. See [linked-items.md](linked-items.md#ui). |
 | `client/brand-icons.ts` | Monochrome brand marks (Simple Icons, CC0) for linked items, passed to the host `Icon` as inline SVG. |
@@ -107,7 +108,7 @@ Nothing polls while the app is hidden.
 | `shared/notes-scrollbar.ts` | The notes' scrollbar style: always visible while they overflow (macOS hides overlay scrollbars otherwise), scoped to the notes' scroll container. |
 | `client/docked-pane.tsx`, `client/dock.ts` | `DockedPane`: a scrolling pane with a bar docked under it (Home's detail pane, the Overseer's pane, setup, Catch up's card). On a phone, while a field in the pane has focus or the keyboard is up, the dock drops its extras (`dockYields`), the pane stops above a keyboard that overlays the page (`keyboardOverlap`), and the focused field's primary form, the field with its Send marked `PRIMARY_FORM`, scrolls into view (`revealFocused`), again when the keyboard or the dock changes size. Native scrolls the focused input clear of the keyboard with room for its Send. Invariant `a-focused-field-and-its-send-stay-in-view`, `tests/dock-in-view.test.ts`. |
 | `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts` | `ResizableSplit`: a pane beside a flexible side with a draggable divider (11 px hit area, col-resize cursor, hover and drag highlight, a grip), keyboard moves (arrows 2 %, Shift 10 %, Home and End to the ends, Enter or double-click resets) and a separator role; the width updates locally per frame and commits once on release. `shared/split.ts` holds its clamping. Home's list and right pane use it, saving `home_detail_fraction`. Phones keep their stacked layout. Layouts allowed to stay fixed are in `client/pane-allowlist.ts` with a reason (invariant `side-panes-are-resizable`, `tests/side-panes.test.ts`). |
-| `client/search-key.ts`, `shared/search-key.ts` | Search from anywhere: one capture-phase `keydown` listener (web and desktop) that opens Home with the cursor in its search, or only moves the cursor when Home is on screen; the key (⌘⇧K / Ctrl+Shift+K by default) is the Display field `search_shortcut`, read at start and from the Display feed. `shared/search-key.ts` holds the presets, the exact-modifier matcher, the labels each platform prints and `PASEO_BOUND`, Paseo's own combos, which no preset may take. The ⌘K "Follow-up: Search" row and Home's search chip name the key (`createSearchKey`). Home's search takes a focus request made before it mounted (`takeFocus` in `client/home-view.ts`). |
+| `client/search-key.ts`, `shared/search-key.ts` | Search from anywhere: one capture-phase `keydown` listener (web and desktop) that opens Home with the cursor in its search, or only moves the cursor when Home is on screen; the key (⌘⇧K / Ctrl+Shift+K by default) is the Display field `search_shortcut`, read at start and from the Display feed. `shared/search-key.ts` holds the presets, the exact-modifier matcher, the labels each platform prints and `PASEO_BOUND`, Paseo's own combos, which no preset may take. The ⌘K "Follow-up: Search" row and Home's search chip name the key (`createSearchKey`). Home's search takes a focus request made before it mounted (`takeFocus` in `client/home-view.ts`). New from anywhere (`new_shortcut`, `createNewKey`) is matched by the same listener ([dispatch.md](dispatch.md#the-dialog)). |
 | `client/scroll-allowlist.ts` | The React Native ScrollView/FlatList imports allowed to stay native, each with why it never renders inside a host sheet or popover; every other scroll view is the kit's (invariant `sheet-content-scrolls-with-the-sheet`, `tests/sheet-scroll.test.ts`). |
 | `client/kit.tsx`, `client/motion.tsx`, `shared/motion.ts`, `client/theme.ts`, `client/keys.ts` | The type scale, motion (and the first-render reduced-motion read), theme helpers and query keys. |
 | `client/rich-text.tsx`, `shared/links.ts` | The one renderer for agent-written text, and the linkifier behind it. |
@@ -206,18 +207,18 @@ Rules:
 
 ## Section search
 
-The panel's Pull requests, Tasks and Activity cards each have a search icon at the right of their header, always shown
+The panel's Pull requests and Activity cards each have a search icon at the right of their header, always shown
 (`useSectionSearch`, `client/section-search.tsx`). Pressing it turns the header into the shared `QueryField`
-("Search pull requests", "Search tasks", "Search activity") with focus in it, "n of N" inside the field and ✕ beside
+("Search pull requests", "Search activity") with focus in it, "n of N" inside the field and ✕ beside
 it. Esc or ✕ closes it, and focus returns to the icon. There's no key binding, so Ctrl/Cmd+F stays the browser's find.
 
 - **What each section searches** (`shared/section-search.ts`): Pull requests, the number and title (shown) and the
-  branch and failed check names (hidden); Tasks, the title (shown) and the evidence (hidden), plus repair rows' title
-  and PR chip; Activity, both tabs at once: a timeline entry's line and detail, a question's "Qn · title" and its
+  branch and failed check names (hidden); Activity, both tabs at once: a timeline entry's line and detail, a question's "Qn · title" and its
   status line. A match only in a hidden field replaces line 2 with "<Key> · excerpt", as on Home's rows.
 - **A filter, not a ranking.** `filterItems` (`shared/search.ts`) uses the matcher every workspace search uses
   (invariant 28) and keeps the list's own order. Matched words take the sidebar filter's hit style (`marks`).
-- **Folds are ignored while a query is typed**: done tasks, merged PRs, settled stacks and Activity's "Show all" show
+- **Agent's tasks has no search**: it is the agent's list, folded to one line, a handful of rows when open.
+- **Folds are ignored while a query is typed**: merged PRs, settled stacks and Activity's "Show all" show
   their matches in place, done ones muted as usual. The next-message strip, held merges and in-flight lines step
   aside. Activity's tab chips move under the field and count their matches, so a hit in the other tab is never hidden.
 - Nothing matches: "No tasks match ‘x’" (or pull requests, activity).

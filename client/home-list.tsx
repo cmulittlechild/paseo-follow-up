@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { View, type FlatList as NativeFlatList } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon, FlatList } from "@getpaseo/plugin/client/ui";
-import { type Badge, type HomeGroupId, type HomeModel, type Workstream, railChips } from "../shared/home";
+import { type Badge, type HomeGroupId, type HomeModel, type Workstream, prChipSpoken, railChips } from "../shared/home";
 import { ASK_KEY, excerpt, FIELD_LABEL, type OmniboxItem, type Range, type RowHit, type SearchHit } from "../shared/search";
 import { AskRow, PriorityLine } from "./home-chrome";
 import { age, wakeLabel, wakeShort } from "../shared/inbox";
@@ -136,7 +136,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
       case "ask": return <AskRow ask={item.ask} theme={theme} active={item.index === activeResult} dense={dense} touch={touch} sending={!!asking} onPress={() => onResult?.({ provider: "overseer", key: ASK_KEY, ask: item.ask })} />;
       case "brief": return <BriefRow theme={theme} line={briefLine ?? ""} selected={!touch && (selectedKey === null || selectedKey === BRIEF_KEY)} touch={touch} onSelect={onSelect} />;
       case "overseer": return overseer ? <OverseerRow theme={theme} o={overseer} selected={selectedKey === OVERSEER_KEY} touch={touch} stacked={stackOverseer} onSelect={onSelect} selectedBg={selectedBg} /> : null;
-      case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} onPress={() => toggle(item.group)} />;
+      case "header": return <GroupHeader theme={theme} title={item.title} count={item.count} open={item.open} tone={item.group === "needs" && item.count ? c.statusWarning : undefined} dense={dense} touch={touch} folds={item.group === "older" || item.group === "quiet"} onPress={() => toggle(item.group)} />;
       case "fold": return <Pressable accessibilityRole="button" aria-expanded={item.open} accessibilityState={{ expanded: item.open }} accessibilityLabel={`${item.project}, ${item.count}. ${item.open ? "Collapse" : "Expand"}`} onPress={() => toggleProject(item.project)}
         style={state => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: dense ? 8 : 16, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
         <Icon name={item.open ? "ChevronDown" : "ChevronRight"} size={13} color={c.foregroundMuted} />
@@ -188,7 +188,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
   return <View ref={rootRef} style={{ flex: 1, minHeight: 0 }}>{top}{list}{overlay}</View>;
 }
 
-function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }: { theme: Theme; title: string; count: number; open: boolean; tone?: string; dense: boolean; touch: boolean; onPress: () => void }) {
+function GroupHeader({ theme, title, count, open, tone, dense, touch, folds = false, onPress }: { theme: Theme; title: string; count: number; open: boolean; tone?: string; dense: boolean; touch: boolean; folds?: boolean; onPress: () => void }) {
   const c = theme.colors;
   return <Pressable accessibilityRole="button" aria-expanded={open} accessibilityState={{ expanded: open }} accessibilityLabel={`${title}, ${count}. ${open ? "Collapse" : "Expand"}`} onPress={onPress}
     style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: touch ? 44 : dense ? 28 : 34, paddingHorizontal: touch ? 16 : dense ? 8 : 16, paddingTop: touch ? 8 : dense ? 4 : 8 }}>
@@ -196,7 +196,8 @@ function GroupHeader({ theme, title, count, open, tone, dense, touch, onPress }:
     {/* Phones: sentence case at 13, the section role; desktop keeps the small caps. */}
     <Text accessibilityRole="header" style={touch ? { color: tone ?? c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "600" } : { color: tone ?? c.foregroundMuted, fontSize: 11, lineHeight: 14, fontWeight: "600", letterSpacing: 0.6, textTransform: "uppercase" }}>{touch ? title.charAt(0) + title.slice(1).toLowerCase() : title}</Text>
     <Text style={{ color: tone ?? c.foregroundMuted, fontSize: touch ? 13 : 11, lineHeight: touch ? 18 : 14, fontVariant: ["tabular-nums"] }}>{count}</Text>
-    {!dense && !open && <Icon name="ChevronRight" size={12} color={c.foregroundMuted} />}
+    {/* A group that starts folded keeps its fold control when open, so it can be folded again. */}
+    {!dense && (!open || folds) && <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={c.foregroundMuted} />}
   </Pressable>;
 }
 
@@ -260,7 +261,7 @@ export function BadgeView({ b, c }: { b: Badge; c: Colors }) {
 export function PrChipView({ s, c }: { s: Workstream; c: Colors }) {
   if (!s.pr) return null;
   const checks = s.pr.checks;
-  return <View testID="follow-up-row-chip" style={{ flexShrink: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
+  return <View testID="follow-up-row-chip" role="img" aria-label={prChipSpoken(s.pr)} style={{ flexShrink: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, height: 20, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
     <Icon name="GitPullRequest" size={11} color={toneColor(c, s.pr.tone)} />
     <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foreground, fontSize: 11, lineHeight: 14, fontVariant: ["tabular-nums"] }}>{s.pr.label}</Text>
     {checks && <Text numberOfLines={1} style={{ flexShrink: 1, minWidth: 0, color: checks.tone === "muted" ? c.foregroundMuted : badgeColor({ text: "", tone: checks.tone }, c), fontSize: 11, lineHeight: 14 }}>{checks.text}</Text>}
@@ -292,10 +293,10 @@ function RowTime({ s, c, size }: { s: Workstream; c: Colors; size: number }) {
  * clips (so the lowest-priority chips drop, last first), and a lone chip truncates. Guarded by
  * `scripts/screenshots.mjs --only rowchips` (CDP boxes at list widths 320, 360 and 400) and tests/row-chips.test.ts.
  */
-function ChipRail({ s, c }: { s: Workstream; c: Colors }) {
+function ChipRail({ s, c, dim = false }: { s: Workstream; c: Colors; /** An Older row: chips at 60 %, like its glyph. */ dim?: boolean }) {
   const chips = railChips(s);
   if (chips.length === 0) return null;
-  return <View testID="follow-up-row-chips" style={{ flexShrink: 1000, minWidth: 0, height: 20, overflow: "hidden", flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 10, rowGap: 4 }}>
+  return <View testID="follow-up-row-chips" style={{ ...(dim ? { opacity: 0.6 } : {}), flexShrink: 1000, minWidth: 0, height: 20, overflow: "hidden", flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 10, rowGap: 4 }}>
     {chips.map(ch => ch.kind === "badge" ? <BadgeView key={ch.badge.text} b={ch.badge} c={c} /> : <PrChipView key="pr" s={s} c={c} />)}
   </View>;
 }
@@ -324,9 +325,12 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const c = theme.colors;
   const trigger = useRowMenuTrigger(s, onMenu, touch);
   const archived = s.icon === "Archive" && s.sig.startsWith("archived:");
-  const color = archived ? c.foregroundMuted : glyphColor(s, c, touch);
+  // An Older row is demoted at one level: its title muted, and its glyph and chips keep their hue at 60 % (still
+  // readable as an error or a review), never full red beside a grey title.
+  const older = s.group === "older";
+  const color = archived ? c.foregroundMuted : older ? withAlpha(glyphColor(s, c, touch), 0.6) : glyphColor(s, c, touch);
   const blocking = s.group === "needs" && s.tier === 0;
-  const muted = s.group === "quiet" || s.group === "later";
+  const muted = s.group === "quiet" || s.group === "later" || s.group === "older";
   // Desktop rows are one line beside badges and the PR chip: the ask and the "<Field> · excerpt" line are cut around the
   // match (about 44 characters, the match near the start), so the highlight is never past the "…". Phones and the
   // sidebar view wrap to two lines and keep more.
@@ -343,7 +347,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const waited = s.group === "later" && s.at ? age(s.at, Date.now()) : "";
   const label = [s.title + (s.agent ? ` › ${s.agent}` : ""), s.word, s.line, hit?.via && `${FIELD_LABEL[hit.via.field]}: ${hit.via.text}`,
     // Every chip, even one a narrow row hides (row-chips-never-cover-the-time).
-    ...s.badges.map(b => b.text), s.pr && `Pull request ${s.pr.label}${s.pr.checks ? ` ${s.pr.checks.text}` : ""}`, wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
+    ...s.badges.map(b => b.text), s.pr && prChipSpoken(s.pr), wake && `Later until ${wake}`, waited && (waited === "now" ? "just now" : `waiting ${waited}`)].filter(Boolean).join(". ");
   return <Pressable ref={trigger.ref} nativeID={rowDomId(s.key)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label} accessibilityHint={quickActionsHint(touch)}
     onPress={() => onSelect(s.key)} onLongPress={trigger.onLongPress} delayLongPress={450}
     style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: dense ? "flex-start" : "center", gap: touch ? 10 : dense ? 8 : 10, minHeight: touch ? 56 : dense ? 36 : 38, paddingLeft: touch ? 14 : dense ? 8 : 16, paddingRight: touch ? 16 : dense ? 8 : 16, paddingVertical: touch ? 12 : dense ? 6 : 0,
@@ -364,7 +368,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
         {s.word && s.group === "needs" ? <Text style={{ color, fontWeight: "600" }}>{s.word}</Text> : null}{s.word && s.group === "needs" && s.line ? " · " : ""}{line}
       </Text>}
       {!!s.priority?.reason && <PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} size={12} lines={2} />}
-      {!!s.pr && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"] }}><PrSummaryText s={s} c={c} /></Text>}
+      {!!s.pr && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"], ...(older ? { opacity: 0.6 } : {}) }}><PrSummaryText s={s} c={c} /></Text>}
       {sendNow && <View style={{ flexDirection: "row", marginTop: 6 }}>{sendNow}</View>}
     </View> : dense ? <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
       <Text numberOfLines={1} style={{ color: muted ? c.foregroundMuted : c.foreground, fontSize: 13, lineHeight: 18, fontWeight: muted ? "400" : "500" }}>{title}</Text>
@@ -386,7 +390,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
       <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12, marginLeft: !via && s.word && s.group === "needs" ? -10 : 0 }}>
         {via ?? <>{s.word && s.group === "needs" && s.line ? "\u00a0· " : ""}{line}</>}
       </Text>
-      <ChipRail s={s} c={c} />
+      <ChipRail s={s} c={c} dim={older} />
       {sendNow}
     </View>{!!s.priority?.reason && <View style={{ paddingRight: 40 }}><PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} /></View>}</View>}
     {!touch && <RowTime s={s} c={c} size={dense ? 11 : 12} />}

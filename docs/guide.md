@@ -67,7 +67,7 @@ The bar above the message box (the pill) shows what needs you in the chat you're
 
 ### A PR
 
-Tap a PR, or its segment in the stack bar, for its checks, reviewers and Merge. When Merge isn't available yet, the
+Tap a PR (on desktop, its segment in the stack bar too) for its checks, reviewers and Merge. When Merge isn't available yet, the
 sheet says what it's waiting for. Follow-up never merges on its own, and Merge checks the stack again first.
 
 <img alt="The PR sheet for a PR whose required test check failed" src="screenshots/follow-up-pr-sheet.png">
@@ -123,15 +123,18 @@ Slack through read-only tools and never posts anything.
 
 ## Settings
 
-Settings (the gear on Home, or ⌘K → **Follow-up: settings**) has five categories:
+Settings (the gear on Home, or ⌘K → **Follow-up: settings**) has seven categories:
 
 - General: updates (Install automatically, Tell me or Off; Stable or Beta), setup, and the release notes.
 - Following: which projects and workspaces Follow-up follows, auto-send, how each repository ships PRs (GitHub or
   Graphite, the merge method, how agents handle review comments), and Trust bypass for permission prompts.
 - Reviewers: who **Add reviewers** asks, with a default for every repository and a list per repository.
-- Agents: the helper agents and their models, what agents do while a question waits, and, on Paseo 0.15, Wait for
-  background jobs.
-- Inbox & display: the Needs-you inbox, the sidebar badge and the pills.
+- Agents: the helper agents and their models (New work is the agent New starts), what agents do while a question
+  waits, and, on Paseo 0.15, Wait for background jobs.
+- New work: the actions New offers (order, show or hide, reset to built-in), which project each Linear team's work
+  goes to, and the base branch per project.
+- Inbox & display: the Needs-you inbox, the sidebar badge, the pills and the New-from-anywhere key.
+- Morning brief: this week's plan, its sources and the Linear queue.
 
 ## Report a bug or request a feature
 

@@ -1,4 +1,4 @@
-import { EMPTY_AGENT_SETTINGS, ROLE_DEFAULTS, ROLE_INFO, isJobRole, labelsFor, resolveRole, roleSummary, type AgentRole, type AgentSettingsView, type Catalog, type RoleConfig, type SavedRole } from "./agent-settings";
+import { EMPTY_AGENT_SETTINGS, ROLE_DEFAULTS, ROLE_INFO, SAME_LABEL, hasSame, isJobRole, labelsFor, resolveRole, roleSummary, type AgentRole, type AgentSettingsView, type Catalog, type RoleConfig, type SavedRole } from "./agent-settings";
 import { ROLE_NEED, isRecommended, recommend, type Recommendation } from "./recommend";
 
 /**
@@ -6,7 +6,7 @@ import { ROLE_NEED, isRecommended, recommend, type Recommendation } from "./reco
  * Everything a row says comes from here, so the two surfaces can't drift apart (tests/job-rows.test.ts).
  */
 export const SETUP_ORDER: readonly AgentRole[] = ["about", "ranker", "overseer", "recovery"];
-export const SETTINGS_ORDER: readonly AgentRole[] = ["about", "overseer", "recovery", "ranker"];
+export const SETTINGS_ORDER: readonly AgentRole[] = ["about", "overseer", "dispatch", "recovery", "ranker"];
 
 type RoleView = AgentSettingsView["roles"][number];
 export type JobRowModel = {
@@ -30,17 +30,17 @@ export type JobRowModel = {
 export const NO_PROMPT_MODE: Record<string, string> = { claude: "bypassPermissions", codex: "full-access" };
 
 const WONT_RUN: Record<AgentRole, string> = {
-  about: "this won't run", ranker: "this won't run", overseer: "the Overseer can't start", recovery: "recovery agents won't start",
+  about: "this won't run", ranker: "this won't run", overseer: "the Overseer can't start", recovery: "recovery agents won't start", dispatch: "New can't start work",
 };
 
 /** A recommendation's label, in the same words as a saved pick. */
 export function recLabel(rec: Recommendation, catalog: Catalog | null | undefined): string | null {
-  if (rec.same) return "Same as main agent";
+  if (rec.same) return SAME_LABEL[rec.role] ?? "Same as main agent";
   if (!rec.provider) return null;
   const config: RoleConfig = { role: rec.role, provider: rec.provider, model: rec.model, thinking: rec.thinking, mode: null, same: false, dailyCap: null, maxPromptChars: null, cadenceMinutes: null, isDefault: false };
   const label = roleSummary(config, labelsFor(config, catalog));
   // A fallback pick is the provider's own default model: say which, when the catalog knows.
-  if (!rec.model && !(rec.role === "overseer" && rec.provider === "claude")) {
+  if (!rec.model && !((rec.role === "overseer" || rec.role === "dispatch") && rec.provider === "claude")) {
     const d = catalog?.providers.find(p => p.id === rec.provider)?.models.find(m => m.isDefault);
     if (d) return label.replace(/Default$/, `Default (${d.label})`);
   }
@@ -82,7 +82,7 @@ export function recommendedEntry(r: RoleView, rec: Recommendation): SavedRole {
   if (rec.same) return { ...keep, provider: r.provider, model: r.model, thinking: r.thinking, ...(r.mode ? { mode: r.mode } : {}), same: true };
   const provider = rec.provider ?? r.provider;
   const mode = provider === r.provider ? r.mode : provider === ROLE_DEFAULTS[r.role].provider ? ROLE_DEFAULTS[r.role].mode : NO_PROMPT_MODE[provider] ?? null;
-  return { ...keep, provider, model: rec.model, thinking: rec.thinking, ...(mode && !isJobRole(r.role) ? { mode } : {}), ...(r.role === "recovery" ? { same: false } : {}) };
+  return { ...keep, provider, model: rec.model, thinking: rec.thinking, ...(mode && !isJobRole(r.role) ? { mode } : {}), ...(hasSame(r.role) ? { same: false } : {}) };
 }
 
 /**
@@ -112,8 +112,8 @@ export type JobsHeader = { text: string; tone: "muted" | "warning"; action: "use
 export function jobsHeader(rows: readonly JobRowModel[], catalog: Catalog | null | undefined, loading: boolean): JobsHeader {
   if (loading && !catalog) return { text: "Reading your providers…", tone: "muted", action: null, differ: 0 };
   if (catalog?.error && !catalog.providers.length) return { text: "Couldn't read Paseo's providers. The current picks still work.", tone: "warning", action: "retry", differ: 0 };
-  // Recovery copies the main agent, so it never decides whether any provider is ready.
-  const picks = rows.filter(r => r.role !== "recovery");
+  // Recovery and New work copy another agent, so they never decide whether any provider is ready.
+  const picks = rows.filter(r => !hasSame(r.role));
   if (picks.length && picks.every(r => !r.rec)) return { text: "No provider in Paseo is ready, so these helpers can't run yet. Following PRs and Needs you still work.", tone: "warning", action: "check", differ: 0 };
   const differ = rows.filter(r => r.rec && !r.recommended).length;
   if (!differ) return { text: "Picked for the models Paseo has here.", tone: "muted", action: null, differ: 0 };

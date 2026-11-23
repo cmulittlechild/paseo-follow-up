@@ -17,12 +17,17 @@ export const STALE_MS = 10 * 60_000;
 
 /**
  * One mark per PR in stack order, coloured by state; past STACK_BAR_BUDGET PRs, runs or slices of the stack as wide as
- * their share (`barMarks`, stack-bar-reads-at-any-size). The signature of the panel; a mark opens its loudest PR.
+ * their share (`barMarks`, stack-bar-reads-at-any-size). The signature of the panel. A mark opens its loudest PR on
+ * desktop only: on a phone the marks are 6-8 pt wide and 2 pt apart, far under the 44 pt touch rule, and the Pull
+ * requests card's rows right below open every PR, so the compact header draws it without `onOpen` (one progress bar,
+ * no buttons).
  */
 export function StackBar({ workspace, theme, height = 6, onOpen }: { workspace: Pick<Workspace, "prs">; theme: Theme; height?: number; onOpen?: (key: string) => void }) {
   const bar = stackBar(workspace);
   if (!bar.total) return null;
-  return <View accessibilityRole="progressbar" accessibilityLabel={`${bar.merged} of ${bar.total} PRs merged`} accessibilityValue={{ min: 0, max: bar.total, now: bar.merged }}
+  // The label says what the marks show, so a phone's bar (no per-mark buttons) still tells a screen reader what is red (failed checks or a conflict: the header's "to fix").
+  const failing = bar.segments.filter(s => s.tone === "danger").length;
+  return <View accessibilityRole="progressbar" accessibilityLabel={`${bar.merged} of ${bar.total} PRs merged${failing ? `, ${failing} to fix` : ""}`} accessibilityValue={{ min: 0, max: bar.total, now: bar.merged }}
     style={{ flexDirection: "row", gap: 2, height, borderRadius: height / 2, overflow: onOpen ? "visible" : "hidden" }}>
     {barMarks(bar.segments).map((s, i, marks) => {
       const paint = segmentPaint(theme.colors, s.tone);
@@ -110,7 +115,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
     <Text accessibilityLiveRegion="polite" style={[t.ask, { color: c.foregroundMuted }]}>
       {parts.map((part, i) => <Text key={part.text} style={toneOf(part.tone) ? { color: toneOf(part.tone) } : { color: c.foreground }}>{i ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" · "}</Text> : null}{part.text}</Text>)}
     </Text>
-    <StackBar workspace={w} theme={theme} onOpen={onOpenPr} />
+    <StackBar workspace={w} theme={theme} onOpen={compact ? undefined : onOpenPr} />
     {tail}
   </View>;
   return <View style={{ paddingHorizontal: pad, paddingTop: compact ? 14 : 12, paddingBottom: 10, gap: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
@@ -127,7 +132,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
     <Text accessibilityLiveRegion="polite" style={[t.meta, { color: c.foregroundMuted, marginTop: 2 }]}>
       {parts.map((part, i) => <Text key={part.text} style={toneOf(part.tone) ? { color: toneOf(part.tone), fontWeight: "600" } : { color: c.foreground }}>{i ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" · "}</Text> : null}{part.text}</Text>)}
     </Text>
-    <StackBar workspace={w} theme={theme} onOpen={onOpenPr} />
+    <StackBar workspace={w} theme={theme} onOpen={compact ? undefined : onOpenPr} />
     {tail}
   </View>;
 }

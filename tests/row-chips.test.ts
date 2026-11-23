@@ -16,7 +16,7 @@ test("the desktop row draws its chips through one rail, never loose beside the l
   const s = await src();
   const row = block(s, "const Row = memo(");
   const desktop = row.slice(row.indexOf("</View> : <View style={{ flex: 1"));
-  assert.match(desktop, /<ChipRail s=\{s\} c=\{c\} \/>/);
+  assert.match(desktop, /<ChipRail s=\{s\} c=\{c\} dim=\{older\} \/>/);
   assert.doesNotMatch(desktop, /<BadgeView|<PrChipView/, "a chip outside the rail can't yield");
 });
 
@@ -39,7 +39,7 @@ test("chips rank red, amber, green, grey: a failing check outlasts Approved", ()
 test("a Needs-you row's word keeps its place, and the row's label names every chip, even a hidden one", async () => {
   const row = block(await src(), "const Row = memo(");
   assert.match(row, /s\.word && s\.group === "needs" \? <Text numberOfLines=\{1\} style=\{\{ flexShrink: 0, color, fontSize: 12 \}\}>\{s\.word\}/);
-  assert.match(row, /\.\.\.s\.badges\.map\(b => b\.text\), s\.pr && `Pull request \$\{s\.pr\.label\}/);
+  assert.match(row, /\.\.\.s\.badges\.map\(b => b\.text\), s\.pr && prChipSpoken\(s\.pr\)/);
 });
 
 test("a lone chip truncates instead of overflowing; the time never shrinks", async () => {

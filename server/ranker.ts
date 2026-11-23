@@ -8,14 +8,17 @@ import { z } from "zod";
 import { mkdir } from "node:fs/promises";
 import { atomic } from "./overseer";
 import { claudeArgs, claudeRunner, type AiJobs, type RunInput } from "./ai-jobs";
-import { mcpproxyText } from "./about";
+import { NoSourceError, sourceDirectory, type SourceDirectory } from "./source-tools";
+import { parseEvents, parseMail, rangeArgs } from "../shared/brief-sources";
 import {
-  damped, emptyReasons, fillReasons, workspaceInputs, healthLine, inRankWindow, jerusalem, RANK_STRICT, REASON_SYSTEM, reasonInputs, reasonReplySchema, stableInputs, rankPrompt, rankReplySchema, RANK_SYSTEM, rankWorkstream, toPriorities,
-  type NotStarted, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
+  damped, emptyReasons, fillReasons, workspaceInputs, healthLine, inRankWindow, RANK_STRICT, REASON_SYSTEM, reasonInputs, reasonReplySchema, stableInputs, rankPrompt, rankReplySchema, RANK_SYSTEM, rankWorkstream, toPriorities,
+  type NotStarted, type RankAsked, type RankEvent, type RankInputs, type RankIssue, type RankMessage, type RankPlanning, type RankReview, type RankSource, type SourceHealth,
 } from "../shared/ranker";
 import type { Priority } from "../shared/priorities";
 import type { WorkstreamRow } from "../shared/overseer";
 import { truncated } from "../shared/scale";
+import { canonicalArtifactUrl } from "../shared/morning-brief";
+import { clockFor, BRIEF_SETTINGS_DEFAULT, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
 const exec = promisify(execFile);
@@ -44,6 +47,12 @@ export type RankSources = {
   linear(): Promise<RankIssue[]>;
   /** DMs and mentions since `since` (ms). */
   slack(since: number): Promise<RankMessage[]>;
+  /** Today's meetings (`days` from the start of today), when a calendar source is on. */
+  calendar?(day: { start: string; end: string; timeZone: string }): Promise<RankEvent[]>;
+  /** What the Ask sources that are on found this morning (stored by the morning's asks; the ranker never asks). */
+  asks?(): Promise<RankAsked[]>;
+  /** Unread mail since `since` (ms), when the mail source is on (off until turned on); `now` is the ranker's clock. */
+  mail?(since: number, now: number): Promise<RankMessage[]>;
   github(): Promise<RankReview[]>;
   /** The CPO's plan, read once a day at most (the caller caches). Null when there's no plan to read. */
   planning(url: string): Promise<RankPlanning | null>;
@@ -51,45 +60,9 @@ export type RankSources = {
 
 const str = (v: unknown) => typeof v === "string" && v.trim() ? v.trim() : null;
 
-/**
- * The complete objects of a JSON array that was cut off (mcpproxy truncates replies near 20 k characters and appends
- * a note, which leaves invalid JSON): every whole `{…}` element after `"key":[`, up to the cut.
- */
-export function salvageArray(text: string, key: string): unknown[] {
-  const at = text.indexOf(`"${key}":[`);
-  if (at < 0) return [];
-  const out: unknown[] = [];
-  let depth = 0, start = -1, inString = false, escaped = false;
-  for (let i = at + key.length + 4; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') inString = false; continue; }
-    if (ch === '"') inString = true;
-    else if (ch === "{") { if (depth++ === 0) start = i; }
-    else if (ch === "}") { if (--depth === 0 && start >= 0) { try { out.push(JSON.parse(text.slice(start, i + 1))); } catch { /* skip */ } start = -1; } }
-    else if (ch === "]" && depth === 0) break;
-  }
-  return out;
-}
-
-/** `linear:list_issues` (JSON `{issues: […], hasNextPage, cursor}`), open ones only; a truncated reply keeps its whole issues. */
-export function parseLinearIssues(text: string): RankIssue[] { return parseLinearPage(text).issues; }
-export function parseLinearPage(text: string): { issues: RankIssue[]; next: string | null; readable: boolean } {
-  let j: { issues?: unknown[]; hasNextPage?: unknown; cursor?: unknown } | null = null;
-  try { j = JSON.parse(text); } catch { /* truncated: salvage below */ }
-  const issues = Array.isArray(j?.issues) ? j!.issues : salvageArray(text, "issues");
-  const readable = Array.isArray(j?.issues) || issues.length > 0;
-  const next = j && j.hasNextPage === true && typeof j.cursor === "string" ? j.cursor : null;
-  return { issues: toIssues(issues), next, readable };
-}
-function toIssues(issues: unknown[]): RankIssue[] {
-  return issues.flatMap(raw => {
-    const i = raw as Record<string, unknown>;
-    const key = str(i.id) ?? str(i.identifier); const title = str(i.title);
-    if (!key || !title || /^(completed|canceled)$/i.test(str(i.statusType) ?? "")) return [];
-    const named = (v: unknown) => typeof v === "object" && v ? str((v as { name?: unknown }).name) : str(v);
-    const priority = named(i.priority);
-    return [{ key, title, priority: priority === "No priority" ? null : priority, status: str(i.status) ?? named(i.state), due: str(i.dueDate), project: named(i.project), milestone: named(i.projectMilestone), url: str(i.url) }];
-  });
+/** The Morning brief's queue as the ranker reads it: an issue with its change since the last workday. */
+export function rankIssue(i: QueueIssue & { change: string | null }): RankIssue {
+  return { key: i.key, title: i.title, priority: i.priority ? priorityName(i.priority) : null, status: i.state, due: i.due, project: i.project, milestone: i.milestone, url: i.url, change: i.change };
 }
 
 /**
@@ -145,61 +118,67 @@ export const planArgs = (input: RunInput) => {
 /** The Artifact tool needs CLAUDE_CODE_ARTIFACT=1, and Claude Code drops it when nonessential traffic is off. */
 export const PLAN_ENV = { CLAUDE_CODE_ARTIFACT: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "" };
 
-/** A claude.ai artifact link without a query string or fragment, so no share key travels. */
-export function canonicalArtifactUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try { const u = new URL(url); if (u.hostname !== "claude.ai" || !/^\/(code\/)?artifact\/[\w-]+$/.test(u.pathname)) return null; return `https://claude.ai${u.pathname}`; } catch { return null; }
-}
-
-/** The plan's link: Follow-up's own setting, else the one the morning-brief skill already verified (link only, read-only). */
-export async function planningUrl(setting: string | null | undefined, registry = join(homedir(), ".codex/skills/morning-brief/references/sources.json")): Promise<string | null> {
-  const own = canonicalArtifactUrl(setting);
-  if (own) return own;
-  try {
-    const j = JSON.parse(await readFile(registry, "utf8")) as { sources?: { reader?: string; url?: string }[] };
-    return canonicalArtifactUrl(j.sources?.find(s => s.reader === "claude_artifact")?.url);
-  } catch { return null; }
-}
+/** Moved to shared/morning-brief.ts (Settings → Morning brief owns the plan link); kept here for older imports. */
+export { canonicalArtifactUrl };
 
 type Run = (command: string, args: string[], timeoutMs: number, env?: Record<string, string>) => Promise<string>;
-/** The developer's Slack user id, as the Slack tool describes it ("Current logged in user's user_id is U…"). */
-export function slackUserFrom(toolsList: string): string | null { return /user_id is (U[A-Z0-9]{6,})/.exec(toolsList)?.[1] ?? null; }
+/** A source the developer turned off in Settings → Morning brief: the ranker reads it as "off", not failed. */
+export class SourceOffError extends Error { constructor(label: string) { super(`${label} is off in the brief.`); this.name = "SourceOffError"; } }
+/** The brief's switches for one source: whether it's on, and which mcpproxy servers it may read. */
+export type SourceGate = (id: "chat" | "calendar" | "mail" | "github") => Promise<{ on: boolean; allowed?: (server: string) => boolean }>;
 const runFile: Run = async (command, args, timeout, env) => (await exec(command, args, { timeout, maxBuffer: 4 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) })).stdout;
 
 /** Every github.com account `gh` is logged in to: review requests can sit on a work account that isn't the active one. */
 export { ghAccounts };
 
 /** The live sources: read-only mcpproxy calls, in-process GitHub reads, and one Artifact read for the plan. */
-export function liveRankSources(jobs: AiJobs, opts: { run?: Run; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null> } = {}): RankSources {
+export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceDirectory; gate?: SourceGate; github?: AccountReads; slackSelf?: string | null; slackUser?: string | null; model?: () => Promise<string | null>; queue?: { forRanker(): Promise<(QueueIssue & { change: string | null })[]> } } = {}): RankSources {
   const run = opts.run ?? runFile;
-  let slackUser: Promise<string | null> | null = opts.slackUser !== undefined ? Promise.resolve(opts.slackUser) : null;
-  const me = () => slackUser ??= run("mcpproxy", ["tools", "list", "--server=slack-user", "-o", "json", "--log-level=error"], 30_000).then(slackUserFrom).catch(() => { slackUser = null; return null; });
-  const call = async (tool: string, args: unknown) => mcpproxyText(await run("mcpproxy", ["call", "tool-read", `--tool-name=${tool}`, `--json_args=${JSON.stringify(args)}`, "--reason=Follow-up: rank today's workstreams", "--log-level=error", "-o", "json"], 60_000));
+  // The chat, calendar and mail servers are whichever have those recipes' tools (nothing-built-in-about-a-workplace).
+  const tools = opts.tools ?? sourceDirectory(run);
+  const gate = async (id: Parameters<SourceGate>[0], label: string) => {
+    const g = await opts.gate?.(id) ?? { on: id !== "mail" };
+    if (!g.on) throw new SourceOffError(label);
+    return g.allowed;
+  };
+  const reason = "rank today's workstreams";
   return {
     async linear() {
-      // Pages of 25 stay under mcpproxy's ~20 k reply cap (60 at once came back cut off and parsed as none).
-      const out: RankIssue[] = []; let cursor: string | null = null;
-      for (let page = 0; page < 3; page++) {
-        const r = parseLinearPage(await call("linear:list_issues", { assignee: "me", limit: 25, orderBy: "updatedAt", ...(cursor ? { cursor } : {}), fields: ["id", "title", "priority", "dueDate", "status", "statusType", "project", "projectMilestone", "url"] }));
-        if (!r.readable && page === 0) throw new Error("Linear's reply couldn't be read.");
-        out.push(...r.issues); cursor = r.next;
-        if (!cursor) break;
-      }
-      return out;
+      // The Morning brief's snapshot (server/linear-queue.ts): the whole queue was swept this morning, so the ranker
+      // reads no Linear itself: its top issues by priority plus every changed one (the-queue-is-whole).
+      if (!opts.queue) throw new Error("The Linear queue isn't set up.");
+      return (await opts.queue.forRanker()).map(rankIssue);
     },
     async slack(since) {
+      const allowed = await gate("chat", "Chat");
       const after = new Date(since).toISOString().slice(0, 10);
       const base = { limit: 20, response_format: "concise", sort: "timestamp", include_context: false, natural_language_query: "" };
-      const dms = parseSlackSearch(await call("slack-user:slack_search_public_and_private", { ...base, filters: `is:dm after:${after}` }), opts.slackSelf ?? null);
-      const user = await me();
-      const mentions = user ? parseSlackSearch(await call("slack-user:slack_search_public_and_private", { ...base, keywords: [`<@${user}>`], filters: `after:${after}` }), opts.slackSelf ?? null) : [];
+      const search = async (args: Record<string, unknown>) => parseSlackSearch(await tools.call("chat", "messages", { ...base, ...args }, { reason, timeoutMs: 60_000, allowed }), opts.slackSelf ?? null);
+      const dms = await search({ filters: `is:dm after:${after}` });
+      // The developer's own chat id, from the chat tool's description.
+      const user = opts.slackUser !== undefined ? opts.slackUser : await tools.selfId(allowed).catch(() => null);
+      const mentions = user ? await search({ keywords: [`<@${user}>`], filters: `after:${after}` }) : [];
       const seen = new Set<string>();
       return [...mentions, ...dms].filter(m => { const k = `${m.who}|${m.text}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    },
+    async calendar(day) {
+      const allowed = await gate("calendar", "Calendar");
+      const tool = await tools.tool("calendar", "events", allowed);
+      if (!tool) throw new NoSourceError("calendar", "events");
+      const args = rangeArgs(await tools.props(tool), day.start, day.end, day.timeZone);
+      return parseEvents(await tools.call("calendar", "events", args, { reason, timeoutMs: 30_000, allowed }));
+    },
+    async mail(since, now) {
+      const allowed = await gate("mail", "Mail");
+      const days = Math.max(1, Math.ceil((now - since) / 86_400_000));
+      return parseMail(await tools.call("mail", "messages", { query: `is:unread to:me newer_than:${days}d`, q: `is:unread to:me newer_than:${days}d`, limit: 20, maxResults: 20 }, { reason, timeoutMs: 30_000, allowed }))
+        .map(m => ({ where: "mail", who: m.from, text: m.subject, at: m.at }));
     },
     async github() {
       // Each logged-in account's own review requests (a work account is often not the active one).
       // In process (worker-reads-github-in-process): the account list and each account's token are resolved once
       // and cached; the searches are HTTPS.
+      await gate("github", "GitHub");
       const gh = opts.github ?? githubApi();
       const accounts = await gh.accounts().catch(() => [] as string[]);
       // REST search: `gh search prs` goes through GraphQL search, whose secondary limit a busy work account hits often
@@ -247,10 +226,12 @@ export const rankerStateSchema = z.object({
   /** Each ranked workspace's last score and the fingerprint of its own inputs, for damping. */
   prev: z.record(z.string(), z.object({ score: z.number(), fp: z.string() })).default({}),
   slackSince: z.number().nullable(),
+  /** Each failed source's one-line error from the last run (Settings → Morning brief shows it under the source). */
+  errors: z.record(z.string(), z.string()).default({}),
   planning: z.object({ url: z.string(), at: z.string(), value: z.object({ title: z.string().nullable(), url: z.string().nullable(), items: z.array(z.object({ level: z.string(), title: z.string(), keys: z.array(z.string()) })) }) }).nullable(),
 });
 export type RankerState = z.infer<typeof rankerStateSchema>;
-const EMPTY: RankerState = { version: 1, lastHash: null, lastRunAt: null, lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null, planning: null, prev: {}, model: null };
+const EMPTY: RankerState = { version: 1, lastHash: null, lastRunAt: null, lastModelAt: null, day: null, runsToday: 0, health: {}, notStarted: [], last: null, slackSince: null, errors: {}, planning: null, prev: {}, model: null };
 
 export type RankTrigger = "schedule" | "manual" | "overseer";
 export type RankResult = {
@@ -272,12 +253,15 @@ export type RankerDeps = {
   /** The resource governor: background runs wait while this is true. Manual runs still go. */
   tight?: () => Promise<boolean>;
   planningUrl?: () => Promise<string | null>;
+  /** Where the developer's day is (the brief's clock). Default: the host's zone and its usual week. */
+  clock?: () => Promise<Clock>;
   now?: () => number;
+  /** The brief's windows (Settings → Morning brief): chat hours, and calendar days from the start of today. */
+  windows?: () => Promise<{ chatHours: number; calendarDays: number }>;
   /** Why a source failed (one short line). Defaults to console.warn, the daemon log. */
   log?: (line: string) => void;
 };
 
-const SLACK_WINDOW_MS = 48 * 3_600_000;
 const PLAN_EVERY_MS = 24 * 3_600_000;
 /** Unchanged inputs keep the last ranking; it is re-stamped before Home's 6-hour freshness runs out. */
 const RESTAMP_MS = 4 * 3_600_000;
@@ -294,15 +278,33 @@ export class Ranker {
   onRunChange: () => void = () => {};
   constructor(private d: RankerDeps) {}
   private now() { return this.d.now?.() ?? Date.now(); }
+  private clock(): Promise<Clock> { return this.d.clock?.() ?? Promise.resolve(clockFor(BRIEF_SETTINGS_DEFAULT, null)); }
   private get path() { return join(this.d.directory, "ranker.json"); }
+  /**
+   * Read a plan now (Settings → Morning brief, `set_brief_plan`'s dry run): one artifact read, kept as the ranker's
+   * plan for the day, so the next ranking doesn't read it again.
+   */
+  async readPlan(url: string): Promise<RankPlanning> {
+    const value = await this.d.sources.planning(url);
+    if (!value) throw new Error("The plan couldn't be read.");
+    const s = await this.state();
+    await mkdir(this.d.directory, { recursive: true, mode: 0o700 });
+    await atomic(this.path, { ...s, planning: { url, at: new Date(this.now()).toISOString(), value } });
+    return value;
+  }
   async state(): Promise<RankerState> { try { return rankerStateSchema.parse(JSON.parse(await readFile(this.path, "utf8"))); } catch { return { ...EMPTY }; } }
 
-  /** The scheduled run: in the window, at the role's cadence, only with room to spare. */
+  /** New input that should reach today's rank (the morning's Ask items): the next scheduled tick runs once, cadence or not. */
+  private dueNow = false;
+  markDue(): void { this.dueNow = true; }
+
+  /** The scheduled run: in the window, at the role's cadence (or once after markDue), only with room to spare. */
   async tick(): Promise<RankResult | null> {
-    if (this.running || !inRankWindow(this.now()) || !await this.d.enabled()) return null;
+    if (this.running || !inRankWindow(this.now(), await this.clock()) || !await this.d.enabled()) return null;
     const [s, role] = await Promise.all([this.state(), this.d.role()]);
-    if (s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
+    if (!this.dueNow && s.lastRunAt && this.now() - Date.parse(s.lastRunAt) < role.cadenceMinutes * 60_000) return null;
     if (await this.d.tight?.()) return null;
+    this.dueNow = false;
     return this.run({ trigger: "schedule" });
   }
 
@@ -320,21 +322,42 @@ export class Ranker {
     if (trigger === "schedule" && await this.d.tight?.()) return base({ skipped: "tight" });
     const s = await this.state();
     const role = await this.d.role();
-    const day = jerusalem(started).day;
+    const clock = await this.clock();
+    const day = zoned(started, clock.timeZone).day;
     const runsToday = s.day === day ? s.runsToday : 0;
 
     // Inputs, one source at a time. A failing source is reported, never fatal.
     const health: Partial<Record<RankSource, SourceHealth>> = {};
-    const read = async <T>(source: RankSource, fn: () => Promise<T>, fallback: T): Promise<T> => { try { const v = await fn(); health[source] = "ok"; return v; } catch (e) { health[source] = "failed"; (this.d.log ?? console.warn)(`[follow-up] ranker: ${source} read failed: ${String((e as Error)?.message ?? e).replace(/\s+/g, " ").slice(0, 200)}`); return fallback; } };
+    const errors: Record<string, string> = {};
+    // Off in the brief, or no server has the recipe's tools: "off", not a failure.
+    const read = async <T>(source: RankSource, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try { const v = await fn(); health[source] = "ok"; return v; }
+      catch (e) {
+        if (e instanceof SourceOffError || e instanceof NoSourceError) { health[source] = "off"; return fallback; }
+        const line = String((e as Error)?.message ?? e).replace(/\s+/g, " ").slice(0, 200);
+        health[source] = "failed"; errors[source] = line;
+        (this.d.log ?? console.warn)(`[follow-up] ranker: ${source} read failed: ${line}`);
+        return fallback;
+      }
+    };
+    const windows = await this.d.windows?.().catch(() => null) ?? { chatHours: 48, calendarDays: 1 };
+    const today = zoned(started, clock.timeZone);
+    // Midnight in the developer's zone: now less the zone's hour and minute (and the seconds).
+    const dayStart = started - (today.hour * 60 + today.minute) * 60_000 - (started % 60_000);
+    const calendarDay = { start: new Date(dayStart).toISOString(), end: new Date(dayStart + windows.calendarDays * 86_400_000).toISOString(), timeZone: clock.timeZone };
     // The three outside reads are independent subprocesses (mcpproxy, gh), so they run side by side; the plan is
     // cached for the day. Workstreams come from Follow-up's in-memory directory, no daemon request.
-    // The whole 48-hour Slack window every run, so equal inputs hash equal; the read time is kept for the log.
+    // The whole chat window every run, so equal inputs hash equal; the read time is kept for the log.
     const slackSince = started;
-    const [rows, linear, slack, github] = await Promise.all([
+    const chatSince = started - windows.chatHours * 3_600_000;
+    const asks = await this.d.sources.asks?.().catch(() => [] as RankAsked[]) ?? [];
+    const [rows, linear, slack, github, calendar, mail] = await Promise.all([
       this.d.workstreams(),
       read("linear", () => this.d.sources.linear(), []),
-      read("slack", () => this.d.sources.slack(started - SLACK_WINDOW_MS), []),
+      read("slack", () => this.d.sources.slack(chatSince), []),
       read("github", () => this.d.sources.github(), []),
+      this.d.sources.calendar ? read("calendar", () => this.d.sources.calendar!(calendarDay), [] as RankEvent[]) : Promise.resolve([] as RankEvent[]),
+      this.d.sources.mail ? read("mail", () => this.d.sources.mail!(chatSince, started), [] as RankMessage[]) : Promise.resolve([] as RankMessage[]),
     ]);
     const url = await this.d.planningUrl?.().catch(() => null) ?? null;
     let planning: RankPlanning | null = null; let planCache = s.planning;
@@ -345,15 +368,15 @@ export class Ranker {
       if (planning) planCache = { url, at: new Date(started).toISOString(), value: planning };
       else if (s.planning?.url === url) planning = s.planning.value; // keep yesterday's plan over none
     }
-    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning };
+    const inputs: RankInputs = { workstreams: rows.map(rankWorkstream), linear, slack, github, planning, ...(calendar.length ? { calendar } : {}), ...(mail.length ? { mail } : {}), ...(asks.length ? { asks } : {}), ...(windows.chatHours !== 48 ? { chatHours: windows.chatHours } : {}) };
     const hash = rankKey(inputs, role);
     const inputsMs = this.now() - started;
     const last = (l: Partial<NonNullable<RankerState["last"]>> & { ok: boolean }): NonNullable<RankerState["last"]> => ({ trigger, costUsd: null, durationMs: this.now() - started, skipped: null, error: null, provider: role.provider, inputTokens: null, outputTokens: null, top: null, retried: false, timing: null, ...l });
-    const save = async (patch: Partial<RankerState>) => dryRun ? undefined : (await mkdir(this.d.directory, { recursive: true, mode: 0o700 }), atomic(this.path, { ...s, day, runsToday, health, planning: planCache, slackSince, lastRunAt: new Date(started).toISOString(), ...patch }));
+    const save = async (patch: Partial<RankerState>) => dryRun ? undefined : (await mkdir(this.d.directory, { recursive: true, mode: 0o700 }), atomic(this.path, { ...s, day, runsToday, health, planning: planCache, slackSince, errors, lastRunAt: new Date(started).toISOString(), ...patch }));
 
     // Nothing from outside could be read (no logins, mcpproxy down, an isolated test daemon): a ranking would have
     // nothing to go on, so don't spend a model call. The next tick tries again at the cadence.
-    if (!(["linear", "slack", "github", "planning"] as const).some(k => health[k] === "ok")) {
+    if (!(["linear", "slack", "github", "planning", "calendar", "mail"] as const).some(k => health[k] === "ok")) {
       await save({ last: last({ ok: false, skipped: "sources", error: "No outside source could be read." }) });
       return base({ skipped: "sources", health, healthLine: healthLine(health), error: "No outside source could be read." });
     }
@@ -372,7 +395,7 @@ export class Ranker {
 
     const maxPromptChars = role.maxPromptChars ?? 60_000;
     const previous = Object.entries(s.prev).map(([id, p]) => ({ id, score: p.score }));
-    const prompt = rankPrompt(inputs, day, maxPromptChars, previous);
+    const prompt = rankPrompt(inputs, day, maxPromptChars, previous, clock.timeZone);
     const modelStart = this.now();
     // Claude follows the rules as written; other models get the reason rule restated at the end.
     const system = role.provider === "claude" ? RANK_SYSTEM : RANK_SYSTEM + RANK_STRICT;
@@ -385,7 +408,7 @@ export class Ranker {
     const missing = r.ok ? emptyReasons(r.value, inputs) : [];
     if (r.ok && missing.length) {
       retried = true;
-      const again = await this.d.jobs.run({ name: "rank-reasons", prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
+      const again = await this.d.jobs.run({ name: "rank-reasons", prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars, [], clock.timeZone), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
         schema: reasonReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, maxPromptChars, maxOutputChars: 20_000, timeoutMs: 120_000 });
       cost = add(cost, again.costUsd); inTok = add(inTok, again.inputTokens); outTok = add(outTok, again.outputTokens);
       if (again.ok) r = { ...r, value: fillReasons(r.value, again.value) };

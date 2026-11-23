@@ -6,7 +6,7 @@ import { Icon, SettingsSelect, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentSettingsRpc, setAgentSettingRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
-import { ROLE_DEFAULTS, ROLE_INFO, isJobRole, modelName, providerName, type AgentRole, type AgentSettingsView, type CatalogProvider, type SavedRole } from "../shared/agent-settings";
+import { ROLE_DEFAULTS, ROLE_INFO, SAME_LABEL, hasSame, isJobRole, modelName, providerName, type AgentRole, type AgentSettingsView, type CatalogProvider, type SavedRole } from "../shared/agent-settings";
 import { NO_PROMPT_MODE, jobRow, jobsHeader, preselect as toPreselect, recommendedEntry, type JobRowModel } from "../shared/job-rows";
 import { Button, Chip, Switch, errorText, text, type Theme } from "./kit";
 import { Spinner } from "./motion";
@@ -172,12 +172,12 @@ export function RolePickers({ r, catalog, busy, save }: { r: RoleView; catalog: 
   const jobs = isJobRole(role);
   const usable = catalog.filter(p => p.available);
   const current = catalog.find(p => p.id === r.provider);
-  const base: SavedRole = { provider: r.provider, model: r.model, thinking: r.thinking, ...(jobs ? {} : { mode: r.mode }), ...(role === "recovery" ? { same: r.same } : {}),
+  const base: SavedRole = { provider: r.provider, model: r.model, thinking: r.thinking, ...(jobs ? {} : { mode: r.mode }), ...(hasSame(role) ? { same: r.same } : {}),
     ...(jobs ? { dailyCap: r.dailyCap ?? undefined, maxPromptChars: r.maxPromptChars ?? undefined } : {}), ...(role === "ranker" ? { cadenceMinutes: r.cadenceMinutes ?? undefined } : {}) };
   const set = (patch: SavedRole) => save({ ...base, ...patch });
   const providerLabel = providerName(r.provider, current?.label);
   const providerOptions = [
-    ...(role === "recovery" ? [{ value: SAME, label: "Same as main agent" }] : []),
+    ...(hasSame(role) ? [{ value: SAME, label: SAME_LABEL[role]! }] : []),
     ...usable.map(p => ({ value: p.id, label: p.label })),
     ...(!r.same && !usable.some(p => p.id === r.provider) ? [{ value: r.provider, label: `${providerLabel} · unavailable` }] : []),
   ];

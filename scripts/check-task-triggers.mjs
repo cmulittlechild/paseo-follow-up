@@ -39,13 +39,13 @@ try{
  const page=await context.newPage();await fetch(`http://127.0.0.1:${preview.port}/llms.txt`);await page.goto(`http://127.0.0.1:${preview.port}/`);
  await page.getByRole('button',{name:new RegExp('^'+title)}).click();await page.getByRole('button',{name:'Open workspace follow-up',exact:true}).click();
  const details=page.getByRole('button',{name:'Show task details: '+taskTitle,exact:true});await details.waitFor();
- assert.equal(await page.getByText('Manual',{exact:true}).count(),1);
+ assert.equal(await page.getByText(/^(After #1 deploys|Re-check [A-Z][a-z]{2} \d+)/).count(),1);
  assert.equal(await page.getByRole('radiogroup').count(),0);
  const initial=(await call('follow.get',{workspaceId:workspace.id})).workspace;
  assert.ok(initial.batches.filter(b=>b.state==='pending').every(b=>b.tasks.every(t=>t.kind!=='obligation')));
  await details.click();
  const group=page.getByRole('radiogroup',{name:'Send trigger for '+taskTitle});
- assert.equal(await group.getByRole('radio',{name:'Manual',exact:true}).getAttribute('aria-checked'),'true');
+ assert.equal(await group.getByRole('radio',{name:'Not sent',exact:true}).getAttribute('aria-checked'),'true');
  await group.getByRole('radio',{name:'After deploy',exact:true}).click();
  const save=page.getByRole('button',{name:'Save trigger for '+taskTitle,exact:true});assert.equal(await save.isEnabled(),false);
  await page.getByRole('checkbox',{name:'Use PR 1 for task trigger',exact:true}).click();
@@ -67,10 +67,10 @@ try{
  await page.screenshot({path:'docs/screenshots/task-triggers-mobile.png'});
  await group.getByRole('radio',{name:'After merge',exact:true}).click();await save.click();await page.getByText('14d after merge · #1',{exact:true}).waitFor();
  current=(await call('follow.get',{workspaceId:workspace.id})).workspace;saved=current.obligations.find(o=>o.id===task.id);assert.equal(saved.dependencyStage,'merged');
- await group.getByRole('radio',{name:'Manual',exact:true}).click();await save.click();
+ await group.getByRole('radio',{name:'Not sent',exact:true}).click();await save.click();
  current=(await call('follow.get',{workspaceId:workspace.id})).workspace;
  for(let i=0;current.obligations.find(o=>o.id===task.id).trigger!==null&&i<40;i++){await page.waitForTimeout(100);current=(await call('follow.get',{workspaceId:workspace.id})).workspace;}
  saved=current.obligations.find(o=>o.id===task.id);assert.equal(saved.trigger,null);assert.equal(saved.enable_follow_up,false);assert.deepEqual(saved.afterPrs,['example/app#1']);
- await page.reload();await page.getByRole('button',{name:'Open workspace follow-up',exact:true}).click();await page.getByText('Manual · #1',{exact:true}).waitFor();
+ await page.reload();await page.getByRole('button',{name:'Open workspace follow-up',exact:true}).click();await page.getByText(/^After #1 deploys/).first().waitFor();
  assert.deepEqual(errors,[]);console.log('PASS: actual native desktop/mobile task disclosure, manual default, disabled/invalid trigger validation, fourteen-day deploy/merge controls, persistence, manual reset preserving dependencies/evidence/Auto/owner, future-task exclusion, 44px targets and no overflow/browser errors. Synthetic workspace only; no real messages.');
 }finally{await context.close();await client.close();await rm(profile,{recursive:true,force:true});}
