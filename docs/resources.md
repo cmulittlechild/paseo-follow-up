@@ -79,7 +79,10 @@ loaded for an hour.
   against `memory.high`, plus PSI memory and CPU pressure.
 - **Levels** (`governorLevel`):
   - `constrained`: memory ≥ 75 %, or pressure (memory ≥ 10, CPU ≥ 60). Background work waits: engine ticks,
-    auto-sends, AI jobs, the Overseer digest.
+    auto-sends, AI jobs, the Overseer digest. A read the developer starts still goes (invariant 106): a workspace's
+    Refresh reads its PRs (no discovery, agent reads or sends), and PR stats' estimate and Refresh skip the governor
+    step of the stats gate. `tests/developer-reads.test.ts` lists every `governor.allowsBackground()` in the worker
+    with why no click goes through it.
   - `critical`: memory ≥ 85 %. Extras stop too: the inbox's background reads and usage meters.
 - **Home's meter.** `follow.usage` returns `resources` for Home's meter.
 

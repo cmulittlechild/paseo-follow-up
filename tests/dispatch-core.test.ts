@@ -19,6 +19,21 @@ test("typed text has no key or url: the built-in Create PR still reads as a sent
   assert.match(text, /^Work on “Export invoices as CSV”\./);
   assert.doesNotMatch(text, /\(\)|“”|\{\w+\}|  /);
   assert.match(text, /from export-invoices-as-csv against main in example\/app/);
+  assert.doesNotMatch(text, /\bRead\b/, "typed words have no issue to read");
+});
+
+test("the built-ins are short: the source, one line to read all of it, what to do and Follow-up's steps", () => {
+  const values = { key: "ACME-12", title: "Export times out", url: "https://linear.app/acme/issue/ACME-12", repo: "acme/web", base: "main", branch: "acme-12-export", body: "LONG DESCRIPTION" };
+  for (const a of BUILTIN_ACTIONS) {
+    const text = renderAction(a, values);
+    assert.match(text, /ACME-12/, a.id);
+    assert.match(text, /^Read ACME-12 yourself, all of it: /m, `${a.id}: the agent reads the source itself`);
+    assert.doesNotMatch(text, /LONG DESCRIPTION/, `${a.id}: never pastes the description`);
+    assert.ok(text.split("\n").filter(Boolean).length <= 4, `${a.id}: at most four lines`);
+    assert.ok(text.length < 400, `${a.id}: ${text.length} chars`);
+  }
+  assert.match(renderAction(builtinAction("pr"), values), /open a PR from acme-12-export against main in acme\/web; register it with Follow-up/);
+  assert.match(renderAction(builtinAction("plan"), values), /register it as the spec\. Then ask the developer one question/);
 });
 
 test("{body} is clipped to 4 KB at a character boundary", () => {

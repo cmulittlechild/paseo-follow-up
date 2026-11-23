@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { WriteBehind } from "./write-behind";
 import { stableMessageId, withDeadline } from "./delivery";
 import type { MessageQueue, Resolution } from "./message-queue";
+import type { ImageRef } from "../shared/images";
 import { deliveryOf, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { BackgroundAgents } from "./background-agents";
 import { deepFreeze } from "./store";
@@ -644,7 +645,7 @@ export class Inbox {
    * recorded answer instead of sending it twice. The messageId is derived from it, so Paseo's own receipts also make a
    * resend a no-op.
    */
-  async briefAction(agentId: string, input: { briefId: string; decisionId?: string; choice?: string; words?: string; choices?: { decisionId: string; choice: string; words?: string }[]; move?: "retry" | "done"; answerId?: string }, actor: Actor = DEVELOPER): Promise<Brief> {
+  async briefAction(agentId: string, input: { briefId: string; decisionId?: string; choice?: string; words?: string; choices?: { decisionId: string; choice: string; words?: string }[]; move?: "retry" | "done"; answerId?: string; images?: ImageRef[] }, actor: Actor = DEVELOPER): Promise<Brief> {
     const state = await this.store.snapshot();
     const b = state.entries[agentId]?.brief;
     // The same answer again (Retry after a lost reply, a double click): what was recorded, and delivery resumed if it had failed.
@@ -715,7 +716,7 @@ export class Inbox {
     if (this.queue) {
       // The reply path calls no Paseo: the workspace comes from the inbox's cached directory (the partition only groups sends).
       const key = this.cache?.agents.find(a => a.id === agentId)?.workspaceId ?? `agent:${agentId}`;
-      this.queue.enqueue({ id: briefItemId(agentId, answerId), kind: "brief", key, ref: { agentId, briefId: b.id, answerId }, messageId, text, ...(by ? { by } : {}), priority: "now", state: "queued" });
+      this.queue.enqueue({ id: briefItemId(agentId, answerId), kind: "brief", key, ref: { agentId, briefId: b.id, answerId }, messageId, text, ...(by ? { by } : {}), ...(input.images?.length ? { images: input.images } : {}), priority: "now", state: "queued" });
     }
     this.after(() => this.flush(appends));
     return result;

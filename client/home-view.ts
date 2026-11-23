@@ -1,5 +1,6 @@
 import type { DispatchRecord } from "../shared/dispatch";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { ImageUpload } from "../shared/images";
 import { contextAskRpc, contextListRpc, dispatchRecordsRpc, displayFeed, homeFeed, queueNeedsSchema, overseerAskRpc, overseerRestartRpc, overseerStartRpc, overseerStatusRpc, prioritiesRpc, prStatsSettingsRpc, rankNowRpc, rankStatusRpc, usageRpc } from "../shared/contracts";
 import { openFeed } from "./feeds";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
@@ -259,7 +260,7 @@ export function createHomeExtras(client: PluginClientContext) {
     overseer: () => overseer,
     async startOverseer() { overseer = await client.rpc(overseerStartRpc, {}); emit(); return overseer; },
     /** Sends the omnibox's ask to the Overseer, starting it on first use. */
-    async askOverseer(text: string) { overseer = await client.rpc(overseerAskRpc, { text }); emit(); return overseer; },
+    async askOverseer(text: string, images?: ImageUpload[]) { overseer = await client.rpc(overseerAskRpc, { text, ...(images?.length ? { images } : {}) }); emit(); return overseer; },
     /** Settings → Agents changed: a new Overseer on the configured agent, handed the old one's last steps. */
     async restartOverseer() { overseer = await client.rpc(overseerRestartRpc, {}); emit(); return overseer; },
     /** Catch up's More context asks and their answers. */

@@ -1,12 +1,14 @@
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { JsonFileStore } from "./json-file-store";
+import { imageSupport, imagesLeftOff } from "./image-support";
+import type { ImageRef, ImageUpload } from "../shared/images";
 import type { Actor } from "../shared/actor";
 import { actorBy } from "../shared/actor";
 import {
   ACTIONS_MAX, KIND_WORD, LIST_SHOWN, RECORDS_MAX, UNDO_WINDOW_MS, actionsFor, baseReason, branchFor, dispatchFileSchema, dispatchRecordSchema,
   effectiveActions, emptyDispatchFile, linearSource, parseSource, recentRecords, renderAction, resolveWhere, retryDelay, textHash, titleFor,
-  undoable, validateAction, builtinAction, BUILTIN_IDS,
+  undoable, usesBody, validateAction, builtinAction, BUILTIN_IDS,
   type ActionAgent, type BuiltinId, type DispatchPlan, type ExistingWorkspace, type SourceRoute, type DispatchAction, type DispatchFile, type DispatchRecord, type DispatchSource, type Where, type WhereProject,
 } from "../shared/dispatch";
 import type { LinearIssue } from "../shared/linear-issues";
@@ -68,10 +70,15 @@ export type DispatchDeps = {
   multiplicity(): Promise<boolean>;
   /** The Paseo API, or null while it can't be reached. */
   paseo(): Promise<DispatchPaseo | null>;
-  /** A blocker for this caller (the Overseer's new-workspace gate), or null. */
-  gate?(actor: Actor): Promise<string | null>;
+  /**
+   * A blocker for this caller and source (the Overseer's new-workspace gate: the developer approved this key), or
+   * null. `key`: the source's Linear key, null for any other source.
+   */
+  gate?(actor: Actor, key: string | null): Promise<string | null>;
   /** After the agent starts: link the source, set the goal. Best effort. */
   afterCreate?(record: DispatchRecord, source: DispatchSource, action: DispatchAction): Promise<void>;
+  /** Pasted images on disk (server/image-store.ts). Absent (tests): images are refused. */
+  images?: { save(uploads: ImageUpload[] | undefined): Promise<ImageRef[]>; read(refs: readonly ImageRef[]): Promise<{ data: string; mimeType: string }[]>; remove(refs: readonly ImageRef[]): Promise<void> };
   /** A record changed (Home's row, the dialog). */
   onChange?(): void;
   log?(line: string): void;
@@ -90,6 +97,8 @@ export type DispatchInput = {
   workspace?: "worktree" | "local";
   note?: string;
   agent?: ActionAgent;
+  /** Pasted images: they go with the new agent's first message (agents.create). */
+  images?: ImageUpload[];
 };
 
 /** The action with this dispatch's own agent pick laid over its own. */
@@ -148,9 +157,15 @@ export class DispatchService {
   private view(r: DispatchRecord): DispatchRecord { return { ...r, prompt: null }; }
 
   /** The source as read: a Linear issue from the open list's cache or one get_issue, a GitHub item in process. */
-  async readSource(raw: string): Promise<DispatchSource> {
+  async readSource(raw: string, o: { body?: boolean } = {}): Promise<DispatchSource> {
     const source = parseSource(raw);
     if (source.kind === "linear" && source.key) {
+      // No action renders the description (`{body}`): the open list's row has the key, title and url the agent needs,
+      // and the agent reads the issue itself. No extra get_issue.
+      if (o.body === false) {
+        const listed = (await this.d.linear.list({ limit: LIST_SHOWN }).catch(() => null))?.issues.find(i => i.key === source.key);
+        if (listed) return linearSource(listed);
+      }
       // The list carries no description: a pasted key is read once (one get_issue), with it.
       const issue = await this.d.linear.get(source.key).catch(() => undefined);
       if (issue) return linearSource(issue);
@@ -169,7 +184,8 @@ export class DispatchService {
   /** The preview: everything a dispatch would do with these inputs, and what blocks it. Reads only. */
   async preview(input: DispatchInput, actor: Actor = { kind: "developer" }): Promise<DispatchPlan> {
     const raw = input.source.trim();
-    const [source, file, projects] = await Promise.all([raw ? this.readSource(raw) : Promise.resolve(parseSource("")), this.d.store.read(), this.d.projects().catch(() => [] as DispatchProject[])]);
+    const [file, projects] = await Promise.all([this.d.store.read(), this.d.projects().catch(() => [] as DispatchProject[])]);
+    const source = raw ? await this.readSource(raw, { body: usesBody(effectiveActions(file.actions)) }) : parseSource("");
     const blockers: string[] = [];
     if (!raw) blockers.push("Give a source: a Linear key or link, a GitHub issue or PR link, or a sentence.");
     const offered = actionsFor(effectiveActions(file.actions), source.kind);
@@ -192,10 +208,10 @@ export class DispatchService {
     const title = input.title?.trim() || titleFor(source);
     const repo = source.repo ?? project?.repo ?? project?.name ?? "";
     const instructions = action ? renderAction(action, {
-      title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, kind: KIND_WORD[source.kind],
+      title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, words: source.kind === "text" ? source.body : "", kind: KIND_WORD[source.kind],
       team: source.team, repo, base: base?.name ?? "", branch: branch ?? (pr ? `the PR's branch` : ""),
     }, input.note) : "";
-    const gate = await this.d.gate?.(actor).catch(() => null);
+    const gate = await this.d.gate?.(actor, source.kind === "linear" ? source.key ?? null : null).catch(() => null);
     if (gate) blockers.push(gate);
     const agent: AgentChoice = action ? await this.d.agent(withAgent(action, input.agent)).catch(() => ({ label: "New's default agent", config: {} })) : { label: "", config: {} };
     return {
@@ -221,21 +237,25 @@ export class DispatchService {
     const file = await this.d.store.read();
     const action = effectiveActions(file.actions).find(a => a.id === plan.action!.id)!;
     const id = randomUUID();
+    if (input.images?.length && !this.d.images) throw new Error("This host can't keep pasted images.");
+    const images = input.images?.length ? await this.d.images!.save(input.images) : [];
     const record: DispatchRecord = dispatchRecordSchema.parse({
       id, at: this.iso(), by: actorBy(actor), source: { kind: plan.source.kind, key: plan.source.key, title: plan.source.title.slice(0, 500), url: plan.source.url },
       actionId: action.id, actionName: action.name, projectId: plan.where.projectId!, projectName: plan.where.projectName!, workspace: plan.workspace,
       base: plan.base?.name ?? null, branch: plan.branch, prNumber: plan.source.kind === "pr" ? plan.source.number : null, title: plan.title, agentLabel: plan.agent, agent: input.agent ?? null,
-      promptHash: plan.hash, prompt: plan.instructions, state: "queued", step: "Waiting to start", workspaceId: null, agentId: null, error: null, leftBehind: null,
+      promptHash: plan.hash, prompt: plan.instructions, images, state: "queued", step: "Waiting to start", workspaceId: null, agentId: null, error: null, leftBehind: null,
       attempts: 0, nextTryAt: null, undoUntil: null,
     });
+    const dropped: ImageRef[] = [];
     await this.d.store.mutate(f => {
       f.records[id] = record;
       f.lastProjectId = record.projectId;
       const team = plan.source.team;
       if (team && plan.where.how === "picked" && !f.rules[team]) f.rules[team] = record.projectId;
       const keep = new Set(recentRecords(f.records, RECORDS_MAX).map(r => r.id));
-      for (const key of Object.keys(f.records)) if (!keep.has(key)) delete f.records[key];
-    });
+      for (const key of Object.keys(f.records)) if (!keep.has(key)) { dropped.push(...f.records[key]!.images ?? []); delete f.records[key]; }
+    }).catch(async error => { await this.d.images?.remove(images); throw error; });
+    if (dropped.length) await this.d.images?.remove(dropped);
     this.d.onChange?.();
     this.kick(id, plan.source, action);
     return { dispatchId: id, record: this.view(record), plan };
@@ -249,13 +269,21 @@ export class DispatchService {
   /** Waits for the dispatches in flight (tests, stop). */
   async settle(): Promise<void> { while (this.running.size) await Promise.all([...this.running.values()]); }
 
+  /** Image ids a record still needs (its prompt not sent yet): the worker's start sweeps the rest. */
+  async imageIds(): Promise<string[]> {
+    return Object.values((await this.d.store.read()).records).filter(r => r.prompt).flatMap(r => (r.images ?? []).map(i => i.id));
+  }
   private async patch(id: string, change: Partial<DispatchRecord>): Promise<DispatchRecord | null> {
+    let done: ImageRef[] = [];
     const next = await this.d.store.mutate(f => {
       const r = f.records[id];
       if (!r) return null;
+      // The prompt is gone (sent, or the dispatch failed): its images go with it.
+      if (change.prompt === null && r.images?.length) { done = r.images; change = { ...change, images: [] }; }
       for (const [k, v] of Object.entries(change)) if ((r as Record<string, unknown>)[k] !== v) (r as Record<string, unknown>)[k] = v;
       return { ...r };
     });
+    if (done.length) await this.d.images?.remove(done);
     this.d.onChange?.();
     return next;
   }
@@ -286,7 +314,12 @@ export class DispatchService {
     let agentId: string;
     try {
       const choice = act ? await this.d.agent(withAgent(act, r.agent)) : { config: {}, label: r.agentLabel };
-      agentId = (await workspace.agents.create({ config: choice.config, title: r.title, prompt: r.prompt })).id;
+      // The pasted images go with the new agent's first message.
+      const images = r.images?.length && this.d.images ? await this.d.images.read(r.images) : [];
+      // An agent that can't take images starts with the words and a line saying so (the dialog said it before Start).
+      const support = images.length ? imageSupport({ provider: String((choice.config as { provider?: unknown }).provider ?? "") || null }) : null;
+      const prompt = support && !support.ok ? r.prompt + imagesLeftOff(images.length, support) : r.prompt;
+      agentId = (await workspace.agents.create({ config: choice.config, title: r.title, prompt, ...(images.length && support?.ok ? { images } : {}) })).id;
     } catch (error) {
       // a-failed-dispatch-leaves-nothing-behind: the workspace just created goes again, as Report an issue's Send does.
       const archived = await paseo.workspaces.archive(workspace.id).then(() => true, () => false);
@@ -328,7 +361,7 @@ export class DispatchService {
   async start(): Promise<void> {
     await this.d.store.mutate(f => {
       for (const r of Object.values(f.records)) if (r.state === "creating" || r.state === "starting") {
-        f.records[r.id] = { ...r, state: "failed", error: "Follow-up restarted while this was starting.", leftBehind: r.workspaceId ? "Check Paseo's sidebar: the workspace may be there without its agent." : "Check Paseo's sidebar before starting it again.", prompt: null };
+        f.records[r.id] = { ...r, state: "failed", error: "Follow-up restarted while this was starting.", leftBehind: r.workspaceId ? "Check Paseo's sidebar: the workspace may be there without its agent." : "Check Paseo's sidebar before starting it again.", prompt: null, images: [] };
       }
     });
     await this.retryDue();

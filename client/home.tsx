@@ -1,6 +1,9 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { browserKey } from "./keys";
 import { Platform, TextInput, useWindowDimensions, View } from "react-native";
+import { ImageAttachmentsRow, ImageField, useImageAttachments } from "./image-attach";
+import { imageTargetKey, type ImageTarget } from "../shared/images";
+import { dropUnsent, keepUnsent, OVERSEER_ASK_KEY, unsent } from "./unsent-images";
 import { Pressable, Text } from "./text";
 import { usePaseo, useRpc, useSettings, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, Modal, useToast } from "@getpaseo/plugin/client/ui";
@@ -182,7 +185,10 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     if (asking) return;
     setAsking(true);
     // No toast: the conversation opens on the sent words, which says it more plainly.
-    try { await deps.sources.extras.askOverseer(item.ask); omnibox.setQuery(""); omnibox.inputRef.current?.blur(); setPendingAsk(item.ask); if (route) route(OVERSEER_KEY); else setSelected(OVERSEER_KEY); inbox.refresh(); }
+    // Kept until Paseo takes the ask (client/unsent-images.ts): a failure leaves them on the search, and Home opened
+    // again after it shows them there.
+    const uploads = omnibox.images.uploads(); keepUnsent(OVERSEER_ASK_KEY, uploads);
+    try { await deps.sources.extras.askOverseer(item.ask, uploads); dropUnsent(OVERSEER_ASK_KEY); omnibox.images.clear(); omnibox.setQuery(""); omnibox.inputRef.current?.blur(); setPendingAsk(item.ask); if (route) route(OVERSEER_KEY); else setSelected(OVERSEER_KEY); inbox.refresh(); }
     catch (e) { toast.error(errorText(e)); } finally { setAsking(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
@@ -293,6 +299,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         {compact && openStats && <IconButton theme={theme} compact icon="ChartNoAxesColumn" label="PR stats" onPress={openStats} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
       </View>
+      {/* Images pasted on the search ride the Overseer ask; their own line, so the search row stays one line. */}
+      {(!!omnibox.images.images.length || !!omnibox.images.refusal) && <View style={{ paddingHorizontal: 16, gap: 4 }}>
+        <ImageAttachmentsRow model={omnibox.images} theme={theme} compact={compact} />
+        {!!omnibox.images.images.length && !omnibox.images.blocked && <Text style={text(theme.colors, compact).small}>{omnibox.query.trim() ? "Sent with your ask to the Overseer." : "Type your ask; these go with it to the Overseer."}</Text>}
+      </View>}
       <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
       {!omnibox.results && dispatchRows}
       {!compact && !omnibox.results && <StatusStrip theme={theme} model={model} filter={filter} onFilter={setFilter} touch={compact} dense={compact} />}
@@ -659,8 +670,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   return <DismissReveal.Provider value="always"><DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }}
     dock={({ yields, typingInContent }) => s.agentId && !typingInContent && <View nativeID={compact ? TOAST_ANCHOR : undefined} style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
       {!yields && moves}
-      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} onSend={async text => {
-        await agent.handle!.send(text);
+      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} target={{ kind: "agent", agentId: s.agentId }} onSend={async (text, images) => {
+        await agent.handle!.send(text, images?.length ? { images } : undefined);
         inbox.refresh();
       }} />
     </View>}>
@@ -749,8 +760,8 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
   </View>;
   return <DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 12, paddingBottom: 24 }}
     dock={({ typingInContent }) => agentId && !typingInContent && <View style={[{ borderTopWidth: 1, borderTopColor: c.border }, bottomInset(compact)]}>
-      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? "Ask or give a task" : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus}
-        onSend={async message => { await agent.handle!.send(message); inbox.refresh(); }} />
+      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? "Ask or give a task" : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus} target={{ kind: "overseer" }}
+        onSend={async (message, images) => { await agent.handle!.send(message, images?.length ? { images } : undefined); inbox.refresh(); }} />
     </View>}>
       {o.state === "error" && <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{o.line}</Text>}
       {tail.steps === null ? <Spinner color={c.foregroundMuted} size={12} label="Loading the conversation" />
@@ -820,8 +831,16 @@ export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }:
 
 /** The reply box. Sending is the developer writing to the agent, which clears Needs you (binding rule). */
 const REPLY_HINT = "Sending clears Needs you. Sign off & next moves on without a reply.";
-function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in your own words", hint = REPLY_HINT, focus = 0, onFocusChange, docked = true }: { theme: Theme; compact: boolean; agentName: string; onSend: (text: string) => Promise<void>; placeholder?: string; hint?: string | null; focus?: number; onFocusChange?: (focused: boolean) => void; docked?: boolean }) {
+export function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in your own words", hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
+  /** `images`: the pasted images (every-agent-field-takes-images), sent with the words through Paseo's own send. */
+  onSend: (text: string, images?: { data: string; mimeType: string }[]) => Promise<void>; placeholder?: string; hint?: string | null; focus?: number; onFocusChange?: (focused: boolean) => void; docked?: boolean;
+  /** Who reads it, so a recipient that can't take images says so before Send. */
+  target: ImageTarget | null }) {
   const c = theme.colors;
+  // A send under way keeps its words and images under the recipient's key until Paseo takes it (client/unsent-images.ts):
+  // after a failure the box shows them again, even if it was closed and opened again, and Send sends them again.
+  const keep = target ? `reply:${imageTargetKey(target)}` : undefined;
+  const img = useImageAttachments({ target, keep });
   const inputRef = useRef<TextInput | null>(null);
   // Focus when asked to (⌘K), never on a plain mount. The closing command palette hands focus back to where it was,
   // after us, so keep claiming it for a moment until it sticks.
@@ -835,26 +854,35 @@ function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in 
     return () => timers.forEach(clearTimeout);
   }, [focus]);
   const toast = useToast();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => (keep && unsent(keep)?.text) || "");
   const [sending, setSending] = useState(false);
   const send = async () => {
     const text = value.trim();
-    if (!text || sending) return;
+    if (!text || sending || img.blocked) return;
     setSending(true);
-    try { await onSend(text); setValue(""); toast.show("Sent", { variant: "success" }); }
-    catch (e) { toast.error(errorText(e)); } finally { setSending(false); }
+    const uploads = img.uploads();
+    if (keep) keepUnsent(keep, uploads, value);
+    const images = uploads?.map(i => ({ data: i.data, mimeType: i.mimeType }));
+    try { await onSend(text, images); if (keep) dropUnsent(keep); setValue(""); img.clear(); toast.show("Sent", { variant: "success" }); }
+    catch (e) { toast.error(`${errorText(e)}${images?.length ? ` Your ${images.length === 1 ? "image is" : "images are"} still attached.` : ""}`); } finally { setSending(false); }
   };
   // Phones: a 48-tall box (46 + hairline) with the placeholder on one centred line; it grows as you type.
   // In a dock (the detail pane), the dock draws the hairline; on its own it draws one. Phones keep the hint as the
   // input's accessibility hint instead of small print under it, where it collided with the gesture bar.
   return <View style={{ padding: compact ? 12 : 14, gap: 6, ...(docked ? {} : { borderTopWidth: 1, borderTopColor: c.border }) }}>
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, borderRadius: compact ? 12 : 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, paddingLeft: 12, paddingRight: compact ? 1 : 6, paddingVertical: compact ? 0 : 6 }}>
+    {/* The images sit inside the composer, above the words, so they read as part of the message Send sends. */}
+    <ImageField model={img} theme={theme} compact={compact} row={false}>
+    <View style={{ borderRadius: compact ? 12 : 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
+    {(!!img.images.length || !!img.refusal) && <View style={{ paddingHorizontal: 12, paddingTop: 10 }}><ImageAttachmentsRow model={img} theme={theme} compact={compact} /></View>}
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingLeft: 12, paddingRight: compact ? 1 : 6, paddingVertical: compact ? 0 : 6 }}>
       <TextInput ref={inputRef} accessibilityLabel={`Reply to ${agentName}`} accessibilityHint={compact && hint ? hint : undefined} onFocus={() => onFocusChange?.(true)} onBlur={() => onFocusChange?.(false)} value={value} onChangeText={setValue} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} multiline
         numberOfLines={compact ? 1 : undefined}
         onKeyPress={e => { const k = e.nativeEvent as unknown as { key: string; metaKey?: boolean; ctrlKey?: boolean }; if (k.key === "Enter" && (k.metaKey || k.ctrlKey)) void send(); }}
         style={{ flex: 1, minHeight: compact ? 46 : 36, maxHeight: 140, color: c.foreground, fontSize: 14, lineHeight: 20, paddingVertical: compact ? 13 : 6, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-      <IconButton theme={theme} compact={compact} icon="ArrowUp" label="Send" disabled={!value.trim() || sending} spinning={sending} onPress={() => void send()} color={value.trim() ? c.foreground : undefined} />
+      <IconButton theme={theme} compact={compact} icon="ArrowUp" label="Send" disabled={!value.trim() || sending || !!img.blocked} spinning={sending} onPress={() => void send()} color={value.trim() && !img.blocked ? c.foreground : undefined} />
     </View>
+    </View>
+    </ImageField>
     {!!hint && !compact && <Text style={{ color: c.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{hint}</Text>}
   </View>;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browserKey, liveBriefKey, LIVE_BRIEF_POLL_MS, workspaceKey } from "./keys";
 import { Platform, View, useWindowDimensions } from "react-native";
 import { Pressable, Text } from "./text";
@@ -14,6 +14,7 @@ import { briefKey, HEADLINE_WORD } from "../shared/headline";
 /** The card's kind word comes from the same table as the pill and the Needs-you row. */
 const word = (kind: Brief["kind"]) => HEADLINE_WORD[briefKey(kind)];
 import { answerQuestionRpc, briefActionRpc, browserStatusRpc, inboxBriefRpc } from "../shared/contracts";
+import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
 import { errorText, mootNote } from "../shared/errors";
 import { PRIMARY_FORM } from "./dock";
 import { OTHER, OTHER_LABEL, OWN_ANSWER_HINT, briefAnswerStatus, isDoneOnly, isOpen, isOther, TASK_DONE, type Question } from "../shared/questions";
@@ -145,6 +146,11 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
 }
 
 /** "Add note" / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. QuestionBody uses it too. */
+/** The brief's answer or note field with the card's pasted images (client/image-attach.tsx); a read-only copy has none. */
+/** `row`: whether this field draws the card's thumbnails. One set per card, so only its last open field does. */
+function WithImages({ img, c, compact, row, children }: { img?: ImageAttachments; c: Colors; compact: boolean; row: boolean; children: ReactNode }) {
+  return img ? <ImageField model={img} theme={{ colors: c }} compact={compact} row={row}>{children}</ImageField> : <>{children}</>;
+}
 export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: { icon: string; label: string; a11y: string; disabled: boolean; onPress: () => void; c: Colors; compact: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={6}
     style={({ hovered, pressed, focused }: { hovered?: boolean; pressed: boolean; focused?: boolean }) => ({ ...ring(focused, c), flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: compact ? 44 : 28, paddingHorizontal: 4, marginLeft: -4, borderRadius: 6, opacity: disabled ? 0.5 : pressed ? 0.7 : 1, backgroundColor: hovered && !disabled ? withAlpha(c.foreground, 0.05) : "transparent" })}>
@@ -157,7 +163,9 @@ export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: {
  * The card's body: decisions, error text, details, context, facts and links, and the agent's extra ask. Shared by the
  * open card and by a past card's read-only "Show full question", so a past question reads exactly as it was asked.
  */
-function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [] }: {
+export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [], img }: {
+  /** The card's pasted images (one model for its answer and note fields). Absent: read-only copies. */
+  img?: ImageAttachments;
   /** one-done-button: decisions answered by the card's Done button (an action card), drawn without option rows. */
   doneIds?: readonly string[];
   b: Brief; c: Colors; compact: boolean; tight: boolean; embedded: boolean; height: number;
@@ -179,6 +187,9 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
   const extra = !!b.context || b.facts.length > 0 || b.links.length > 0;
   const showExtra = readonly || !tight || details || extrasFit(b, height);
   const numbered = b.decisions.length > 1;
+  // The card has one image set (its answer and note fields share it), so its thumbnails are drawn once: under the
+  // last decision whose answer or note field is open. Several open fields each drew them before.
+  const rowAt = readonly ? null : [...b.decisions].reverse().find(d => isOther(picks[d.id]) || !!notesOpen[d.id])?.id ?? null;
   return <>
     {b.decisions.map((d, i) => { const done = !readonly && doneIds.includes(d.id); return <View key={d.id} accessibilityRole={mode === "select" ? "radiogroup" : undefined} accessibilityLabel={mode === "select" ? d.question : undefined} style={{ gap: 8 }}>
       {(numbered || d.question.trim() !== b.ask.trim()) && <RichText style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: numbered ? "600" : "400" }}>{`${numbered ? `${i + 1}. ` : ""}${d.question}`}</RichText>}
@@ -193,20 +204,20 @@ function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick
           onPress={() => onPick(d.id, OTHER)} c={c} compact={compact} />}
         {/* Something else's field with its Send answer, kept on screen together while typing (DockedPane). */}
         {!readonly && isOther(picks[d.id]) && <View {...PRIMARY_FORM} style={{ gap: 8 }}>
-          <TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
-            style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} />
+            style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? "Sending…" : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
+            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? "Sending…" : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy || !!img?.blocked} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
             {!words[d.id]?.trim() && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{OWN_ANSWER_HINT}</Text>}
           </View>}
         </View>}
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}
         {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View {...PRIMARY_FORM} style={{ gap: 6, marginTop: 2 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Note</Text>
-          <TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}
-            style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} />
+            style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           <NoteLink icon="X" label="Remove note" a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
         </View> : done ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14 }}>
           <NoteLink icon="MessageSquarePlus" label="Add note" a11y={numbered ? `Add note to decision ${i + 1}` : "Add note"} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
@@ -386,6 +397,9 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const { height } = useWindowDimensions();
   const act = useRpc(briefActionRpc);
   const answerQuestion = useRpc(answerQuestionRpc);
+  // Pasted images on the answer or the note (every-agent-field-takes-images): they ride the answer to the brief's agent.
+  const img = useImageAttachments({ target: { kind: "agent", agentId } });
+  const withImages = () => { const images = img.uploads(); return images ? { images } : {}; };
   const browserRead = useRpc(browserStatusRpc);
   const [sending, setBusy] = useState<string | null>(null);
   // Until the server confirms this brief is the open one, every control waits ("checking" matches no button's key).
@@ -450,7 +464,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     if (busy || marked) return;
     setError(null); setSent(false); setMarked(new Date().toISOString());
     const doneId = newAnswerId();
-    const id = runUndoable("Telling the agent it's done", { label: "Done", toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), action: "send" })
+    const id = runUndoable("Telling the agent it's done", { label: "Done", toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), ...withImages(), action: "send" })
       : act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: "Marked done. The agent has it.",
       failure: "Done not sent", open: () => deps.openAgent(agentId), onSuccess: () => setSent(true), onError: e => { setMarked(null); setError(errorText(e)); }, reconcile: e => { setMarked(null); reconcile(e); } }, () => setMarked(null), `done:${b.id}`, () => deps.endDone?.(agentId));
     // The pill's Undo is this toast's Undo: it closes the toast (so nothing is sent) and reopens the card.
@@ -516,8 +530,13 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   type DecisionPick = { decisionId: string; choice: string; words?: string };
   const asQuestions = (list: DecisionPick[]) => !!workspace && list.length > 0 && list.every(x => b.questionIds.includes(x.decisionId) && workspace.questions.some(q => q.id === x.decisionId && !q.answer && !q.closed));
   const answer = async (list: DecisionPick[], answerId: string) => {
-    if (!asQuestions(list)) return act({ agentId, briefId: b.id, answerId, ...(list.length === 1 ? list[0] : { choices: list }) });
-    for (const x of list) await answerQuestion({ workspaceId: workspace!.id, questionId: x.decisionId, choice: x.choice, ...(x.words ? { words: x.words } : {}), action: "send" });
+    // The field already says why (before Send); a key or a bar's Send can't get past it either.
+    if (img.blocked) throw new Error(img.blocked);
+    const images = withImages();
+    if (!asQuestions(list)) { const out = await act({ agentId, briefId: b.id, answerId, ...(list.length === 1 ? list[0] : { choices: list }), ...images }); img.clear(); return out; }
+    // The images ride the first answer's message: one message to the agent carries them once.
+    for (const [i, x] of list.entries()) await answerQuestion({ workspaceId: workspace!.id, questionId: x.decisionId, choice: x.choice, ...(x.words ? { words: x.words } : {}), ...(i === 0 ? images : {}), action: "send" });
+    img.clear();
     void cache.invalidateQueries({ queryKey: liveBriefKey(agentId) }); void cache.invalidateQueries({ queryKey: workspaceKey(workspace!.id) });
   };
   // A tap sends the letter, with the note when one is typed; a sent answer clears the card (clearCard).
@@ -559,7 +578,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       <BriefBody b={b} c={c} compact={compact} tight={tight} embedded={embedded} height={height} mode={multi ? "select" : "send"} picks={picks}
         onPick={(decisionId, letter) => { if (!busy) pickStore.set(b.id, decisionId, letter); }} busy={busy} onSend={sendOne}
         words={words} onWords={(decisionId, t) => wordStore.set(b.id, decisionId, t)} onSendOther={sendOther}
-        notes={notes} notesOpen={notesOpen} onNote={(decisionId, t) => noteStore.set(b.id, decisionId, t)} onNoteOpen={(decisionId, open) => noteOpenStore.set(b.id, decisionId, open ? "1" : "")} doneIds={doneQ ? [doneQ.id] : []} />
+        notes={notes} notesOpen={notesOpen} onNote={(decisionId, t) => noteStore.set(b.id, decisionId, t)} onNoteOpen={(decisionId, open) => noteOpenStore.set(b.id, decisionId, open ? "1" : "")} doneIds={doneQ ? [doneQ.id] : []} img={img} />
 
       {multi && <SendBar b={b} picks={sendable} noted={notedCount(sendable, openNotes)} busy={busy} error={error} onSend={sendAll} c={c} compact={compact} />}
 

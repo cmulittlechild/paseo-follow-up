@@ -60,6 +60,7 @@ Nothing polls while the app is hidden.
 | --- | --- |
 | `client/home.tsx` | Home: the list and the detail pane, the Overseer card, the setup flow's place. `DisplaySplit` is a ResizableSplit whose width is a Display field (Home's right pane, Catch up's rail). |
 | `client/catch-up.tsx` | Catch up ([needs-you.md](needs-you.md#catch-up)): Needs you one card at a time over the pure session in `shared/catch-up.ts`. Each card renders the shared components (QuestionBody, NeedsYouList, BriefCard, the permission block); More context asks through `follow.context-ask` and parks the workstream; answers arrive on Home's feed (`extras.context`). Phones: one card with the moves in thumb reach, swipe to skip or go back. Desktop: the queue rail in a `DisplaySplit` (`catch_up_rail_fraction`) and the keys. `CatchUpButton` is Home's way in. |
+| `client/image-attach.tsx` | Pasted images ([Pasted images](#pasted-images)): `useImageAttachments`, `ImageField`, `ImageAttachmentsRow`, `useImagePaste`. The one component every agent-bound field uses. |
 | `client/more-context.tsx` | More context for every question surface ([needs-you.md](needs-you.md#more-context)): `MorePanel`, `MoveResult` and `ContextAnswer` (Catch up's), and `QuestionMoreContext`, the quiet link `QuestionBody` draws on an open question outside Catch up. Reads the asks from one store, Home's extras (`setContextSource`, set in `index.client.tsx`). |
 | `client/feeds.ts` | `openFeed`, `hasFeeds`: the stores subscribe to the worker's feeds on Paseo 0.16 (resubscribing after a worker restart) and poll on 0.15. See [Feeds](#feeds). |
 | `client/home-list.tsx`, `shared/list-entries.ts` | The one virtualised list, used by Home and the sidebar view; `listEntries` builds what it draws, in order. A desktop row's badges and PR chip sit in `ChipRail`, which yields (shrinks, drops the last chip in `railChips`' red-amber-green-grey order, truncates) before the time column moves (invariant `row-chips-never-cover-the-time`, `tests/row-chips.test.ts`). |
@@ -306,6 +307,42 @@ group no longer counts it, the same as the Done card (a transform can only repla
   Paseo never hands the bare JSON: Claude's result is `{ output: <parsed JSON> }`, Codex's is the MCP envelope whose
   text has Paseo's `<key>_count=` summary in front of the JSON (the object is in `structuredContent`). Tests run every
   reader over the real shapes in `tests/fixtures/paseo-tool-results.ts` (`tests/tool-result.test.ts`).
+
+
+## Pasted images
+
+Every field whose words reach an agent takes pasted images through one component, `client/image-attach.tsx`
+(invariant 97, `every-agent-field-takes-images`): New's task field and its note, the Overseer's reply box (Home's pane),
+Home's search when it asks the Overseer, an agent's reply box in Home's detail pane, More context's ask (`MorePanel`),
+a question's answer or note (`QuestionBody`), the brief card's answer and note, and Catch up's note to the card's
+agent. Catch up's question and More context fields are `QuestionBody` and `MorePanel` themselves.
+
+- **Desktop web**: a paste into the field (image items of the clipboard; a paste that is only images types no file name)
+  or a drop on it adds images. The field takes a dashed accent outline while a file is dragged over it. Each image shows
+  as a small thumbnail under the field with a remove ×; hovering a thumbnail names it and its size, and a click shows it
+  larger in the release notes' viewer (`client/image-viewer.tsx`) so the right screenshot is checked before Send. A
+  reply box (an agent's, the Overseer's) draws its thumbnails inside the composer, above the words.
+- **Caps** (`shared/images.ts`): PNG, JPEG, GIF and WebP; 6 per message, 5 MB each (Claude's API limit), 20 MB in all.
+  A paste past a cap is refused at once with the reason under the field ("6 images is the most one message takes.",
+  "That image is 7.2 MB; the most is 5 MB." then "Nothing was added."), and nothing is added.
+- **Before Send**: when the first image is added, the field asks `follow.image-support` once for its recipient (cached
+  per recipient for the session). A recipient that can't take images says so on the field ("Acme Agent can't take
+  images; remove them to send.") and Send waits until they are removed. Never after Send.
+- **Home's search** stays one line: a paste or drop on it while the Overseer is on adds images, drawn on their own line
+  under the search row with "Sent with your ask to the Overseer."
+- **New** keeps one set for the task field and the note; the thumbnails sit under the task field on desktop, and under
+  the note on a phone-width web window, where the note's screen is the one showing.
+  The source card ("Your words · 2 images") and the phone bar's line count them, so what goes is on screen before the click.
+- **A failed send keeps them** (`client/unsent-images.ts`): a field that sends puts its images (and a reply box its
+  words) under its key before the call, and only a confirmed send takes them out. The model (`useImageAttachments`
+  `keep`) starts with what is kept, so a reply box or Home's search opened again after a failure shows them, and a
+  question's Retry (pending-answers, `answerImagesKey`) sends them again. Memory only, since images don't fit in
+  localStorage: after a reload the unsent answer says how many images weren't kept. The brief card has one image set
+  for its answer and note fields and draws its thumbnails under the last open one.
+- **Phones (the native app)**: the plugin client has no image picker for plugin fields (`@getpaseo/plugin/client`'s
+  attachment sources serve Paseo's own composer), so nothing is drawn and no space is kept.
+- `tests/every-agent-field-takes-images.test.ts` classifies every TextInput in `client/`: agent-bound fields must be
+  inside `ImageField`, every other field is listed with why its words never reach an agent.
 
 ## Shared copy
 
