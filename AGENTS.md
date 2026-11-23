@@ -118,9 +118,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
      three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
-     from the worker's start (VmHWM, so the cold-start tick counts; 321: CI's median 278 plus 4 standard deviations of
-     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`; the old 300 sat 2 deviations up and main itself
-     read 313 on 2026-11-16), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (250: CI's median 220 plus 4 standard deviations of CI's own readings, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`; the old 240 sat inside the runner's noise and flaked on a no-op PR), **3 %
+     from the worker's start (VmHWM, so the cold-start tick counts; 317: CI's median 302.5 plus 4 standard deviations of
+     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (230: CI's
+     median 215.5 plus 4 standard deviations, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`),
+     both read with the daemon on the live host's allocator env (`LIVE_MALLOC_ENV`, the `MALLOC_*` lines of Paseo's env
+     file), which `test:scale` always sets (`scale-runner-facts`): without it glibc's arena count is a race in the
+     cold-start tick, and on 2026-11-23 it moved CI's plain peak 25-35 MB (312-335 vs 299-312 on the same runners), so
+     the gate failed on noise and local runs, which inherit the env, never saw it. Every run prints a `scale-diag` line
+     (CPU, kernel, arenas, the peak's anonymous/file split); a budget is re-derived from readings, never raised to absorb
+     noise, and `--retain-mb <n>` is the synthetic regression that proves it still catches growth; and **3 %
      idle CPU**, **2 idle daemon requests a minute**. Measured 2026-11-12 (two runs): peak 262–264 MB (a ~2 s cold-start
      tick that changes and validates every workspace once), idle 198–200 MB and flat, CPU 1.3–1.4 %, 1.3 requests a
      minute; the bare plugin process is ~120 MB. Headroom (~15 % peak, ~20 % idle) covers live's extras the seed lacks

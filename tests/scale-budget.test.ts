@@ -128,8 +128,8 @@ test("scale budget: the realistic idle budget is computed from its named terms, 
   const sd = Math.sqrt(xs.reduce((n, x) => n + (x - mean) ** 2, 0) / xs.length);
   assert.ok(Math.abs(median(xs) - b.CI_IDLE_P50_MB) <= 1, `CI_IDLE_P50_MB ${b.CI_IDLE_P50_MB} vs the readings' median ${median(xs)}`);
   assert.ok(Math.abs(sd - b.CI_IDLE_SD_MB) <= 1, `CI_IDLE_SD_MB ${b.CI_IDLE_SD_MB} vs the readings' ${sd.toFixed(2)}`);
-  assert.ok(xs.every(x => x <= b.REALISTIC_IDLE_BUDGET_MB), "every reading it came from passes, #174's 243 included");
-  assert.ok(Math.min(...xs) + 45 > b.REALISTIC_IDLE_BUDGET_MB, "a +45 MB regression fails every run");
+  assert.ok(xs.every(x => x <= b.REALISTIC_IDLE_BUDGET_MB), "every reading it came from passes");
+  assert.ok(Math.min(...xs) + 25 > b.REALISTIC_IDLE_BUDGET_MB, "a +25 MB regression fails every run");
 });
 
 test("scale budget: the realistic peak budget is computed from its named terms, which match CI's readings", async () => {
@@ -146,8 +146,8 @@ test("scale budget: the realistic peak budget is computed from its named terms, 
   const sd = Math.sqrt(xs.reduce((n, x) => n + (x - mean) ** 2, 0) / xs.length);
   assert.ok(Math.abs(median(xs) - b.CI_PEAK_P50_MB) <= 1, `CI_PEAK_P50_MB ${b.CI_PEAK_P50_MB} vs the readings' median ${median(xs)}`);
   assert.ok(Math.abs(sd - b.CI_PEAK_SD_MB) <= 1, `CI_PEAK_SD_MB ${b.CI_PEAK_SD_MB} vs the readings' ${sd.toFixed(2)}`);
-  assert.ok(xs.every(x => x <= b.REALISTIC_PEAK_BUDGET_MB), "every reading it came from passes, main's 313 and #211's 310 included");
-  assert.ok(Math.min(...xs) + 55 > b.REALISTIC_PEAK_BUDGET_MB, "a +55 MB regression fails every run");
+  assert.ok(xs.every(x => x <= b.REALISTIC_PEAK_BUDGET_MB), "every reading it came from passes");
+  assert.ok(Math.min(...xs) + 21 > b.REALISTIC_PEAK_BUDGET_MB, "a +21 MB regression fails every run");
 });
 
 test("the idle window starts drained: no awake agent running and no timeline read for a tick plus a margin", async () => {
@@ -188,4 +188,37 @@ test("plain test:scale drains after its send phase too: nothing running, no time
   const src = await (await import("node:fs/promises")).readFile("scripts/scale-check.mjs", "utf8");
   assert.ok(!/if \(BUSY_MS > 0\) \{\s*const from = Date\.now\(\); const polls/.test(src), "scale-check drains whether or not it ran a busy window");
   assert.match(src, /drainPlan\(\{ busyMs: BUSY_MS \}\)/, "with the plan for the phase it ran");
+});
+
+/**
+ * scale-runner-facts (2026-11-23): the peak gate failed on runner noise (#284, #285, #286, #287, then the 2.4.0-beta.3
+ * publish twice at 345 and 330 MB) while local runs of the same trees read ~300. The difference was glibc's malloc
+ * arenas: CI ran the daemon without the live host's MALLOC_* lines, local runs inherited them from Paseo's env. On ten
+ * CI runners, back to back on each, plain read 312-335 MB (9-12 arenas), the live env 299-312 (1-6 arenas).
+ * test:scale now always runs the daemon with the live env, and its budgets come from readings taken with it.
+ */
+test("scale-runner-facts: test:scale runs the daemon with the live host's allocator env, whatever the caller's shell has", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const b = await import("../scripts/scale-budget.mjs") as Record<string, unknown>;
+  assert.deepEqual(b.LIVE_MALLOC_ENV, { MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "131072", MALLOC_TRIM_THRESHOLD_: "131072" }, "the three lines in Paseo's env file on the live host");
+  const src = await readFile("scripts/scale-check.mjs", "utf8");
+  assert.match(src, /const env = harnessEnv\(root, \{[^\n]*set: \{ \.\.\.LIVE_MALLOC_ENV,/, "the daemon's env sets them (set wins over the inherited shell)");
+  const { resolve } = await import("node:path");
+  const { harnessEnv } = await import(resolve("scripts/harness-env.mjs"));
+  const env = harnessEnv("/tmp/scale-env-check", { set: { ...(b.LIVE_MALLOC_ENV as object) }, base: { PATH: "/usr/bin", MALLOC_ARENA_MAX: "8" } });
+  assert.equal(env.MALLOC_ARENA_MAX, "2", "a shell's own value doesn't leak into the measured worker");
+  // The run says what it ran on: the runner, the worker's arenas and the peak's anonymous/file split.
+  assert.match(src, /console\.log\(`scale-diag \$\{JSON\.stringify\(/);
+  assert.match(src, /arenas/);
+  assert.match(src, /peakSplit/);
+});
+
+test("scale-runner-facts: --retain-mb holds a synthetic regression in the plugin process only, half heap and half native", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const run = (argv: string) => JSON.parse(execFileSync(process.execPath, ["--require", "./scripts/scale-retain.cjs", "-e",
+    "console.log(JSON.stringify({ held: (globalThis.__scaleRetained || []).length, heapMb: process.memoryUsage().heapUsed / 1048576 }))", argv],
+    { env: { ...process.env, SCALE_RETAIN_MB: "20", NODE_OPTIONS: "" }, encoding: "utf8" }));
+  const plugin = run("plugin-process"); const other = run("daemon");
+  assert.equal(plugin.held, 20, "20 one-MB blocks"); assert.ok(plugin.heapMb >= 10, `half on V8's heap: ${plugin.heapMb}`);
+  assert.equal(other.held, 0, "the daemon and agents hold nothing extra");
 });
