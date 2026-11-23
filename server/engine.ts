@@ -16,6 +16,7 @@ import { replyRecorded } from "../shared/communication";
 import { DeliveryDeferred, ConversationGone } from "./delivery";
 import type { CheckWatches } from "./check-watches";
 import type { MessageQueue, Resolution, Target } from "./message-queue";
+import type { ImageRef } from "../shared/images";
 import { PASEO_UNREACHABLE, deliveryOf, type NewQueueItem, type QueueItem, type QueueItemInput } from "../shared/queue";
 import { recordSnapshot } from "./deployment-anchor";
 import { pruneUnsent } from "./batch-archive";
@@ -229,7 +230,15 @@ export class Engine {
     });
   }
   private async run(o: { background?: boolean; workspaceId?: string; affected?: Set<string> } = {}): Promise<void> {
-    if (this.paused()) { this.skipped++; return; }
+    if (this.paused()) {
+      // The governor holds background work (discovery, agent reads, auto-sends), never a read the developer starts
+      // (a-read-the-developer-starts-never-waits-on-the-governor, invariant 106): Refresh still reads that workspace's
+      // PRs, the dormant path's read (no agent observation, repairs or sends). 2026-11-23: Refresh did nothing at all
+      // while the machine was busy.
+      const asked = !o.background && !o.affected && o.workspaceId ? (await this.store.snapshot()).workspaces.find(w => w.id === o.workspaceId && w.enable_tracking && !w.archived) : undefined;
+      if (asked) await this.refreshPrs(asked); else this.skipped++;
+      return;
+    }
     this.gateway.tickStarted?.();
     const saved = await this.store.snapshot();
     if (this.stopped) return;
@@ -426,7 +435,7 @@ export class Engine {
     return activated;
   }
   /** Records the developer's answer, then queues it unless they chose to copy it or put it in chat. */
-  async answer(workspaceId: string, questionId: string, choice: string, words: string | undefined, action: AnswerAction, actor: Actor = DEVELOPER): Promise<{ workspace: Workspace; question: Question }> {
+  async answer(workspaceId: string, questionId: string, choice: string, words: string | undefined, action: AnswerAction, actor: Actor = DEVELOPER, images: ImageRef[] = []): Promise<{ workspace: Workspace; question: Question }> {
     await this.store.mutateWorkspace(workspaceId, w => {
       if (!w.enable_tracking || w.archived) throw new Error("Follow-up isn't following this workspace. Turn it back on in Follow-up settings, under Workspace exceptions.");
       developerAnswer(w, questionId, choice, words, action, this.now(), actor);
@@ -439,7 +448,7 @@ export class Engine {
       const id = answerItemId(workspaceId, recorded);
       const queued = this.queue.get(id);
       if (action === "resend" && queued && !["sent", "cancelled"].includes(queued.state)) await this.queue.retry(id);
-      else this.queue.enqueue(this.answerItem(workspaceId, recorded, action === "resend"));
+      else this.queue.enqueue({ ...this.answerItem(workspaceId, recorded, action === "resend"), ...(images.length ? { images } : {}) });
     }
     const workspace = findWorkspace(await this.store.snapshot(), workspaceId);
     return { workspace, question: workspace.questions.find(q => q.id === questionId)! };

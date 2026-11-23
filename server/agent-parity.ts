@@ -1,3 +1,4 @@
+import { MAX_IMAGES } from "../shared/images";
 import { z } from "zod";
 import { AGENT_ROLES, savedRoleSchema } from "../shared/agent-settings";
 import { ONBOARDING_ACTIONS, ONBOARDING_STEPS } from "../shared/onboarding";
@@ -11,6 +12,7 @@ import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
 import { sourcesChangeSchema } from "../shared/brief-sources";
+import { compassChangeSchema } from "../shared/compass";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -20,6 +22,11 @@ import { sourcesChangeSchema } from "../shared/brief-sources";
  *
  * `guard` refuses calls an agent must never make for itself (answering its own question, acting on its own brief).
  */
+/**
+ * An agent tool's pasted images (every-agent-field-takes-images): local file paths, read and checked at the dry run
+ * (a regular readable file, an image by its first bytes, under the caps: server/image-store.ts readImageFiles).
+ */
+export const imagePaths = z.array(z.string().trim().min(1).max(4096)).max(MAX_IMAGES).optional();
 export type RpcTool = {
   name: string;
   rpc: string;
@@ -78,16 +85,16 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "overseer_status", rpc: "follow.overseer-status", kind: "read", input: none },
   { name: "overseer_start", rpc: "follow.overseer-start", kind: "planned", before: { rpc: "follow.overseer-status" }, input: z.strictObject({ ...confirm }) },
   { name: "overseer_restart", rpc: "follow.overseer-restart", kind: "planned", before: { rpc: "follow.overseer-status" }, input: z.strictObject({ ...confirm }) },
-  { name: "overseer_ask", rpc: "follow.overseer-ask", kind: "planned", input: z.strictObject({ text: z.string().trim().min(1).max(2000).optional(), ...confirm }) },
+  { name: "overseer_ask", rpc: "follow.overseer-ask", kind: "planned", input: z.strictObject({ text: z.string().trim().min(1).max(2000).optional(), images: imagePaths, ...confirm }) },
   // Catch up: the deck, and More context (ask, read the asks); the asked agent answers with context_reply
   { name: "catch_up_deck", rpc: "follow.catch-up-deck", kind: "read", input: none },
   { name: "context_requests", rpc: "follow.context-list", kind: "read", input: z.strictObject({ workspaceId: id.optional() }) },
   { name: "ask_context", rpc: "follow.context-ask", kind: "planned", before: { rpc: "follow.context-list", input: a => ({ workspaceId: a.workspaceId ?? undefined }) },
     input: z.strictObject({ workspaceId: id.nullable().optional(), agentId: id.nullable().optional(), cardKey: z.string().min(1).max(400).optional(), card: z.string().trim().min(1).max(300).optional(),
-      target: z.enum(["overseer", "agent"]).optional(), ask: z.string().trim().min(1).max(2000).optional(), ...confirm }),
+      target: z.enum(["overseer", "agent"]).optional(), ask: z.string().trim().min(1).max(2000).optional(), images: imagePaths, ...confirm }),
     // target is accepted and ignored: the server sends every ask to the card's workspace main agent, and refuses an
     // agent asking itself (an-ask-goes-only-to-an-agent-that-can-answer-it).
-    toRpc: a => ({ workspaceId: a.workspaceId ?? null, agentId: a.agentId ?? null, cardKey: a.cardKey, card: a.card, target: a.target, ask: a.ask }) },
+    toRpc: a => ({ workspaceId: a.workspaceId ?? null, agentId: a.agentId ?? null, cardKey: a.cardKey, card: a.card, target: a.target, ask: a.ask, ...(a.images ? { images: a.images } : {}) }) },
   // Needs-you: the brief card and the inbox's other actions
   // The message queue: what waits to go to agents, and Retry or Cancel on one item (a card's Retry, Needs you's message row).
   { name: "queue_list", rpc: "follow.queue-list", kind: "read", input: z.strictObject({ workspaceId: id.optional(), agentId: id.optional() }) },
@@ -96,15 +103,15 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "inbox_brief", rpc: "follow.inbox-brief", kind: "read", input: z.strictObject({ agentId: id }) },
   { name: "brief_action", rpc: "follow.brief-action", kind: "planned", before: { rpc: "follow.inbox-brief", input: a => ({ agentId: a.agentId }) },
     input: z.strictObject({ agentId: id.optional(), briefId: z.string().max(300).optional(), decisionId: z.string().max(20).optional(), choice: briefChoiceSchema.optional(), words: z.string().trim().max(2000).optional(), move: z.enum(["retry", "done"]).optional(),
-      choices: z.array(z.object({ decisionId: z.string().max(20), choice: briefChoiceSchema, words: z.string().trim().max(2000).optional() })).min(1).max(10).optional(), ...confirm }),
+      choices: z.array(z.object({ decisionId: z.string().max(20), choice: briefChoiceSchema, words: z.string().trim().max(2000).optional() })).min(1).max(10).optional(), images: imagePaths, ...confirm }),
     guard: (a, caller) => a.agentId === caller ? "brief_action answers another agent's brief for the developer; your own brief is the developer's to answer." : null },
   { name: "inbox_act", rpc: "follow.inbox-act", kind: "planned",
     input: z.strictObject({ action: z.enum(["undo", "unsnooze", "mute_turn", "unsorted_flag", "unsorted_sign_off", "batch_undo"]).optional(), agentIds: z.array(id).max(500).optional(), muteTurn: z.boolean().optional(), ...confirm }),
     guard: (a, caller) => a.agentIds?.includes(caller) ? "inbox_act is for other agents' rows, not your own." : null },
   // Questions: the developer's answer to another agent's question
   { name: "answer_question", rpc: "follow.answer-question", kind: "planned",
-    input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), choice: z.string().trim().min(1).max(200).optional(), words: z.string().trim().max(2000).optional(), ...confirm }),
-    toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, choice: a.choice, words: a.words, action: "send" }) },
+    input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), choice: z.string().trim().min(1).max(200).optional(), words: z.string().trim().max(2000).optional(), images: imagePaths, ...confirm }),
+    toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, choice: a.choice, words: a.words, action: "send", ...(a.images ? { images: a.images } : {}) }) },
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: the small x on every Needs-you item and brief.
   { name: "dismiss_item", rpc: "follow.dismiss", kind: "planned",
     input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), issue: z.string().max(30).optional(), undo: z.boolean().optional(), ...confirm }),
@@ -175,6 +182,12 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "brief_sources", rpc: "follow.brief-sources", kind: "read", input: z.strictObject({ check: z.boolean().optional() }) },
   { name: "set_brief_sources", rpc: "follow.set-brief-sources", kind: "planned", before: { rpc: "follow.brief-sources", input: () => ({}) }, input: sourcesChangeSchema.extend(confirm) },
   { name: "brief_chat_search", rpc: "follow.brief-chat-search", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
+  // Compass (docs/compass.md): the sources that set the developer's priorities. compass_find is the only way an agent
+  // learns a place id; set_compass and read_compass are planned (the dry run shows Compass as it is now).
+  { name: "compass", rpc: "follow.compass", kind: "read", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }) },
+  { name: "compass_find", rpc: "follow.compass-find", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
+  { name: "set_compass", rpc: "follow.set-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: compassChangeSchema.extend(confirm) },
+  { name: "read_compass", rpc: "follow.read-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
   { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
 
@@ -224,6 +237,10 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.brief-chat-search": { tools: ["brief_chat_search"] },
   "follow.brief-sources": { tools: ["brief_sources"] },
   "follow.set-brief-sources": { tools: ["set_brief_sources"] },
+  "follow.compass": { tools: ["compass"] },
+  "follow.compass-find": { tools: ["compass_find"] },
+  "follow.set-compass": { tools: ["set_compass"] },
+  "follow.read-compass": { tools: ["read_compass"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },
@@ -232,6 +249,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.overseer-ask": { tools: ["overseer_ask"] },
   "follow.inbox-list": { tools: ["inbox_list"] },
   "follow.context-ask": { tools: ["ask_context"] },
+  "follow.image-support": { exempt: "The field's warning before Send. An agent's tool passes image paths to the same RPCs, and the server leaves images off for a recipient that can't take them and says so in the message (imageSupport), so a tool never has to ask first." },
   "follow.context-list": { tools: ["context_requests"] },
   "follow.inbox-brief": { tools: ["inbox_brief"] },
   "follow.queue-action": { tools: ["queue_action"] },

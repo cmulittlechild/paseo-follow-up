@@ -53,6 +53,7 @@ const EXEMPT: Record<string, string> = {
   "follow.rename-workspace": "Setting Paseo's workspace title is the action; on a timeout the name and the undo ledger stay as they were.",
   // Settings screens: reads, or a toggle saved before the slow part.
   "follow.brief-chat-search": "Settings → Morning brief's person and channel pickers search the chat source through mcpproxy as the developer types; read-only, the picker shows Searching… and keeps the typed query.",
+  "follow.compass-find": "Settings → Compass's person and channel pickers search the chat source through mcpproxy as the developer types; read-only, the picker shows Searching… and keeps the typed query.",
   "follow.project-settings": "The project list comes from Paseo; read-only.",
   "follow.set-project-tracking": "Checks the project against Paseo's list before saving the toggle.",
   "follow.agent-settings": "Settings → Agents reads Paseo's provider catalog (cached ten minutes); read-only.",

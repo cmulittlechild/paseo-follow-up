@@ -112,6 +112,7 @@ import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
 import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
 import { askSource } from "./server/ask";
 import { BriefSources } from "./server/brief-sources";
+import { Compass, CompassStore } from "./server/compass";
 import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
@@ -135,6 +136,9 @@ import { updatesViewSchema, type UpdatesView } from "./shared/updates";
 import { PLUGIN_NAME, releaseNotesViewSchema, type ReleaseNote, type ReleaseNotesView } from "./shared/changelog";
 import { BRIEF_KIND, BRIEF_VERSION, prState, prStates, validateNeedsYou, type Brief, type NeedsYouRecord } from "./shared/brief";
 import { foldedAsk } from "./shared/needs-block";
+import { ImageStore } from "./server/image-store";
+import type { ImageRef, ImageUpload } from "./shared/images";
+import { imageSupport, trustHarnessImageProviders } from "./server/image-support";
 
 /** Agent calls that only the main agent makes: one of these from a successor means the handover is in use. */
 const MAIN_WORK = new Set(["follow.sync", "follow.register-pr", "follow.obligation", "follow.done", "follow.acknowledge", "follow.exclude-stack", "follow.ask-question", "follow.record-answer", "follow.withdraw-question", "follow.set-spec", "follow.needs-you"]);
@@ -301,6 +305,7 @@ export default function contribute(server: PluginServerContext) {
   let linearQueue: LinearQueue | null = null;
   let morningBrief: MorningBrief | null = null;
   let briefSources: BriefSources | null = null;
+  let compass: Compass | null = null;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -354,7 +359,10 @@ export default function contribute(server: PluginServerContext) {
   });
   onBeforeSend((agentId, messageId, by) => inbox.noteDelivery(agentId, messageId, by === "developer" || by?.startsWith("agent:") ? by as "developer" | `agent:${string}` : undefined));
   // a-message-is-saved-before-sent-and-arrives-once: every message to an agent goes through one queue (queue.json).
-  const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by) => gateway.deliverTo(target, text, messageId, by), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth });
+  // Pasted images (every-agent-field-takes-images): files under images/, refs on the queue item and the dispatch record.
+  const imageStore = new ImageStore(directory);
+  trustHarnessImageProviders(directory);
+  const queue = new MessageQueue(directory, { deliverTo: (target, text, messageId, by, images) => gateway.deliverTo(target, text, messageId, by, images), arrived: (agentId, messageId, since, marker) => gateway.arrivedMessage(agentId, messageId, since, marker), probe: () => gateway.probe() }, { health: writeHealth, images: imageStore });
   engine.attachQueue(queue);
   checkWatches.attachQueue(queue);
   inbox.attachQueue(queue);
@@ -388,11 +396,21 @@ export default function contribute(server: PluginServerContext) {
       });
     },
   });
-  const enqueueMessage = (agentId: string, text: string, messageId: string, by?: string) => {
+  const enqueueMessage = (agentId: string, text: string, messageId: string, by?: string, images: ImageRef[] = []) => {
     const key = gateway.directory.cached(agentId)?.workspaceId ?? `agent:${agentId}`;
-    queue.enqueue({ id: `message:${agentId}:${messageId}`, kind: "message", key, ref: { agentId }, messageId, text, ...(by ? { by } : {}), priority: "now", state: "queued" });
+    queue.enqueue({ id: `message:${agentId}:${messageId}`, kind: "message", key, ref: { agentId }, messageId, text, ...(by ? { by } : {}), ...(images.length ? { images } : {}), priority: "now", state: "queued" });
   };
   onDaemonReconnect(() => queue.reconnected());
+  /**
+   * Stores a field's pasted images, runs the action with their refs, and removes any the action didn't queue (a
+   * repeated answer, an ask already open, a refusal): only a queue item keeps an image file.
+   */
+  const withImages = async <T>(uploads: ImageUpload[] | undefined, run: (refs: ImageRef[]) => Promise<T>): Promise<T> => {
+    const refs = await imageStore.save(uploads);
+    const unqueued = () => { const live = new Set(queue.imageIds()); return refs.filter(r => !live.has(r.id)); };
+    try { const out = await run(refs); if (refs.length) await imageStore.remove(unqueued()); return out; }
+    catch (error) { await imageStore.remove(unqueued()); throw error; }
+  };
   /** What the bridge and the Stop hook read: is the inbox on, may agents be nudged, who has a prompt showing. */
   const writeBriefState = async () => {
     const values = await inboxSettings();
@@ -420,6 +438,8 @@ export default function contribute(server: PluginServerContext) {
     if (morningBrief) void morningBrief.tick().catch(() => undefined);
     // The brief's sources: mcpproxy is asked again once a workday after the sweep time (same loop, same rule).
     if (briefSources) void briefSources.tick().catch(() => undefined);
+    // Compass's morning read: once a workday after the sweep time (same loop, same rule).
+    if (compass) void compass.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
     feeds.inbox(); feeds.home();
@@ -893,7 +913,11 @@ export default function contribute(server: PluginServerContext) {
       return r;
     });
   });
-  handle(rpc.answerQuestionRpc, async ({ workspaceId, questionId, choice, words, action }, context) => { await requireReady(); return engine.answer(workspaceId, questionId, choice, words, action, actorOf(context)); });
+  handle(rpc.answerQuestionRpc, async ({ workspaceId, questionId, choice, words, action, images }, context) => {
+    await requireReady();
+    // Images go only with a send (Copy and Put in chat send nothing).
+    return withImages(action === "send" || action === "resend" ? images : undefined, refs => engine.answer(workspaceId, questionId, choice, words, action, actorOf(context), refs));
+  });
   handle(rpc.declareDoneRpc, async ({ agentId, summary }, { paseo }) => { await requireReady(); return engine.declareDone(agentId, summary, await callerWorkspaceId(agentId, paseo, false)); });
   handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly }, { paseo }) => {
     await requireReady();
@@ -1059,7 +1083,23 @@ export default function contribute(server: PluginServerContext) {
   };
   handle(rpc.overseerStatusRpc, async () => { await requireReady(); return overseerStatus(); });
   handle(rpc.overseerStartRpc, async (_input, { paseo }) => { await requireReady(); seen(paseo); await overseer!.start(paseo as unknown as OverseerPaseo); return overseerStatus(); });
-  handle(rpc.overseerAskRpc, async ({ text }, { paseo }) => { await requireReady(); seen(paseo); await overseer!.ask(paseo as unknown as OverseerPaseo, text); return overseerStatus(); });
+  // The Overseer's ask goes straight to it (Overseer.ask, not the queue): its images are sent from memory, never stored.
+  handle(rpc.overseerAskRpc, async ({ text, images }, { paseo }) => { await requireReady(); seen(paseo); await overseer!.ask(paseo as unknown as OverseerPaseo, text, images?.map(i => ({ data: i.data, mimeType: i.mimeType }))); return overseerStatus(); });
+  handle(rpc.imageSupportRpc, async ({ target }) => {
+    await requireReady();
+    const agentOf = (id: string | null | undefined) => id ? gateway.directory.cached(id) ?? null : null;
+    if (target.kind === "provider") return imageSupport({ provider: target.provider });
+    if (target.kind === "agent") return imageSupport(agentOf(target.agentId));
+    if (target.kind === "workspace") {
+      const w = (await store.snapshot()).workspaces.find(x => x.id === target.workspaceId);
+      const main = agentOf(w?.mainAgentId) ?? ((await gateway.directory.read().catch(() => null))?.agents ?? []).map(r => r.agent).find(a => a.workspaceId === target.workspaceId && !a.archivedAt) ?? null;
+      return imageSupport(main);
+    }
+    const s = await overseer!.state();
+    const running = agentOf(s.agentId);
+    if (running) return imageSupport(running);
+    return imageSupport({ provider: (await overseer!.agentInfo()).configured.provider });
+  });
   // Catch up's More context: the ask is recorded and answered at once, and goes through the message queue (invariant
   // 36) to the card's workspace's main agent, the only role with context_reply (an-ask-goes-only-to-an-agent-that-can-
   // answer-it). Asking may wake it: the developer asked, the one exception to never-wake (invariant 1).
@@ -1070,8 +1110,12 @@ export default function contribute(server: PluginServerContext) {
     const w = input.workspaceId ? (await store.snapshot()).workspaces.find(x => x.id === input.workspaceId) : undefined;
     const to = contextRecipient(w, actor.kind === "agent" ? actor.agentId : null);
     if ("error" in to) throw new Error(to.error);
-    const out = await contextRequests.ask({ ...input, target: "agent" }, actorBy(actor), to.agentId);
-    if (out.fresh) enqueueMessage(to.agentId, agentContextPrompt(out.request), out.request.id, actorBy(actor));
+    const { images, ...ask } = input;
+    const out = await withImages(images, async refs => {
+      const out = await contextRequests.ask({ ...ask, target: "agent" }, actorBy(actor), to.agentId);
+      if (out.fresh) enqueueMessage(to.agentId, agentContextPrompt(out.request), out.request.id, actorBy(actor), refs);
+      return out;
+    });
     return input.target === "overseer" ? { ...out, note: "More context always asks the card's own main agent, which can answer on the card; the Overseer can't, so target is ignored." } : out;
   });
   // Built when read (a-derived-view-is-built-when-read), from state the worker holds: no daemon request but the
@@ -1268,6 +1312,7 @@ export default function contribute(server: PluginServerContext) {
   };
   const dispatcher = new DispatchService({
     store: new DispatchStore(directory),
+    images: imageStore,
     linear: linearIssues,
     github: async (kind, repo, number) => {
       const j = await githubApi().rest(repo, `repos/${repo}/${kind === "pr" ? "pulls" : "issues"}/${number}`) as { title?: unknown; body?: unknown; state?: unknown; merged_at?: unknown } | null;
@@ -1341,11 +1386,11 @@ export default function contribute(server: PluginServerContext) {
       },
     } : null,
     // The Overseer's own dispatch needs the developer's ask or approval, as start_workspace always did.
-    gate: async actor => {
+    gate: async (actor, key) => {
       if (actor.kind !== "agent" || !overseer) return null;
       const s = await overseer.state().catch(() => null);
       if (!s?.agentId || s.agentId !== actor.agentId || !api) return null;
-      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo);
+      return overseer.newWorkspaceGate(api as unknown as OverseerPaseo, key);
     },
     afterCreate: async (record, source) => {
       if (!record.workspaceId) return;
@@ -1355,7 +1400,13 @@ export default function contribute(server: PluginServerContext) {
     onChange: () => feeds.home(),
     log: line => console.warn(`[follow-up] ${line}`),
   });
-  void ready.then(() => { if (!stopped && !loadError) return dispatcher.start(); }).catch(() => undefined);
+  void ready.then(async () => {
+    if (stopped || loadError) return;
+    await dispatcher.start();
+    // Pasted images no queue item or waiting dispatch references (a crash between saving and queueing) are removed.
+    const removed = await imageStore.sweep([...queue.imageIds(), ...await dispatcher.imageIds()]);
+    if (removed) console.warn(`[follow-up] removed ${removed} pasted image${removed === 1 ? "" : "s"} nothing referenced`);
+  }).catch(() => undefined);
   // Settings → Morning brief (server/morning-brief.ts): the queue's settings, the brief's clock and this week's plan
   // link. The plan reader is the ranker's (built below); the skill registry is imported once.
   // One store for the brief's settings and its sources (morning-brief.json).
@@ -1435,7 +1486,7 @@ export default function contribute(server: PluginServerContext) {
   ranker = new Ranker({ directory, jobs: aiJobs, priorities: priorityStore, role: rankerRole, enabled: rankerOn, tight: async () => !governor.allowsBackground(),
     workstreams: () => overseer!.workstreams(), planningUrl: () => morningBrief!.planUrl(), clock: briefClock,
     windows: async () => { const q = await morningBrief!.settings(); return { chatHours: q.chatHours, calendarDays: q.calendarDays }; },
-    sources: { ...rankSources, asks: () => briefSources!.askedItems() } });
+    sources: { ...rankSources, asks: () => briefSources!.askedItems(), compass: () => compass ? compass.forRanker() : Promise.resolve([]) } });
   // The brief's sources (server/brief-sources.ts): what mcpproxy has, the switches, each source's health, Retry.
   briefSources = new BriefSources({
     store: morningBriefStore, tools: sourceDirectory(), deviceZone: () => clientTimeZone,
@@ -1457,6 +1508,31 @@ export default function contribute(server: PluginServerContext) {
     onAsked: () => ranker?.markDue(),
     onChange: () => feeds.home(), log: line => console.warn(line),
   });
+  // Compass (server/compass.ts, docs/compass.md): its settings beside the brief's, its notes in compass.json. Extraction
+  // runs on the Summaries role, only on a provider Follow-up can guard (Claude, Codex).
+  compass = new Compass({
+    settings: morningBriefStore, store: new CompassStore(directory), tools: sourceDirectory(), jobs: aiJobs,
+    role: async () => { const r = await agentSettings.role("about"); return { provider: r.provider, model: r.model, thinking: r.thinking, label: providerName(r.provider) }; },
+    clock: briefClock, sweepAt: async () => (await morningBrief!.settings()).sweepAt,
+    index: async () => {
+      const [rows, holders, aboutFile, linked] = await Promise.all([overseer!.workstreams(), issueHolders(), aboutStore.read(), linkedOf()]);
+      const titles = new Map(linked.map(([id, l]) => [id, l.items.flatMap(i => i.title ? [i.title] : [])]));
+      return {
+        workspaces: rows.map(w => ({ id: w.workspaceId, title: w.title, summary: aboutFile.entries[w.workspaceId]?.gist ?? null, branch: w.branch, linked: titles.get(w.workspaceId) ?? [], prs: [] })),
+        issueWorkspace: key => holders.get(key.toUpperCase())?.workspaceId ?? null,
+      };
+    },
+    allowed: chatAllowed, tight: () => !governor.allowsBackground(),
+    onChange: () => { ranker?.markDue(); feeds.home(); }, log: line => console.warn(line),
+  });
+  handle(rpc.compassRpc, async ({ workspace }) => { await requireReady(); return compass!.view({ workspace }); });
+  handle(rpc.compassFindRpc, async ({ kind, query }) => { await requireReady(); return compass!.find(kind, query); });
+  handle(rpc.setCompassRpc, async (input, context) => {
+    await requireReady();
+    const ids = new Set((await store.snapshot()).workspaces.map(w => w.id));
+    return compass!.set(input, actorBy(actorOf(context)), { workspaceExists: id => ids.has(id) });
+  });
+  handle(rpc.readCompassRpc, async (_input, context) => { await requireReady(); const r = await compass!.readWithin(actorOf(context).kind === "agent" ? "agent" : "manual"); return { ...r, view: await compass!.view() }; });
   handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });
   handle(rpc.setBriefSourcesRpc, async input => { await requireReady(); return briefSources!.set(input); });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });
@@ -1784,10 +1860,10 @@ export default function contribute(server: PluginServerContext) {
   });
   // Replies once the answer is recorded; the send runs after (Inbox.briefAction), so a dormant agent's slow resume never
   // times the card out.
-  handle(rpc.briefActionRpc, async ({ agentId, briefId, decisionId, choice, words, choices, move, answerId }, context) => {
+  handle(rpc.briefActionRpc, async ({ agentId, briefId, decisionId, choice, words, choices, move, answerId, images }, context) => {
     const { paseo } = context;
     await requireReady(); seen(paseo);
-    const brief = await inbox.briefAction(agentId, { briefId, decisionId, choice, words, choices, move, answerId }, actorOf(context));
+    const brief = await withImages(move ? undefined : images, refs => inbox.briefAction(agentId, { briefId, decisionId, choice, words, choices, move, answerId, images: refs }, actorOf(context)));
     return { brief };
   });
 

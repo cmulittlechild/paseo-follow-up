@@ -118,6 +118,8 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `brief_plan`, `set_brief_plan` | `follow.brief-plan`, `follow.set-brief-plan` | read / planned: this week's plan link. Mode (auto: Find it for me, link, off), person and channels, replace-when-newer, `find` (search now); the link in use and where it came from (env, link, found, previous). `brief_plan {link}` reads that link's title first, and is `set_brief_plan`'s dry run. Settings reads the plan through `follow.brief-settings`. |
 | `brief_sources`, `set_brief_sources` | `follow.brief-sources`, `follow.set-brief-sources` | read / planned: the brief's sources. Every mcpproxy server matched by its tools (a recipe's source, one with no recipe yet, one with no read tools) plus GitHub and Paseo, with health (ok, sign-in, failed, off), what each adds, its cost and whether it's on. `check` asks mcpproxy again (Settings sends it on open). The change turns sources on or off (`on: {id: bool}`; an Ask source only after a preview under 24 h old), Retries one (`retry`), checks again (`check`) or previews an Ask source (`preview`: one ask, nothing turned on); a check, Retry or preview runs after the reply and the read says `checking` / `retrying` / `previewing`. |
 | `brief_chat_search` | `follow.brief-chat-search` | read: people or channels from the chat source's own search, for Find it for me's pickers. |
+| `compass`, `compass_find` | `follow.compass` (`workspace` narrows the notes), `follow.compass-find` (`kind` people or channels, `query`) | read: Compass ([compass.md](compass.md)). Its sources, glossary, presets the connected tools allow, each place's last read, the live notes and `blocked` (why Compass doesn't read: Summaries on a provider with no guard). `compass_find` lists people and conversations from the chat tool's own search, each with the place `set_compass` takes: the only way an agent learns a place id. |
+| `set_compass`, `read_compass` | `follow.set-compass`, `follow.read-compass` | planned: add, edit or remove a source (who, places, roles, How to read this), the global reading notes, the glossary and expiry; Read now (waits up to 30 s, then `running`). The dry run shows Compass as it is now. |
 | `link_items`, `set_linked_items` | `follow.linked-items`, `follow.set-linked-items` (add, remove, undo) | read / planned. The Linked sheet calls both; `link_item` and `unlink_item` also count for `follow.set-linked-items`. |
 | `link_items` (per workspace) | `follow.linked-index` | read. Home's search over every workspace's linked keys and titles, fetched only while the search field has text. |
 | `pr_controls`, `browser_status` | `follow.pr-control-status`, `follow.browser-status` | read |
@@ -198,8 +200,29 @@ nothing. On 0.15 there is no `client.subscribe`, and the client polls the RPCs a
 | Needs-you inbox and brief card | `follow.inbox-list`, `follow.inbox-act`, `follow.inbox-brief`, `follow.brief-action` |
 | PR sheet | `follow.pr-control-status`, `follow.prepare-pr-action`, `follow.confirm-pr-action`, `follow.check-pr-action`, `follow.request-reviewers`, `follow.browser-status` |
 | Overseer card | `follow.overseer-status`, `follow.overseer-start`, `follow.overseer-restart`, `follow.overseer-ask` |
+| Every field whose words reach an agent (pasted images) | `follow.image-support` (asked once per recipient when the first image is added: "<Provider> can't take images; remove them to send."), and `images` on `follow.dispatch`, `follow.overseer-ask`, `follow.context-ask`, `follow.answer-question` and `follow.brief-action` |
 | Settings | `follow.follow-settings`, `follow.set-follow-settings`, `follow.project-settings`, `follow.set-project-tracking`, `follow.reviewer-settings`, `follow.save-reviewers`, `follow.reviewer-suggestions`, `follow.agent-settings`, `follow.set-agent-setting`, `follow.set-wait`, `follow.pr-workflow`, `follow.set-pr-workflow`, `follow.trust-bypass` |
 | Getting started | `follow.onboarding`, `follow.set-onboarding`, `follow.onboarding-checks` |
 | Chat: created agent and workspace cards | `follow.created-items` |
 | Report a bug (Settings → General → Help, ⌘K, `/report-issue`, error toasts) | `follow.report-issue-targets`, `follow.report-issue-send`, `follow.report-issue-link` |
 | Release notes and updates | `follow.release-notes`, `follow.whats-new-seen`, `follow.updates`, `follow.set-updates`, `follow.install-update`, `follow.retry-move`, `follow.dismiss-update-notice` |
+
+## Pasted images
+
+Every field whose words reach an agent takes pasted images (invariant 97, `every-agent-field-takes-images`; the client
+side is [client.md](client.md#pasted-images)). The RPCs behind them take an optional `images` list
+(`imageUploadsSchema`, `shared/images.ts`: `{ name, mimeType, data }` with base64 data; PNG, JPEG, GIF or WebP, up to 6,
+5 MB each, 20 MB in all, checked again by the file's first bytes on the server):
+
+| RPC | Where the images go |
+| --- | --- |
+| `follow.dispatch` | With the new agent's first message (`agents.create({ ..., images })`). Kept as files with the dispatch record until the agent is created or the dispatch fails. |
+| `follow.answer-question`, `follow.brief-action`, `follow.context-ask` | On the queued message (`queue.json` keeps refs only, `images/` the files); every resend reads the same files; removed once delivered or cancelled. `answer-question` takes them only with `action: "send"`. |
+| `follow.overseer-ask` | Straight to the Overseer with the words (the ask isn't queued); never stored. |
+| `follow.image-support` | Input `{ target }`: an agent, a workspace (its main agent), the Overseer, or a provider (New's pick). Output `{ ok, provider, reason }` from `imageSupport` (`server/image-support.ts`), the one rule. |
+
+Agent tools take `images: [<local file path>]` on `dispatch`, `overseer_ask`, `ask_context`, `brief_action` and
+`answer_question`. Each path must be a readable regular file (a symlink isn't followed), an image by its first bytes,
+under the caps; the dry run refuses the whole call with the reason otherwise, and its plan names each image by name and
+size (`images`, never the bytes). Home's reply boxes and Catch up's note send straight through Paseo's own
+`agent.send(text, { images })`, as their words already did.

@@ -66,6 +66,7 @@ const EXEMPT: Record<string, string> = {
   "server/agent-settings.ts": "Settings → Agents (a few hundred bytes), written on the developer's change",
   "server/background-agents.ts": "a list of background agent ids, written when one appears",
   "server/daemon.ts": "a recovery context file, written once per recovery batch",
+  "server/image-store.ts": "pasted images, one file written once per image (write-once, never mutated), not a JSON store",
   "server/history-cache.ts": "one write per discovery pass that found new history (tens of KB), not per mutation",
   "server/job-agent.ts": "an AI job's prompt file, once per job",
   "server/memory.ts": "heartbeat.json's memory field (under 1 KB), once a minute",

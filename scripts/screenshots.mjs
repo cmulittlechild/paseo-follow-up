@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "compass"];
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
 for (const name of only) if (![...SHOTS, ...REVIEW_SHOTS].includes(name)) fail(`unknown shot "${name}" (known: ${[...SHOTS, ...REVIEW_SHOTS].join(", ")})`);
 const scheme = arg("--scheme");
@@ -67,7 +67,7 @@ const paseo016 = /(^|\D)0\.16\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") || only.includes("new") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") || only.includes("paste-images") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -216,6 +216,21 @@ console.log(JSON.stringify({ data: { ...(d._rate ? { rateLimit: d._rate } : {}),
  * A fake `claude` for the Ask shots only: Ask's plan call gets one read of the fictional tracker, its items call two
  * items from that read. Anything else fails at once, as an unlogged-in CLI does.
  */
+/** Compass's extraction (fictional): the notes a fast model would make from dana's message, quoting it word for word. */
+function fakeCompassClaude() {
+  return `#!/usr/bin/env node
+if (!process.argv.some(a => a.startsWith("You read messages for one developer"))) { process.stderr.write("not logged in"); process.exit(1); }
+let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
+  const item = (/\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
+  const value = { notes: [
+    { item, what: "APP-142 retries before the acme demo", keys: ["APP-142"], kind: "issue", strength: "high", untilWords: "Thursday", until: null, quote: "APP-142 retries are really important, the acme demo is Thursday" },
+    { item, what: "Search filters", keys: [], kind: "feature", strength: "low", untilWords: "next week", until: null, quote: "Search filters can wait until next week" },
+  ], retracts: [], nothing: false };
+  process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0003, usage: { input_tokens: 700, output_tokens: 90 } }));
+});
+`;
+}
+
 function fakeAskClaude() {
   return `#!/usr/bin/env node
 const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
@@ -302,6 +317,8 @@ if (process.argv[2] === "tools" && process.argv[3] === "list") {
     // An Ask source (no recipe fits): a ticket tracker, shown only in the Ask shots (over.ask).
     ...(over.ask ? [t("tracker", "search_tickets", ["query", "limit"], "Search tickets."), t("tracker", "get_ticket", ["id"], "One ticket.")] : []),
     ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
+    // Compass (--only compass): the chat's history read, by conversation id and oldest time.
+    ...(over.compass ? [t("team-chat", "read_channel", ["channel_id", "oldest", "limit", "cursor", "response_format"], "Reads a conversation's messages, newest first.")] : []),
   ]));
   process.exit(0);
 }
@@ -334,6 +351,15 @@ if (/search_public_and_private$/.test(tool)) {
   let chat = {}; try { chat = JSON.parse(require("fs").readFileSync(require("path").join(require("path").dirname(${JSON.stringify(file)}), "chat-fixture.json"), "utf8")); } catch {}
   if (chat.error) { console.error("Command failed: chat search timed out"); process.exit(1); }
   reply(JSON.stringify({ results: chat.messages || "No results found.", pagination_info: "" }));
+}
+// Compass's history read (fictional): what dana (product) said in her DM with alice, the developer.
+if (tool === "read_channel") {
+  const ago = h => new Date(Date.now() - h * 3600_000);
+  const m = (name, id, h, text) => "=== Message from " + name + " (" + id + ") at " + ago(h).toISOString().replace("T", " ").slice(0, 19) + " UTC === \\nMessage TS: " + (ago(h).getTime() / 1000).toFixed(6) + "\\n" + text;
+  reply(JSON.stringify({ messages: "Channel: DM (DDANA00001)\\n\\n" + [
+    m("alice", "UALICE0001", 1, "on it"),
+    m("dana", "UDANA00001", 2, "APP-142 retries are really important, the acme demo is Thursday. Search filters can wait until next week."),
+  ].join("\\n\\n"), pagination_info: "" }));
 }
 // The Ask shots' tracker (fictional): two tickets waiting on the developer.
 if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
@@ -576,7 +602,7 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || only.includes("paste-images") ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1893,12 +1919,13 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("split")) await splitShots({ shoot, seeded, call, out });
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
+  if (only.includes("compass")) await compassShots({ shoot, call, home, seeded });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
   if (only.includes("pr-scale")) await prScaleShots({ shoot });
-  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot });
+  if (only.includes("pr-stats-settings")) await prStatsSettingsShots({ shoot, call, home });
   if (only.includes("pr-stats")) await prStatsShots({ shoot });
   if (only.includes("pr-stats-off")) await prStatsOffShots({ shoot });
   if (only.includes("archive")) await archiveShots({ shoot, call });
@@ -2031,6 +2058,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   }
   if (only.includes("own-answer")) await ownAnswerShots({ shoot });
   if (only.includes("more-context")) await moreContextShots({ shoot, call });
+  if (only.includes("paste-images")) await pasteImagesShots({ shoot, call });
   if (only.includes("dismiss")) await dismissShots({ shoot, call });
   if (only.includes("dock-in-view")) await dockInViewShots({ shoot });
   if (only.includes("pick-notes")) {
@@ -2361,7 +2389,7 @@ async function prStatsOffShots({ shoot }) {
   }
 }
 /** pr-stats-settings only: Settings → Following → PR statistics, its options fold and the opt-in sheet, both sizes and themes. */
-async function prStatsSettingsShots({ shoot }) {
+async function prStatsSettingsShots({ shoot, call, home }) {
   const TALL = { width: DESKTOP.width, height: 1400 }, PHONE_TALL = { width: PHONE.width, height: 1800 };
   const section = async (page, vp) => {
     await page.setViewportSize(vp);
@@ -2402,6 +2430,40 @@ async function prStatsSettingsShots({ shoot }) {
       await page.setViewportSize(size === "phone" ? PHONE : DESKTOP);
     });
   }
+  // a-read-the-developer-starts-never-waits-on-the-governor (invariant 106): the sheet while the machine is busy (the
+  // count still loads, Turn on live) and with GitHub's limit low (no count, why and when in plain words, Turn on live).
+  // Desktop light and 390×844 dark.
+  const sheet = async (page, vp, repo, wait) => {
+    await section(page, vp);
+    await page.getByLabel("Another repository, owner/repo").filter({ visible: true }).first().fill(repo);
+    await page.getByRole("button", { name: /^Add/ }).filter({ visible: true }).first().click();
+    await page.getByText(`Turn on PR stats for ${repo}?`).filter({ visible: true }).first().waitFor();
+    await page.getByText(wait).filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    const body = await page.evaluate(() => document.body.innerText);
+    if (/machine is busy/i.test(body)) throw new Error("pr-stats-settings: the sheet says the machine is busy");
+    const off = await page.getByRole("button", { name: "Turn on", exact: true }).filter({ visible: true }).last().evaluate(e => e.getAttribute("aria-disabled") === "true" || e.hasAttribute("disabled"));
+    if (off) throw new Error(`pr-stats-settings: Turn on is off in the ${repo} sheet`);
+    await page.setViewportSize(vp.width === PHONE.width ? PHONE : DESKTOP);
+    if (vp.width === PHONE.width && await page.evaluate(() => document.documentElement.scrollWidth) > PHONE.width) throw new Error("pr-stats-settings: the phone sheet scrolls sideways");
+  };
+  const pairs = [["desktop", TALL, "light"], ["phone", PHONE_TALL, "dark"]];
+  await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 780 }));
+  await until("the governor holds background work", async () => (await call("follow.usage", {})).resources?.level === "constrained", { tries: 120, every: 500 });
+  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-busy-${size}-${theme}`, vp, theme, async page => { await sheet(page, vp, "example/mobile", /1,840/); });
+  await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 }));
+  const fixture = join(home, "gh-fixture.json");
+  const d = JSON.parse(await fs.readFile(fixture, "utf8"));
+  // GitHub's reset 40 minutes ahead on the daemon's (fake) clock, as --github-wait-review does.
+  const c = JSON.parse(await fs.readFile(clockFile, "utf8"));
+  const resetAt = new Date(c.fake + (Date.now() - c.real) * c.rate + 40 * 60_000).toISOString();
+  await fs.writeFile(fixture, JSON.stringify({ ...d, _rate: { cost: 1, remaining: 640, limit: 5000, resetAt } }));
+  await until("stats see GitHub's limit low", async () => (await call("follow.pr-stats-settings", { repo: "example/mobile", estimate: true })).estimate?.wait?.reason === "budget", { tries: 120, every: 1000 });
+  for (const [size, vp, theme] of pairs) await shoot(`pss-optin-low-${size}-${theme}`, vp, theme, async page => {
+    await sheet(page, vp, "example/mobile", /Less than 40% of your GitHub limit is left/);
+    // The reason line says the 40% rule; the pause fact doesn't repeat it.
+    if (await page.getByText(/^Stats pause whenever/).filter({ visible: true }).count()) throw new Error("pr-stats-settings: the budget-low sheet says the 40% rule twice");
+  });
+  await fs.writeFile(fixture, JSON.stringify(d));
 }
 async function prScaleShots({ shoot }) {
   const spec = PR_SCALE_STATES[0];
@@ -3556,6 +3618,55 @@ async function sendingShots({ shoot, seeded, call, home }) {
  * (chat-fixture.json); the plan's title and item count are seeded as the ranker's plan read (ranker.json), with its
  * last run in the future so no scheduled ranking calls a model.
  */
+/**
+ * Compass (docs/compass.md), desktop and phone, light and dark: the card with one source read (dana's DM, fictional),
+ * its editor open, a new source's presets, the one line when the Summaries provider has no guard, and Home's AI-priority
+ * reason line naming Compass. The fake mcpproxy's chat has a history read; the fake claude makes two notes quoting her.
+ */
+async function compassShots({ shoot, call, home, seeded }) {
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true }));
+  await call("follow.brief-sources", { check: true });
+  const states = async (name, drive, { phoneOnly = false } = {}) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      if (phoneOnly && device !== "phone") continue;
+      await shoot(`compass-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        const head = page.getByText("Compass", { exact: true }).first();
+        await head.waitFor();
+        await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+        await drive?.(page);
+        // The settings tab strip is wider than the column, so opening a tab can leave the page scrolled sideways.
+        await head.evaluate(e => { for (let n = e.parentElement; n; n = n.parentElement) n.scrollLeft = 0; });
+        await page.waitForTimeout(300);
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  await states("empty", page => page.getByText("Nobody sets your priorities here yet").first().waitFor());
+  await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "dana" }],
+    roles: ["priorities", "plan"], instructions: "P0 means today, P1 this week. A demo date is a deadline. Ignore hiring talk." } });
+  await call("follow.set-compass", { instructions: "'The retry work' is APP-142. Customer asks wait for the plan unless they name a date.", glossary: [{ words: "the retry work", means: { issue: "APP-142" } }] });
+  await call("follow.read-compass", {});
+  await states("card", page => page.getByText(/2 notes live/).first().waitFor({ timeout: 30_000 }));
+  await states("notes", async page => { await page.getByRole("button", { name: /Show 2 notes from Dana/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
+  await states("editor", async page => { await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
+  await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); }, { phoneOnly: true });
+  await call("follow.set-agent-setting", { role: "about", entry: { provider: "gemini", model: null } });
+  await states("blocked", page => page.getByText(/Compass doesn't read on Gemini/).first().waitFor());
+  await call("follow.set-agent-setting", { role: "about", entry: null });
+  // Home's AI-priority reason line naming Compass (the ranker is off in the shots; the priorities write is its store's).
+  const billing = seeded.workspaces.find(w => w.key === "billing");
+  await actPlanned(call, billing.agentId, "set_display", { values: { home_sort: "priority" } });
+  await actPlanned(call, billing.agentId, "set_priorities", { priorities: [{ workspace: billing.workspaceId, score: 96, reason: "Dana: acme demo Thu, APP-142 first", sources: [{ kind: "compass", label: "Dana · product" }] }], replace: false });
+  for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await shoot(`compass-reason-${device}-${theme}`, viewport, theme, async page => { await page.setViewportSize(viewport); await openHome(page); await page.getByText("Dana: acme demo Thu, APP-142 first").first().waitFor({ timeout: 20_000 }); });
+  }
+}
+
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
@@ -3934,6 +4045,115 @@ async function moreContextShots({ shoot, call }) {
 }
 
 /**
+ * paste-images (every-agent-field-takes-images, docs/client.md#pasted-images): New with two pasted images, the
+ * Overseer's reply box with one, a question's own answer with one, and the refusal past the cap (seven at once), desktop
+ * and 390x844, light and dark. The images are fake app screenshots drawn on a canvas in the page, never anything from
+ * the machine; each paste is a real ClipboardEvent on the field. The fixture provider counts as taking images here
+ * (FOLLOW_UP_HARNESS_IMAGE_PROVIDERS, honoured only under the temp dir). Writes paste-images.json with every check.
+ */
+async function pasteImagesShots({ shoot, call }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`paste-images: ${name}`); log(`paste-images check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const visible = l => l.filter({ visible: true }).first();
+  const lone = pick("ny-lone");
+  /** Pastes fake app screenshots into the field: each a canvas-drawn dashboard (title bar, sidebar, cards, a chart). */
+  const paste = (field, names) => field.evaluate(async (el, names) => {
+    const shot = (i, name) => new Promise(resolve => {
+      const c = document.createElement("canvas"); c.width = 640; c.height = 400; const g = c.getContext("2d");
+      const hue = [214, 152, 28, 280, 350, 190, 60][i % 7];
+      g.fillStyle = "#f6f7f9"; g.fillRect(0, 0, 640, 400);
+      g.fillStyle = `hsl(${hue} 45% 28%)`; g.fillRect(0, 0, 640, 44);
+      g.fillStyle = "#fff"; g.font = "600 18px sans-serif"; g.fillText(`acme · ${name.replace(/\.png$/, "")}`, 18, 28);
+      g.fillStyle = "#e3e6eb"; g.fillRect(0, 44, 140, 356);
+      for (let r = 0; r < 6; r++) { g.fillStyle = r === 1 ? `hsl(${hue} 60% 85%)` : "#cfd4db"; g.fillRect(16, 66 + r * 34, 108, 14); }
+      for (let k = 0; k < 3; k++) { g.fillStyle = "#fff"; g.fillRect(160 + k * 156, 64, 140, 72); g.fillStyle = `hsl(${hue} 55% ${40 + k * 10}%)`; g.font = "700 26px sans-serif"; g.fillText(String([128, 42, 7][k]), 176 + k * 156, 112); }
+      g.fillStyle = "#fff"; g.fillRect(160, 152, 452, 224);
+      for (let b = 0; b < 12; b++) { const h = 30 + ((b * 37 + i * 23) % 150); g.fillStyle = `hsl(${hue} 60% ${50 + (b % 3) * 8}%)`; g.fillRect(180 + b * 35, 356 - h, 22, h); }
+      c.toBlob(resolve, "image/png");
+    });
+    const data = new DataTransfer();
+    for (const [i, name] of names.entries()) data.items.add(new File([await shot(i, name)], name, { type: "image/png" }));
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, names);
+  const thumbs = page => page.getByRole("button", { name: /^Remove .+\.png$/ }).filter({ visible: true });
+  const noOverflow = async (page, name) => { const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth); check(`${name}: no horizontal overflow`, o <= 1, { overflow: o }); };
+  const settle = async page => { await page.waitForTimeout(600); };
+
+  // The Overseer, started on the fixture provider: its pane's reply box.
+  await call("follow.overseer-start", {});
+  const NEW_FIELD = "Paste a link or describe the task";
+  for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    const phone = vp.width < 768;
+    const name = state => `pi-${state}-${device}-${theme}`;
+    await shoot(name("new"), vp, theme, async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+      const dialog = visible(page.locator('[role="dialog"][aria-label="New"]'));
+      await dialog.waitFor();
+      const field = visible(dialog.getByRole("textbox", { name: NEW_FIELD }));
+      await field.fill("The revenue chart overlaps its legend at narrow widths. Screenshots attached.");
+      await paste(field, ["revenue-chart.png", "legend-overlap.png"]);
+      await visible(dialog.getByRole("button", { name: "Remove legend-overlap.png" })).waitFor();
+      check(`${device} ${theme}: New shows both thumbnails`, await thumbs(page).count() === 2);
+      // The source card (desktop) or the bar's line (phone) counts them once the plan re-renders.
+      const counted = await page.getByText(/· 2 images/).filter({ visible: true }).first().waitFor({ timeout: 5000 }).then(() => true, () => false);
+      check(`${device} ${theme}: New's summary counts the images`, counted);
+      await settle(page); await noOverflow(page, name("new"));
+    });
+    await shoot(name("overseer"), vp, theme, async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await visible(page.getByRole("button", { name: /^Overseer\. / })).click();
+      const field = visible(page.getByRole("textbox", { name: "Reply to the Overseer" }));
+      await field.waitFor();
+      await field.fill("Ask the billing agent why the chart looks like this");
+      await paste(field, ["billing-chart.png"]);
+      await visible(page.getByRole("button", { name: "Remove billing-chart.png" })).waitFor();
+      check(`${device} ${theme}: the Overseer's reply shows one thumbnail`, await thumbs(page).count() === 1);
+      // A click on the thumbnail shows it larger; the X closes it and the image stays attached.
+      await visible(page.getByRole("button", { name: /^View billing-chart\.png/ })).click();
+      const viewer = page.getByRole("dialog", { name: /^billing-chart\.png/ });
+      await viewer.waitFor();
+      check(`${device} ${theme}: a thumbnail opens the viewer`, await viewer.count() > 0);
+      await page.getByRole("button", { name: "Close image" }).click();
+      await viewer.waitFor({ state: "detached" });
+      check(`${device} ${theme}: closing the viewer keeps the image`, await thumbs(page).count() === 1);
+      await settle(page); await noOverflow(page, name("overseer"));
+    });
+    const ownAnswer = async page => {
+      await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
+      await (await homeRow(page, lone.title)).click(); await visible(page.getByText("Missing keys")).waitFor();
+      await visible(page.getByRole("radio", { name: /^Something else/ })).click();
+      const field = visible(page.getByLabel("Your answer to Q1, required"));
+      await field.fill("Show the key, like this screenshot from staging.");
+      return field;
+    };
+    await shoot(name("question"), vp, theme, async page => {
+      const field = await ownAnswer(page);
+      await field.focus();
+      await paste(field, ["staging-keys.png"]);
+      const x = visible(page.getByRole("button", { name: "Remove staging-keys.png" }));
+      await x.waitFor();
+      // Centred: the phone dock covers the page's last rows, where the thumbnail would sit.
+      await x.evaluate(el => el.scrollIntoView({ block: "center" }));
+      check(`${device} ${theme}: the question's answer shows one thumbnail`, await thumbs(page).count() === 1);
+      await settle(page); await noOverflow(page, name("question"));
+    });
+    await shoot(name("refusal"), vp, theme, async page => {
+      const field = await ownAnswer(page);
+      await field.focus();
+      await paste(field, ["one.png", "two.png", "three.png", "four.png", "five.png", "six.png", "seven.png"]);
+      const line = visible(page.getByText("6 images is the most one message takes."));
+      await line.waitFor();
+      // Centred, as a focused field sits: the phone dock covers the page's last rows.
+      await line.evaluate(el => el.scrollIntoView({ block: "center" }));
+      check(`${device} ${theme}: seven at once is refused with the reason, and none is added`, await thumbs(page).count() === 0);
+      await settle(page); await noOverflow(page, name("refusal"));
+    });
+  }
+  await fs.writeFile(join(out, "paste-images.json"), JSON.stringify({ checks }, null, 2));
+}
+
+/**
  * dismiss (dismissing-anything-in-needs-you-sends-the-agent-nothing): the small x on every Needs-you item. In the panel:
  * an agent's Action brief at rest (no x) and hovered (the x beside its age), the question card's x (no Dismiss link in
  * its quiet row), and a merge row's x; after Dismiss, the toast with Undo; Catch up's card with its x always shown; Home's
@@ -4208,13 +4428,14 @@ try {
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("compass")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));
   // sending only: a fake cgroup at 10% of memory.high from the start (the governor finds its cgroup once), raised later.
-  if (only.includes("sending")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
+  if (only.includes("sending") || only.includes("pr-stats-settings")) { process.env.FOLLOW_SHOTS_CGROUP = join(root, "cgroup.json"); await fs.writeFile(process.env.FOLLOW_SHOTS_CGROUP, JSON.stringify({ high: 1000, current: 100 })); }
 
-  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
+  const env = harnessEnv(root, { home, strip: github.strip, set: { ...github.env, ...(process.env.FOLLOW_SHOTS_CGROUP ? { FOLLOW_SHOTS_CGROUP: process.env.FOLLOW_SHOTS_CGROUP } : {}), ...(argv.includes("--overseer-review") || only.includes("paste-images") ? { FOLLOW_UP_OVERSEER_PROVIDER: "followup-fixture/fixture" } : {}), ...(only.includes("paste-images") ? { FOLLOW_UP_HARNESS_IMAGE_PROVIDERS: "followup-fixture" } : {}), PASEO_DAEMON_URL: url, PASEO_SERVER_ID: "srv_followupshots", FIXTURE_MODEL_LABEL: "Agent", PASEO_RELAY_ENABLED: "false", PASEO_WEB_UI_ENABLED: "true", PATH: `${bin}:${process.env.PATH}`, FOLLOW_SHOTS_CLOCK: clockFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${join(root, "clock.cjs")}`.trim(), TZ: "UTC" } });
   const cli = async (...args) => JSON.parse((await exec("paseo", ["--home", home, "--json", ...args], { env, timeout: 120000, maxBuffer: 1 << 22 })).stdout);
   const daemonLog = openSync(join(root, "daemon.log"), "a");
   crashed = async () => daemonCrashes(await fs.readFile(join(root, "daemon.log"), "utf8").catch(() => ""))[0] ?? null;

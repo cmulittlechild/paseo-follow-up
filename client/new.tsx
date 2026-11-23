@@ -3,6 +3,8 @@ import { Platform, View, useWindowDimensions, type ViewStyle } from "react-nativ
 import { Pressable, Text } from "./text";
 import { useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput } from "@getpaseo/plugin/client/ui";
+import { ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
+import { imagesWord } from "../shared/images";
 import { agentSettingsRpc, dispatchPreviewRpc, dispatchRecordsRpc, dispatchRpc, dispatchSettingsRpc, dispatchSourcesRpc, dispatchUndoRpc, setDispatchSettingsRpc } from "../shared/contracts";
 import type { ActionAgent, DispatchPlan, DispatchRecord, DispatchSources } from "../shared/dispatch";
 import type { Catalog } from "../shared/agent-settings";
@@ -103,13 +105,14 @@ function Field({ label, children, c, compact, reason }: { label: string; childre
 type Overrides = { projectId?: string; base?: string; branch?: string; title?: string; workspace?: "worktree" | "local"; agent?: ActionAgent; note?: string };
 type Open = null | "project" | "base" | "workspace" | "branch" | "title" | "agent" | "note";
 
-function SourceCard({ plan, c, compact }: { plan: DispatchPlan; c: Colors; compact: boolean }) {
+/** `images`: how many pasted images go with the words, so what is sent is on screen before the click. */
+function SourceCard({ plan, c, compact, images = 0 }: { plan: DispatchPlan; c: Colors; compact: boolean; images?: number }) {
   const s = plan.source;
   const body = s.kind === "text" ? "" : s.body.replace(/\s+/g, " ").trim();
   return <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: compact ? 14 : 14, gap: 6, backgroundColor: c.surface1 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       <Icon name={kindIcon(s.kind)} size={14} color={c.foregroundMuted} />
-      <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{sourceLine(s)}</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{sourceLine(s)}{images ? ` · ${imagesWord(images)}` : ""}</Text>
       {s.state && <View style={{ paddingHorizontal: 6, borderRadius: 4, backgroundColor: tint(c.statusWarning, c) }}><Text style={{ color: c.foreground, fontSize: 12 }}>{s.state}</Text></View>}
       {s.team && <View style={{ paddingHorizontal: 6, borderRadius: 4, backgroundColor: c.surface2 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Team {s.team}</Text></View>}
     </View>
@@ -124,7 +127,9 @@ function agentText(plan: DispatchPlan): string {
   return p?.mode ? `${plan.agent} · ${p.mode}` : plan.agent || "New's default agent";
 }
 
-function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loadCatalog, projects, loadProjects, saveBase, instructions, setInstructions, reopen }: {
+function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loadCatalog, projects, loadProjects, saveBase, instructions, setInstructions, reopen, img }: {
+  /** The dialog's pasted images: a paste or drop on the note adds them too (shown here on a phone, under the task field on desktop). */
+  img: ImageAttachments;
   plan: DispatchPlan; overrides: Overrides; setOverrides: (o: Overrides) => void; c: Colors; compact: boolean; busy: boolean;
   catalog: Catalog | null; loadCatalog: () => void; projects: { id: string; name: string }[] | null; loadProjects: () => void; saveBase: (projectId: string, base: string) => void;
   instructions: boolean; setInstructions: (v: boolean) => void; reopen?: "agent" | "base" | null;
@@ -139,7 +144,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
   const candidates = (projects ?? plan.where.candidates.map(x => ({ id: x.id, name: x.name }))).map(p => ({ id: p.id, label: p.name, on: p.id === plan.where.projectId, hint: plan.where.candidates.find(x => x.id === p.id)?.lastUsed ? "last used" : undefined }));
   const provider = catalog?.providers.find(p => p.id === (overrides.agent?.provider ?? plan.agentPick.picked?.provider));
   return <View style={{ gap: compact ? 16 : 14, opacity: busy ? 0.6 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-    <SourceCard plan={plan} c={c} compact={compact} />
+    <SourceCard plan={plan} c={c} compact={compact} images={img.images.length} />
     {plan.existing && <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 8, backgroundColor: c.surface2 }}>
       <Icon name="ExternalLink" size={16} color={c.foreground} />
       <View style={{ flex: 1 }}>
@@ -202,8 +207,8 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         </ScrollView>
         <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Follow-up then adds its usual workspace instructions.</Text>
       </View>}
-      {open === "note" || overrides.note ? <TextInput multiline autoFocus={open === "note"} value={overrides.note ?? ""} onChangeText={note => set({ note })} placeholder="A note for the agent" placeholderTextColor={c.foregroundMuted} accessibilityLabel="Note for the agent"
-        style={{ minHeight: 64, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, color: c.foreground, backgroundColor: c.surface0, fontSize: 13, textAlignVertical: "top" }} />
+      {open === "note" || overrides.note ? <ImageField model={img} theme={{ colors: c }} compact={compact} row={compact}><TextInput multiline autoFocus={open === "note"} value={overrides.note ?? ""} onChangeText={note => set({ note })} placeholder="A note for the agent" placeholderTextColor={c.foregroundMuted} accessibilityLabel="Note for the agent"
+        style={{ minHeight: 64, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, color: c.foreground, backgroundColor: c.surface0, fontSize: 13, textAlignVertical: "top" }} /></ImageField>
         : <Pressable accessibilityRole="button" accessibilityLabel="Add a note for the agent" onPress={() => setOpen("note")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}>
           <Icon name="Plus" size={15} color={c.foregroundMuted} />
           <Text style={{ color: c.foreground, fontSize: compact ? 14 : 13 }}>Add a note for the agent</Text>
@@ -304,7 +309,9 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   </Pressable>;
 }
 
-function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty }: {
+function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty, img }: {
+  /** The dialog's pasted images: a paste or drop on the task field adds them; their thumbnails show under it. */
+  img: ImageAttachments;
   sources: DispatchSources | null; rows: NewRow[]; selected: string | null; query: string; setQuery: (q: string) => void; onRow: (row: NewRow) => void; onRefresh: () => void; empty: string | null;
   c: Colors; compact: boolean; error: string | null; searching: string | null; chevrons: boolean;
 }) {
@@ -313,6 +320,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
   const [focused, setFocused] = useState(false);
   return <View style={{ flex: 1, minHeight: 0 }}>
     <View style={{ paddingHorizontal: compact ? 16 : 16, paddingTop: compact ? 12 : 16, paddingBottom: 8 }}>
+      <ImageField model={img} theme={{ colors: c }} compact={compact}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 8, paddingLeft: focused ? 9 : 10, paddingRight: focused ? 3 : 4, minHeight: compact ? 48 : 40, backgroundColor: c.surface0 }}>
         <Icon name="Clipboard" size={16} color={c.foregroundMuted} />
         <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
@@ -321,6 +329,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
         {!compact && !query && <View style={{ paddingRight: 6 }}><Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} /></View>}
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
       </View>
+      </ImageField>
     </View>
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
       <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? "Start from" : "My issues"}</Text>
@@ -438,6 +447,10 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   }, [source, JSON.stringify(overrides)]);
   // The preview on screen is always the selected source's: another row's shows nothing until its own arrives.
   const planNow = source && planFor?.source === source ? planFor.plan : null;
+  // Pasted images (every-agent-field-takes-images), one model for the task field and the note: they go with the new
+  // agent's first message. Who takes them is the agent this dispatch starts (the Agent chip, else the action's).
+  const imageProvider = overrides.agent?.provider ?? planNow?.agentPick.picked?.provider ?? null;
+  const img = useImageAttachments({ target: imageProvider ? { kind: "provider", provider: imageProvider } : null });
 
   // While a dispatch starts: read its record each second (the dialog is open; Home's row takes over once it closes).
   // A fixed beat, not a chain: a read that fails or never answers mustn't end the polling. The newest answer wins.
@@ -461,8 +474,9 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     if (!source || phase.kind !== "edit") return;
     setPhase({ kind: "sending" }); setMore(false);
     try {
-      const out = await send({ source, actionId, ...overrides, note: overrides.note || undefined }) as { dispatchId: string; record: DispatchRecord };
-      setRecord(out.record); setPhase({ kind: "record", id: out.dispatchId });
+      const images = img.uploads();
+      const out = await send({ source, actionId, ...overrides, note: overrides.note || undefined, ...(images ? { images } : {}) }) as { dispatchId: string; record: DispatchRecord };
+      setRecord(out.record); setPhase({ kind: "record", id: out.dispatchId }); img.clear();
     } catch (e) { setPhase({ kind: "edit" }); setPlanError(errorText(e)); }
   };
   const openWorkspace = (workspaceId: string) => { navigation?.openWorkspace({ workspaceId }); onClose(); };
@@ -471,8 +485,10 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     try { const r = await undoRpc({ dispatchId: record.id }); setRecord(r); pushToast("success", `Undone: ${r.title}`); onClose(); }
     catch (e) { pushToast("error", errorText(e)); }
   };
-  const another = () => { setPhase({ kind: "edit" }); setRecord(null); setQuery(""); setPicked(null); setScreen("list"); load(); };
-  const bar = actionBar(planNow);
+  const another = () => { setPhase({ kind: "edit" }); setRecord(null); setQuery(""); img.clear(); setPicked(null); setScreen("list"); load(); };
+  // An agent that can't take the pasted images: the actions wait, and the field says why (before Start, never after).
+  const plainBar = actionBar(planNow);
+  const bar = img.blocked && plainBar.kind === "actions" ? { ...plainBar, disabled: img.blocked } : plainBar;
   const created = phase.kind === "record" && record?.state === "created";
   const failed = phase.kind === "record" && record?.state === "failed";
   const remedy = failed && record ? failureRemedy(record) : null;
@@ -521,7 +537,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   };
 
   const right = phase.kind === "record" && record ? <RecordPane record={record} c={c} compact={compact} now={now} />
-    : planNow ? <Preview plan={planNow} overrides={overrides} setOverrides={setOverrides} c={c} compact={compact} busy={busy} catalog={catalog} loadCatalog={loadCatalog} projects={projects} loadProjects={loadProjects} saveBase={saveBase} instructions={instructions} setInstructions={setInstructions} reopen={reopen} />
+    : planNow ? <Preview plan={planNow} overrides={overrides} setOverrides={setOverrides} c={c} compact={compact} busy={busy} catalog={catalog} loadCatalog={loadCatalog} projects={projects} loadProjects={loadProjects} saveBase={saveBase} instructions={instructions} setInstructions={setInstructions} reopen={reopen} img={img} />
     : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
     : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
@@ -553,12 +569,12 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
       </View>
       {onPreview ? <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
-        : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons empty={empty} />}
+        : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons empty={empty} img={img} />}
       {(recordBar || planNow || planError) && <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1, padding: 16, paddingBottom: Platform.OS === "ios" ? 34 : 16, gap: 8 }}>
         {recordBar ?? <>
           {planNow && <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
             <Icon name={kindIcon(planNow.source.kind)} size={14} color={c.foregroundMuted} />
-            <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, flex: 1 }}>{targetLine(planNow)}</Text>
+            <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, flex: 1 }}>{[targetLine(planNow), img.images.length ? imagesWord(img.images.length) : ""].filter(Boolean).join(" · ")}</Text>
           </View>}
           {!onPreview && errorLine}
           {planNow ? <ActionRow bar={bar} c={c} compact onAction={id => void start(id)} onOpen={openWorkspace} more={more} setMore={setMore} /> : null}
@@ -579,7 +595,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     </View>
     <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
       <View style={{ width: 400, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} />
+        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} img={img} />
       </View>
       <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
     </View>
