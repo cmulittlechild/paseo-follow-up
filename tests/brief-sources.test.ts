@@ -12,6 +12,7 @@ import { BriefSources } from "../server/brief-sources";
 import { MorningBriefStore } from "../server/morning-brief";
 import { liveRankSources } from "../server/ranker";
 import { AiJobs } from "../server/ai-jobs";
+import { rm, testStore } from "./support/store-temp-dir";
 import { FAKE_SELF_ID, FAKE_SERVERS, discoveryReply, fakeTools, fakeUpstreams, toolOf } from "./fixtures/mcpproxy-tools";
 
 const wrap = (text: string) => `banner\n${JSON.stringify({ content: [{ text }], isError: false })}`;
@@ -130,7 +131,7 @@ test("BriefSources: the card answers at once and asks mcpproxy after; switches, 
   let release: () => void = () => {};
   const gate = new Promise<void>(r => { release = r; });
   const run = async (_c: string, args: string[]) => { await gate; const d = discoveryReply(args); if (d) return d; return wrap("{}"); };
-  const store = new MorningBriefStore(dir);
+  const store = testStore(MorningBriefStore, dir);
   let probed = 0; let now = Date.parse("2026-11-24T05:00:00Z");
   const sources = new BriefSources({
     store, tools: new SourceDirectory(run), deviceZone: () => "UTC", now: () => now,
@@ -168,4 +169,5 @@ test("BriefSources: the card answers at once and asks mcpproxy after; switches, 
   assert.notEqual(morning, checked);
   now += 3_600_000; await sources.tick();
   assert.equal((await store.read()).sources.checkedAt, morning, "once a day");
+  await rm(dir, { recursive: true, force: true });
 });
