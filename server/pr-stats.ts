@@ -6,7 +6,7 @@ import { defaultWeekStart } from "../shared/workweek";
 import { emptyStatsSettings, statsSettingsSchema, type PrStatsOutput, type SetPrStatsInput, type StatsEstimate, type StatsRepoSettings, type StatsSettings, type StatsSettingsView, type StatsStatus } from "../shared/pr-stats-settings";
 import { STATS_PAGE_SIZE } from "../shared/pr-stats-records";
 import type { GithubApi } from "./github-api";
-import { StatsGate, type GateDeps, type RateLimit } from "./pr-stats-gate";
+import { StatsGate, type GateDeps, type RateLimit, type ReadOrigin } from "./pr-stats-gate";
 import { StatsStore, type RepoStats } from "./pr-stats-store";
 import { StatsSync } from "./pr-stats-sync";
 import { WriteBehind, type WriteHealth } from "./write-behind";
@@ -113,9 +113,11 @@ export class PrStats {
 
   /**
    * The opt-in sheet's numbers: PRs updated in the window (`search(issueCount)`, 1 point, through the gate) and what
-   * reading them costs. A repository the token can't read is refused here, with GitHub's reason.
+   * reading them costs. A repository the token can't read is refused here, with GitHub's reason. Every caller is a
+   * request (the sheet, `pr_stats_settings estimate`, the count kept when Turn on is pressed), so it is a developer's
+   * read: it skips the governor and still respects GitHub's budget and stats' share (invariant 106).
    */
-  async estimate(repo: string, windowDays = 90): Promise<StatsEstimate> {
+  async estimate(repo: string, windowDays = 90, origin: ReadOrigin = "developer"): Promise<StatsEstimate> {
     const owner = repo.split("/")[0]!;
     const slicePoints = this.gate.slicePoints(owner);
     const since = new Date(this.now() - windowDays * 86_400_000).toISOString().replace(/\.\d+Z$/, "Z");
@@ -124,17 +126,19 @@ export class PrStats {
       const answer = await this.gate.run(owner, async () => {
         const body = await this.d.api.graphql(repo, query, { owner, name: repo.split("/")[1]!, q: `repo:${repo} is:pr updated:>=${since}` });
         return { value: body, rate: body?.data?.rateLimit as RateLimit | undefined };
-      });
-      if (!answer.ok) return { repo, prs: null, points: null, slicePoints, bytes: null, error: gateLine(answer.reason, answer.until) };
+      }, { origin });
+      const none = { repo, prs: null, points: null, slicePoints, bytes: null, wait: null, unreadable: false };
+      if (!answer.ok) return { ...none, error: gateLine(answer.reason, answer.until), wait: { reason: answer.reason, until: answer.until } };
       const body = answer.value as Record<string, any>;
-      if (!body?.data?.repository) return { repo, prs: null, points: null, slicePoints, bytes: null, error: `Can't read ${repo} with this GitHub account (not found or no access).` };
+      if (!body?.data?.repository) return { ...none, error: `Can't read ${repo} with this GitHub account (not found or no access).`, unreadable: true };
       const prs = Number(body.data.search?.issueCount) || 0;
       // A page of 25 is 1 point; review follow-ups add about one more point per 250 PRs.
       const points = Math.ceil(prs / STATS_PAGE_SIZE) + Math.ceil(prs / 250);
-      return { repo, prs, points, slicePoints, bytes: prs * BYTES_PER_RECORD, error: null };
+      return { repo, prs, points, slicePoints, bytes: prs * BYTES_PER_RECORD, error: null, wait: null, unreadable: false };
     } catch (error) {
-      const e = error as { message?: string; status?: number };
-      return { repo, prs: null, points: null, slicePoints, bytes: null, error: `Can't read ${repo} (${e?.status ? `HTTP ${e.status}: ` : ""}${e?.message ?? String(error)}).` };
+      const e = error as { message?: string; status?: number; rateLimited?: boolean; resetAt?: number };
+      if (e?.rateLimited) return { repo, prs: null, points: null, slicePoints, bytes: null, error: gateLine("budget", e.resetAt ?? null), wait: { reason: "budget", until: e.resetAt ?? null }, unreadable: false };
+      return { repo, prs: null, points: null, slicePoints, bytes: null, error: `Can't read ${repo} (${e?.status ? `HTTP ${e.status}: ` : ""}${e?.message ?? String(error)}).`, wait: null, unreadable: e?.status === 404 };
     }
   }
 
@@ -198,7 +202,8 @@ export class PrStats {
     if (!repo) return { ...base, empty: "PR statistics aren't on for any repository. Turn them on per repository in Settings → Following → PR statistics (set_pr_stats)." };
     const own = settings.repos[repo];
     if (!own) return { ...base, empty: `PR statistics aren't on for ${repo}. Turn them on in Settings → Following → PR statistics (set_pr_stats).` };
-    if (input.fresh && own.enable_stats) await this.runRepo(repo, { backfillPages: 0 });
+    // A refresh is the developer's read (the page's icon, `pr_stats fresh`): it skips the governor (invariant 106).
+    if (input.fresh && own.enable_stats) await this.runRepo(repo, { backfillPages: 0, origin: "developer" });
     const stats = await this.store.open(repo);
     const { team, notice } = this.teamOf((await this.settings()).repos[repo] ?? own);
     const options: StatsOptions = { timeZone, weekStart, clock, hours, ignore: own.ignore, team, stackAware: settings.enable_stack_aware, defaultBranch: stats.meta.defaultBranch };
@@ -260,12 +265,12 @@ export class PrStats {
     })().catch(error => (this.d.log ?? console.warn)(`[follow-up] PR stats: sync failed: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { this.running = null; });
   }
   /** One run for a repository, then its status summary in stats.json and the team's members when due. */
-  async runRepo(repo: string, o: { backfillPages?: number } = {}): Promise<void> {
+  async runRepo(repo: string, o: { backfillPages?: number; origin?: ReadOrigin } = {}): Promise<void> {
     const own = (await this.settings()).repos[repo];
     if (!own?.enable_stats) return;
     const stats = await this.store.open(repo);
     if (stats.meta.windowDays !== own.windowDays) stats.meta = { ...stats.meta, windowDays: own.windowDays };
-    await this.sync.run(repo, o.backfillPages !== undefined ? { backfillPages: o.backfillPages } : {});
+    await this.sync.run(repo, { ...(o.backfillPages !== undefined ? { backfillPages: o.backfillPages } : {}), ...(o.origin ? { origin: o.origin } : {}) });
     const teamMembers = await this.readTeam(repo, own);
     await this.mutate(s => { const r = s.repos[repo]; if (r) r.status = { ...summary(stats), teamMembers: teamMembers === undefined ? r.status?.teamMembers ?? null : teamMembers }; });
     this.onChange?.(repo);
