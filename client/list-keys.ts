@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import { enterTarget, listMove, ownsKey, surfaceVisible, walkTarget } from "../shared/list-keys";
+import { enterTarget, listMove, overlayOver, ownsKey, surfaceVisible, walkTarget } from "../shared/list-keys";
 import { rowDomId } from "./kit";
 
 type Row = { focus(o?: { preventScroll?: boolean }): void; scrollIntoView?(o?: { block?: string }): void };
@@ -8,10 +8,15 @@ type Node = { contains(other: unknown): boolean; querySelector?(selector: string
 type Target = { tagName?: string; isContentEditable?: boolean; id?: string; closest?(selector: string): unknown } | null;
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; target: unknown; preventDefault(): void; stopPropagation(): void };
 type Doc = { body: unknown; activeElement: unknown; visibilityState?: string; querySelector(selector: string): Row | null;
+  querySelectorAll?(selector: string): Iterable<Node>;
   addEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void; removeEventListener(t: string, f: (e: DomKey) => void, capture?: boolean): void };
 
-/** A row menu, its confirm step or any dialog over the list: while one is open, it keeps every key. */
-const OVERLAYS = '[role="menu"],[role="alertdialog"],[role="dialog"],[aria-modal="true"]';
+/**
+ * A row menu, its confirm step or a modal dialog over the list: while one is drawn over it, it keeps every key. A
+ * non-modal dialog (Home's keys sheet, which S opens and closes) leaves the page its keys; keys typed inside one stay
+ * its own (the focus check below).
+ */
+const OVERLAYS = '[role="menu"],[role="alertdialog"],[aria-modal="true"]';
 
 export type ListKeysOptions = {
   enabled: boolean;
@@ -60,7 +65,7 @@ export function useListKeys(options: ListKeysOptions): void {
       const root = scope();
       const onBody = !target || target === doc.body;
       if (!ownsKey({ inside: !!target && !!root?.contains(target), onBody, claimBody: !!claimBody,
-        visible: !!claimBody && surfaceVisible(root, doc), overlayOpen: !!doc.querySelector?.(OVERLAYS) })) return;
+        visible: !!claimBody && surfaceVisible(root, doc), overlayOpen: overlayOver(doc.querySelectorAll?.(OVERLAYS) ?? [], root) })) return;
       const move = listMove(e, typing);
       if (!move) return;
       const focused = !typing && target?.id ? order.find(k => rowDomId(k) === target.id) ?? null : null;

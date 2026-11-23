@@ -445,9 +445,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (`listMove`, `stepKey`, `shared/list-keys.ts`): plain keys only, so Paseo's modified workspace keys stay its own; the
    brief and the Overseer are rows of the walk; never while typing outside the list's own query field; a key pressed
    with nothing focused goes to Home only while Home's root is on screen (`surfaceVisible`), never to one kept mounted
-   behind another tab or chat; never while a menu or dialog is open (the row menu, its confirm step), wherever focus
-   is, since a step swap leaves focus on the page for a frame (2026-11-23: Esc from Archive's confirm, then Enter,
-   opened the selected chat behind the menu). Enter and O open (invariant 57). Guarded by
+   behind another tab or chat; never while a menu or modal dialog is drawn over the list (the row menu, its confirm step),
+   wherever focus is, since a step swap leaves focus on the page for a frame (2026-11-23: Esc from Archive's confirm,
+   then Enter, opened the selected chat behind the menu); only one on screen and not around the list counts
+   (`overlayOver`), so a dialog or sheet hosting Home, an overlay kept mounted while closed, or the non-modal keys
+   sheet S toggles leaves it its keys. Enter and O open (invariant 57). Guarded by
    `tests/list-keys.test.ts`.
 28. **One ranking for every workspace search** (`one-ranking-for-every-workspace-search`). Home's search and the
    sidebar view's filter order matches by one rank (`byRank` over `SearchHit.rank`, `shared/search.ts`): a title match

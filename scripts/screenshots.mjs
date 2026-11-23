@@ -2186,7 +2186,16 @@ async function archiveShots({ shoot, call }) {
     // Keyboard on desktop: the menu key opens the menu, Enter on Archive opens the confirm, Esc goes back to the menu.
     if (size === "desktop") await shoot(`archive-keys-${theme}`, vp, theme, async page => {
       await openHome(page);
-      const row = await homeRow(page, working); await row.focus(); await page.waitForTimeout(500); await page.keyboard.press("Shift+F10");
+      const row = await homeRow(page, working); await row.focus(); await page.waitForTimeout(500);
+      // With no menu open the list keeps its keys: j steps the focus off the row and k brings it back.
+      const focusedId = () => page.evaluate(() => document.activeElement?.id ?? "");
+      const start = await focusedId();
+      await page.keyboard.press("j"); await page.waitForTimeout(300);
+      const moved = await focusedId();
+      if (!start || moved === start) throw new Error(`archive-keys: j didn't move the selection (${start} -> ${moved})`);
+      await page.keyboard.press("k"); await page.waitForTimeout(300);
+      if (await focusedId() !== start) throw new Error("archive-keys: k didn't step back to the row");
+      await page.keyboard.press("Shift+F10");
       const menu = page.getByRole("menu", { name: `Actions for ${working}` });
       await menu.waitFor();
       for (let i = 0; i < 20 && !(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Archive workspace…")); i++) await page.keyboard.press("ArrowUp");

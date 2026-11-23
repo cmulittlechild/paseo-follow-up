@@ -79,6 +79,22 @@ export function ownsKey(input: { inside: boolean; onBody: boolean; claimBody: bo
 
 type Visible = { checkVisibility?(): boolean; getClientRects?(): { length: number } };
 
+/** Laid out on screen: not display:none, nor inside a hidden ancestor. `checkVisibility` where the engine has it. */
+function laidOut(el: Visible): boolean {
+  if (typeof el.checkVisibility === "function") return el.checkVisibility();
+  return (el.getClientRects?.().length ?? 0) > 0;
+}
+
+/**
+ * Whether a menu or dialog is open over the list (ownsKey's `overlayOpen`). Only one drawn on screen counts, and only
+ * one over the list, not around it: a dialog or sheet that hosts the list, or an overlay kept mounted while closed,
+ * leaves the list its keys.
+ */
+export function overlayOver(overlays: Iterable<Visible & { contains(other: unknown): boolean }>, root: unknown): boolean {
+  for (const el of overlays) if (!(root && el.contains(root)) && laidOut(el)) return true;
+  return false;
+}
+
 /**
  * Whether a surface is on screen: its page is the visible one and its root is laid out (not display:none, nor inside a
  * hidden ancestor). `checkVisibility` where the engine has it, else laid-out boxes. No root yet: not visible.
@@ -86,8 +102,7 @@ type Visible = { checkVisibility?(): boolean; getClientRects?(): { length: numbe
 export function surfaceVisible(root: Visible | null | undefined, doc: { visibilityState?: string }): boolean {
   if (!root) return false;
   if (doc.visibilityState !== undefined && doc.visibilityState !== "visible") return false;
-  if (typeof root.checkVisibility === "function") return root.checkVisibility();
-  return (root.getClientRects?.().length ?? 0) > 0;
+  return laidOut(root);
 }
 
 /**
