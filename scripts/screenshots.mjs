@@ -3632,6 +3632,13 @@ function briefSinceQueue() {
     ...filler,
     i("ACME-201", "Tidy the old billing feature flags", 0, "Backlog", "backlog"), i("ACME-202", "Rename the invoices table columns", 0, "Backlog", "backlog"),
   ];
+  // Who opened each and when (the row's "opened by Dana · 12 days ago"): by you (the viewer, user-alice), by someone
+  // else, no creator known (only the age), a due date plus a creator, and old issues that read as a date.
+  const opened = {
+    "ACME-177": [0.2, "Dana", "user-dana"], "ACME-142": [12, "Alice", "user-alice"], "ACME-151": [3, "Sam", "user-sam"], "ACME-158": [1, null, null],
+    "APP-151": [40, "Dana", "user-dana"], "APP-139": [400, "Sam", "user-sam"], "ACME-201": [500, null, null], "ACME-202": [30, "Alice", "user-alice"],
+  };
+  for (const x of now_) { const [days, creator, creatorId] = opened[x.key] ?? [6, "Sam", "user-sam"]; Object.assign(x, { createdAt: iso(now - days * 86_400_000), creator, creatorId }); }
   const facts = x => ({ priority: x.priority, due: x.due, state: x.state });
   const before = now_.filter(x => !["ACME-177", "ACME-181", "ACME-182", "ACME-183"].includes(x.key)).map(x => x.key === "ACME-142" ? { ...x, priority: 4 } : x.key === "APP-139" ? { ...x, priority: 3 } : x.key === "ACME-151" ? { ...x, due: due(-1) } : x);
   before.push(i("ACME-120", "Retry receipts for refunded charges", 3, "In Progress", "started"), i("ACME-131", "Move the tax table to settings", 4, "Todo", "unstarted"));

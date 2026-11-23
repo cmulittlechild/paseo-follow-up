@@ -81,11 +81,19 @@ export const queueIssueSchema = z.object({
   milestone: z.string().max(200).nullable(),
   url: z.string().max(2000).nullable(),
   updatedAt: z.string().max(40).nullable(),
+  /**
+   * Who opened the issue and when (the queue screen's "opened by Dana · 12 days ago"). Display only: never a fact the
+   * diff compares, so a snapshot from before these fields (all null) never reads as changed.
+   */
+  createdAt: z.string().max(40).nullable().default(null),
+  creator: z.string().max(200).nullable().default(null),
+  creatorId: z.string().max(100).nullable().default(null),
 });
 export type QueueIssue = z.infer<typeof queueIssueSchema>;
 
 export function toQueueIssue(i: LinearIssue): QueueIssue {
-  return { key: i.key, title: i.title, priority: i.priority?.value ?? 0, state: i.state, stateType: i.stateType, due: i.due, team: i.team, project: i.project, milestone: i.milestone, url: i.url, updatedAt: i.updatedAt };
+  return { key: i.key, title: i.title, priority: i.priority?.value ?? 0, state: i.state, stateType: i.stateType, due: i.due, team: i.team, project: i.project, milestone: i.milestone, url: i.url, updatedAt: i.updatedAt,
+    createdAt: i.createdAt, creator: i.creator, creatorId: i.creatorId };
 }
 
 /** One sweep: when, whether it read every page (`complete`), and the issues by key. */
@@ -315,6 +323,11 @@ export function changeLine(c: QueueChange): string {
  */
 export function missedRead(issue: Pick<LinearIssue, "stateType" | "assigneeId"> | null, viewer: string | null, stateTypes: readonly string[]): boolean {
   return !!issue && !!viewer && issue.assigneeId === viewer && !!issue.stateType && stateTypes.includes(issue.stateType);
+}
+
+/** Whether the developer opened the issue: its creator id is the viewer's. Null when either id is unknown. */
+export function openedByYou(issue: Pick<QueueIssue, "creatorId">, viewer: string | null): boolean | null {
+  return issue.creatorId && viewer ? issue.creatorId === viewer : null;
 }
 
 export function leftCause(issue: (Pick<LinearIssue, "stateType" | "state"> & { assignee?: string | null; assigneeIsMe?: boolean | null }) | null, stateTypes: readonly string[]): NonNullable<LogEntry["left"]> {

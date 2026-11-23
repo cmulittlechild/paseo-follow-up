@@ -34,6 +34,14 @@ build on New's dialog and actions; every source the proxy can reach and Ask for 
   lookup asks for `assigneeId`, compared with the developer's Linear user id from `linear:get_user {query: "me"}`
   (read-only; one call, only in a sweep that has issues to look up, then cached in `linear-queue.json` as `viewer`).
   With no viewer id (the read failed) the issue reads as left, as before.
+- **Who opened it and when:** QUEUE_FIELDS asks for `createdAt`, `createdBy` and `createdById`; the snapshot keeps them
+  as `createdAt`, `creator` and `creatorId` (null in a snapshot from before). They are display only: the diff compares
+  priority, due and state as before, so the first sweep that reads them logs nothing. The queue screen says "opened by
+  you" when `creatorId` is the cached `viewer` (a sweep reads `get_user` once when it has creators and no viewer yet),
+  the creator's name otherwise, and only the age with no creator known. Ages are relative under two weeks ("today",
+  "yesterday", "5 days ago"), else a date ("Oct 14", with the year when it isn't this year); the exact date and time are
+  the desktop tooltip and part of the row's accessibility label. `linear_queue` returns the same fields per issue, plus
+  `openedByYou` (null: can't tell).
 - **Who raised it** isn't read: Linear's `get_issue` history (`stateHistory`) records workflow states, not priority
   changes, so the brief says "raised Low → High" without a name.
 - One sweep at a time; a second caller joins the one in flight. Every call is a short `mcpproxy call tool-read`
@@ -112,7 +120,8 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
   Buttons keep their whole label and wrap to a second row rather than truncate.
 - **The queue screen** (`?view=queue`, from "47 issues by priority ›"): every issue by Linear priority (Urgent, High,
   Medium, Low, No priority), with All / No workspace / Changed (decision Q10) and each count. A row is the key, title,
-  state and due, the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
+  then one quiet line: state, due, and who opened it and when ("Todo · due Wed · opened by Dana · 12 days ago",
+  `openedLine`), the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
   issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue` with `wait: false`: it replies at once and the screen
   reads the view every 3 s while the sweep runs, so a slow Linear never holds the RPC. On
   phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.

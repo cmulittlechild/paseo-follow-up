@@ -136,6 +136,42 @@ export function queueRowMeta(i: { state: string | null; due: string | null }, no
   return [i.state, i.due && !dueChip ? `due ${dueWords(i.due, now, timeZone)}` : null].filter(Boolean).join(" · ");
 }
 
+/** Under this an issue's age reads relative ("5 days ago"); from it on, a date. */
+const RELATIVE_DAYS = 14;
+
+/**
+ * When an issue was opened, as a queue row says it: "today", "yesterday", "5 days ago" under two weeks, else "Oct 14"
+ * (with the year when it isn't this year). `exact`: the date and time, for the tooltip and the accessibility label.
+ * Null when the time can't be read.
+ */
+export function openedAge(createdAt: string | null, now: number, timeZone: string): { age: string; exact: string } | null {
+  const t = createdAt ? Date.parse(createdAt) : NaN;
+  if (Number.isNaN(t)) return null;
+  const a = zoned(t, timeZone), b = zoned(now, timeZone);
+  const exact = new Date(t).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).replace(/, (\d\d:\d\d)$/, " at $1");
+  // Whole calendar days between the two days in the zone (noon UTC of each day, so no DST hour moves it).
+  const days = Math.round((Date.parse(`${b.day}T12:00:00Z`) - Date.parse(`${a.day}T12:00:00Z`)) / DAY);
+  if (days <= 0) return { age: "today", exact };
+  if (days === 1) return { age: "yesterday", exact };
+  if (days < RELATIVE_DAYS) return { age: `${days} days ago`, exact };
+  const sameYear = a.day.slice(0, 4) === b.day.slice(0, 4);
+  return { age: new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone }), exact };
+}
+
+/**
+ * A queue row's "opened by Dana · 12 days ago" (decided: quiet ink after the state and due, never a chip). "by you"
+ * when the developer opened it; only the age with no creator known; null with neither. `label` is the whole fact with
+ * the exact time, for the tooltip and a screen reader.
+ */
+export function openedLine(i: { createdAt: string | null; creator: string | null }, byYou: boolean | null, now: number, timeZone: string): { text: string; label: string } | null {
+  const when = openedAge(i.createdAt, now, timeZone);
+  const who = byYou ? "you" : i.creator;
+  if (!who && !when) return null;
+  const text = who ? `opened by ${who}${when ? ` · ${when.age}` : ""}` : `opened ${when!.age}`;
+  const label = `Opened${who ? ` by ${who}` : ""}${when ? ` on ${when.exact}` : ""}`;
+  return { text, label };
+}
+
 /** A queue row's change chip, short: "Low → High" with its arrow, "New", "Due moved to Thu". */
 export function changeChip(c: Pick<QueueChange, "kinds" | "priority" | "priorityBefore" | "due" | "dueBefore"> | null, now: number, timeZone: string): { icon: string | null; text: string; warn: boolean } | null {
   if (!c) return null;
