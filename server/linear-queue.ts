@@ -257,6 +257,9 @@ export class LinearQueue {
    * The ranker's Linear input: the queue's top issues by priority plus every issue changed since the last workday's
    * sweep (stable all day, so opening the brief doesn't re-rank), each with its change. No snapshot yet: one sweep first.
    */
+  /** Every issue in the newest sweep, most urgent first (Compass's Linear tracker places): no sweep of its own. */
+  async snapshotIssues(): Promise<QueueIssue[]> { return queueIssues(current(await this.read())); }
+
   async forRanker(): Promise<(QueueIssue & { change: string | null })[]> {
     let file = await this.read();
     if (!current(file)) { await this.sweep("ranker"); file = await this.read(); }

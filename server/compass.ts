@@ -1,16 +1,19 @@
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { basename, isAbsolute, join } from "node:path";
 import { JsonFileStore } from "./json-file-store";
 import { NoSourceError, type SourceDirectory } from "./source-tools";
 import type { AiJobs } from "./ai-jobs";
 import type { MorningBriefStore } from "./morning-brief";
 import { artifactLinks, parseChatRefs } from "../shared/morning-brief";
-import { isWorkday, zoned, type Clock } from "../shared/linear-queue";
+import { isWorkday, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
+import { parseEvents, rangeArgs } from "../shared/brief-sources";
 import { compassSince, digestLines, suggestions, type CompassSince, type Suggestion } from "../shared/nobody";
 import {
   COMPASS, EXTRACT_SYSTEM, ROLE_INFO, applyCompassChange, batchItems, compassFileSchema, emptyCompassFile, extractPrompt, extractReplySchema, guardedProvider,
   HAND_LABEL, HAND_SOURCE, applyNoteAction, cadenceMs, noteLines, noteWho, tellText, type NoteAction,
   noteRole, parseConversation, placeKey, placeNote, presetsView, rankNotes, settleNotes, unguardedWhy, validateExtraction, whoFilter,
+  DOC_FILE, READER_MISSING, docBlocks, fileDocId, priorityStrength, ruleUntil, shortHash, syncRuleNotes, trackerRef, type Readers, type Role, type RuleItem,
   type CompassChange, type CompassFile, type CompassItem, type CompassNote, type CompassSettings, type CompassSource, type Place, type PlaceIndex, type RankCompassNote, type RefuseCode,
 } from "../shared/compass";
 
@@ -33,8 +36,12 @@ export type CompassDeps = {
   sweepAt: () => Promise<string>;
   /** Built once per read from state the worker holds: workspaces, issue keys → workspace, no reads of its own. */
   index: () => Promise<Omit<PlaceIndex, "glossary">>;
-  /** The brief's Chat switch: which servers may be read (a chat source turned off isn't read). Throws when off. */
-  allowed?: () => Promise<((server: string) => boolean) | undefined>;
+  /** The brief's switch for a recipe: which servers may be read (a source turned off isn't read). Throws when off. */
+  allowed?: (recipe: "chat" | "doc" | "calendar") => Promise<((server: string) => boolean) | undefined>;
+  /** The Linear queue's snapshot (the sweep's, no read of its own): a Linear tracker place reads its projects and milestones. */
+  queue?: () => Promise<QueueIssue[]>;
+  /** Follow-up's in-process GitHub reads (a GET as the repository owner's account): a GitHub tracker place's issues. */
+  github?: { rest(repo: string, path: string): Promise<unknown> };
   tight?: () => boolean;
   /**
    * Tell the agent (compass-reaches-an-agent-only-by-a-click): one queued message to the workspace's main agent
@@ -71,9 +78,44 @@ function readError(e: unknown): string {
 /** The cursor a page reply carries for the next page ("cursor: `…`", or JSON next_cursor). */
 const nextCursor = (reply: string) => /next_cursor"?\s*[:=]\s*"([^"]+)"/.exec(reply)?.[1] ?? /cursor[^`\n]{0,40}`([^`]{4,200})`/.exec(reply)?.[1] ?? null;
 
+export type FindKind = "people" | "channels" | "docs" | "file" | "trackers" | "calendars";
+
+/** A docs tool's text: the JSON reply's text field when it has one (markdown, text, content), else the reply itself. */
+function docText(reply: string): string {
+  try {
+    const j = JSON.parse(reply) as Record<string, unknown>;
+    for (const k of ["markdown", "text", "content", "body", "plain_text"]) if (typeof j[k] === "string") return j[k] as string;
+  } catch { /* text form */ }
+  return reply;
+}
+/** A docs tool's search results: objects with an id and a title or name (a link when it has one). At most 10. */
+function parseDocRefs(reply: string): { id: string; name: string; url: string | null }[] {
+  const out: { id: string; name: string; url: string | null }[] = []; const seen = new Set<string>();
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 6 || out.length >= 10) return;
+    if (typeof v === "string" && /^\s*[[{]/.test(v)) { try { walk(JSON.parse(v), depth + 1); } catch { /* text */ } return; }
+    if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
+    if (!v || typeof v !== "object") return;
+    const o = v as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : null; const name = [o.title, o.name].find(x => typeof x === "string") as string | undefined;
+    if (id && name && !seen.has(id) && id.length <= 300) { seen.add(id); out.push({ id, name: name.slice(0, 100), url: typeof o.url === "string" && /^https:\/\//.test(o.url) ? o.url.slice(0, 500) : null }); }
+    for (const x of Object.values(o)) walk(x, depth + 1);
+  };
+  try { walk(JSON.parse(reply), 0); } catch { /* not JSON */ }
+  return out;
+}
+/** A local file's read error in one line, never its path. */
+function fileError(e: unknown): string {
+  const code = (e as { code?: unknown })?.code;
+  if (code === "ENOENT") return "The file is gone. Pick it again in the source.";
+  if (code === "EACCES" || code === "EPERM") return "Follow-up isn't allowed to read the file.";
+  const m = (e as { message?: unknown })?.message;
+  return typeof m === "string" && !m.includes("/") ? m.slice(0, 200) : "The file can't be read.";
+}
+
 export type CompassView = {
   settings: CompassSettings;
-  readers: { conversation: boolean; history: boolean };
+  readers: Readers & { history: boolean };
   presets: ReturnType<typeof presetsView>;
   /** Null: Compass reads. Else the one line why it doesn't (the Summaries provider has no guard). */
   blocked: string | null;
@@ -96,18 +138,23 @@ export type CompassView = {
  */
 export class Compass {
   private reading: Promise<CompassFile["lastRead"]> | null = null;
+  private queued: Promise<CompassFile["lastRead"]> | null = null;
   constructor(private d: CompassDeps) {}
   private now() { return this.d.now?.() ?? Date.now(); }
   private newId(prefix: string) { return this.d.newId?.() ?? `${prefix}${randomBytes(5).toString("hex")}`; }
 
   async settings(): Promise<CompassSettings> { return (await this.d.settings.read()).compass; }
 
-  /** Which readers a connected tool has, from what discovery last found (Settings answers at once; unknown counts as there). */
-  async readers(fresh = false): Promise<{ conversation: boolean; history: boolean }> {
+  /**
+   * Which readers this host has, from what discovery last found (Settings answers at once; unknown counts as there): a
+   * chat tool, a docs tool (a local file always works), a tracker (the Linear queue's recipe, or GitHub), a calendar.
+   */
+  async readers(fresh = false): Promise<Readers & { history: boolean }> {
     const found = fresh ? await this.d.tools.discover().catch(() => null) : this.d.tools.cached();
-    if (!found) return { conversation: true, history: true };
+    if (!found) return { conversation: true, history: true, doc: true, tracker: true, calendar: true };
     const chat = found.matched.filter(m => m.recipe === "chat");
-    return { conversation: chat.some(m => m.roles.messages || m.roles.history), history: chat.some(m => m.roles.history) };
+    const has = (id: string) => found.matched.some(m => m.recipe === id);
+    return { conversation: chat.some(m => m.roles.messages || m.roles.history), history: chat.some(m => m.roles.history), doc: has("doc"), tracker: has("linear") || !!this.d.github, calendar: has("calendar") };
   }
 
   /** Null when Compass may read: the Summaries role runs on a provider Follow-up can guard (Claude, Codex). */
@@ -179,9 +226,15 @@ export class Compass {
     await this.read("day");
   }
 
-  /** Read now (Settings' Read now, read_compass): every enabled source, or one. Joins a read already going. */
+  /**
+   * Read now (Settings' Read now, read_compass): every enabled source, or one. A scheduled read joins one already going;
+   * a read someone asked for (a new place, Read now) waits for it and runs after, once for every such ask meanwhile, so
+   * a source added during another's first read still gets its own.
+   */
   read(trigger: "morning" | "day" | "manual" | "agent" | "added", opts: { source?: string; plans?: boolean } = {}): Promise<CompassFile["lastRead"]> {
-    return this.reading ??= this.readOnce(trigger, opts).finally(() => { this.reading = null; });
+    if (!this.reading) return this.reading = this.readOnce(trigger, opts).finally(() => { this.reading = null; });
+    if (trigger === "morning" || trigger === "day") return this.reading;
+    return this.queued ??= this.reading.catch(() => undefined).then(() => { this.queued = null; return this.read(trigger, opts.plans ? opts : {}); });
   }
   /** Read now, waiting at most `ms`; then `running` (read_compass). */
   async readWithin(trigger: "manual" | "agent", ms = COMPASS.waitMs): Promise<{ running: true } | { running: false; lastRead: CompassFile["lastRead"] }> {
@@ -208,7 +261,7 @@ export class Compass {
     let made = 0; const errors: string[] = [];
     for (const source of sources) {
       for (const place of source.places) {
-        try { made += await this.readPlace(source, place, settings, index); }
+        try { made += await this.readPlace(source, place, settings, index, trigger); }
         catch (e) { errors.push(`${source.label}: ${readError(e)}`); }
       }
     }
@@ -216,23 +269,27 @@ export class Compass {
     return finish(!errors.length, made, errors[0] ?? null);
   }
 
-  /** One place: read since its cursor, keep the source's words, extract, validate, place, settle. Returns notes made. */
-  private async readPlace(source: CompassSource, place: Place, settings: CompassSettings, index: PlaceIndex): Promise<number> {
+  /** One place: read since its cursor, by its kind's reader, then extract (words) or apply rules (structured items). Returns notes made. */
+  private async readPlace(source: CompassSource, place: Place, settings: CompassSettings, index: PlaceIndex, trigger: string): Promise<number> {
     const key = placeKey(place);
     const now = this.now();
     const readAt = new Date(now).toISOString();
     const file = await this.d.store.read();
     const cursor = file.cursors[key];
-    const since = cursor?.at ? Date.parse(cursor.at) : now - COMPASS.firstReadDays * 86_400_000;
     const setCursor = (patch: Partial<CompassFile["cursors"][string]> & { status: CompassFile["cursors"][string]["status"] }) =>
-      this.d.store.mutate(f => { f.cursors[key] = { at: f.cursors[key]?.at ?? cursor?.at ?? null, readAt, error: null, ...patch }; });
-    if (place.kind !== "conversation") { await setCursor({ status: "failed", error: "No reader for this kind of place in this release." }); return 0; }
-
+      this.d.store.mutate(f => { const was = f.cursors[key]; f.cursors[key] = { at: was?.at ?? cursor?.at ?? null, readAt, error: null, hash: was?.hash ?? null, seen: was?.seen ?? [], stat: was?.stat ?? null, ...patch }; });
+    if (place.kind === "tracker" || place.kind === "calendar") {
+      // Structured places become notes by rule, with no model: they use none of the day's extractions.
+      try { return place.kind === "tracker" ? await this.readTracker(source, place, settings, index, cursor, trigger, setCursor) : await this.readCalendar(source, place, index, setCursor); }
+      catch (e) { await setCursor({ status: "failed", error: e instanceof NoSourceError ? READER_MISSING[place.kind] : readError(e) }); throw e; }
+    }
     const clock = await this.d.clock();
     const today = zoned(now, clock.timeZone).day;
     const used = file.day?.date === today ? file.day.extractions : 0;
     if (used >= COMPASS.extractionsPerDay) { await setCursor({ status: "paused", error: `Paused until tomorrow: ${COMPASS.extractionsPerDay} reads today.` }); return 0; }
+    if (place.kind === "doc") return this.readDocPlace(source, place, settings, index, cursor, setCursor, { used, today, clock });
 
+    const since = cursor?.at ? Date.parse(cursor.at) : now - COMPASS.firstReadDays * 86_400_000;
     let read: { messages: ReturnType<typeof parseConversation>; slow: boolean; partial: boolean };
     try { read = await this.readConversation(place, since); }
     catch (e) {
@@ -240,9 +297,9 @@ export class Compass {
       await setCursor({ status: "failed", error: e instanceof NoSourceError ? "No connected chat tool can read this conversation." : readError(e) });
       throw e;
     }
-    const self = await this.d.tools.selfId(await this.d.allowed?.()).catch(() => null);
+    const self = await this.d.tools.selfId(await this.d.allowed?.("chat")).catch(() => null);
     const whose = whoFilter(source.who, self);
-    const items: CompassItem[] = [];
+    let items: CompassItem[] = [];
     let newest = since;
     // Oldest first, one item per message (a page overlap reads a message twice).
     const seen = new Set<string>();
@@ -255,6 +312,17 @@ export class Compass {
       const kind = whose(m.by);
       if (kind) items.push({ id: `m${items.length + 1}`, by: m.by, at: m.at, link: m.link, text: m.text, ...(kind === "context" ? { context: true } : {}) });
     }
+    // Everyone in a place (decision R1): one read takes its newest COMPASS.items messages, in one extraction; the older
+    // ones are skipped and the place says so. A busy channel never runs the day's extractions down.
+    let skipped = 0;
+    if (source.who.kind === "anyone") {
+      const words = items.filter(i => !i.context);
+      if (words.length > COMPASS.items) {
+        const from = words[words.length - COMPASS.items].at;
+        skipped = words.length - COMPASS.items;
+        items = items.filter(i => i.at >= from);
+      }
+    }
     // Plans come from Compass on arrival: the newest claude.ai artifact the source's people shared here.
     if (source.roles.includes("plan") && this.d.onPlan) {
       const posted = items.filter(i => !i.context).flatMap(i => artifactLinks(i.text).map(url => ({ url, at: i.at }))).sort((a, b) => b.at.localeCompare(a.at))[0];
@@ -262,26 +330,43 @@ export class Compass {
       if (posted) await this.d.onPlan({ url: posted.url, postedAt: posted.at, where, source: source.id }).catch(() => false);
     }
     const status = read.slow ? "slow-path" as const : "ok" as const;
-    const partialNote = read.partial ? `More than ${COMPASS.pagesMax * COMPASS.pageSize} messages since the last read; the newest were read.` : null;
+    const note = read.partial ? `More than ${COMPASS.pagesMax * COMPASS.pageSize} messages since the last read; the newest were read.`
+      : skipped ? `A busy place: this read took its newest ${COMPASS.items} messages and skipped ${skipped} older.` : null;
     if (!items.some(i => !i.context)) {
-      await setCursor({ status, at: new Date(newest).toISOString(), error: partialNote });
+      // Nothing new: a note the last read left (newest only, older skipped) stays until a read takes new words.
+      const kept = cursor && (cursor.status === "ok" || cursor.status === "slow-path") ? cursor.error : null;
+      await setCursor({ status, at: new Date(newest).toISOString(), error: note ?? kept });
       return 0;
     }
+    const r = await this.extract(source, key, items, settings, index, { used, today, clock, once: source.who.kind === "anyone" });
+    if (r.failed) { await setCursor({ status: "failed", at: r.cursorAt > since ? new Date(r.cursorAt).toISOString() : cursor?.at ?? null, error: r.failed }); return r.made; }
+    await setCursor({ status: r.all ? status : "paused", at: new Date(r.all ? newest : r.cursorAt).toISOString(), error: r.all ? note : `Paused until tomorrow: ${COMPASS.extractionsPerDay} reads today.` });
+    return r.made;
+  }
+
+  /**
+   * Items through the extraction job, a batch at a time (at most COMPASS.items and COMPASS.chars, oldest first), until
+   * they're done, the day's extractions run out, or `once`. Each batch's notes are validated, placed and settled.
+   */
+  private async extract(source: CompassSource, key: string, items: CompassItem[], settings: CompassSettings, index: PlaceIndex, o: { used: number; today: string; clock: Clock; once?: boolean }):
+    Promise<{ made: number; all: boolean; cursorAt: number; done: Set<string>; failed: string | null }> {
+    const now = this.now(); const readAt = new Date(now).toISOString();
     const role = await this.d.role();
-    const open = file.notes.filter(n => n.state === "live" && n.source === source.id);
-    let made = 0; let extractions = used; let rest = items; let cursorAt = since;
+    const open = (await this.d.store.read()).notes.filter(n => n.state === "live" && n.source === source.id);
+    let made = 0; let extractions = o.used; let rest = items; let cursorAt = 0;
+    const done = new Set<string>();
     const refused: RefuseCode[] = [];
     while (rest.some(i => !i.context)) {
       if (extractions >= COMPASS.extractionsPerDay) break;
       const { batch } = batchItems(rest);
       const r = await this.d.jobs.run({
         name: "compass-extract", outside: true, system: EXTRACT_SYSTEM, schema: extractReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking,
-        prompt: extractPrompt({ source, global: settings.instructions, items: batch, open, now, clock }), maxPromptChars: 24_000, maxOutputChars: 8_000, timeoutMs: 90_000,
+        prompt: extractPrompt({ source, global: settings.instructions, items: batch, open, now, clock: o.clock }), maxPromptChars: 24_000, maxOutputChars: 8_000, timeoutMs: 90_000,
       });
       extractions++;
-      await this.d.store.mutate(f => { f.day = { date: today, extractions }; });
-      if (!r.ok) { await setCursor({ status: "failed", at: cursorAt ? new Date(cursorAt).toISOString() : null, error: `The model couldn't read it (${r.reason}).` }); return made; }
-      const v = validateExtraction(r.value, { source, items: batch, open, glossary: settings.glossary, instructions: settings.instructions, clock, now, newId: () => this.newId("n-") });
+      await this.d.store.mutate(f => { f.day = { date: o.today, extractions }; });
+      if (!r.ok) return { made, all: false, cursorAt, done, failed: `The model couldn't read it (${r.reason}).` };
+      const v = validateExtraction(r.value, { source, items: batch, open, glossary: settings.glossary, instructions: settings.instructions, clock: o.clock, now, newId: () => this.newId("n-") });
       refused.push(...v.refused);
       const fresh = v.notes.map(n => { const note = { ...n, place: key }; return { ...note, match: placeNote(note, index) }; });
       made += fresh.length;
@@ -290,12 +375,147 @@ export class Compass {
         if (v.refused.length) f.refused = [...f.refused, ...v.refused.map(code => ({ at: readAt, code }))].slice(-50);
       });
       cursorAt = Math.max(cursorAt, ...batch.map(i => Date.parse(i.at)));
-      const done = new Set(batch.map(i => i.id));
+      for (const i of batch) done.add(i.id);
       rest = rest.filter(i => !done.has(i.id));
+      if (o.once) { rest = []; break; }
     }
     if (refused.length) this.d.log?.(`[follow-up] compass: refused ${refused.length} note(s): ${[...new Set(refused)].join(", ")}`);
-    const all = !rest.some(i => !i.context);
-    await setCursor({ status: all ? status : "paused", at: new Date(all ? newest : cursorAt).toISOString(), error: all ? partialNote : `Paused until tomorrow: ${COMPASS.extractionsPerDay} reads today.` });
+    return { made, all: !rest.some(i => !i.context), cursorAt, done, failed: null };
+  }
+
+  /**
+   * A doc place: a page a docs tool serves (the doc recipe's read, by the tool's own id), or a Markdown or text file on
+   * this machine (decision R2: read in process only when its modified time or size moved; at most COMPASS.docBytes).
+   * An unchanged doc makes no model call; a changed one sends only its new or changed blocks. The path never reaches a
+   * log or an error.
+   */
+  private async readDocPlace(source: CompassSource, place: Extract<Place, { kind: "doc" }>, settings: CompassSettings, index: PlaceIndex, cursor: CompassFile["cursors"][string] | undefined,
+    setCursor: (patch: Partial<CompassFile["cursors"][string]> & { status: CompassFile["cursors"][string]["status"] }) => Promise<unknown>, o: { used: number; today: string; clock: Clock }): Promise<number> {
+    const now = this.now();
+    let text: string; let stat: string | null = null;
+    try {
+      if (place.path) {
+        const st = await fsStat(place.path);
+        if (!st.isFile()) throw new Error("The file isn't a regular file any more.");
+        stat = `${Math.round(st.mtimeMs)}:${st.size}`;
+        if (cursor?.stat === stat && cursor.hash && cursor.status !== "failed" && cursor.status !== "paused") { await setCursor({ status: "ok" }); return 0; }
+        if (st.size > COMPASS.docBytes) throw new Error(`The file is over ${COMPASS.docBytes / 1024} KB, so Compass doesn't read it.`);
+        text = await fsReadFile(place.path, "utf8");
+      } else {
+        const allowed = await this.d.allowed?.("doc");
+        text = docText(await this.d.tools.call("doc", "read", { id: place.id, page_id: place.id, pageId: place.id, document_id: place.id, documentId: place.id, doc_id: place.id, url: place.link ?? place.id }, { reason: "read the developer's Compass", timeoutMs: 30_000, allowed }));
+      }
+    } catch (e) {
+      const why = e instanceof NoSourceError ? READER_MISSING.doc : place.path ? fileError(e) : readError(e);
+      await setCursor({ status: "failed", error: why });
+      throw new Error(why);
+    }
+    text = text.slice(0, COMPASS.docBytes);
+    const hash = shortHash(text);
+    if (cursor?.hash === hash && cursor.status !== "paused") { await setCursor({ status: "ok", stat, at: cursor.at }); return 0; }
+    const blocks = docBlocks(text);
+    const seen = new Set(cursor?.seen ?? []);
+    const who = source.who;
+    const by = who.kind === "person" ? who.person : who.kind === "people" ? who.people[0] : who.kind === "me" ? { id: "developer", name: "You" } : { id: "doc", name: place.name };
+    const at = new Date(now).toISOString();
+    const fresh = blocks.filter(b => !seen.has(b.hash));
+    const items: CompassItem[] = fresh.map((b, i) => ({ id: `d${i + 1}`, by, at, link: place.link ?? null, text: b.text }));
+    if (source.roles.includes("plan") && this.d.onPlan) {
+      const posted = fresh.flatMap(b => artifactLinks(b.text))[0];
+      if (posted) await this.d.onPlan({ url: posted, postedAt: at, where: place.name, source: source.id }).catch(() => false);
+    }
+    // Blocks still in the doc stay remembered; ones gone from it are forgotten (the hashes are bounded).
+    const keep = (done: Set<string>) => blocks.map(b => b.hash).filter(h => seen.has(h) || done.has(h)).slice(-COMPASS.docBlocks);
+    if (!items.length) { await setCursor({ status: "ok", at, hash, stat, seen: keep(new Set()) }); return 0; }
+    const r = await this.extract(source, placeKey(place), items, settings, index, o);
+    const doneHashes = new Set(fresh.filter((_, i) => r.done.has(`d${i + 1}`)).map(b => b.hash));
+    if (r.failed) { await setCursor({ status: "failed", error: r.failed, seen: keep(doneHashes) }); return r.made; }
+    // Not every block was read (the day's cap): the hash stays unset, so the next read takes the rest.
+    await setCursor({ status: r.all ? "ok" : "paused", at, hash: r.all ? hash : null, stat: r.all ? stat : null, seen: keep(doneHashes), error: r.all ? null : `Paused until tomorrow: ${COMPASS.extractionsPerDay} reads today.` });
+    return r.made;
+  }
+
+  /**
+   * A tracker place, by rule: a Linear project or milestone from the queue's own snapshot (no read of its own), or a
+   * GitHub label or milestone through Follow-up's in-process GitHub reads (at most once per COMPASS.trackerEveryMs, or
+   * on Read now). Each open issue in scope is a note quoting its own fields; one that leaves the scope ends its note.
+   */
+  private async readTracker(source: CompassSource, place: Extract<Place, { kind: "tracker" }>, _settings: CompassSettings, index: PlaceIndex, cursor: CompassFile["cursors"][string] | undefined, trigger: string,
+    setCursor: (patch: Partial<CompassFile["cursors"][string]> & { status: CompassFile["cursors"][string]["status"] }) => Promise<unknown>): Promise<number> {
+    const ref = trackerRef(place.id);
+    if (!ref) throw new Error("This tracker place isn't one Compass reads. Pick it again.");
+    const now = this.now();
+    const role = noteRole(source.roles) ?? "priorities";
+    const plan = role === "plan";
+    let items: RuleItem[];
+    if (ref.tracker === "linear") {
+      if (!this.d.queue) throw new NoSourceError("linear", "list_issues");
+      const issues = (await this.d.queue()).filter(i => (ref.scope === "project" ? i.project : i.milestone)?.toLowerCase() === ref.value.toLowerCase());
+      items = issues.map(i => ({
+        ref: i.key, key: i.key, title: i.title, kind: "issue" as const, link: i.url, at: i.updatedAt ?? new Date(now).toISOString(),
+        quote: [`${i.key} ${i.title}`, i.due ? `due ${i.due.slice(0, 10)}` : null, priorityName(i.priority), i.state].filter(Boolean).join(" · "),
+        until: ruleUntil(i.due, now), strength: plan ? "low" as const : priorityStrength(i.priority) ?? "normal",
+      }));
+    } else {
+      if (!this.d.github) throw new NoSourceError("github" as never, "issues");
+      const fresh = cursor?.status === "ok" && now - Date.parse(cursor.readAt) < COMPASS.trackerEveryMs;
+      if (fresh && trigger !== "manual" && trigger !== "agent" && trigger !== "added") return 0;
+      const q = ref.scope === "label" ? `labels=${encodeURIComponent(ref.value)}` : `milestone=${ref.value}`;
+      const raw = await this.d.github.rest(ref.repo, `repos/${ref.repo}/issues?state=open&per_page=50&${q}`);
+      const list = (Array.isArray(raw) ? raw : []) as { number?: unknown; title?: unknown; html_url?: unknown; updated_at?: unknown; pull_request?: unknown; milestone?: { due_on?: unknown } | null }[];
+      items = list.filter(i => !i.pull_request && typeof i.number === "number" && typeof i.title === "string").map(i => {
+        const key = `${ref.repo}#${i.number}`;
+        const due = typeof i.milestone?.due_on === "string" ? i.milestone.due_on.slice(0, 10) : null;
+        return {
+          ref: key, key, title: i.title as string, kind: "issue" as const, link: typeof i.html_url === "string" ? i.html_url : null, at: typeof i.updated_at === "string" ? i.updated_at : new Date(now).toISOString(),
+          quote: [`${key} ${i.title}`, ref.scope === "label" ? `label ${ref.value}` : `milestone ${place.name}`, due ? `due ${due}` : null].filter(Boolean).join(" · "),
+          // A label the developer named as a source is the ask itself; a milestone is a plan of work.
+          until: ruleUntil(due, now), strength: plan ? "low" as const : ref.scope === "label" ? "high" as const : "normal" as const,
+        };
+      });
+    }
+    items.sort((a, b) => ({ high: 0, normal: 1, low: 2 })[a.strength] - ({ high: 0, normal: 1, low: 2 })[b.strength] || (a.until ?? "9999").localeCompare(b.until ?? "9999") || a.ref.localeCompare(b.ref, undefined, { numeric: true }));
+    return this.applyRules(source, placeKey(place), role, items, index, true, COMPASS.trackerNotes, setCursor);
+  }
+
+  /**
+   * A calendar place, by rule: the calendar recipe's events over the next COMPASS.calendarDays, re-read each read. An
+   * event lends its date to the work it matches (the glossary, then a title score); one that matches nothing isn't kept.
+   */
+  private async readCalendar(source: CompassSource, place: Extract<Place, { kind: "calendar" }>, index: PlaceIndex,
+    setCursor: (patch: Partial<CompassFile["cursors"][string]> & { status: CompassFile["cursors"][string]["status"] }) => Promise<unknown>): Promise<number> {
+    const now = this.now();
+    const clock = await this.d.clock();
+    const allowed = await this.d.allowed?.("calendar");
+    const tool = await this.d.tools.tool("calendar", "events", allowed);
+    if (!tool) throw new NoSourceError("calendar", "events");
+    const start = new Date(now).toISOString(); const end = new Date(now + COMPASS.calendarDays * 86_400_000).toISOString();
+    const args = { ...rangeArgs(await this.d.tools.props(tool), start, end, clock.timeZone), ...(place.id !== "primary" ? { calendarId: place.id, calendar_id: place.id } : {}) };
+    const events = parseEvents(await this.d.tools.call("calendar", "events", args, { reason: "read the developer's Compass", timeoutMs: 30_000, allowed }));
+    const filter = place.filter ?? "all";
+    const role = noteRole(source.roles) ?? "deadlines";
+    const items: RuleItem[] = events.flatMap(e => {
+      const t = e.start ? Date.parse(e.start) : NaN;
+      if (Number.isNaN(t) || t < now - 3_600_000) return [];
+      // Unknown guests count as guests: a reply that doesn't say never hides a meeting (unknown is not off).
+      if (filter === "with-guests" && e.guests === 0) return [];
+      const dayOf = zoned(t, clock.timeZone).day;
+      return [{ ref: `${e.title}|${e.start}`, key: null, title: e.title, kind: "event" as const, link: e.url, at: new Date(now).toISOString(), quote: `${e.title} · ${e.start}`, until: dayOf, strength: "normal" as const }];
+    });
+    return this.applyRules(source, placeKey(place), role, items, index, false, COMPASS.calendarNotes, setCursor);
+  }
+
+  private async applyRules(source: CompassSource, key: string, role: Role, items: RuleItem[], index: PlaceIndex, keepUnplaced: boolean, cap: number,
+    setCursor: (patch: Partial<CompassFile["cursors"][string]> & { status: CompassFile["cursors"][string]["status"] }) => Promise<unknown>): Promise<number> {
+    const now = this.now();
+    let made = 0; let ended = 0;
+    await this.d.store.mutate(f => {
+      const r = syncRuleNotes(f.notes as CompassNote[], { source, place: key, role, items, now, index, newId: () => this.newId("n-"), keepUnplaced, cap });
+      made = r.made; ended = r.ended;
+      if (r.made || r.ended || r.notes.some((n, i) => n !== f.notes[i])) f.notes = r.notes;
+    });
+    await setCursor({ status: "ok", at: new Date(now).toISOString() });
+    if (ended) this.d.onChange?.();
     return made;
   }
 
@@ -305,7 +525,7 @@ export class Compass {
    * message search sorted by time, one day at a time (the slower path, said so on the place).
    */
   private async readConversation(place: Extract<Place, { kind: "conversation" }>, since: number): Promise<{ messages: ReturnType<typeof parseConversation>; slow: boolean; partial: boolean }> {
-    const allowed = await this.d.allowed?.();
+    const allowed = await this.d.allowed?.("chat");
     const opts = { reason: "read the developer's Compass", timeoutMs: 30_000, allowed };
     const history = await this.d.tools.tool("chat", "history", allowed);
     const oldest = (since / 1000).toFixed(6);
@@ -333,17 +553,64 @@ export class Compass {
   }
 
   /**
-   * compass_find: people and conversations from the chat tool's own search, the only way an agent learns a place id. A
-   * person comes with their DM as a place (the conversation tools take a person's id for a DM).
+   * compass_find: the only way a place gets its id (compass-reads-only-what-was-named). People and channels from the
+   * chat tool's own search (a person comes with their DM); docs from the docs tool's search; a local file by its
+   * absolute path, checked first (Markdown or text, at most COMPASS.docBytes); tracker scopes from the Linear queue's
+   * snapshot (projects, milestones) or a GitHub repository's labels and milestones ("owner/repo", then words to
+   * narrow); calendars from the calendar tool.
    */
-  async find(kind: "people" | "channels", query: string): Promise<{ results: { id: string; name: string; place: Place | null }[]; error: string | null }> {
-    const allowed = await this.d.allowed?.().catch(() => undefined);
-    const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 4);
+  async find(kind: FindKind, query: string): Promise<{ results: { id: string; name: string; place: Place | null; detail?: string }[]; error: string | null }> {
+    const q = query.trim();
     try {
-      const reply = await this.d.tools.call("chat", kind, { keywords: words, query: query.trim(), natural_language_query: "", limit: 10, response_format: "detailed", ...(kind === "channels" ? { channel_types: "public_channel,private_channel" } : {}) }, { reason: "set up the developer's Compass", timeoutMs: 20_000, allowed });
-      const results = parseChatRefs(reply, kind).flatMap(r => r.id ? [{ id: r.id, name: r.name, place: { kind: "conversation" as const, sub: kind === "people" ? "dm" as const : "channel" as const, id: r.id, name: r.name } }] : []);
-      return { results, error: null };
-    } catch (e) { return { results: [], error: e instanceof NoSourceError ? "No chat search is connected." : readError(e) }; }
+      if (kind === "people" || kind === "channels") {
+        const allowed = await this.d.allowed?.("chat").catch(() => undefined);
+        const words = q.split(/\s+/).filter(Boolean).slice(0, 4);
+        const reply = await this.d.tools.call("chat", kind, { keywords: words, query: q, natural_language_query: "", limit: 10, response_format: "detailed", ...(kind === "channels" ? { channel_types: "public_channel,private_channel" } : {}) }, { reason: "set up the developer's Compass", timeoutMs: 20_000, allowed });
+        const results = parseChatRefs(reply, kind).flatMap(r => r.id ? [{ id: r.id, name: r.name, place: { kind: "conversation" as const, sub: kind === "people" ? "dm" as const : "channel" as const, id: r.id, name: r.name } }] : []);
+        return { results, error: null };
+      }
+      if (kind === "docs") {
+        const allowed = await this.d.allowed?.("doc").catch(() => undefined);
+        const reply = await this.d.tools.call("doc", "search", { query: q, q, limit: 10 }, { reason: "set up the developer's Compass", timeoutMs: 20_000, allowed });
+        return { results: parseDocRefs(reply).map(d => ({ id: d.id, name: d.name, place: { kind: "doc" as const, id: d.id, name: d.name, ...(d.url ? { link: d.url } : {}) } })), error: null };
+      }
+      if (kind === "file") {
+        if (!isAbsolute(q)) return { results: [], error: "Give the file's full path, like /home/user/notes/now.md." };
+        if (!DOC_FILE.test(q)) return { results: [], error: "Compass reads Markdown or text files (.md, .txt)." };
+        const st = await fsStat(q).catch(() => null);
+        if (!st?.isFile()) return { results: [], error: "There's no file there that Follow-up can read." };
+        if (st.size > COMPASS.docBytes) return { results: [], error: `That file is over ${COMPASS.docBytes / 1024} KB; Compass reads smaller ones.` };
+        const name = basename(q).slice(0, 100);
+        return { results: [{ id: fileDocId(q), name, place: { kind: "doc", id: fileDocId(q), name, path: q }, detail: "A file on this machine" }], error: null };
+      }
+      if (kind === "calendars") {
+        const tool = await this.d.tools.tool("calendar", "events", await this.d.allowed?.("calendar").catch(() => undefined));
+        if (!tool) return { results: [], error: READER_MISSING.calendar };
+        return { results: [{ id: "primary", name: "Your calendar", place: { kind: "calendar", id: "primary", name: "Your calendar", filter: "with-guests" }, detail: "Meetings with guests" }], error: null };
+      }
+      // Trackers: "owner/repo [words]" reads that repository's labels and milestones; anything else, the queue's projects and milestones.
+      const repo = /^([\w.-]+\/[\w.-]+)(?:\s+(.*))?$/.exec(q);
+      const want = (name: string) => !(repo ? repo[2] ?? "" : q).trim() || name.toLowerCase().includes((repo ? repo[2] ?? "" : q).trim().toLowerCase());
+      if (repo) {
+        if (!this.d.github) return { results: [], error: READER_MISSING.tracker };
+        const [labels, milestones] = await Promise.all([this.d.github.rest(repo[1], `repos/${repo[1]}/labels?per_page=100`), this.d.github.rest(repo[1], `repos/${repo[1]}/milestones?state=open&per_page=50`)]);
+        const out: { id: string; name: string; place: Place; detail: string }[] = [];
+        for (const l of (Array.isArray(labels) ? labels : []) as { name?: unknown }[]) if (typeof l.name === "string" && want(l.name)) out.push({ id: `github:${repo[1]}:label:${l.name}`, name: l.name, place: { kind: "tracker", scope: "label", id: `github:${repo[1]}:label:${l.name}`, name: l.name }, detail: `Label in ${repo[1]}` });
+        for (const m of (Array.isArray(milestones) ? milestones : []) as { number?: unknown; title?: unknown }[]) if (typeof m.number === "number" && typeof m.title === "string" && want(m.title)) out.push({ id: `github:${repo[1]}:milestone:${m.number}`, name: m.title, place: { kind: "tracker", scope: "milestone", id: `github:${repo[1]}:milestone:${m.number}`, name: m.title }, detail: `Milestone in ${repo[1]}` });
+        return { results: out.slice(0, 20), error: null };
+      }
+      if (!this.d.queue) return { results: [], error: "No Linear queue here. For GitHub, search \"owner/repo\"." };
+      const issues = await this.d.queue();
+      const seen = new Map<string, { scope: "project" | "milestone"; name: string; n: number }>();
+      for (const i of issues) for (const [scope, name] of [["project", i.project], ["milestone", i.milestone]] as const) {
+        if (!name || !want(name)) continue;
+        const k = `${scope}:${name}`; const was = seen.get(k);
+        seen.set(k, { scope, name, n: (was?.n ?? 0) + 1 });
+      }
+      return { results: [...seen.values()].sort((a, b) => b.n - a.n).slice(0, 20).map(x => ({ id: `linear:${x.scope}:${x.name}`, name: x.name, place: { kind: "tracker" as const, scope: x.scope, id: `linear:${x.scope}:${x.name}`, name: x.name }, detail: `Linear ${x.scope} · ${x.n} of your issues` })), error: null };
+    } catch (e) {
+      return { results: [], error: e instanceof NoSourceError ? (kind === "people" || kind === "channels" ? "No chat search is connected." : kind === "docs" ? READER_MISSING.doc : READER_MISSING.tracker) : readError(e) };
+    }
   }
 
   /**

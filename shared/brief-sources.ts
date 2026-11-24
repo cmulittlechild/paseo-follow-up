@@ -74,7 +74,7 @@ type Matcher = {
   /** Among several that fit, the one whose name says it reaches further (private channels and DMs too). */
   prefer?: RegExp;
 };
-export const RECIPE_IDS = ["linear", "chat", "calendar", "mail"] as const;
+export const RECIPE_IDS = ["linear", "chat", "calendar", "mail", "doc"] as const;
 export type RecipeId = typeof RECIPE_IDS[number];
 export type Recipe = {
   id: RecipeId;
@@ -124,6 +124,16 @@ export const RECIPES: readonly Recipe[] = [
     id: "mail", label: "Mail", adds: "Unread mail addressed to you that asks something", cost: "1 lookup", defaultOn: false, offWhy: "Off by default: it reads your inbox.",
     roles: { messages: { name: /(search|list)[-_]?(e?mails?|messages|threads)/, anyProps: ["query", "q", "search"], description: /e-?mail|inbox/i } },
     required: ["messages"],
+  },
+  {
+    // Docs (Compass's doc places): a page read by its id or link, and a search to pick one. Only the pages a Compass
+    // source names are ever read; the brief itself reads nothing here.
+    id: "doc", label: "Docs", adds: "The pages you add to Compass", cost: "1 lookup per page a read, a model call only when it changed", defaultOn: true,
+    roles: {
+      read: { name: /^(?:[a-z0-9]+[-_])?(fetch|get|read|retrieve)(?:[-_](page|doc|document))?$/i, anyProps: ["id", "page_id", "pageId", "document_id", "documentId", "doc_id", "url"], description: /page|doc/i },
+      search: { name: /search/i, not: /user|people|channel|message|mail|event|issue/i, anyProps: ["query", "q"], description: /page|doc/i },
+    },
+    required: ["read", "search"],
   },
 ];
 export const recipe = (id: RecipeId): Recipe => RECIPES.find(r => r.id === id)!;
@@ -182,7 +192,8 @@ export function rangeArgs(props: readonly string[], start: string, end: string, 
 
 // ---------- parsing what a calendar or mail tool returns ----------
 
-export type BriefEvent = { title: string; start: string | null; url: string | null };
+/** `guests`: how many others it invites (null: the reply doesn't say), for a Compass calendar place's "meetings with guests". */
+export type BriefEvent = { title: string; start: string | null; url: string | null; guests?: number | null };
 export type BriefMail = { from: string | null; subject: string; at: string | null; url: string | null };
 
 /** Every object in a JSON reply (the reply is often JSON inside a text block, or JSON inside a string field). */
@@ -209,7 +220,9 @@ export function parseEvents(text: string): BriefEvent[] {
     const start = when(o.start ?? o.startTime ?? o.start_time ?? o.startDate);
     if (!title || !start) continue;
     const k = `${title}|${start}`; if (seen.has(k)) continue; seen.add(k);
-    out.push({ title: title.slice(0, 160), start: start.slice(0, 40), url: httpUrl(firstStr(o, ["htmlLink", "url", "link", "meetingUrl", "hangoutLink"])) });
+    const people = [o.attendees, o.guests, o.participants].find(Array.isArray) as unknown[] | undefined;
+    const others = people ? people.filter(p => !(p && typeof p === "object" && ((p as { self?: unknown }).self === true || (p as { organizer?: unknown }).organizer === true && people.length === 1))).length : null;
+    out.push({ title: title.slice(0, 160), start: start.slice(0, 40), url: httpUrl(firstStr(o, ["htmlLink", "url", "link", "meetingUrl", "hangoutLink"])), ...(others !== null ? { guests: others } : {}) });
   }
   if (!out.length) {
     // Text form: "- 10:00–10:30 Standup" or "10:00 Standup".
@@ -356,12 +369,13 @@ export function inputLabel(row: Pick<BriefSource, "id" | "recipe" | "kind" | "la
   if (row.recipe === "chat") return "Your DMs and mentions";
   if (row.recipe === "calendar") return "Your calendar";
   if (row.recipe === "mail") return "Your mail";
+  if (row.recipe === "doc") return "Your docs";
   if (row.id === GITHUB_SOURCE) return "Review requests";
   if (row.id === PASEO_SOURCE) return "Your workspaces";
   return row.label;
 }
-export const inputRole = (row: Pick<BriefSource, "id" | "recipe">): "Sets my priorities" | "Background" =>
-  row.recipe === "linear" || row.id === GITHUB_SOURCE ? "Sets my priorities" : "Background";
+export const inputRole = (row: Pick<BriefSource, "id" | "recipe">): "Sets your priorities" | "Background" | "Compass's doc places" =>
+  row.recipe === "linear" || row.id === GITHUB_SOURCE ? "Sets your priorities" : row.recipe === "doc" ? "Compass's doc places" : "Background";
 
 /** The brief's one Sources sentence: muted "5 sources read" until something fails, then what failed. */
 export function sourcesLine(rows: readonly BriefSource[]): { tone: "muted" | "warn"; text: string } {

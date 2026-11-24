@@ -120,5 +120,5 @@ test("one place: Settings has one Compass tab and no Morning brief tab; set_comp
 
 test("every built-in input is listed with a role", () => {
   const rows = [{ id: "mcp:a", recipe: "linear" as const, kind: "recipe" as const, label: "Linear" }, { id: "mcp:b", recipe: "chat" as const, kind: "recipe" as const, label: "Chat" }, { id: "gh", recipe: null, kind: "builtin" as const, label: "GitHub" }];
-  assert.deepEqual(rows.map(r => [inputLabel(r), inputRole(r)]), [["Your Linear queue", "Sets my priorities"], ["Your DMs and mentions", "Background"], ["Review requests", "Sets my priorities"]]);
+  assert.deepEqual(rows.map(r => [inputLabel(r), inputRole(r)]), [["Your Linear queue", "Sets your priorities"], ["Your DMs and mentions", "Background"], ["Review requests", "Sets your priorities"]]);
 });

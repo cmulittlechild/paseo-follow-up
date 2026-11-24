@@ -90,7 +90,7 @@ test("without a history tool the message search is read by time, one day at a ti
   } finally { await rm(t.dir, { recursive: true, force: true }); }
 });
 
-test("a failed read keeps the cursor; reading everyone in a place and non-conversation places are refused with why", async () => {
+test("a failed read keeps the cursor; a place no reader here serves is refused with why", async () => {
   const t = await setup();
   try {
     await t.compass.set(DANA_SOURCE, "developer");
@@ -101,8 +101,10 @@ test("a failed read keeps the cursor; reading everyone in a place and non-conver
     await t.compass.read("manual");
     const p = (await t.compass.view()).places[`conversation:${DANA}`];
     assert.deepEqual([p.status, p.at], ["failed", before], "a missed read is never 'nothing said'");
-    await assert.rejects(t.compass.set({ source: { who: { kind: "anyone" }, places: [{ kind: "conversation", sub: "channel", id: "C0000TEAM", name: "team" }], roles: ["priorities"] } }, "developer"), /everyone in a place comes in a later release/);
-    await assert.rejects(t.compass.set({ source: { who: { kind: "me" }, places: [{ kind: "doc", id: "page-1", name: "notes" }], roles: ["self"] } }, "developer"), /docs come in a later release/);
+    // A place no reader here can serve is refused with one line of why, never saved to sit unread (a chat-only host here).
+    await t.compass.readers(true);
+    await assert.rejects(t.compass.set({ source: { who: { kind: "me" }, places: [{ kind: "doc", id: "page-1", name: "notes" }], roles: ["self"] } }, "developer"), /No connected docs tool can read a page/);
+    await assert.rejects(t.compass.set({ source: { who: { kind: "anyone" }, places: [{ kind: "tracker", scope: "label", id: "acme-label", name: "acme" }], roles: ["priorities"] } }, "developer"), /No tracker is connected/);
   } finally { await rm(t.dir, { recursive: true, force: true }); }
 });
 
@@ -128,5 +130,17 @@ test("text is data: compass.json keeps quotes, never the text read, and the job 
     assert.doesNotMatch(file, /lunch|on it/);
     const log = await readFile(join(t.dir, "ai-jobs.jsonl"), "utf8");
     assert.doesNotMatch(log, /invoice|acme|Dana/i);
+  } finally { await rm(t.dir, { recursive: true, force: true }); }
+});
+
+test("a source added while another's first read runs still gets its own first read", async () => {
+  const t = await setup();
+  try {
+    // Two sources added back to back: before the fix the second's "added" read joined the first's, which read only the first.
+    await t.compass.set(DANA_SOURCE, "developer");
+    await t.compass.set({ source: { label: "Avi", who: { kind: "person", person: { id: AVI, name: "Avi" } }, places: [{ kind: "conversation", sub: "dm", id: AVI, name: "Avi" }], roles: ["priorities"] } }, "developer");
+    for (let i = 0; i < 200 && !(await t.compass.view()).places[`conversation:${AVI}`]; i++) await new Promise(r => setTimeout(r, 5));
+    const v = await t.compass.view();
+    assert.ok(v.places[`conversation:${DANA}`] && v.places[`conversation:${AVI}`], "both new places were read over the last week");
   } finally { await rm(t.dir, { recursive: true, force: true }); }
 });
