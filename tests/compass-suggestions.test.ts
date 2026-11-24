@@ -77,7 +77,7 @@ test("nobody-s-on-it-is-needs-you: a raise and a Compass ask on the same issue a
   assert.deepEqual(rows[1].reasons.map(r => r.from), ["queue", "compass"], "both reasons on the one row");
   assert.equal(rows[1].due, "2026-11-26", "the ask lends its date");
   const head = nobodyRow(rows[0], NOW, "UTC");
-  assert.deepEqual([head.word, head.line, head.reason], ["Nobody's on it", "Retry failed charges · raised to Urgent", "Raised Low → Urgent · Linear queue"]);
+  assert.deepEqual([head.word, head.line, head.reason], ["Nobody's on it", "Retry failed charges", "Raised Low → Urgent · Linear queue"]);
   const ask = nobodyRow(rows[2], NOW, "UTC");
   assert.equal(ask.reason, "Dana: SSO for acme tomorrow · Compass");
   assert.equal(ask.compass, true);

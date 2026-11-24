@@ -130,7 +130,7 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
 - **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
   no workspace (`raisedNeeds`, over the log window) is a "Nobody's on it" row, first in Home's Needs you group, the same
   row kind as an urgent Compass ask (nobody-s-on-it-is-needs-you, [compass](compass.md#suggestions-issues-nobodys-on)):
-  amber ↑, the key, "Nobody's on it", "title · raised to Urgent", the reason line "Linear · Raised Low → Urgent", the
+  amber ↑, the key, "Nobody's on it", the title, the reason line "Linear · Raised Low → Urgent", the
   raise's age. It counts in the group's header, the strip, the brief line and the sidebar badge from one number: the
   worker's (the queue's `LinearQueue.needs` and Compass's suggestions, one row per issue), pushed on
   `follow.home-feed` (`queue`) when a sweep or a dismissal changes it, and on 0.15 carried by the priorities poll

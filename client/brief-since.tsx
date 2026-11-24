@@ -269,7 +269,7 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
 
 /**
  * "Nobody's on it" rows (nobody-s-on-it-is-needs-you), shaped like Home's: an amber ↑ for a raise or the compass glyph
- * for a Compass ask, the key, "Nobody's on it", then "title · due Thu" (or "· raised to Urgent"); under it the reason
+ * for a Compass ask, the key, "Nobody's on it", then "title · due Thu"; under it the reason
  * line with its source, as Home's rows carry AI priority's ("Dana: renewal call Thu · Compass", "Linear  Raised Low →
  * Urgent"). One Start… (New on the issue, `{why}` filled) and the two-click Remove of every Needs-you item (invariant
  * 59: follow.dismiss `issue`, which takes the raise and every Compass ask on it).

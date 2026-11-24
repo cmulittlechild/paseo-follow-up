@@ -132,12 +132,12 @@ export function nobodyNeeds(raised: readonly RaisedNeed[], urgent: readonly Sugg
 }
 
 /**
- * The row as words, shaped like Home's rows: the key as title, "Nobody's on it" as its word, then "title · due Thu" (or
- * "· raised to Urgent"), and the reason with its source ("Dana: renewal call Thu · Compass", "Raised Low → Urgent ·
+ * The row as words, shaped like Home's rows: the key as title, "Nobody's on it" as its word, then "title · due Thu", and the reason with its source ("Dana: renewal call Thu · Compass", "Raised Low → Urgent ·
  * Linear queue"). `label` says it all at once for a screen reader, every reason included.
  */
 export function nobodyRow(n: NobodyNeed, now: number, timeZone: string): { title: string; word: string; line: string; reason: string; compass: boolean; label: string } {
-  const line = [n.title, n.due ? `due ${dueWords(n.due, now, timeZone)}` : n.raisedTo ? `raised to ${priorityName(n.raisedTo)}` : null].filter(Boolean).join(" · ");
+  // The raise is said once, on the reason line ("Raised Low → Urgent"), never again in the line.
+  const line = [n.title, n.due ? `due ${dueWords(n.due, now, timeZone)}` : null].filter(Boolean).join(" · ");
   const first = n.reasons[0]!;
   const reason = `${first.line} · ${first.from === "compass" ? "Compass" : first.source}`;
   const all = n.reasons.map(r => `${r.line}, from ${r.from === "compass" ? `Compass, ${r.source}` : r.source}`).join("; ");
