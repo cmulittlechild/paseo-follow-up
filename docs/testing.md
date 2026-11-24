@@ -242,6 +242,16 @@ PLAYWRIGHT_CORE=<playwright-core dir> CHROMIUM=<chromium binary> ~/paseo-harness
   reading the frames. Paseo's app shows only image media; the paseo.sh plugin page plays the video, from a
   jsDelivr `gh` URL pinned to a commit (it serves `video/mp4`; a relative path would resolve to the npm package,
   which leaves the video out, and GitHub raw serves `application/octet-stream`).
+- **Demo video v2.** v1's take edited in Remotion (`video/`, its own package: never in the plugin's dependencies or
+  the npm package) with a camera that zooms to what the take is doing, an eased pointer with click rings, and captions
+  that animate word by word. Two steps, both through `harness-slot`: `npm run video:v2:take`
+  (`scripts/demo-video-v2.mjs`: the bare app at 2560×1600 plus `take.json`, the pointer path, presses, beats and the
+  boxes to frame, into `video/public/take/`), then `npm --prefix video ci && (cd video && node render.mjs)` (writes
+  `follow-up-demo-v2.mp4`, `-poster.png`, `.webp`, a review frame every second and `contact-sheet.png` to
+  `video/out/`; `node stills.mjs <seconds…>` renders single frames, `npx remotion studio src/index.ts` previews).
+  Needs `PLAYWRIGHT_CORE` and `CHROMIUM` (the render uses `CHROMIUM` too) and, for the take, `FFMPEG` (video/'s
+  `ffmpeg-static` works). The committed copies sit beside v1's in `docs/screenshots/` (`follow-up-demo-v2*`, kept out
+  of the npm package by the same `files` rule).
 - **`--whats-new-review`** (review evidence, not README images): the sheet after a minor update (`2.0.1` to `2.1.0`,
   this repo's own section) on desktop and phone, and Settings → General's "Show What's new after updates" switch on
   and off (set through `set_updates`), desktop and phone, into `--out`.
