@@ -174,7 +174,7 @@ type NeedItemBase =
    * (a-human-only-outcome-is-a-human-item). `review`: a review only its reviewer can change, so the item asks for a
    * re-review (the PR sheet's reviewers). Send to agent hands it back (retryTask, the retry_batch tool).
    */
-  | { kind: "person"; key: string; taskKey: string; prKey: string | null; review: boolean; title: string; detail: string }
+  | { kind: "person"; key: string; taskKey: string; prKey: string | null; review: boolean; /** Only part of the task (Batch.waitingOn): the agent goes on with the rest. */ part: boolean; title: string; detail: string }
   /** `finish`: the Done check. It never auto-sends, so it always waits on you. */
   | { kind: "send"; key: string; batchId: string; title: string; tasks: string[]; /** "2 repairs": what the message holds, in the developer's words (send-words). */ what: string; blocker: string | null; finish?: true }
   | { kind: "decision"; key: string; obligationId: string; title: string; detail: string }
@@ -321,7 +321,7 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
   for (const h of (w.heldTasks ?? []).filter(h => h.held === "person")) {
     const why = [...w.batches].reverse().find(b => b.humanOnly && b.state === "completed" && b.tasks.some(t => t.key === h.task.key))?.result;
     const pr = w.prs.find(p => p.key === h.task.target);
-    items.push({ kind: "person", key: `person:${h.task.key}`, taskKey: h.task.key, prKey: pr?.key ?? null, review: h.task.kind === "review", title: personTitle(h.task, pr?.number), ...linkFor(h.task.target),
+    items.push({ kind: "person", key: `person:${h.task.key}`, taskKey: h.task.key, prKey: pr?.key ?? null, review: h.task.kind === "review", part: false, title: personTitle(h.task, pr?.number), ...linkFor(h.task.target),
       detail: why || `${capitalize(agentName(w))} says nothing is left for an agent here.` });
   }
   // a-person-part-is-a-person-item: the part of a task the agent said only a person can move, while its PR is open and
@@ -332,7 +332,7 @@ function computeAllNeeds(w: Workspace, now: number): NeedItem[] {
     const part = personPart(w, t.key);
     const pr = part ? w.prs.find(p => p.key === t.target) : undefined;
     if (!part || (pr && pr.snapshot?.state && pr.snapshot.state !== "OPEN") || (w.heldTasks ?? []).some(h => h.held === "person" && h.task.key === t.key)) continue;
-    items.push({ kind: "person", key: `person:${t.key}`, taskKey: t.key, prKey: pr?.key ?? null, review: t.kind === "review", title: partTitle(t, pr?.number), ...linkFor(t.target), detail: part.text });
+    items.push({ kind: "person", key: `person:${t.key}`, taskKey: t.key, prKey: pr?.key ?? null, review: t.kind === "review", part: true, title: partTitle(t, pr?.number), ...linkFor(t.target), detail: part.text });
   }
   for (const a of w.prActions.filter(a => a.state === "uncertain")) {
     const numbers = a.prs.map(key => `#${key.split("#")[1]}`).join(", ");

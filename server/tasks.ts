@@ -24,7 +24,9 @@ export function tasksFor(w: Workspace, now = Date.now(), wording: TaskWording = 
     if (!s?.complete || pr.error || s.state !== "OPEN" || s.draft) continue;
     if (s.conflict) add("conflict", pr.key, `Resolve merge conflicts on ${pr.repo}#${pr.number}`, [s.head, s.base, "conflict"]);
     if (s.threads.length || s.reviewDecision === "CHANGES_REQUESTED") {
-      const reason = s.threads.length ? `${s.threads.length} open thread${s.threads.length === 1 ? "" : "s"}` : "changes requested";
+      // a-person-part-is-a-person-item: the agent's count leaves out the part it said waits on a person (the PR row keeps all).
+      const n = s.threads.length - (s.threads.length > 1 && personPart(w, `review:${pr.key}`) ? 1 : 0);
+      const reason = s.threads.length ? `${n} open thread${n === 1 ? "" : "s"}` : "changes requested";
       const fix = wording.reviewFix ? wording.reviewFix(pr.repo) : "/fix-pr";
       add("review", pr.key, fix ? `Use ${fix} for ${pr.repo}#${pr.number} (${reason})` : `Address review comments on ${pr.repo}#${pr.number} (${reason}): read the unresolved threads, fix, push, then reply and resolve`, [s.head, s.reviewDecision, [...s.threads].sort((a, b) => a.id.localeCompare(b.id))], s.threads.length ? s.threads.map(t => `${t.id}@${t.updatedAt}`).sort() : undefined);
     }

@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { Engine, healBatches, type Runtime, type Gateway } from "../server/engine";
 import { Store } from "../server/store";
 import type { Batch, Snapshot, Workspace } from "../shared/model";
-import { needsYou } from "../shared/attention";
+import { needsYou, type NeedItem } from "../shared/attention";
+import { flagHeadline } from "../shared/headline";
 import { activity } from "../shared/activity";
 import { violations, INVARIANTS } from "../shared/status-invariants";
 import { repairRows } from "../shared/task-rows";
@@ -259,4 +260,34 @@ test("a-person-part-is-a-person-item: Send to agent hands the part back; the inv
   const part = INVARIANTS.find(i => i.id === "a-person-part-is-a-person-item")!;
   const drawn = { ...w, batches: w.batches.map(b => b.id === first.id ? { ...b, waitingOn: WAITS } : b), prs: w.prs.map(p => ({ ...p, snapshot: { ...p.snapshot!, state: "OPEN" as const } })) };
   assert.equal(part.check(drawn, f.now()), null, "with the item drawn, the invariant holds");
+});
+
+test("a-person-part-is-a-person-item: 'already on it' keeps the part, the agent's count leaves it out, and the row headlines it", async t => {
+  const f = await fixture(t, reviewed());
+  const first = await sendOne(f);
+  await f.engine.acknowledge("main-agent", first.id, "in_progress", "Fixing thread 1.", undefined, undefined, WAITS);
+  f.advance(120_000);
+  f.observe(PR, review([thread("t1", "2026-01-01T10:01:00Z"), thread("t2", "2026-01-01T10:01:30Z")]));
+  await f.engine.tick(); f.advance(61_000); await f.engine.tick();
+  assert.equal(f.sends.length, 2);
+  assert.match(f.sends[1].text, /\(1 open thread\b/, "the agent's count leaves the person's thread out");
+  assert.doesNotMatch(f.sends[1].text, /\(2 open threads/);
+  let w = await f.get();
+  assert.equal(w.prs[0]!.snapshot!.threads.length, 2, "the PR keeps every thread");
+
+  // The agent answers in_progress again without naming the part: still the developer's.
+  const second = w.batches.find(b => b.state === "sent")!;
+  await f.engine.acknowledge("main-agent", second.id, "in_progress", "Still on thread 1.");
+  w = await f.get();
+  const items = needsYou(w, f.now());
+  const person = items.find(i => i.kind === "person");
+  assert.ok(person && person.kind === "person" && person.part && person.detail === WAITS, "an in_progress answer carries the part over");
+
+  // Home's row (a review flag beside a repair ready) headlines the person part like any other Needs-you item.
+  const send = { kind: "send", key: "send:b", batchId: "b", what: "1 repair", title: "1 repair ready", finish: false, blocker: null } as unknown as NeedItem;
+  const row = { needs: { reasons: [{ reason: "review", at: new Date(f.now()).toISOString(), detail: "#12", dedupeKey: "r" }], since: new Date(f.now()).toISOString() }, snooze: null, brief: null } as never;
+  const h = flagHeadline(row, f.now(), [person!, send]);
+  assert.equal(h?.label, "Waits on reviewer");
+  assert.equal(h?.line, person!.title);
+  assert.equal(flagHeadline(row, f.now(), [send, person!])?.key, "repairs", "an item ahead of it still leads");
 });

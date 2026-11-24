@@ -761,13 +761,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    still applies. Start-up runs the same pass over every tracked workspace, dormant ones included. An agent outcome
    only a person can move (`acknowledge_batch` blocked with `humanOnly`: a stale review only its reviewer can change,
    missing access) is never "The tasks didn't finish": its conditions wait as the developer's `person` tasks, a PR
-   item with Ask for re-review and Send to agent (both agent tools: `add_reviewers`, `retry_batch` with `task`), not
+   item with Ask for re-review and Hand back to agent (both agent tools: `add_reviewers`, `retry_batch` with `task`), not
    re-sent and not holding the queue. 2026-11-18, Tom on 2.2.0: Needs you showed "The tasks didn't finish" with Open
    main agent for a review the agent said only the reviewer could clear, still there two hours after the PR merged.
    **A person part is a person item** (`a-person-part-is-a-person-item`): when only part of it waits on a person, the
    agent names that part in `acknowledge_batch` `waitingOn` with any outcome; the agent's latest answer for the task
    decides (`personPart`, `shared/send-decision.ts`, keyed by the task so review churn keeps it), Needs you shows it as a
-   person item while the PR is open, and later messages for that task tell the agent to leave it. 2026-11-23 (the
+   person item (Open #N first, then Hand back to agent) that headlines the row like any other, and later messages for
+   that task tell the agent to leave it and count only the threads it acts on. An `in_progress` answer without
+   `waitingOn` carries the part over ("already on it" isn't "nothing waits on a person"). 2026-11-23 (the
    batch-churn renders): the agent said one thread needed the reviewer's call, and the update after the review changed
    asked it to fix every thread again, with nothing in Needs you.
    Guarded by `tests/blocked-batch-resolves.test.ts`, `tests/review-batch-churn.test.ts` and `INVARIANTS`.
