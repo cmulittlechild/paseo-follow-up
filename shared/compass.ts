@@ -44,6 +44,8 @@ export const COMPASS = {
   openWindowMs: 120_000,
   /** The Overseer's digest lists at most this many live notes. */
   digestNotes: 12,
+  /** Removed suggestions kept in compass.json; the oldest go first. */
+  removed: 200,
 } as const;
 
 /** The daytime read's period for a cadence; null: off. */
@@ -354,7 +356,7 @@ export const compassFileSchema = z.object({
   /** Rule codes of refused notes from the last reads (never their text). */
   refused: z.array(z.object({ at: z.string(), code: z.string() })).max(50).default([]),
   /** Suggestions the developer removed (Needs you's Remove, New's, `dismiss_item {compass}`), by note id. */
-  removed: z.array(z.object({ note: z.string(), at: z.string() })).max(200).default([]),
+  removed: z.array(z.object({ note: z.string(), at: z.string() })).max(COMPASS.removed).default([]),
   /** The last daytime read (the app open, every `cadence`): when it ran, in the brief's zone. */
   dayReadAt: z.string().nullable().default(null),
 });

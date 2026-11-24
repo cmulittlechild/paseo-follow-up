@@ -432,7 +432,7 @@ export class Compass {
       await this.d.store.mutate(f => { f.removed = f.removed.filter(r => r.note !== note); });
     } else {
       if (!(await this.suggestions()).some(s => s.note === note)) throw new Error(`${name} is already gone from your suggestions.`);
-      await this.d.store.mutate(f => { f.removed = [...f.removed.filter(r => r.note !== note), { note, at: new Date(this.now()).toISOString() }].slice(-200); });
+      await this.d.store.mutate(f => { f.removed = [...f.removed.filter(r => r.note !== note), { note, at: new Date(this.now()).toISOString() }].slice(-COMPASS.removed); });
     }
     this.d.onChange?.();
     return { name };
@@ -445,7 +445,7 @@ export class Compass {
     const ids = file.notes.filter(n => n.state === "live" && n.match.issue?.toUpperCase() === k).map(n => n.id);
     if (!ids.length) return 0;
     const at = new Date(this.now()).toISOString();
-    await this.d.store.mutate(f => { f.removed = undo ? f.removed.filter(r => !ids.includes(r.note)) : [...f.removed.filter(r => !ids.includes(r.note)), ...ids.map(note => ({ note, at }))].slice(-200); });
+    await this.d.store.mutate(f => { f.removed = undo ? f.removed.filter(r => !ids.includes(r.note)) : [...f.removed.filter(r => !ids.includes(r.note)), ...ids.map(note => ({ note, at }))].slice(-COMPASS.removed); });
     this.d.onChange?.();
     return ids.length;
   }
