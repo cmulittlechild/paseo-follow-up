@@ -16,7 +16,7 @@ your attention instead. The work comes to you, in one place, ranked.
 
 [![Follow-up in 36 seconds: Home, Catch up, automatic follow-ups, the Overseer](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2-poster.png)](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2.mp4)
 
-30 seconds: Home, Catch up, automatic follow-ups, the Overseer.
+36 seconds: Home, Catch up, automatic follow-ups, the Overseer.
 
 ## Install
 
