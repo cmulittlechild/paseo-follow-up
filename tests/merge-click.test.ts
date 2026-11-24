@@ -99,7 +99,8 @@ test("merge-click: every Merge button goes through the one click; Merge this PR?
   assert.match(controls, /const mergeOne = mergeControl\(pr\.key, \{ theme, compact, kind: "primary", disabled, fallback: \(\) => begin\("merge"\) \}\)/, "the PR card's own Merge");
   assert.match(controls, /canMerge && !queued && !recentlySubmitted && !busy && mergeOne\.button \? mergeOne\.button/);
   const brief = await read("brief.tsx");
-  assert.match(brief, /const one = m\.kind === "merge" && m\.prKey \? merges\.view\(m\.prKey\) : null;\n\s+if \(one\) one\.run\(\);/, "a brief's merge move");
+  assert.match(brief, /const oneClick = \(m: BriefMove\) => !m\.prKey \? null : m\.kind === "merge" \? merges\.view\(m\.prKey\)/, "a brief's merge move");
+  assert.match(brief, /const one = oneClick\(m\);\n\s+if \(one\) one\.run\(\);/);
   const button = await read("merge-button.tsx");
   assert.match(button, /if \(!scope\) return \{ label: null, notice: null, button: fallback \?/, "the sheet only when the scope is unknown");
 });

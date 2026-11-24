@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -126,6 +126,8 @@ function pulls() {
     250: { title: "Add the export filter model", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     251: { title: "Filter exports by date range", state: "OPEN", author: "dana", base: "branch-250", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     252: { title: "Show export filters in the admin page", state: "OPEN", author: "dana", base: "branch-251", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
+    // reviewers-click only: five open PRs per workspace, none with reviewers yet.
+    ...Object.fromEntries(REVIEWERS_CLICK_STATES.flatMap(w => w.prs.map(([n, title]) => [n, { title, state: "OPEN", author: "dana", checks: [ok("test"), ok("lint")] }]))),
     255: { title: "Attach PDF receipts to invoice emails", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     256: { title: "Send a weekly invoice digest", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     151: { repo: "example/web", title: "Saved search filters", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
@@ -186,6 +188,14 @@ if (process.argv[2] === "pr" && process.argv[3] === "merge") setTimeout(() => {
   if (d[n] && !process.argv.includes("--auto") && !process.argv.includes("--disable-auto")) { d[n].state = "MERGED"; d[n].mergedAt = new Date().toISOString(); require("fs").writeFileSync(${JSON.stringify(file)}, JSON.stringify(d)); }
   process.exit(0);
 }, 6000);
+// gh api POST …/requested_reviewers (reviewers-click): GitHub answers after a beat, so the shots catch "Requesting…",
+// then the PR shows the reviewers. Five run at once, so each re-reads the file and adds only its own PR's reviewers.
+else if (process.argv[2] === "api" && process.argv.includes("POST") && /pulls\\/\\d+\\/requested_reviewers$/.test(process.argv.find(a => a.includes("requested_reviewers")) || "")) setTimeout(() => {
+  const n = Number(/pulls\\/(\\d+)\\//.exec(process.argv.find(a => a.includes("requested_reviewers")))[1]);
+  const now = JSON.parse(require("fs").readFileSync(${JSON.stringify(file)}, "utf8"));
+  if (now[n]) { now[n].reviewers = process.argv.filter(a => a.startsWith("reviewers[]=")).map(a => a.slice(12)); require("fs").writeFileSync(${JSON.stringify(file)}, JSON.stringify(now)); }
+  console.log("{}"); process.exit(0);
+}, 3500);
 else {
 if (process.argv[3] !== "graphql") { console.log("[]"); process.exit(0); }
 const query = process.argv.find(a => a.startsWith("query=")) || "";
@@ -577,6 +587,16 @@ const REVIEW_MODE_STATES = [
       msg("Opened example/app#246; checks are running.")] },
 ];
 
+/** reviewers-click only (a-click-on-add-reviewers-asks): four workspaces of five PRs without reviewers, one per theme and size. */
+const REVIEWERS_CLICK_STATES = [
+  ["rc-panel-light", "Invoice exports", 280], ["rc-panel-dark", "Webhook retries", 285], ["rc-phone-light", "Admin search", 290], ["rc-phone-dark", "Usage alerts", 295],
+].map(([key, title, first], i) => {
+  const prs = ["Add the model", "Wire the API route", "Add the admin view", "Write the docs page", "Add the e2e test"].map((t, j) => [first + j, `${title}: ${t.toLowerCase()}`]);
+  return { key, title, minute: 170 + i, prompt: `APP-${210 + i}: ${title.toLowerCase()}, split into five small PRs.`, flag: false, prs,
+    steps: [rpc("follow.enroll", { goal: `APP-${210 + i} ${title}` }), ...prs.map(([n]) => rpc("follow.register-pr", { repo: "example/app", number: n, stack: `${title} ${n}` })),
+      msg(`Opened example/app#${first} through #${first + 4}; each is ready for review.`)] };
+});
+
 /** merge-click only (a-click-on-merge-merges): a three-PR stack, all approved, so its top PR's Merge names all three. */
 const MERGE_CLICK_STATES = [
   { key: "mc-stack", title: "Export filters", minute: 178, prompt: "APP-198: filter invoice exports by date range in the admin page.", flag: false,
@@ -618,7 +638,9 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || PASTE_LIKE(only) ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
+  // reviewers-click: Ravi and Mina review example/app, so each PR's row reads "Add reviewers to #N: Ravi and Mina".
+  if (only.includes("reviewers-click")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }, { login: "mina", name: "Mina" }] });
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || PASTE_LIKE(only) ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("reviewers-click") ? REVIEWERS_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1929,6 +1951,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
+  if (only.includes("reviewers-click")) await reviewersClickShots({ shoot });
   if (only.includes("catch-up")) await catchUpShots({ shoot, call, out });
   if (only.includes("dictation")) await dictationShots({ shoot });
   if (only.includes("icon")) await iconShots({ shoot, billing });
@@ -3282,6 +3305,43 @@ async function mergeClickShots({ shoot, billing }) {
   await shoot("mc-done-panel-light", TALL, "light", click(receipts, "light", panel, "panel"));
   const digest = { title: MERGE_CLICK_STATES[2].title, prompt: MERGE_CLICK_STATES[2].prompt, button: "Merge pull request #256", merged: /Merged #256/, gone: true };
   await shoot("mc-done-home-phone-dark", PHONE, "dark", click(digest, "dark", phone, "home-phone"));
+}
+
+/**
+ * reviewers-click (a-click-on-add-reviewers-asks, a-clicked-row-holds-its-place): five "Add reviewers to #N: Ravi and
+ * Mina" rows. Before; the first click mid-request ("Requesting…", "Sending…" on a phone; the fake gh answers in 3.5 s); all five clicked one
+ * after another while the first ones are still out; then every row "Requested", still in its place. The panel on
+ * desktop and Home's detail pane on a phone, light and dark, each on its own workspace (a request is one-shot).
+ */
+async function reviewersClickShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1100 };
+  const label = n => `Ask Ravi and Mina to review pull request #${n}`;
+  const button = (page, n) => page.getByRole("button", { name: label(n), exact: true }).filter({ visible: true }).first();
+  const order = async page => page.evaluate(() => [...document.querySelectorAll('[aria-label*=" pull request #"][aria-label*="Ravi and Mina"]')].filter(e => e.offsetParent).map(e => Number(/#(\d+)$/.exec(e.getAttribute("aria-label"))[1])));
+  const open = { panel: async (page, w) => { await page.setViewportSize(TALL); await openChat(page, w.title, w.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); },
+    phone: async (page, w) => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, w.title)).click(); } };
+  for (const w of REVIEWERS_CLICK_STATES) {
+    const [, size, theme] = w.key.split("-");
+    const numbers = w.prs.map(([n]) => n);
+    await shoot(`rc-${size}-${theme}`, size === "panel" ? TALL : PHONE, theme, async page => {
+      await open[size](page, w);
+      await button(page, numbers[0]).waitFor({ timeout: 60_000 });
+      await button(page, numbers[0]).scrollIntoViewIfNeeded();
+      await shoot.now(`rc-before-${size}-${theme}`, page, theme);
+      const before = await order(page);
+      await button(page, numbers[0]).click();
+      // A phone's button keeps one short word ("Asking…"); the panel says "Requesting…".
+      await page.getByText(size === "phone" ? "Sending…" : "Requesting…").filter({ visible: true }).first().waitFor();
+      await shoot.now(`rc-requesting-${size}-${theme}`, page, theme);
+      // The other four, one after another, while the first is still out: each click lands on the row it aims at.
+      for (const n of numbers.slice(1)) { await button(page, n).click(); await page.waitForTimeout(250); }
+      await shoot.now(`rc-five-${size}-${theme}`, page, theme);
+      for (const n of numbers) await page.getByRole("button", { name: `Requested Ravi and Mina on pull request #${n}`, exact: true }).filter({ visible: true }).first().waitFor({ timeout: 60_000 });
+      await page.waitForTimeout(1500);
+      const after = await order(page);
+      if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error(`reviewers-click: rows moved: ${before} -> ${after}`);
+    });
+  }
 }
 
 /**

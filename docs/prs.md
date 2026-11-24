@@ -144,6 +144,16 @@ the cold start's spawns and compares).
 
 - **Merge flow.** `follow.prepare-pr-action` builds a plan, re-checking the stack and blockers.
   `follow.confirm-pr-action` runs it (target or downstack), and `follow.check-pr-action` polls progress.
+- **Add reviewers is one click** (`a-click-on-add-reviewers-asks`, `a-clicked-row-holds-its-place`). A Needs-you row
+  "Add reviewers to #240: Ravi and Mina", Catch up's card and a brief's Add reviewers move ask exactly the people the
+  row names at once (`follow.request-reviewers` with no `reviewers`: the saved list, minus the author), through
+  `useReviewerButtons` (`client/reviewers-button.tsx`). `reviewersScope` (`shared/reviewers-click.ts`) reads the same
+  list as the row's title; it is null only when nobody is set (or only the author), and only then the button opens the
+  PR sheet's picker ("Add reviewers…"). Each PR keeps its own pending and outcome (no shared busy lock), so a run of
+  clicks down the list all go out; the button reads "Requesting…", then "Requested" (`reviewersWords`), and a refusal
+  keeps "Add reviewers" with why under it. A clicked row holds its place after the next read drops it
+  (`keepInPlace`, `shared/keep-in-place.ts`), so the rows under it never move up under the cursor. Agents keep
+  `add_reviewers`' dry run, then confirm.
 - **Merging.** Graphite repositories merge through saved Graphite CLI auth. Elsewhere, `gh pr merge`, with GitHub
   auto-merge for "When ready".
 - **One click** (`a-click-on-merge-merges`). Every Merge button (Needs you, the pill, Home, a brief, the PR card)
