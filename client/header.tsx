@@ -10,6 +10,7 @@ import { VersionMark } from "./updates";
 import { IconSwap, Spinner } from "./motion";
 import { segmentPaint, type Colors } from "./theme";
 import { ReferencesLine } from "./linked";
+import { WhyItMatters } from "./why-it-matters";
 import { SummaryLine } from "./about";
 
 /** PR status older than this means the poll has stopped working; say so instead of looking current. */
@@ -56,7 +57,7 @@ function LiveGlyph({ icon, colors }: { icon: LiveIcon; colors: Colors }) {
   }
 }
 
-export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings, onRefresh, refreshing, onAuto, autoPending, notice, onOpenPr, resize, hideTitle = false, onHome, more }: {
+export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings, onRefresh, refreshing, onAuto, autoPending, notice, onOpenPr, resize, hideTitle = false, onHome, more, openAgent }: {
   workspace: Workspace; theme: Theme; compact: boolean; now: number; onSettings: (category?: SettingsCategory) => void; onRefresh: () => void; refreshing: boolean; onAuto: (next: boolean) => void; autoPending: boolean; notice: string | null; onOpenPr?: (key: string) => void;
   /** Expand to the larger view, or collapse back to the panel. Absent where the panel is already as wide as it gets. */
   resize?: { icon: "Maximize2" | "Minimize2"; label: string; onPress: () => void } | null;
@@ -66,6 +67,8 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
   onHome?: () => void;
   /** The More button (client/panel-menu.tsx), before the gear. */
   more?: ReactNode;
+  /** Why it matters' Ask the Overseer opens the Overseer's chat with the draft in it. */
+  openAgent?: (agentId: string) => void;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const parts = headline(w, now);
@@ -112,6 +115,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
     {/* Spec and Linked: their own line, as on desktop and Home. The 44px bar can't hold them beside Home, the version
         and settings at 390pt without pushing settings off-screen. */}
     <ReferencesLine workspace={w} theme={theme} compact />
+    <WhyItMatters workspace={w} theme={theme} compact openAgent={openAgent} />
     <Text accessibilityLiveRegion="polite" style={[t.ask, { color: c.foregroundMuted }]}>
       {parts.map((part, i) => <Text key={part.text} style={toneOf(part.tone) ? { color: toneOf(part.tone) } : { color: c.foreground }}>{i ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" · "}</Text> : null}{part.text}</Text>)}
     </Text>
@@ -129,6 +133,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
     {!compact && !hideTitle && <SummaryLine workspace={w} theme={theme} compact={false} />}
     {/* The references line: Spec and Linked, one line, only when there's a spec or anything linked. */}
     <ReferencesLine workspace={w} theme={theme} compact={compact} />
+    <WhyItMatters workspace={w} theme={theme} compact={compact} openAgent={openAgent} />
     <Text accessibilityLiveRegion="polite" style={[t.meta, { color: c.foregroundMuted, marginTop: 2 }]}>
       {parts.map((part, i) => <Text key={part.text} style={toneOf(part.tone) ? { color: toneOf(part.tone), fontWeight: "600" } : { color: c.foreground }}>{i ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" · "}</Text> : null}{part.text}</Text>)}
     </Text>

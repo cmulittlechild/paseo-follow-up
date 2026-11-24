@@ -365,6 +365,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   const dismiss = useDismiss();
   const openChat = () => { if (!navigation) return; if (s.agentId) navigation.openAgent({ agentId: s.agentId }); else if (s.workspaceId) navigation.openWorkspace({ workspaceId: s.workspaceId }); };
   const word = cardWord(card);
+  const compassLine = s.compass ?? (s.priority?.source?.kind === "compass" ? s.priority.reason : null);
   const color = card.item?.kind === "merge" ? mergedColor(c) : card.kind === "finished" ? c.foregroundMuted : c.statusWarning;
   const q = card.kind === "question" ? ws?.questions.find(x => x.id === card.questionId) ?? null : null;
   const nth = sameWorkspace.indexOf(card.key);
@@ -392,6 +393,11 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     </View>
     {ws && <SummaryLine key={ws.id} workspace={ws} theme={theme} compact={compact} />}
     {full && <ReferencesLine workspace={full} theme={theme} compact={compact} />}
+    {/* One muted line of pinned context (docs/compass.md): the note's own words, never a second reason. */}
+    {compassLine && <View style={{ flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 }}>
+      <Icon name="Compass" size={12} color={c.foregroundMuted} />
+      <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0, color: c.foregroundMuted }]}>{`Compass · ${compassLine}`}</Text>
+    </View>}
   </View>;
 
   const goneBanner = gone && <View accessibilityRole="alert" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>

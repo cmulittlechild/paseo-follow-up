@@ -12,7 +12,7 @@ import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
 import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
 import { sourcesChangeSchema } from "../shared/brief-sources";
-import { compassChangeSchema } from "../shared/compass";
+import { compassChangeSchema, noteActionBase } from "../shared/compass";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -187,6 +187,10 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   { name: "compass", rpc: "follow.compass", kind: "read", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }) },
   { name: "compass_find", rpc: "follow.compass-find", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
   { name: "set_compass", rpc: "follow.set-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: compassChangeSchema.extend(confirm) },
+  // A note by hand: pin, edit, unpin, or Tell the agent (compass-reaches-an-agent-only-by-a-click: a tell is planned, so
+  // an agent's tell needs the developer's confirm, like the click). why_suggested reads the notes behind a ranking.
+  { name: "compass_note", rpc: "follow.compass-note", kind: "planned", before: { rpc: "follow.compass", input: (a: { workspace?: string }) => (a.workspace ? { workspace: a.workspace } : {}) }, input: noteActionBase.extend(confirm) },
+  { name: "why_suggested", rpc: "follow.why-suggested", kind: "read", input: z.strictObject({ workspace: z.string().min(1).max(200).optional(), issue: z.string().min(1).max(60).optional(), note: z.string().min(1).max(80).optional() }) },
   { name: "read_compass", rpc: "follow.read-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
   { name: "sweep_queue", rpc: "follow.sweep-queue", kind: "planned", before: { rpc: "follow.linear-queue", input: () => ({ limit: 1 }) }, input: z.strictObject({ ...confirm }), toRpc: () => ({}) },
 ];
@@ -241,6 +245,7 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.compass-find": { tools: ["compass_find"] },
   "follow.set-compass": { tools: ["set_compass"] },
   "follow.read-compass": { tools: ["read_compass"] },
+  "follow.compass-note": { tools: ["compass_note"] },
   "follow.rank-now": { tools: ["rerank_priorities"] },
   "follow.usage": { tools: ["usage"] },
   "follow.overseer-status": { tools: ["overseer_status"] },

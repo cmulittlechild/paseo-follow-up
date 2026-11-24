@@ -346,6 +346,8 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const title = <>{marks(s.title, hit?.titleRanges, c)}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" › "}{marks(s.agent, hit?.agentRanges, c)}</Text> : null}</>;
   // Phones: "Working" under every row of a "Running 9" group says nothing the header didn't; one line per row instead.
   const generic = touch && !s.word && s.line === "Working";
+  // The reason line: AI priority's, else the workspace's first live Compass note (a live note is a reason).
+  const why = s.priority?.reason ? { reason: s.priority.reason, source: s.priority.source } : s.compass ? { reason: s.compass, source: { kind: "compass" as const, label: "Compass" } } : null;
   // Send now: outlined (filled is only for what waits on the developer), and only where the server would take it.
   const sendNow = s.sendNow && onSendNow && !dense ? <SendNowButton s={s} theme={theme} touch={touch} onSendNow={onSendNow} /> : null;
   // A Later row says when it comes back on screen; the label also keeps how long it has waited.
@@ -373,7 +375,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
         : (!!s.word || !!s.line) && !generic && <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>
         {s.word && s.group === "needs" ? <Text style={{ color, fontWeight: "600" }}>{s.word}</Text> : null}{s.word && s.group === "needs" && s.line ? " · " : ""}{line}
       </Text>}
-      {!!s.priority?.reason && <PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} size={12} lines={2} />}
+      {!!why && <PriorityLine reason={why.reason} source={why.source} c={c} size={12} lines={2} />}
       {!!s.pr && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"], ...(older ? { opacity: 0.6 } : {}) }}><PrSummaryText s={s} c={c} /></Text>}
       {sendNow && <View style={{ flexDirection: "row", marginTop: 6 }}>{sendNow}</View>}
     </View> : dense ? <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
@@ -382,11 +384,11 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
         : (!!s.word || !!s.line) && <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>
         {s.word && s.group === "needs" ? <Text style={{ color, fontWeight: "600" }}>{s.word}</Text> : null}{s.word && s.group === "needs" && s.line ? " · " : ""}{line}
       </Text>}
-      {!!s.priority?.reason && <PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} size={11} lines={2} />}
+      {!!why && <PriorityLine reason={why.reason} source={why.source} c={c} size={11} lines={2} />}
       {touch && (s.pr || s.badges.length > 0) && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
         {s.badges.map(b => <BadgeView key={b.text} b={b} c={c} />)}<PrChipView s={s} c={c} />
       </View>}
-    </View> : <View style={{ flex: 1, minWidth: 0, gap: 1, paddingVertical: s.priority?.reason ? 4 : 0 }}><View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+    </View> : <View style={{ flex: 1, minWidth: 0, gap: 1, paddingVertical: why ? 4 : 0 }}><View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       {/* The title keeps its width (up to 55 %) and the chips yield; only beside Send now, which can't, does it shrink. */}
       <Text numberOfLines={1} style={{ flexShrink: sendNow ? 1 : 0, minWidth: 0, maxWidth: "55%", color: muted ? c.foregroundMuted : c.foreground, fontSize: 13, fontWeight: muted ? "400" : "500" }}>{title}</Text>
       {/* A Needs-you row's word (Permission, Question…) is why it's there: it keeps its place, the chips yield first. */}
@@ -398,7 +400,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
       </Text>
       <ChipRail s={s} c={c} dim={older} />
       {sendNow}
-    </View>{!!s.priority?.reason && <View style={{ paddingRight: 40 }}><PriorityLine reason={s.priority.reason} source={s.priority.source} c={c} /></View>}</View>}
+    </View>{!!why && <View style={{ paddingRight: 40 }}><PriorityLine reason={why.reason} source={why.source} c={c} /></View>}</View>}
     {!touch && <RowTime s={s} c={c} size={dense ? 11 : 12} />}
   </Pressable>;
 }, (a, b) => a.sig === b.sig && a.selected === b.selected && a.theme === b.theme && a.dense === b.dense && a.touch === b.touch && a.onSelect === b.onSelect && a.onMenu === b.onMenu && a.menuOpen === b.menuOpen && a.hit === b.hit && a.onSendNow === b.onSendNow && a.selectedBg === b.selectedBg);

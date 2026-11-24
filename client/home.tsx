@@ -19,6 +19,7 @@ import { prLinksByNumber } from "../shared/presentation";
 import { BriefCard, type BriefDeps } from "./brief";
 import { SummaryLine } from "./about";
 import { ReferencesLine } from "./linked";
+import { WhyItMatters } from "./why-it-matters";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
 import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
 import { QueueScreen, RaisedRows, SinceBlock } from "./brief-since";
@@ -261,7 +262,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const detail = selected === OVERSEER_KEY && overseer
     ? <OverseerPane theme={theme} compact={compact} o={overseer} focus={replyFocus} pending={pendingAsk} agentId={overseerStatus?.agentId ?? null} model={overseerStatus?.model ?? null} restartWith={overseerStatus?.restartWith ?? null} configured={overseerStatus?.configured ?? null} deps={deps} navigation={navigation} onBack={compact && !route ? () => setSelected(null) : undefined} />
     : current
-    ? <DetailPane key={current.key} s={current} model={model} theme={theme} compact={compact} deps={deps} openFull={openFull} signOffNext={signOffNext} ask={ask?.key === current.key ? ask : null} onBack={compact && !route ? () => setSelected(null) : undefined} />
+    ? <DetailPane key={current.key} s={current} model={model} theme={theme} compact={compact} deps={deps} openFull={openFull} signOffNext={signOffNext} ask={ask?.key === current.key ? ask : null} onBack={compact && !route ? () => setSelected(null) : undefined} openAgent={navigation ? agentId => navigation.openAgent({ agentId }) : undefined} />
     : <BriefPane theme={theme} compact={compact} pane={pane} catchUp={deps.openCatchUp} deckSize={deckSize} onSelect={key => route ? route(key) : setSelected(key)} openLog={deps.openLog} sources={deps.sources}
       queue={deps.openQueue ? <SinceBlock theme={theme} compact={compact} openQueue={deps.openQueue} onStarted={() => deps.sources.extras.refreshDispatches()} navigation={navigation} raised={raisedKeys} revision={queue.revision} /> : null} />;
   // Nothing followed at all: no sort, no meters, just the empty state and its action.
@@ -480,9 +481,11 @@ function DetailSendNow({ s, theme, compact, deps }: { s: Workstream; theme: Them
   </View>;
 }
 
-function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask, onBack }: {
+function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask, onBack, openAgent }: {
   s: Workstream; model: HomeModel; theme: Theme; compact: boolean; deps: HomeDeps;
   openFull: (s: Workstream) => void; signOffNext: (s: Workstream) => void; onBack?: () => void;
+  /** Why it matters' Ask the Overseer opens the Overseer's chat with the draft in it. */
+  openAgent?: (agentId: string) => void;
   /** The row menu's Answer: open this question's card (n changes on every pick, so the same question reopens). */
   ask?: { id: string; n: number } | null;
 }) {
@@ -553,6 +556,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
     {/* The Summary: what this workspace is for, right under its name. */}
     {!writing && s.workspaceId && w && <View style={{ marginTop: 4 }}><SummaryLine key={s.workspaceId} workspace={w} theme={theme} compact /></View>}
     {!writing && s.workspaceId && w && <View style={{ marginTop: 6 }}><ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact /></View>}
+    {!writing && s.workspaceId && w && <View style={{ marginTop: 6 }}><WhyItMatters key={`why:${s.workspaceId}`} workspace={w} theme={theme} compact openAgent={openAgent} /></View>}
     {!writing && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
       <Icon name={s.icon} size={14} color={color} />
       {/* Read as one line, with the PR summary in words: a nested Text can't carry its own label. */}
@@ -572,6 +576,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
     </View>
     {s.workspaceId && w && <SummaryLine key={s.workspaceId} workspace={w} theme={theme} compact={false} />}
     {s.workspaceId && w && <ReferencesLine key={`refs:${s.workspaceId}`} workspace={w} theme={theme} compact={false} />}
+    {s.workspaceId && w && <WhyItMatters key={`why:${s.workspaceId}`} workspace={w} theme={theme} compact={false} openAgent={openAgent} />}
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
       {!!s.word && <Text style={{ color, fontSize: 12, fontWeight: "600" }}>{s.word}</Text>}
       <Text style={t.meta}>{[laterText, s.at ? age(s.at, Date.now()) === "now" ? "just now" : `${age(s.at, Date.now())} ago` : "", s.project].filter(Boolean).join(" · ")}</Text>

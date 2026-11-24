@@ -1,0 +1,3 @@
+- Compass on screen: the panel's new Why it matters shows where AI priority ranks the workspace and the notes behind it, with the quote, who said it and until when.
+- From a note you can open the message, ask the Overseer about it, tell the workspace's agent, change its date, move it or unpin it. An agent can pin a note in your words with `compass_note`.
+- Home's reason line and Catch up show a workspace's Compass note with the compass glyph.

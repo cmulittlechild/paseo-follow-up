@@ -3865,8 +3865,49 @@ async function compassShots({ shoot, call, home, seeded }) {
   const billing = seeded.workspaces.find(w => w.key === "billing");
   await actPlanned(call, billing.agentId, "set_display", { values: { home_sort: "priority" } });
   await actPlanned(call, billing.agentId, "set_priorities", { priorities: [{ workspace: billing.workspaceId, score: 96, reason: "Dana: acme demo Thu, APP-142 first", sources: [{ kind: "compass", label: "Dana · product" }] }], replace: false });
+  // Pinned context on screen: a note pinned by hand joins the read's, so Why it matters folds one ("+1 more").
+  await call("follow.compass-note", { action: "pin", workspace: billing.workspaceId, what: "client call Tue: retries must be in", strength: "high" });
   for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
     await shoot(`compass-reason-${device}-${theme}`, viewport, theme, async page => { await page.setViewportSize(viewport); await openHome(page); await page.getByText("Dana: acme demo Thu, APP-142 first").first().waitFor({ timeout: 20_000 }); });
+  }
+  // The panel's Why it matters (desktop: the panel beside the chat; phone: Home's detail), then its notes and ⋯ open.
+  const why = page => page.getByText("Why it matters", { exact: true }).filter({ visible: true }).first();
+  const openWhy = async (page, viewport) => {
+    if (viewport.width < 768) {
+      await openHome(page); await page.setViewportSize(viewport);
+      await (await homeRow(page, "Billing retries")).click();
+    } else {
+      await openChat(page, "Billing retries", WORKSPACES.find(w => w.key === "billing").prompt);
+      await page.getByRole("button", { name: "Follow-up", exact: true }).last().click();
+    }
+    await why(page).waitFor({ timeout: 30_000 });
+    // The panel's header is sticky: scroll the box's top just below it, never under it.
+    await why(page).evaluate(e => { e.scrollIntoView({ block: "start" }); for (let n = e.parentElement; n; n = n.parentElement) if (n.scrollHeight > n.clientHeight && getComputedStyle(n).overflowY !== "visible") { n.scrollTop = Math.max(0, n.scrollTop - 24); break; } });
+    await page.waitForTimeout(400);
+  };
+  for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await shoot(`compass-why-${device}-${theme}`, viewport, theme, page => openWhy(page, viewport));
+    await shoot(`compass-why-open-${device}-${theme}`, viewport, theme, async page => {
+      await openWhy(page, viewport);
+      await page.getByRole("button", { name: /^\+\d+ more/ }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: "More actions for this note", exact: true }).filter({ visible: true }).first().click();
+      await page.getByText("Tell the agent", { exact: true }).filter({ visible: true }).first().waitFor();
+      await page.waitForTimeout(300);
+    });
+  }
+  // Catch up: the billing card's head gains one muted Compass line.
+  for (const [device, viewport, theme] of [["desktop", DESKTOP, "light"], ["phone", PHONE, "dark"]]) {
+    await shoot(`compass-catchup-${device}-${theme}`, viewport, theme, async page => {
+      await openHome(page); await page.setViewportSize(viewport);
+      await page.getByRole("button", { name: /^Catch up on \d+ things? that need you/ }).filter({ visible: true }).first().click();
+      const line = () => page.getByText(/^Compass · /).filter({ visible: true }).first();
+      for (let i = 0; !(await line().isVisible()); i++) {
+        if (i > 30) throw new Error("compass: no Catch up card shows a Compass line");
+        await page.getByRole("button", { name: /^Skip this (?!workspace)/ }).filter({ visible: true }).first().click();
+        await page.waitForTimeout(250);
+      }
+      await page.waitForTimeout(800);
+    });
   }
 }
 

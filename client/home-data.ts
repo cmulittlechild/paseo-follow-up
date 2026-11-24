@@ -87,7 +87,8 @@ export function useHomeModel(sources: HomeSources): HomeModel {
   // Decision Q8: the raised Linear issues count in Needs you, the worker's one number (home feed), so Home's header,
   // strip and brief line and the sidebar badge (client/live.tsx) agree (invariant raised-is-needs-you).
   const raised = useSyncExternalStore(extras.subscribe, () => extras.queue().raised.length, () => 0);
-  return useMemo(() => buildHome({ rows: inbox.rows(), tracked: live.all(), paseo: paseo.all(), now: Date.now(), sort, priorities, hidden: overseer ? [overseer] : [], hold, raised }), [a, b, c, now, sort, priorities, inbox, live, paseo, overseer, hold, raised]);
+  const compass = useSyncExternalStore(extras.subscribe, extras.compass, extras.compass);
+  return useMemo(() => buildHome({ rows: inbox.rows(), tracked: live.all(), paseo: paseo.all(), now: Date.now(), sort, priorities, hidden: overseer ? [overseer] : [], hold, compass, raised }), [a, b, c, now, sort, priorities, inbox, live, paseo, overseer, hold, raised, compass]);
 }
 
 /** Rebuilds a value at most every `ms` while mounted (used for the brief pane's source ages). */

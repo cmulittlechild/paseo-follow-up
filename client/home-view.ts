@@ -59,6 +59,9 @@ export function createHomeExtras(client: PluginClientContext) {
    * feed (on 0.15, carried by the priorities poll). Home's model, the sidebar badge and the brief pane all read it.
    */
   let queue: QueueNeeds = NO_QUEUE;
+  /** Each workspace's first live Compass note as one line (Home rows, Catch up), from the worker with the priorities. */
+  let compass: Record<string, string> = {};
+  const setCompass = (next: Record<string, string> | undefined) => { if (!next || JSON.stringify(next) === JSON.stringify(compass)) return false; compass = next; return true; };
   const setQueue = (next: QueueNeeds | undefined) => { if (!next || JSON.stringify(next) === JSON.stringify(queue)) return false; queue = next; return true; };
   const setContext = (next: ContextRequest[]) => { if (JSON.stringify(next) === JSON.stringify(context)) return false; context = next; return true; };
   const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
@@ -105,7 +108,7 @@ export function createHomeExtras(client: PluginClientContext) {
   const pollHome = () => together([
     poll(PRIORITY_POLL_MS, async () => {
       const answer = await client.rpc(prioritiesRpc, {});
-      const queued = setQueue(answer.queue);
+      const queued = setCompass(answer.compass) || setQueue(answer.queue);
       if (JSON.stringify(answer.items) === JSON.stringify(priorities)) return queued;
       priorities = answer.items; return true;
     }),
@@ -137,7 +140,7 @@ export function createHomeExtras(client: PluginClientContext) {
       if (event.context) setContext(event.context);
       if (event.dispatches) dispatches = event.dispatches;
       if (event.prStats !== undefined) prStatsOn = event.prStats;
-      setQueue(event.queue);
+      setQueue(event.queue); setCompass(event.compass);
       if (event.usage) usage = { ...event.usage, resources: usage.resources };
       if (!event.rank.running) { for (const done of rankWaiters) done(); rankWaiters.clear(); }
       // Smart Session's files can't be watched: read the meters once a minute instead.
@@ -270,6 +273,8 @@ export function createHomeExtras(client: PluginClientContext) {
     prStatsOn: () => prStatsOn,
     /** The raised Linear issues in Needs you and the queue's revision (Q8), from the worker. */
     queue: () => queue,
+    /** Each workspace's first live Compass note as one line. */
+    compass: () => compass,
     /** A dismissal on a 0.15 host (or with the feed down): read the answer once now; the feed pushes it itself. */
     refreshQueue: () => { if (home && !homePolls) return; void client.rpc(prioritiesRpc, {}).then(a => { if (!stopped && setQueue(a.queue)) emit(); }).catch(() => undefined); },
     /** Reads the asks once (Catch up opening or moving on, so a 0.15 host or a dropped feed is never stale for long). */
