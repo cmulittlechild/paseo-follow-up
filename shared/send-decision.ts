@@ -167,6 +167,20 @@ export const personHeld = (w: Pick<Workspace, "batches">, t: Pick<Task, "key" | 
   return w.batches.some(b => b.state === "completed" && !!b.humanOnly && b.tasks.some(x => conditionId(x) === id));
 };
 
+/**
+ * a-person-part-is-a-person-item: what the agent's latest answer for this task said only a person can move
+ * (Batch.waitingOn), else null. Keyed by the task, not its fingerprint, so a review that keeps changing keeps it; a
+ * later answer without one drops it.
+ */
+export function personPart(w: Pick<Workspace, "batches">, taskKey: string): { batchId: string; text: string } | null {
+  for (let i = w.batches.length - 1; i >= 0; i--) {
+    const b = w.batches[i]!;
+    if (!b.sentAt || !b.settledAt || !["completed", "blocked"].includes(b.state) || b.unacknowledged || !b.tasks.some(t => t.key === taskKey)) continue;
+    return b.waitingOn ? { batchId: b.id, text: b.waitingOn } : null;
+  }
+  return null;
+}
+
 /** Blocked or unconfirmed: a repair batch whose outcome the developer is shown (Needs you's "The repairs didn't finish"). */
 export const stuckRepair = (b: Pick<Batch, "state" | "tasks" | "movedOn">) =>
   ["blocked", "uncertain"].includes(b.state) && !b.movedOn && !recoveryBatch(b) && !(b.tasks.length > 0 && b.tasks.every(t => t.kind === "completion"));

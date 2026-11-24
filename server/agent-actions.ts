@@ -1,7 +1,7 @@
 import { searchRows } from "../shared/search";
 import { sendingOf } from "../shared/sending";
 import { agentActor, type Actor } from "../shared/actor";
-import { conditionId, noProgressSends } from "../shared/send-decision";
+import { conditionId, noProgressSends, personPart } from "../shared/send-decision";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ActionPlan } from "../shared/pr-actions";
@@ -94,7 +94,14 @@ export function controlWorkspace(state: State, input: { workspaceId: string; ena
     // person task (the agent said only a person can move it) goes back to the agent the same way: the developer
     // disagrees, so the agent's human-only outcome no longer holds it.
     const h = w.heldTasks?.find(h => (h.held === "capped" || h.held === "person") && h.task.key === input.retryTask);
-    if (!h) throw new Error("That task isn't waiting for a retry. Refresh to see its state.");
+    // A part only a person could move (Batch.waitingOn): Send to agent hands it back, and the next message stops
+    // telling the agent to leave it (a-person-part-is-a-person-item).
+    const part = !h ? personPart(w, input.retryTask) : null;
+    if (part) { const b = w.batches.find(b => b.id === part.batchId)!; delete b.waitingOn; }
+    else if (!h) throw new Error("That task isn't waiting for a retry. Refresh to see its state.");
+  }
+  if (input.retryTask && w.heldTasks?.some(h => (h.held === "capped" || h.held === "person") && h.task.key === input.retryTask)) {
+    const h = w.heldTasks.find(h => (h.held === "capped" || h.held === "person") && h.task.key === input.retryTask)!;
     const id = conditionId(h.task);
     if (h.held === "person") for (const b of w.batches) if (b.humanOnly && b.tasks.some(t => conditionId(t) === id)) delete b.humanOnly;
     w.taskRetries = { ...w.taskRetries, [id]: (w.taskRetries?.[id] ?? 0) + noProgressSends(w, h.task) };

@@ -91,6 +91,9 @@ export function flagHeadline(row: Pick<InboxRow, "needs" | "snooze" | "brief">, 
   }
   // A failed check or review thread headlines as the developer's action: tasks ready to send.
   const send = items.find((i): i is Extract<NeedItem, { kind: "send" }> => i.kind === "send" && !i.finish);
+  // A person item ahead of it (the part only a person can move) headlines like any other Needs-you item.
+  const person = items.find(i => i.kind === "person" || i === send);
+  if ((key === "flagged" || key === "review") && person?.kind === "person") return { ...workspaceHeadline([person])!, source: "flag" };
   if ((key === "flagged" || key === "review") && send) return { key: "repairs", label: sendButton(send.what), line: send.title, source: "flag" };
   // "Add reviewers #1499": the PR number is the detail, so the pill names which PR. The line is only what's new:
   // whom Follow-up suggests, else the PR's title (a-headline-says-only-what-is-new).

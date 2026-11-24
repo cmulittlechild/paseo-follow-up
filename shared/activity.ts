@@ -48,7 +48,7 @@ export function activity(w: Workspace): Activity[] {
     // Moved on since it went out (Batch.movedOn): updated, sent again, or no longer needed. Never a failure on screen.
     // The detail is the agent's own words; Follow-up's own reason would only repeat the title (gone keeps it: it names
     // what ended, "#270 merged").
-    else if (b.movedOn) rows.push({ key: `stopped:${b.id}`, at: b.settledAt ?? b.movedOn.at, icon: b.movedOn.why === "gone" ? "CircleSlash" : "RefreshCw", tone: "muted", text: b.movedOn.why === "changed" ? `${n} updated on GitHub · the next message has what's new` : b.movedOn.why === "gone" ? `${n} no longer needed` : `${n} sent again`, detail: b.result && (b.movedOn.why === "gone" || b.result !== b.movedOn.reason) ? b.result : null, took: b.settledAt ? duration(b.sentAt, b.settledAt) : null });
+    else if (b.movedOn) rows.push({ key: `stopped:${b.id}`, at: b.settledAt ?? b.movedOn.at, icon: b.movedOn.why === "gone" ? "CircleSlash" : "RefreshCw", tone: "muted", text: b.movedOn.why === "changed" ? `${changedOnGithub(b, w)} · ${sentAgain(b, w) ? "sent again with what's new" : "the next message says what's new"}` : b.movedOn.why === "gone" ? `${n} no longer needed` : `${n} sent again`, detail: b.result && (b.movedOn.why === "gone" || b.result !== b.movedOn.reason) ? b.result : null, took: b.settledAt ? duration(b.sentAt, b.settledAt) : null });
     else if (b.settledAt && b.state === "completed") rows.push({ key: `done:${b.id}`, at: b.settledAt, icon: "Wrench", tone: "success", text: `Main agent finished ${n}`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
     else if (b.settledAt && ["blocked", "cancelled"].includes(b.state)) rows.push({ key: `stopped:${b.id}`, at: b.settledAt, icon: "OctagonAlert", tone: b.state === "blocked" ? "danger" : "muted", text: b.state === "blocked" ? `${n} didn't finish` : `${n} cancelled`, detail: b.result || null, took: duration(b.sentAt, b.settledAt) });
   }
@@ -80,4 +80,23 @@ export function activity(w: Workspace): Activity[] {
     rows.push({ key: `task:${o.id}`, at: o.finishedAt, icon: o.status === "done" ? "ListChecks" : "CircleSlash", tone: o.status === "done" ? "success" : "muted", text: `${o.status === "done" ? "Task done" : "Task waived"} · ${o.title}`, detail: o.evidence?.trim() || null, took: null });
   if (w.completion) rows.push({ key: "done", at: w.completion.declaredAt, icon: "CircleCheck", tone: "success", text: "Main agent declared Done", detail: null, took: null });
   return rows.filter(r => Number.isFinite(Date.parse(r.at))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.key.localeCompare(b.key));
+}
+
+/** Whether a later message carried one of this batch's items: its "the next message says" has come true. */
+function sentAgain(b: { id: string; tasks: readonly { key: string }[] }, w: Pick<Workspace, "batches">): boolean {
+  const keys = new Set(b.tasks.map(t => t.key));
+  const i = w.batches.findIndex(x => x.id === b.id);
+  return w.batches.slice(i + 1).some(x => !!x.sentAt && x.tasks.some(t => keys.has(t.key)));
+}
+
+/**
+ * Who changed: GitHub, never Follow-up. "#270 changed on GitHub", or "#270 and #271 changed on GitHub"; without a PR
+ * Follow-up tracks, "What was sent changed on GitHub". 2026-11-23 critique: "1 repair updated on GitHub" read as if
+ * Follow-up had changed GitHub.
+ */
+export function changedOnGithub(b: { tasks: readonly { target: string }[] }, w: Pick<Workspace, "prs">): string {
+  const numbers = [...new Set(b.tasks.flatMap(t => { const pr = w.prs.find(p => p.key === t.target); return pr ? [`#${pr.number}`] : []; }))];
+  if (!numbers.length) return "What was sent changed on GitHub";
+  const list = numbers.length === 1 ? numbers[0] : numbers.length === 2 ? `${numbers[0]} and ${numbers[1]}` : `${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`;
+  return `${list} changed on GitHub`;
 }
