@@ -6,9 +6,10 @@ import type { AiJobs } from "./ai-jobs";
 import type { MorningBriefStore } from "./morning-brief";
 import { artifactLinks, parseChatRefs } from "../shared/morning-brief";
 import { isWorkday, zoned, type Clock } from "../shared/linear-queue";
+import { compassSince, digestLines, suggestions, type CompassSince, type Suggestion } from "../shared/nobody";
 import {
   COMPASS, EXTRACT_SYSTEM, ROLE_INFO, applyCompassChange, batchItems, compassFileSchema, emptyCompassFile, extractPrompt, extractReplySchema, guardedProvider,
-  HAND_LABEL, HAND_SOURCE, applyNoteAction, noteLines, noteWho, tellText, type NoteAction,
+  HAND_LABEL, HAND_SOURCE, applyNoteAction, cadenceMs, noteLines, noteWho, tellText, type NoteAction,
   noteRole, parseConversation, placeKey, placeNote, presetsView, rankNotes, settleNotes, unguardedWhy, validateExtraction, whoFilter,
   type CompassChange, type CompassFile, type CompassItem, type CompassNote, type CompassSettings, type CompassSource, type Place, type PlaceIndex, type RankCompassNote, type RefuseCode,
 } from "../shared/compass";
@@ -45,6 +46,13 @@ export type CompassDeps = {
    * this week's plan and reads its title at once (MorningBrief.recordPlan). Resolves whether it was new.
    */
   onPlan?: (found: { url: string; postedAt: string; where: string; source: string }) => Promise<boolean>;
+  /**
+   * Whether an app client is open: a subscriber on the home feed, or (Paseo 0.15) a poll in the last 2 minutes. The
+   * daytime read runs only then (the-brief-has-one-timer); with the app closed nothing is read on a schedule.
+   */
+  appOpen?: () => boolean;
+  /** Issue titles and links the queue's snapshot already holds, so a suggestion names its issue (no read of its own). */
+  issues?: () => Promise<ReadonlyMap<string, { title: string; url: string | null }>>;
   /** Notes changed: AI priority's next tick runs once (Ranker.markDue) and the feeds push. */
   onChange?: () => void;
   now?: () => number;
@@ -137,11 +145,15 @@ export class Compass {
     const now = r.settings.sources.find(s => s.id === r.touched);
     const fresh = now && now.enabled && now.places.some(p => !was?.places.some(q => placeKey(q) === placeKey(p)));
     if (fresh) void this.read("added", { source: now!.id }).catch(() => undefined);
-    if (change.remove || change.glossary) this.d.onChange?.();
+    if (change.remove || change.glossary || change.routing) this.d.onChange?.();
     return this.view();
   }
 
-  /** The morning read: once a workday after the sweep time, with the sweep (never on its own timer). */
+  /**
+   * The worker's 15 s loop (the-brief-has-one-timer): the morning read once a workday after the sweep time, with the
+   * sweep; then the daytime read every `cadence` (1, 2 or 4 h; Off: none) while an app client is open, on workdays
+   * between 08:00 and 20:00 in the developer's zone. Both wait while the governor is tight. Nothing here has a timer.
+   */
   async tick(): Promise<void> {
     if (this.reading || this.d.tight?.()) return;
     const settings = await this.settings();
@@ -149,16 +161,26 @@ export class Compass {
     const clock = await this.d.clock();
     const now = this.now();
     const z = zoned(now, clock.timeZone);
+    if (!isWorkday(now, clock)) return;
     const file = await this.d.store.read();
-    if (!isWorkday(now, clock) || file.readDay === z.day) return;
-    const [h, m] = (await this.d.sweepAt()).split(":").map(Number);
-    if (z.hour * 60 + z.minute < h * 60 + m) return;
-    await this.d.store.mutate(f => { f.readDay = z.day; });
-    await this.read("morning");
+    if (file.readDay !== z.day) {
+      const [h, m] = (await this.d.sweepAt()).split(":").map(Number);
+      if (z.hour * 60 + z.minute >= h * 60 + m) {
+        await this.d.store.mutate(f => { f.readDay = z.day; });
+        await this.read("morning");
+        return;
+      }
+    }
+    const period = cadenceMs(settings.cadence);
+    if (!period || !this.d.appOpen?.() || z.hour < COMPASS.dayStartHour || z.hour >= COMPASS.dayEndHour) return;
+    const last = Math.max(Date.parse(file.dayReadAt ?? "") || 0, Date.parse(file.lastRead?.at ?? "") || 0);
+    if (now - last < period) return;
+    await this.d.store.mutate(f => { f.dayReadAt = new Date(now).toISOString(); });
+    await this.read("day");
   }
 
   /** Read now (Settings' Read now, read_compass): every enabled source, or one. Joins a read already going. */
-  read(trigger: "morning" | "manual" | "agent" | "added", opts: { source?: string; plans?: boolean } = {}): Promise<CompassFile["lastRead"]> {
+  read(trigger: "morning" | "day" | "manual" | "agent" | "added", opts: { source?: string; plans?: boolean } = {}): Promise<CompassFile["lastRead"]> {
     return this.reading ??= this.readOnce(trigger, opts).finally(() => { this.reading = null; });
   }
   /** Read now, waiting at most `ms`; then `running` (read_compass). */
@@ -359,19 +381,94 @@ export class Compass {
 
   /**
    * why_suggested: for a workspace, an issue or a note, the live notes behind it, who said them, where, the source
-   * and role, and how each was matched. Compass notes reorder AI priority; none adds a Needs-you row yet.
+   * and role, how each was matched, and whether (and why) it is a suggestion in Needs you, first in New, or neither.
    */
-  async why(input: { workspace?: string; issue?: string; note?: string }): Promise<{ notes: unknown[]; needsYou: { suggested: false; why: string } }> {
+  async why(input: { workspace?: string; issue?: string; note?: string }): Promise<{ notes: unknown[]; needsYou: { suggested: boolean; urgent: boolean; why: string } }> {
     const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
     const label = new Map([...settings.sources.map(s => [s.id, s.label] as const), [HAND_SOURCE, HAND_LABEL] as const]);
     const key = input.issue?.toUpperCase();
     const notes = (file.notes as CompassNote[]).filter(n => n.state === "live" && (input.note ? n.id === input.note
       : input.workspace ? n.match.workspace === input.workspace : key ? n.keys.some(k => k.toUpperCase() === key) || n.match.issue?.toUpperCase() === key : true));
+    const all = await this.suggestions();
+    const s = all.find(x => (key && x.key === key) || notes.some(n => n.id === x.note)) ?? null;
+    const routing = settings.routing;
+    const why = s ? (s.urgent ? `In Needs you as "Nobody's on it": ${s.reason} (${s.source}), strong enough and due within ${routing.urgentWithinWorkdays} workdays.` : `First in New's My issues: ${s.reason} (${s.source}). Not urgent enough for Needs you (it needs strength ${routing.urgentStrength}, a date within ${routing.urgentWithinWorkdays} workdays and the source's Needs-you switch on).`)
+      : input.workspace ? "It has a workspace, so it's no suggestion: its notes reorder AI priority."
+      : routing.suggestions === "off" ? "Suggestions are off (compass routing)."
+      : notes.some(n => n.match.issue) ? "Its issue already has a workspace, or the developer removed the suggestion."
+      : "No live note names an issue nobody started.";
     return {
       notes: notes.map(n => ({ id: n.id, what: n.what, quote: n.quote, who: noteWho(n), at: n.at, source: label.get(n.source) ?? "a removed source", role: n.role, strength: n.strength, until: n.until,
         matched: { how: n.match.how, score: Math.round(n.match.score * 100) / 100, workspace: n.match.workspace ?? null, issue: n.match.issue ?? null } })),
-      needsYou: { suggested: false, why: "Compass notes reorder AI priority. They don't add Needs-you rows yet." },
+      needsYou: { suggested: !!s, urgent: !!s?.urgent, why },
     };
+  }
+
+  /**
+   * Suggestions (shared/nobody.ts): live notes about an issue with no workspace (invariant 95's one predicate, from
+   * the index the worker already holds). Reads compass.json; with no such note it builds no index at all.
+   */
+  async suggestions(known?: ReadonlyMap<string, { title: string; url: string | null }>): Promise<Suggestion[]> {
+    const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
+    if (!file.notes.some(n => n.state === "live" && n.match.issue && !n.match.workspace)) return [];
+    const [clock, index, issues] = await Promise.all([this.d.clock(), this.d.index().catch(() => null), known ? Promise.resolve(known) : this.d.issues?.().catch(() => null) ?? Promise.resolve(null)]);
+    return suggestions(file.notes as CompassNote[], settings, {
+      now: this.now(), clock, taken: k => !!index?.issueWorkspace(k), removed: new Set(file.removed.map(r => r.note)),
+      issue: k => issues?.get(k) ?? null,
+    });
+  }
+
+  /**
+   * Remove a suggestion (Needs you's or New's Remove, `dismiss_item {compass}`), or bring it back with undo. Only this
+   * record changes; nothing is sent. A later note on the same issue is new and suggests it again.
+   */
+  async removeSuggestion(note: string, undo: boolean): Promise<{ name: string }> {
+    const file = await this.d.store.read();
+    const n = file.notes.find(x => x.id === note);
+    if (!n) throw new Error(`No Compass note ${note}.`);
+    const name = n.match.issue ?? n.what;
+    if (undo) {
+      if (!file.removed.some(r => r.note === note)) throw new Error(`${name} isn't removed.`);
+      await this.d.store.mutate(f => { f.removed = f.removed.filter(r => r.note !== note); });
+    } else {
+      if (!(await this.suggestions()).some(s => s.note === note)) throw new Error(`${name} is already gone from your suggestions.`);
+      await this.d.store.mutate(f => { f.removed = [...f.removed.filter(r => r.note !== note), { note, at: new Date(this.now()).toISOString() }].slice(-200); });
+    }
+    this.d.onChange?.();
+    return { name };
+  }
+
+  /** "Nobody's on it" Remove on an issue: every live Compass note on it stops suggesting it (the queue's raise is the queue's). */
+  async removeIssue(key: string, undo: boolean): Promise<number> {
+    const file = await this.d.store.read();
+    const k = key.toUpperCase();
+    const ids = file.notes.filter(n => n.state === "live" && n.match.issue?.toUpperCase() === k).map(n => n.id);
+    if (!ids.length) return 0;
+    const at = new Date(this.now()).toISOString();
+    await this.d.store.mutate(f => { f.removed = undo ? f.removed.filter(r => !ids.includes(r.note)) : [...f.removed.filter(r => !ids.includes(r.note)), ...ids.map(note => ({ note, at }))].slice(-200); });
+    this.d.onChange?.();
+    return ids.length;
+  }
+
+  /** The brief's one Since block: what Compass heard since the brief's own point (a-change-is-against-what-you-last-saw). */
+  async since(since: string | null, known?: readonly Suggestion[]): Promise<CompassSince> {
+    const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
+    const [list, clock] = await Promise.all([known ?? this.suggestions(), this.d.clock()]);
+    const placed = new Set(file.notes.flatMap(n => n.match.workspace ? [n.match.workspace] : []));
+    const titles = placed.size ? new Map((await this.d.index().catch(() => ({ workspaces: [] as { id: string; title: string }[] }))).workspaces.map(w => [w.id, w.title])) : new Map<string, string>();
+    return compassSince(file.notes as CompassNote[], { settings, since, now: this.now(), clock, suggestions: list, titles, lastRead: file.lastRead });
+  }
+
+  /**
+   * The Overseer's Compass block (compass-without-the-overseer): built only when its digest is, from compass.json,
+   * and empty without a live note. The Overseer reads Compass here and through the compass_* tools, never a source.
+   */
+  async digest(): Promise<string[]> {
+    const [settings, file] = await Promise.all([this.settings(), this.d.store.read()]);
+    if (!file.notes.some(n => n.state === "live")) return [];
+    const placed = new Set(file.notes.flatMap(n => n.state === "live" && n.match.workspace ? [n.match.workspace] : []));
+    const titles = placed.size ? new Map((await this.d.index().catch(() => ({ workspaces: [] as { id: string; title: string }[] }))).workspaces.map(w => [w.id, w.title])) : new Map<string, string>();
+    return digestLines(file.notes as CompassNote[], settings, titles, this.now(), COMPASS.digestNotes);
   }
 
   /** What AI priority reads: live notes, settled for time first (an ended note never reaches the ranker). */

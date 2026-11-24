@@ -4,9 +4,10 @@ import { Pressable, Text } from "./text";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/ui";
 import { dispatchActionsRpc, dispatchRpc, linearQueueRpc, sweepQueueRpc } from "../shared/contracts";
-import { changeChip, openedLine, queueRowMeta, raisedRow, sinceBlock, type SinceChange, type SinceLine } from "../shared/brief-since";
+import { changeChip, openedLine, queueRowMeta, sinceBlock, type SinceChange, type SinceLine } from "../shared/brief-since";
+import { nobodyRow, type CompassSince } from "../shared/nobody";
+import { PriorityLine } from "./home-chrome";
 import { actionIcon, stateIcon } from "../shared/new-view";
-import type { RaisedNeed } from "../shared/linear-queue";
 import type { QueueNeeds } from "./home-view";
 import type { DispatchAction } from "../shared/dispatch";
 import { errorText } from "../shared/errors";
@@ -34,7 +35,9 @@ type QueueViewData = {
   groups: { priority: number; name: string; count: number; issues: QueueIssueRow[] }[];
   counts: { all: number; noWorkspace: number; changed: number };
   more: number;
-  raised: RaisedNeed[];
+  raised: unknown[];
+  /** What Compass heard since the same point: the one Since block (design §8). */
+  compass?: CompassSince | null;
 };
 type Filter = "all" | "no-workspace" | "changed";
 type Nav = { openWorkspace(i: { workspaceId: string }): void } | undefined;
@@ -122,7 +125,7 @@ export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, r
     <Text style={t.meta}>Couldn't read it: {error}</Text>
   </View>;
   // Nothing swept yet and nothing to say: no block (a fresh install before its first sweep, or no Linear).
-  if (!view || (!view.status.sweptAt && !view.changes.length)) return null;
+  if (!view || (!view.status.sweptAt && !view.changes.length && !view.compass?.lines.length)) return null;
   const now = Date.now();
   const b = sinceBlock(view, now, view.status.timeZone, raised);
   const link = <Pressable accessibilityRole="link" accessibilityLabel={`Open your Linear queue: ${b.link}`} onPress={openQueue} hitSlop={compact ? 0 : 8}
@@ -262,39 +265,49 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
   </ScrollView>;
 }
 
-// ---------- decision Q8: raised issues in Needs you ----------
+// ---------- "Nobody's on it": raised issues and urgent Compass asks in Needs you ----------
 
 /**
- * The raised issues as Needs-you rows, shaped like Home's: amber ↑, the key, "Raised", then "Low → High · title · no
- * workspace yet", New's Start…, and the age where the small x reveals (invariant 59, follow.dismiss `issue`).
+ * "Nobody's on it" rows (nobody-s-on-it-is-needs-you), shaped like Home's: an amber ↑ for a raise or the compass glyph
+ * for a Compass ask, the key, "Nobody's on it", then "title · due Thu" (or "· raised to Urgent"); under it the reason
+ * line with its source, as Home's rows carry AI priority's ("Dana: renewal call Thu · Compass", "Linear  Raised Low →
+ * Urgent"). One Start… (New on the issue, `{why}` filled) and the two-click Remove of every Needs-you item (invariant
+ * 59: follow.dismiss `issue`, which takes the raise and every Compass ask on it).
  */
-export function RaisedRows({ theme, compact, data, onDismissed }: { theme: Theme; compact: boolean; data: QueueNeeds; onDismissed: () => void }) {
+export function NobodyRows({ theme, compact, data, onDismissed }: { theme: Theme; compact: boolean; data: QueueNeeds; onDismissed: () => void }) {
   const c = theme.colors;
   // The same Dismiss as every Needs-you item (invariant 59): two clicks in place, one toast with Undo. The worker
   // pushes the new list on the home feed; without the feed, onDismissed reads it once.
   const dismiss = useDismiss(onDismissed);
   const now = Date.now();
-  return <>{data.raised.map(r => {
-    const row = raisedRow(r, now, data.timeZone);
+  return <>{data.needs.map(r => {
+    const row = nobodyRow(r, now, data.timeZone);
+    const first = r.reasons[0]!;
+    const reason = <PriorityLine reason={first.line} source={first.from === "compass" ? { kind: "compass", label: first.source } : { kind: "linear", label: first.source }} c={c} size={compact ? 12 : 11} lines={compact ? 2 : 1} />;
     const when = age(r.at, now);
     const start = <BarBtn c={c} compact={compact} small primary={false} disabled={false} b={{ name: "Start…", icon: "Play", key: null }} onPress={() => openNew({ source: r.key })} />;
     const x = <DismissX theme={theme} compact={compact} label={`Remove ${r.key}`} onPress={() => dismiss({ issue: r.key })} />;
+    const glyph = <View style={{ width: compact ? 18 : 16, alignItems: "center", paddingTop: compact ? 2 : 0 }}><Icon name={row.compass ? "Compass" : "ArrowUp"} size={compact ? 17 : 15} color={c.statusWarning} /></View>;
     return <RevealScope key={r.key} accessibilityLabel={`Needs you: ${row.label}`}
-      style={{ flexDirection: "row", alignItems: compact ? "flex-start" : "center", gap: 10, minHeight: compact ? 56 : 38, paddingLeft: compact ? 14 : 16, paddingRight: compact ? 16 : 16, paddingVertical: compact ? 12 : 4,
+      style={{ flexDirection: "row", alignItems: compact ? "flex-start" : "center", gap: 10, minHeight: compact ? 56 : 46, paddingLeft: compact ? 14 : 16, paddingRight: compact ? 16 : 16, paddingVertical: compact ? 12 : 5,
         borderLeftWidth: 2, borderLeftColor: withAlpha(c.statusWarning, 0.9), ...(compact ? { borderBottomWidth: 1, borderBottomColor: withAlpha(c.border, 0.6) } : {}) }}>
-      <View style={{ width: compact ? 18 : 16, alignItems: "center", paddingTop: compact ? 2 : 0 }}><Icon name="ArrowUp" size={compact ? 17 : 15} color={c.statusWarning} /></View>
+      {glyph}
       {compact ? <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
           <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foreground, fontSize: 15, lineHeight: 20, fontWeight: "500" }}>{row.title}</Text>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingTop: 2, fontVariant: ["tabular-nums"] }}>{when}</Text>
         </View>
         <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}><Text style={{ color: c.statusWarning, fontWeight: "600" }}>{row.word}</Text> · {row.line}</Text>
+        {reason}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>{start}{x}</View>
       </View> : <>
-        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foreground, fontSize: 13, fontWeight: "500" }}>{row.title}</Text>
-          <Text numberOfLines={1} style={{ flexShrink: 0, color: c.statusWarning, fontSize: 12 }}>{row.word}</Text>
-          <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12, marginLeft: -10 }}>{"\u00a0· "}{row.line}</Text>
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foreground, fontSize: 13, fontWeight: "500" }}>{row.title}</Text>
+            <Text numberOfLines={1} style={{ flexShrink: 0, color: c.statusWarning, fontSize: 12 }}>{row.word}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: 12, marginLeft: -10 }}>{"\u00a0· "}{row.line}</Text>
+          </View>
+          <View style={{ paddingRight: 40 }}>{reason}</View>
         </View>
         {start}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

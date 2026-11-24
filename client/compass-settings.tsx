@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, SettingsSection, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, SettingsSection, SettingsSelect, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
 import { Button, SubmitScope, Switch, errorText, text, type Theme } from "./kit";
@@ -10,13 +10,14 @@ import { raised, tint } from "./theme";
 import { compassFindRpc, compassRpc, readCompassRpc, setCompassRpc } from "../shared/contracts";
 import {
   COMPASS, ROLES, ROLE_INFO, type CompassChange, type CompassNote, type CompassSource, type GlossaryEntry, type Place, type Preset, type PresetView, type Role, type Who,
+  CADENCES, type CompassSettings,
 } from "../shared/compass";
 import { type PlanView } from "../shared/morning-brief";
 
 export const compassKey = ["follow-up", "compass"];
 
 type View_ = {
-  settings: { sources: CompassSource[]; instructions: string; glossary: GlossaryEntry[] };
+  settings: { sources: CompassSource[]; instructions: string; glossary: GlossaryEntry[]; cadence: CompassSettings["cadence"]; routing: CompassSettings["routing"] };
   readers: { conversation: boolean; history: boolean };
   presets: PresetView[];
   blocked: string | null;
@@ -75,7 +76,7 @@ export function CompassSection({ theme, compact, after }: { theme: Theme; compac
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const data = query.data;
   const full = !!data && data.settings.sources.length >= COMPASS.sources;
-  return <SettingsSection title="What sets your priorities" info="Everything AI priority, Needs you and the brief read, in one list. The people you add are read each workday morning: Follow-up keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads them. Nothing is ever posted. Agents can set it up too.">
+  return <SettingsSection title="What sets your priorities" info="Everything AI priority, Needs you and the brief read, in one list. The people you add are read each workday morning, and during the day while Follow-up is open: Follow-up keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads them. Nothing is ever posted. Agents can set it up too.">
     {query.isPending && <ActivityIndicator accessibilityLabel="Loading Compass" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <Text style={[t.meta, { color: c.statusWarning }]}>{`Couldn't load Compass: ${errorText(query.error)}`}</Text>}
     {data?.blocked && <Line icon="TriangleAlert" tone={c.statusWarning} text={data.blocked} theme={theme} compact={compact} />}
@@ -112,6 +113,29 @@ export function CompassReading({ theme, compact }: { theme: Theme; compact: bool
     <ReadingNotes value={data.settings.instructions} busy={change.isPending} theme={theme} compact={compact} onSave={v => change.mutate({ instructions: v })} />
     <Glossary entries={data.settings.glossary} busy={change.isPending} theme={theme} compact={compact} onSave={g => change.mutate({ glossary: g })} />
   </SettingsSection>;
+}
+
+/** The daytime read's choices (the-brief-has-one-timer): only while Follow-up is open, on workdays 08:00-20:00. */
+const CADENCE_LABEL: Record<CompassSettings["cadence"], string> = { off: "Mornings only", "1h": "Every hour", "2h": "Every 2 hours", "4h": "Every 4 hours" };
+/** Where Compass's suggestions go: an issue nobody started that a source said matters. */
+const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": "Urgent in Needs you, the rest in New", "new-only": "Only in New", off: "Off" };
+
+/**
+ * When's Compass rows: the daytime read (Off, 1, 2 or 4 h while the app is open) and where suggestions go. The same
+ * `set_compass` change an agent sends ({ cadence }, { routing }).
+ */
+export function CompassWhen({ theme, compact }: { theme: Theme; compact: boolean }) {
+  const query = useCompassView(); const change = useCompassChange();
+  const data = query.data;
+  if (!data || !data.settings.sources.length) return null;
+  const s = data.settings;
+  return <>
+    <SettingsSelect label="During the day" hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
+      value={s.cadence} disabled={change.isPending} options={CADENCES.map(v => ({ value: v, label: CADENCE_LABEL[v] }))} onValueChange={cadence => change.mutate({ cadence: cadence as CompassSettings["cadence"] })} />
+    <SettingsSelect label="Issues nobody's on" hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? "Listed first in New's My issues, with why." : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in New.`}
+      value={s.routing.suggestions} disabled={change.isPending} options={(Object.keys(ROUTING_LABEL) as CompassSettings["routing"]["suggestions"][]).map(v => ({ value: v, label: ROUTING_LABEL[v] }))}
+      onValueChange={suggestions => change.mutate({ routing: { suggestions: suggestions as CompassSettings["routing"]["suggestions"] } })} />
+  </>;
 }
 
 /** "Read 09:02 · 3 notes live · 1 not matched to a workspace", or why the last read failed. */

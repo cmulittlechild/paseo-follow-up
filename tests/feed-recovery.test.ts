@@ -117,18 +117,18 @@ test("resubscribe: every second for the first tries, then backing off to 30 s", 
   assert.equal(feedRetryMs(FEED_RETRY_FAST), 2_000); assert.equal(feedRetryMs(100), 30_000);
 });
 
-// raised-is-needs-you (AGENTS.md invariant 86): the raised Linear issues are the worker's answer on the home feed, so a
+// nobody-s-on-it-is-needs-you (AGENTS.md invariant 86): the raised Linear issues are the worker's answer on the home feed, so a
 // morning sweep's raise reaches a Home that stays open for hours, with no read of its own and no remount.
-const RAISED = { raised: [{ key: "ACME-142", title: "Retry failed charges", url: null, priority: 2, priorityBefore: 4, due: null, at: "2026-11-12T11:00:00.000Z" }], timeZone: "UTC", revision: "r2" };
+const RAISED = { needs: [{ key: "ACME-142", title: "Retry failed charges", url: null, due: null, raisedTo: 2, at: "2026-11-12T11:00:00.000Z", reasons: [{ from: "queue", line: "Raised Low → High", source: "Linear queue", note: null }] }], timeZone: "UTC", revision: "r2" };
 
 test("Q8: a sweep's raise reaches an open Home on the home feed, with no RPC and no remount", { timeout: 60_000 }, async () => {
   const c = await open();
   try {
-    assert.deepEqual(c.extras.queue().raised, [], "nothing raised yet");
+    assert.deepEqual(c.extras.queue().needs, [], "nothing raised yet");
     const at = Date.now();
     c.host.push("follow.home-feed", { priorities: [], rank: { running: false }, overseer: null, usage: null, usageLive: true, queue: RAISED });
     await c.tick(500);
-    assert.deepEqual(c.extras.queue().raised.map(r => r.key), ["ACME-142"], "the pushed raise is in the store Home and the sidebar read");
+    assert.deepEqual(c.extras.queue().needs.map(r => r.key), ["ACME-142"], "the pushed raise is in the store Home and the sidebar read");
     assert.equal(c.extras.queue().revision, "r2", "the brief pane re-reads on the revision");
     assert.equal(c.callsSince(at), 0, "no RPC was needed");
   } finally { await c.close(); }
@@ -141,7 +141,7 @@ test("Q8 on Paseo 0.15: the raised issues ride the priorities poll, not a read o
   const extras = stores.createHomeExtras(host.client as never);
   try {
     for (let t = 0; t < 2_000; t += 250) { mock.timers.tick(250); await settle(); }
-    assert.deepEqual(extras.queue().raised.map(r => r.key), ["ACME-142"]);
+    assert.deepEqual(extras.queue().needs.map(r => r.key), ["ACME-142"]);
     assert.ok(!host.calls.some(c => c.name === "follow.linear-queue"), "no queue read on a timer");
   } finally { await extras.stop(); mock.timers.reset(); }
 });

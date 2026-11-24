@@ -12,7 +12,7 @@ import { NO_USAGE, USAGE_POLL_MS, type Usage } from "../shared/usage";
 import type { z } from "zod";
 
 export type QueueNeeds = z.infer<typeof queueNeedsSchema>;
-const NO_QUEUE: QueueNeeds = { raised: [], timeZone: "UTC", revision: "" };
+const NO_QUEUE: QueueNeeds = { needs: [], timeZone: "UTC", revision: "" };
 import { onVisible, whileVisible } from "./visibility";
 import type { ContextRequest } from "../shared/catch-up";
 

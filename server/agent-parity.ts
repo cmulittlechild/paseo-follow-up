@@ -114,8 +114,8 @@ export const RPC_TOOLS: readonly RpcTool[] = [
     toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, choice: a.choice, words: a.words, action: "send", ...(a.images ? { images: a.images } : {}) }) },
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: the small x on every Needs-you item and brief.
   { name: "dismiss_item", rpc: "follow.dismiss", kind: "planned",
-    input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), issue: z.string().max(30).optional(), undo: z.boolean().optional(), ...confirm }),
-    toRpc: a => ({ ...(a.agentId ? { agentId: a.agentId } : a.issue ? { issue: a.issue } : { workspaceId: a.workspaceId, key: a.key }), ...(a.undo ? { undo: true } : {}) }),
+    input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), issue: z.string().max(30).optional(), compass: z.string().min(1).max(80).optional(), undo: z.boolean().optional(), ...confirm }),
+    toRpc: a => ({ ...(a.agentId ? { agentId: a.agentId } : a.issue ? { issue: a.issue } : a.compass ? { compass: a.compass } : { workspaceId: a.workspaceId, key: a.key }), ...(a.undo ? { undo: true } : {}) }),
     guard: (a, caller) => a.agentId === caller ? "dismiss_item dismisses another agent's brief for the developer; your own brief is the developer's to dismiss." : null },
   { name: "dismiss_question", rpc: "follow.dismiss-question", kind: "planned",
     input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), undo: z.boolean().optional(), ...confirm }),

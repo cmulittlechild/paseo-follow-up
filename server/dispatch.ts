@@ -1,3 +1,4 @@
+import type { Suggestion } from "../shared/nobody";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { JsonFileStore } from "./json-file-store";
@@ -62,6 +63,8 @@ export type DispatchDeps = {
    * predicate as `existing`): one map per list read, never a lookup per issue.
    */
   taken?(): Promise<ReadonlyMap<string, ExistingWorkspace>>;
+  /** Compass's suggestions (shared/nobody.ts): My issues sorts them first with their reason, and `{why}` carries theirs. */
+  compass?(): Promise<readonly Suggestion[]>;
   /** The repository's default branch for a project, or null. */
   defaultBase(projectId: string): Promise<string | null>;
   /** The agent an action starts (the action's own, else New's default agent). */
@@ -151,7 +154,9 @@ export class DispatchService {
       const where = resolveWhere({ source, projects, picked: null, rules: file.rules, learned, lastProjectId: file.lastProjectId, workspaceProjectId: existing?.projectId ?? null, noTeam: file.noTeam });
       routes[issue.key] = { project: where.projectName, guess: where.guess, existing: existing ? { workspaceId: existing.workspaceId, title: existing.title, state: existing.state } : null };
     }));
-    return { linear, routes, taken: linear.issues.filter(i => routes[i.key]?.existing).map(i => i.key), recent: recentRecords(file.records, 3).map(r => this.view(r)) };
+    // Compass's suggestions: never on a search (a search is the developer's own words), and only issues nobody has.
+    const compass = o.query ? [] : (await this.d.compass?.().catch(() => []) ?? []).map(x => ({ key: x.key, title: x.title, url: x.url, reason: x.reason, source: x.source, note: x.note, urgent: x.urgent }));
+    return { linear, routes, taken: linear.issues.filter(i => routes[i.key]?.existing).map(i => i.key), recent: recentRecords(file.records, 3).map(r => this.view(r)), compass };
   }
   records(): Promise<DispatchRecord[]> { return this.d.store.read().then(f => recentRecords(f.records, RECORDS_MAX).map(r => this.view(r))); }
   private view(r: DispatchRecord): DispatchRecord { return { ...r, prompt: null }; }
@@ -207,9 +212,11 @@ export class DispatchService {
     const branch = workspace === "worktree" && !pr && action ? input.branch?.trim() || branchFor(source, action.branch) : null;
     const title = input.title?.trim() || titleFor(source);
     const repo = source.repo ?? project?.repo ?? project?.name ?? "";
+    // `{why}` (an-action-is-data): a Compass suggestion's quote, who and date; empty for anything else.
+    const why = source.key ? (await this.d.compass?.().catch(() => []) ?? []).find(x => x.key === source.key!.toUpperCase())?.why ?? "" : "";
     const instructions = action ? renderAction(action, {
       title: source.title !== source.key ? source.title : "", url: source.url, key: source.key ?? "", body: source.body, words: source.kind === "text" ? source.body : "", kind: KIND_WORD[source.kind],
-      team: source.team, repo, base: base?.name ?? "", branch: branch ?? (pr ? `the PR's branch` : ""),
+      team: source.team, repo, base: base?.name ?? "", branch: branch ?? (pr ? `the PR's branch` : ""), why,
     }, input.note) : "";
     const gate = await this.d.gate?.(actor, source.kind === "linear" ? source.key ?? null : null).catch(() => null);
     if (gate) blockers.push(gate);
