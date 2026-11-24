@@ -387,7 +387,8 @@ function WhenSection({ view, theme, compact }: { view: BriefSettingsView; theme:
     <SettingsCard>
       <SettingsSelect label="Morning read at" hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
         options={times.map(v => ({ value: v, label: v }))} onValueChange={sweepAt => change.mutate({ sweepAt })} />
-      <CompassWhen theme={theme} compact={compact} />
+      <CompassWhen theme={theme} compact={compact} part="cadence" />
+      <CompassWhen theme={theme} compact={compact} part="routing" />
       <SettingsSelect label="Changes since" hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
         value={q.since} disabled={change.isPending} options={[{ value: "read", label: "Your last read" }, { value: "workday", label: "Your last workday" }]} onValueChange={since => change.mutate({ since })} />
     </SettingsCard>

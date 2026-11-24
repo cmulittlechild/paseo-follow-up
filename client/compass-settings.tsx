@@ -124,18 +124,17 @@ const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> =
  * When's Compass rows: the daytime read (Off, 1, 2 or 4 h while the app is open) and where suggestions go. The same
  * `set_compass` change an agent sends ({ cadence }, { routing }).
  */
-export function CompassWhen({ theme, compact }: { theme: Theme; compact: boolean }) {
+export function CompassWhen({ theme, compact, part }: { theme: Theme; compact: boolean; part: "cadence" | "routing" }) {
   const query = useCompassView(); const change = useCompassChange();
   const data = query.data;
   if (!data || !data.settings.sources.length) return null;
   const s = data.settings;
-  return <>
-    <SettingsSelect label="During the day" hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
-      value={s.cadence} disabled={change.isPending} options={CADENCES.map(v => ({ value: v, label: CADENCE_LABEL[v] }))} onValueChange={cadence => change.mutate({ cadence: cadence as CompassSettings["cadence"] })} />
-    <SettingsSelect label="Issues nobody's on" hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? "Listed first in New's My issues, with why." : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in New.`}
-      value={s.routing.suggestions} disabled={change.isPending} options={(Object.keys(ROUTING_LABEL) as CompassSettings["routing"]["suggestions"][]).map(v => ({ value: v, label: ROUTING_LABEL[v] }))}
-      onValueChange={suggestions => change.mutate({ routing: { suggestions: suggestions as CompassSettings["routing"]["suggestions"] } })} />
-  </>;
+  // One row each, so the settings card draws its divider between them.
+  if (part === "cadence") return <SettingsSelect label="During the day" hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
+    value={s.cadence} disabled={change.isPending} options={CADENCES.map(v => ({ value: v, label: CADENCE_LABEL[v] }))} onValueChange={cadence => change.mutate({ cadence: cadence as CompassSettings["cadence"] })} />;
+  return <SettingsSelect label="Issues nobody's on" hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? "Listed first in New's My issues, with why." : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in New.`}
+    value={s.routing.suggestions} disabled={change.isPending} options={(Object.keys(ROUTING_LABEL) as CompassSettings["routing"]["suggestions"][]).map(v => ({ value: v, label: ROUTING_LABEL[v] }))}
+    onValueChange={suggestions => change.mutate({ routing: { suggestions: suggestions as CompassSettings["routing"]["suggestions"] } })} />;
 }
 
 /** "Read 09:02 · 3 notes live · 1 not matched to a workspace", or why the last read failed. */
