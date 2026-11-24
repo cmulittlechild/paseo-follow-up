@@ -34,10 +34,27 @@ function pngText(buf: Buffer): string {
   return out.join("\n");
 }
 
+/**
+ * An MP4's text: every box but `mdat`, the encoded frames (compressed noise like a PNG's pixels: a 3-letter run in
+ * the demo video's frame data once matched a ticket prefix by chance). Metadata boxes (moov, udta, free) are kept.
+ */
+function mp4Text(buf: Buffer): string {
+  const out: string[] = [];
+  for (let at = 0; at + 8 <= buf.length;) {
+    let len = buf.readUInt32BE(at); const type = buf.toString("latin1", at + 4, at + 8);
+    if (len === 1) len = Number(buf.readBigUInt64BE(at + 8));
+    if (len === 0) len = buf.length - at;
+    if (len < 8) { out.push(buf.toString("utf8", at)); break; } // not a box: read the rest as text
+    if (type !== "mdat") out.push(buf.toString("utf8", at, at + len));
+    at += len;
+  }
+  return out.join("\n");
+}
+
 const tracked = () => execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(f => f && !BINARY.test(f));
 const textOf = async (file: string) => {
   const buf = await readFile(join(root, file));
-  return file.endsWith(".png") ? pngText(buf) : buf.toString("utf8");
+  return file.endsWith(".png") ? pngText(buf) : file.endsWith(".mp4") ? mp4Text(buf) : buf.toString("utf8");
 };
 
 test("no-real-names-in-renders-or-fixtures: no committed file names the company, its people, customers or tickets, the machine or its user", async () => {
@@ -98,4 +115,12 @@ test("no-real-names-in-renders-or-fixtures: every render path uses the shared ch
     assert.match(src, /assertNoRealNames/, file);
     assert.doesNotMatch(src, /REAL_HOST/, `${file}: no private hostname-only check`);
   }
+});
+
+test("no-real-names-in-renders-or-fixtures: an MP4 is read without its frame data, never without its metadata", () => {
+  const box = (type: string, body: string) => { const b = Buffer.alloc(8 + body.length); b.writeUInt32BE(8 + body.length); b.write(type, 4, "latin1"); b.write(body, 8, "latin1"); return b; };
+  const file = Buffer.concat([box("ftyp", "isom"), box("moov", "udta title acme-app"), box("mdat", "noise-in-frames")]);
+  const text = mp4Text(file);
+  assert.match(text, /acme-app/);
+  assert.doesNotMatch(text, /noise-in-frames/);
 });

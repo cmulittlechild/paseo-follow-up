@@ -242,6 +242,20 @@ PLAYWRIGHT_CORE=<playwright-core dir> CHROMIUM=<chromium binary> ~/paseo-harness
   reading the frames. Paseo's app shows only image media; the paseo.sh plugin page plays the video, from a
   jsDelivr `gh` URL pinned to a commit (it serves `video/mp4`; a relative path would resolve to the npm package,
   which leaves the video out, and GitHub raw serves `application/octet-stream`).
+- **Demo video v2.** A take recorded and edited from one shot list, in Remotion (`video/`, its own package: never in
+  the plugin's dependencies or the npm package). The shot list lives in `scripts/demo-video-v2.mjs`: each beat starts
+  a shot with the UI it frames (`shot`, `frame`: real element boxes), holds still while the camera settles, then acts
+  inside that frame with time to read. The edit (`video/src/Demo.tsx`) plays the shots: one framing per shot, only
+  ever the whole window or the Follow-up pane edge to edge (the pane when every box of the shot fits above the
+  caption), eased over 1.6 s, with an eased pointer, click rings and captions that animate word by word. Two steps,
+  both through `harness-slot`: `npm run video:v2:take -- --as-version <stable>` (the bare app at 2560×1600 and
+  `take.json`: pointer path, presses, beats, the Follow-up pane's box and the shots, into `video/public/take/`), then
+  `npm --prefix video ci && (cd video && node render.mjs)` (writes `follow-up-demo-v2.mp4`, `-poster.png`, `.webp`,
+  a review frame every second and `contact-sheet.png` to `video/out/`; `node stills.mjs <seconds…>` renders single
+  frames, `npx remotion studio src/index.ts` previews). Needs `PLAYWRIGHT_CORE` and `CHROMIUM` (the render uses
+  `CHROMIUM` too) and, for the take, `FFMPEG` (video/'s `ffmpeg-static` works). The committed copies sit beside v1's
+  in `docs/screenshots/` (`follow-up-demo-v2*`, kept out of the npm package by the same `files` rule), review frames
+  and the contact sheet in `docs/evidence/demo-video-v2/`.
 - **`--whats-new-review`** (review evidence, not README images): the sheet after a minor update (`2.0.1` to `2.1.0`,
   this repo's own section) on desktop and phone, and Settings → General's "Show What's new after updates" switch on
   and off (set through `set_updates`), desktop and phone, into `--out`.
