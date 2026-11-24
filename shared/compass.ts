@@ -38,7 +38,18 @@ export const COMPASS = {
   notesPerRead: 10,
   /** `read_compass` waits this long, then answers `running`. */
   waitMs: 30_000,
+  /** The daytime read runs on workdays between these hours in the developer's zone, only while an app client is open. */
+  dayStartHour: 8, dayEndHour: 20,
+  /** On a host without subscriptions (Paseo 0.15), an app client counts as open this long after its last poll. */
+  openWindowMs: 120_000,
+  /** The Overseer's digest lists at most this many live notes. */
+  digestNotes: 12,
+  /** Removed suggestions kept in compass.json; the oldest go first. */
+  removed: 200,
 } as const;
+
+/** The daytime read's period for a cadence; null: off. */
+export const cadenceMs = (c: typeof CADENCES[number]): number | null => c === "off" ? null : Number(c.slice(0, -1)) * 3_600_000;
 
 // ---------- roles ----------
 
@@ -144,7 +155,7 @@ export const compassSettingsSchema = z.object({
     graceDays: z.number().int().min(0).max(7).default(1),
     decayWorkdays: z.number().int().min(1).max(15).default(3),
   }).default({ undatedDays: 7, graceDays: 1, decayWorkdays: 3 }),
-  /** The daytime read while the app is open (a later release); the morning read always runs. */
+  /** The daytime read: every this long while an app client is open, on workdays 08:00-20:00. The morning read always runs. */
   cadence: z.enum(CADENCES).default("2h"),
 });
 export type CompassSettings = z.infer<typeof compassSettingsSchema>;
@@ -200,6 +211,10 @@ export const compassChangeSchema = z.strictObject({
   instructions: z.string().max(8_000).optional(),
   glossary: z.array(glossarySchema).max(COMPASS.glossary).optional(),
   expiry: z.strictObject({ undatedDays: z.number().int().min(1).max(30).optional(), graceDays: z.number().int().min(0).max(7).optional(), decayWorkdays: z.number().int().min(1).max(15).optional() }).optional(),
+  /** Where suggestions go: urgent ones to Needs you and the rest to New ("needs-you-and-new"), New only, or off. */
+  routing: z.strictObject({ urgentStrength: z.enum(["high", "normal"]).optional(), urgentWithinWorkdays: z.number().int().min(0).max(10).optional(), suggestions: z.enum(["needs-you-and-new", "new-only", "off"]).optional() }).optional(),
+  /** The daytime read while the app is open: off, or every 1, 2 or 4 hours. */
+  cadence: z.enum(CADENCES).optional(),
 });
 export type CompassChange = z.infer<typeof compassChangeSchema>;
 
@@ -269,6 +284,8 @@ export function applyCompassChange(s: CompassSettings, c: CompassChange, ctx: Ap
     next.glossary = c.glossary.map(g => ({ words: g.words, means: "issue" in g.means ? { issue: g.means.issue.toUpperCase().replace(/#/, "#") } : g.means }));
   }
   if (c.expiry) next.expiry = { ...next.expiry, ...Object.fromEntries(Object.entries(c.expiry).filter(([, v]) => v !== undefined)) };
+  if (c.routing) next.routing = { ...next.routing, ...Object.fromEntries(Object.entries(c.routing).filter(([, v]) => v !== undefined)) };
+  if (c.cadence) next.cadence = c.cadence;
   const parsed = compassSettingsSchema.safeParse(next);
   if (!parsed.success) return { ok: false, error: `That change doesn't fit Compass: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message ?? ""}`.trim() };
   return { ok: true, settings: parsed.data, touched };
@@ -338,6 +355,10 @@ export const compassFileSchema = z.object({
   lastRead: z.object({ at: z.string(), trigger: z.string(), ok: z.boolean(), notes: z.number().int(), error: z.string().max(300).nullable() }).nullable().default(null),
   /** Rule codes of refused notes from the last reads (never their text). */
   refused: z.array(z.object({ at: z.string(), code: z.string() })).max(50).default([]),
+  /** Suggestions the developer removed (Needs you's Remove, New's, `dismiss_item {compass}`), by note id. */
+  removed: z.array(z.object({ note: z.string(), at: z.string() })).max(COMPASS.removed).default([]),
+  /** The last daytime read (the app open, every `cadence`): when it ran, in the brief's zone. */
+  dayReadAt: z.string().nullable().default(null),
 });
 export type CompassFile = z.infer<typeof compassFileSchema>;
 export const emptyCompassFile = (): CompassFile => compassFileSchema.parse({ version: 1 });

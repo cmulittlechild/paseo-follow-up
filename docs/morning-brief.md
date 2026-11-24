@@ -128,9 +128,11 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
   reads the view every 3 s while the sweep runs, so a slow Linear never holds the RPC. On
   phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.
 - **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
-  no workspace (`raisedNeeds`, over the log window) is the first row of Home's Needs you group, shaped like its rows
-  (amber ↑, the key, "Raised", "Low → High · title · no workspace yet", the raise's age), and counts in the group's
-  header, the strip, the brief line and the sidebar badge from one number: the worker's (`LinearQueue.needs`), pushed on
+  no workspace (`raisedNeeds`, over the log window) is a "Nobody's on it" row, first in Home's Needs you group, the same
+  row kind as an urgent Compass ask (nobody-s-on-it-is-needs-you, [compass](compass.md#suggestions-issues-nobodys-on)):
+  amber ↑, the key, "Nobody's on it", the title, the reason line "Linear · Raised Low → Urgent", the
+  raise's age. It counts in the group's header, the strip, the brief line and the sidebar badge from one number: the
+  worker's (the queue's `LinearQueue.needs` and Compass's suggestions, one row per issue), pushed on
   `follow.home-feed` (`queue`) when a sweep or a dismissal changes it, and on 0.15 carried by the priorities poll
   (`HomeModel.raised`; Catch up's deck stays workspaces). An open Home shows a morning raise without a remount, and an
   open brief pane re-reads its Since block when the feed's queue revision moves. It has Start… and the same two-click

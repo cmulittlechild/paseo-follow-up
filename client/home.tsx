@@ -22,7 +22,7 @@ import { ReferencesLine } from "./linked";
 import { WhyItMatters } from "./why-it-matters";
 import { bottomGap, bottomInset, Button, focusSoon, IconButton, space, text, type Theme } from "./kit";
 import { DispatchRows, NewHost, openNew, useNewOpen } from "./new";
-import { QueueScreen, RaisedRows, SinceBlock } from "./brief-since";
+import { NobodyRows, QueueScreen, SinceBlock } from "./brief-since";
 import type { NewKey } from "./search-key";
 import { DockedPane } from "./docked-pane";
 import type { DockState } from "./dock";
@@ -115,11 +115,12 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const { inbox } = deps.sources;
   const c = theme.colors;
   const compact = layout.compact;
-  // Decision Q8: raised Linear issues are Needs-you items with no workspace row. The worker sends them on the home
-  // feed; the model counts them (model.raised) and they head the group. Catch up's deck and model.needs stay workspaces.
+  // "Nobody's on it" (raised issues, urgent Compass asks) are Needs-you items with no workspace row. The worker sends
+  // them on the home feed; the model counts them (model.raised) and they head the group. Catch up's deck and
+  // model.needs stay workspaces.
   const model = useHomeModel(deps.sources);
   const queue = useSyncExternalStore(deps.sources.extras.subscribe, deps.sources.extras.queue, deps.sources.extras.queue);
-  const raisedKeys = useMemo(() => new Set(queue.raised.map(r => r.key)), [queue.raised]);
+  const raisedKeys = useMemo(() => new Set(queue.needs.map(r => r.key)), [queue.needs]);
   const omnibox = useOmnibox(model, deps.sources);
   const searchKey = deps.searchKey;
   const anywhereKey = useSyncExternalStore(searchKey?.subscribe ?? noSubscribe, searchKey?.label ?? noLabel, searchKey?.label ?? noLabel);
@@ -212,7 +213,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     setSelected(OVERSEER_KEY); setReplyFocus(n => n + 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.ask]);
-  const briefLine = [pane.counts.needs ? `${pane.counts.needs} need you` : "Nothing needs you", pane.counts.sending ? `${pane.counts.sending} sending` : "", pane.away.count ? `${pane.away.count} done while away` : ""].filter(Boolean).join(" · ");
+  const briefLine = [pane.counts.needs ? `${pane.counts.needs} need you` : "Nothing needs you", pane.counts.sending ? `${pane.counts.sending} sending` : "", pane.away.count ? `${pane.away.count} done while away` : "", queue.heard ?? ""].filter(Boolean).join(" · ");
 
   const openFull = useCallback((s: Workstream) => {
     if (!navigation) return;
@@ -286,7 +287,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
         <View style={{ flexDirection: "row", paddingHorizontal: 6 }}><VersionMark theme={theme} touch openSettings={deps.openSettings} /></View></View>
       : undefined}
     // Phones: the setup offer goes after the Needs-you group when there is one, so the first ask stays high.
-    raised={<RaisedRows theme={theme} compact={compact} data={queue} onDismissed={deps.sources.extras.refreshQueue} />}
+    raised={<NobodyRows theme={theme} compact={compact} data={queue} onDismissed={deps.sources.extras.refreshQueue} />}
     afterNeeds={compact && model.needs > 0 && props.onboarding?.offer ? <SetupOffer theme={theme} compact view={props.onboarding} /> : undefined}
     emptyAction={compact ? <Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" onPress={deps.openSettings} /> : undefined}
     top={<ListTop theme={theme} dense={compact} title={compact ? undefined : <ListHeader theme={theme} compact={compact} onSettings={deps.openSettings} onKeys={() => setKeysOpen(v => !v)} onStats={openStats} onNew={() => openNew()} newLabel={newLabel} />}>

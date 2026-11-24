@@ -78,14 +78,18 @@ key is its issue, its workspace by the one predicate New reads), and the card co
 - **Presets** (`PRESETS`) only fill a new source's fields. One whose reader isn't here is listed with its why.
 - **Glossary:** the developer's words → an issue key (or workspace or account), checked when saved, read by matching
   before anything else.
-- **expiry** (undated days 7, grace 1, decay 3 workdays) is editable. **routing** and **cadence** (Off, 1 h, 2 h, 4 h;
-  default 2 h) are stored with their defaults for the releases that use them.
+- **expiry** (undated days 7, grace 1, decay 3 workdays) is editable. **routing** (where suggestions go: urgent ones to
+  Needs you and the rest to New, New only, or off; how strong and how soon is urgent) and **cadence** (the daytime
+  read: Off, 1 h, 2 h, 4 h; default 2 h) are in Settings → Compass → When and `set_compass`.
 
 ## Reading
 
 - **When:** once a workday after the sweep time, from the worker's 15 s loop (`Compass.tick`, the-brief-has-one-timer),
-  while the governor allows background work; on Read now (`read_compass`); and over the last week when a place is
-  added. The daytime read while the app is open comes in a later release.
+  while the governor allows background work; then the **daytime read** every `cadence` (default 2 h) from the same
+  loop, only while an app client is open (a home-feed subscriber, or on Paseo 0.15 a priorities poll in the last 2
+  minutes), on workdays between 08:00 and 20:00 in the developer's zone; on Read now (`read_compass`); and over the
+  last week when a place is added. With the app closed nothing is read on a schedule. Each read takes only what's new
+  since the place's cursor, and an empty read makes no model call.
 - **How:** by cursor in time order, never by a relevance search. The chat recipe's `history` role (a conversation id
   and an oldest time, matched by shape) is read newest page first, at most `COMPASS.pagesMax` pages; without one, the
   message search sorted by time, one day at a time, and the place says it's on the slower path. A read that fails
@@ -150,15 +154,50 @@ after the note ends.
   main agent: the developer passed this on, the quote as someone else's words, what Compass read, the date. It asks for
   nothing. Nothing else in Compass ever messages an agent.
 
+## Suggestions: issues nobody's on
+
+A live note about an issue (`match.issue`) that has no workspace (invariant 95's one predicate) is a **suggestion**
+(`suggestions`, `shared/nobody.ts`), one per issue: its soonest, then strongest note.
+
+- **Urgent** (routing `needs-you-and-new`, the source's Needs-you switch on, strength at `routing.urgentStrength`, a
+  date within `routing.urgentWithinWorkdays` workdays): a **Nobody's on it** row in Needs you
+  (nobody-s-on-it-is-needs-you). A raised Linear issue is the same row kind: one row per issue (`nobodyNeeds`) whatever
+  the reasons, the first drawn as its reason line with its source ("Dana: renewal call Thu · Compass", "Linear ·
+  Raised Low → Urgent"), every one in its screen-reader label and `why_suggested`. One Start… (New on the issue), one
+  two-click Remove (`follow.dismiss {issue}` takes the raise and every Compass ask on it), one count on the home feed.
+- **Everything else** sorts first in New's **My issues**, with its reason line. An issue not assigned to the developer
+  joins My issues with the compass glyph while its note is live. A search shows no suggestion.
+- **Remove** is per note (`dismiss_item {compass: noteId}`, kept in `compass.json` `removed`); a later note on the same
+  issue suggests it again. Routing `off` turns suggestions off; notes still reorder AI priority.
+- **`{why}`** (an-action-is-data): New's placeholder for a suggestion's quote, who said it, when and its date
+  (`whyText`). The built-ins carry it; for any other source it is empty and its line drops.
+
+## The brief: one Since block
+
+The brief's "Since" block is one block for every source (design §8): "Since Friday · Dana, your Linear queue". Against
+the brief's own stored point (a-change-is-against-what-you-last-saw), Compass's lines (`compassSince`) come first:
+workspaces it heard about (at most 3, with the quote), what went to Needs you (named once, no second Start…), other
+suggestions (at most 2, with New's actions), then the queue's changes, then notes dropped ("Dana dropped Okta SSO"),
+"N notes aren't on any workspace" and a failed read. Home's brief row adds "1 from Dana" (`heardWords`) when Compass
+heard anything since.
+
+## The Overseer: a user, not the engine
+
+Compass runs as Follow-up's own job with the Overseer off (compass-without-the-overseer). The Overseer's digest gains a
+Compass block when a note is live: this week's plan and at most 12 notes, `who · until · what · where · note id`, built
+only when its digest is. It acts through the same tools (`compass_note`, `set_compass`, dry run then confirm) and never
+reads a source. Why it matters' Ask the Overseer puts a question about a note in its composer, unsent.
+
 ## Tools
 
 | Tool | Kind | Does |
 | --- | --- | --- |
 | `compass` | read | Sources, glossary, presets, each place's last read, live notes (optionally one workspace's) with the titles of the workspaces they went to, `blocked`, and (without `workspace`) `plan`, `inputs` and `brief`: every priority input. |
 | `compass_find` | read | People or channels from the chat tool's own search, each with the place `set_compass` takes. |
-| `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry; `plan` (mode, link, replaceWhenNewer, find), `inputs` (on, retry, check, preview) and `queue` (states, chat and calendar windows). |
+| `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry; `routing`; `cadence`; `plan` (mode, link, replaceWhenNewer, find), `inputs` (on, retry, check, preview) and `queue` (states, chat and calendar windows). |
 | `read_compass` | planned | Read now; waits up to 30 s, then `running`. |
 | `compass_note` | planned | Pin (a workspace, what, optional until and strength), edit, unpin, or tell (one message to the workspace's main agent, only on the developer's ask). Audited as `agent:<id>`. |
-| `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched. Needs you rows don't come from Compass yet. |
+| `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched, and `needsYou`: whether it is a suggestion, urgent (Nobody's on it) or first in New, and why. |
 
+`dismiss_item {compass: noteId}` removes one suggestion; `dismiss_item {issue}` removes a Nobody's-on-it row.
 "Set up Compass from my DM with my PM" is `compass` → `compass_find` → `set_compass` (dry run, then confirm).

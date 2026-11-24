@@ -198,10 +198,16 @@ export type DigestFile = {
   hash: string;
   /** Resting rows carry `resting` and a title-only line; the hook lists them in one compact line. */
   rows: { id: string; group: HomeGroupId; line: string; hash: string; resting?: true }[];
+  /**
+   * Compass's block (compass-without-the-overseer): this week's plan and up to 12 live notes, `who · until · what ·
+   * workspace or unplaced · note id`. Absent without a live note. The Overseer reads Compass here and through the
+   * compass_* tools, never a source.
+   */
+  compass?: string[];
 };
 const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 /** The digest file. Only meaningful fields go into the hash, so a ticking age never counts as a change. */
-export function digestFile(agentId: string, rows: WorkstreamRow[], now: number): DigestFile {
+export function digestFile(agentId: string, rows: WorkstreamRow[], now: number, compass: readonly string[] = []): DigestFile {
   const ordered = orderRows(rows);
   const out = ordered.map(r => {
     if (r.dormant) { const line = `${clip(r.title, 50)} ws=${r.workspaceId}`; return { id: r.workspaceId, group: r.group, line, hash: hash(`rest|${line}`), resting: true as const }; }
@@ -209,7 +215,8 @@ export function digestFile(agentId: string, rows: WorkstreamRow[], now: number):
   });
   return {
     version: 1, agentId, at: new Date(now).toISOString(), total: ordered.length, needs: ordered.filter(r => r.group === "needs").length,
-    hash: hash(`${agentId}|${out.map(r => `${r.id}:${r.hash}`).join(",")}`), rows: out,
+    hash: hash(`${agentId}|${out.map(r => `${r.id}:${r.hash}`).join(",")}${compass.length ? `|c:${compass.join("\n")}` : ""}`), rows: out,
+    ...(compass.length ? { compass: [...compass] } : {}),
   };
 }
 

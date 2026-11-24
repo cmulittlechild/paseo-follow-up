@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "batch-churn"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -1962,6 +1962,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("compass")) await compassShots({ shoot, call, home, seeded });
+  if (only.includes("compass-suggest")) await compassSuggestShots({ shoot, call, home, seeded });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
@@ -3981,6 +3982,91 @@ async function compassShots({ shoot, call, home, seeded }) {
   }
 }
 
+/**
+ * Compass PR 4 (`--only compass-suggest`, docs/compass.md#suggestions-issues-nobodys-on): Nobody's on it in Needs you
+ * (a raise and a Compass ask side by side), New's My issues with Compass's suggestions first, the brief's one Since
+ * block, and Settings → Compass → When with the daytime read. The queue is briefSinceQueue's; compass.json is seeded
+ * (readDay today, so no read replaces it). Fictional people and keys only.
+ */
+async function compassSuggestShots({ shoot, call, home, seeded }) {
+  const data = join(home, "plugin-data", "follow-up");
+  const now = BASE + VIEW;
+  const iso = t => new Date(t).toISOString();
+  const day = t => new Intl.DateTimeFormat("en-CA", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true }));
+  await call("follow.brief-sources", { check: true });
+  const view = await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "Dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "Dana" }], roles: ["priorities"] } });
+  const src = view.settings.sources[0].id;
+  await new Promise(r => setTimeout(r, 1500)); // the new place's first read lands before the seed replaces its notes
+  const billing = seeded.workspaces.find(w => w.key === "billing");
+  const at = iso(now - 3600_000);
+  const n = (id, over) => ({ id, source: src, place: "conversation:UDANA00001", role: "priorities", by: { id: "UDANA00001", name: "Dana" }, at, link: "https://chat.example/archives/D1/p1", quote: null, what: "", keys: [], kind: "issue",
+    strength: "normal", until: null, untilWords: null, state: "live", endedAt: null, supersededBy: null, match: { score: 0, how: "none" }, restatedAt: at, ...over });
+  const notes = [
+    n("n-renewal", { what: "acme renewal call", keys: ["ACME-177"], quote: "ACME-177 has to be fixed before the acme renewal call on Friday", strength: "high", until: day(now + 2 * 86_400_000), untilWords: "Friday", match: { issue: "ACME-177", score: 1, how: "key" } }),
+    n("n-rotate", { what: "before the audit", keys: ["OPS-12"], quote: "OPS-12 should happen before the audit", match: { issue: "OPS-12", score: 1, how: "key" } }),
+    n("n-sso", { what: "SSO for acme", keys: ["ACME-40"], quote: "acme keeps asking about SSO, ACME-40", strength: "low", match: { issue: "ACME-40", score: 1, how: "key" } }),
+    n("n-billing", { kind: "workspace", what: "retries for the client call", quote: "the retry work is really important for the client call", strength: "high", until: day(now + 86_400_000), untilWords: "tomorrow", match: { workspace: billing.workspaceId, score: 0.7, how: "title" } }),
+    n("n-okta", { what: "Okta SSO", state: "retracted", endedAt: iso(now - 1800_000), quote: "Okta SSO can wait" }),
+    n("n-deck", { kind: "event", what: "the board deck", quote: "can you look at the board deck numbers" }),
+  ];
+  const seed = async () => {
+    await fs.writeFile(join(data, "linear-queue.json"), JSON.stringify(briefSinceQueue()));
+    await fs.writeFile(join(data, "compass.json"), JSON.stringify({ version: 1, cursors: {}, notes, day: null, readDay: day(now), lastRead: { at, trigger: "morning", ok: true, notes: 4, error: null }, refused: [], removed: [], dayReadAt: iso(now) }));
+    await page0();
+  };
+  // A seed is read on the next read of each store; poke the home feed's answer so the push carries it.
+  const page0 = () => call("follow.priorities", {}).catch(() => undefined);
+  const each = async (name, drive, devices = [["desktop", DESKTOP], ["phone", PHONE]]) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of devices) {
+      await seed();
+      await shoot(`cs-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        const clip = await drive(page, viewport.width < 768, viewport);
+        await page.waitForTimeout(500);
+        return clip;
+      });
+    }
+  };
+  // Needs you: the raise (ACME-142) and Dana's urgent ask (ACME-177), one row kind; hover reveals the x.
+  await each("needs", async (page, phone) => {
+    await openHome(page);
+    const row = page.getByLabel(/^Needs you: ACME-177, nobody's on it/).filter({ visible: true }).first();
+    await row.waitFor({ timeout: 30_000 });
+    await page.getByLabel(/^Needs you: ACME-142, nobody's on it/).filter({ visible: true }).first().waitFor();
+    if (!phone) await row.hover();
+  });
+  // The brief: one Since block, Compass's lines first.
+  await each("since", async (page, phone) => {
+    await openHome(page);
+    if (phone) await page.getByText("Morning brief", { exact: true }).filter({ visible: true }).first().click();
+    const head = page.getByText(/· Dana, your Linear queue$/).filter({ visible: true }).first();
+    await head.waitFor({ timeout: 30_000 });
+    await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+  });
+  // New: My issues with OPS-12 moved up with its reason, ACME-177 and ACME-40 joining with the compass glyph.
+  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  await each("new", async (page, phone) => {
+    await openHome(page);
+    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await dialog(page).waitFor();
+    await dialog(page).getByText("Dana: before the audit").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    // Desktop: select OPS-12 (an issue the fake Linear has) so the preview shows its actions and {why}.
+    if (!phone) await dialog(page).getByRole("button", { name: /^OPS-12 Rotate/ }).first().click();
+  });
+  // Settings → Compass → When: the morning read, then During the day and Issues nobody's on.
+  await each("when", async (page, phone, viewport) => {
+    await openSettingsAt(page, "brief", viewport);
+    const h = page.getByText("During the day", { exact: true }).first();
+    await h.waitFor({ timeout: 30_000 });
+    await page.getByText("When", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "start" }));
+    if (phone) return undefined;
+    const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+    const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+    return { x, y: 0, width: viewport.width - x, height: viewport.height };
+  });
+}
+
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
@@ -4132,7 +4218,7 @@ async function briefSinceShots({ shoot, call, home }) {
   });
   // The raised issue is the first row of Needs you; hovering it reveals its x (invariant 59).
   await each("raised", async (page, phone) => {
-    const row = page.getByLabel(/^Needs you: ACME-142 raised Low → High/).filter({ visible: true }).first();
+    const row = page.getByLabel(/^Needs you: ACME-142, nobody's on it/).filter({ visible: true }).first();
     await row.waitFor({ timeout: 20_000 });
     if (!phone) await row.hover();
   });
@@ -4821,11 +4907,11 @@ try {
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
-  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") ? newIssues() : []));
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") || only.includes("compass-suggest") ? newIssues() : []));
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
-  else if (only.includes("compass")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("compass") || only.includes("compass-suggest")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

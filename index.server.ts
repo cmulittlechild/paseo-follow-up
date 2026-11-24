@@ -115,6 +115,8 @@ import { matchPlan } from "./shared/morning-brief";
 import { askSource } from "./server/ask";
 import { BriefSources } from "./server/brief-sources";
 import { Compass, CompassStore } from "./server/compass";
+import { heardWords, nobodyNeeds } from "./shared/nobody";
+import { COMPASS } from "./shared/compass";
 import { sourceDirectory } from "./server/source-tools";
 import { AboutService, AboutStore, liveSources, rootHistory, type AboutContext } from "./server/about";
 import { LinkedService, LinkedStore, liveLinkedSources, type LinkResult } from "./server/linked";
@@ -308,6 +310,9 @@ export default function contribute(server: PluginServerContext) {
   let morningBrief: MorningBrief | null = null;
   let briefSources: BriefSources | null = null;
   let compass: Compass | null = null;
+  // Whether an app client is open (set once the home feed exists), and when a 0.15 client last polled priorities.
+  let appOpen: () => boolean = () => false;
+  let polledAt = 0;
   // Who sent a message (server/inbox-classifier.ts): the inbox and the Overseer's new-workspace gate read one ledger.
   const senderSources = fileSources(paseoHome, async () => (await inbox.store.snapshot()).ledger);
   const inbox: Inbox = new Inbox(directory, {
@@ -902,11 +907,17 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.dismissQuestionRpc, async ({ workspaceId, questionId, undo }, context) => { await requireReady(); return engine.dismiss(workspaceId, questionId, !!undo, actorOf(context)); });
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: one path for every kind; only records change.
-  handle(rpc.dismissRpc, async ({ workspaceId, key, agentId, issue, undo }, context) => {
+  handle(rpc.dismissRpc, async ({ workspaceId, key, agentId, issue, compass: note, undo }, context) => {
     await requireReady();
     const actor = actorOf(context);
     if (agentId) return inbox.dismiss(agentId, !!undo, actor);
-    if (issue) return linearQueue!.dismissRaise(issue, !!undo);
+    if (note) return compass!.removeSuggestion(note, !!undo);
+    // "Nobody's on it" is one row per issue: its Remove takes the queue's raise and every Compass ask on it.
+    if (issue) {
+      const asks = await compass?.removeIssue(issue, !!undo).catch(() => 0) ?? 0;
+      try { return await linearQueue!.dismissRaise(issue, !!undo); }
+      catch (error) { if (asks) return { name: issue.toUpperCase() }; throw error; }
+    }
     return store.mutateWorkspace(workspaceId!, w => {
       const r = undo ? undoDismissItem(w, key!, actor) : dismissItem(w, key!, actor, Date.now());
       w.updatedAt = new Date().toISOString();
@@ -1059,6 +1070,14 @@ export default function contribute(server: PluginServerContext) {
   const overseerOn = async () => (await inboxSettings()).enable_overseer !== false;
   overseer = new Overseer({ directory, store, inbox, enqueue: enqueueMessage, sources: senderSources, priorities: priorityStore, workspaces: paseoWorkspaces, enabled: overseerOn, paseoHome, tight: async () => !governor.allowsBackground(),
     windowMs: async () => activeWindowMs(await store.snapshot()), agent: () => agentSettings.role("overseer"),
+    // Compass's digest block (compass-without-the-overseer): built only with the digest, only when a note is live.
+    compass: async () => {
+      const notes = await compass?.digest() ?? [];
+      if (!notes.length) return [];
+      const read = (await morningBrief?.planView().catch(() => null))?.read ?? null;
+      const plan = read ? `This week's plan: ${read.title ?? "untitled"}, ${read.items} items${read.withoutIssue ? `, ${read.withoutIssue} without an issue` : ""}` : null;
+      return plan ? [plan, ...notes] : notes;
+    },
     // Harness override only (isolated test daemons): "provider/model" wins over Settings → Agents.
     provider: process.env.FOLLOW_UP_OVERSEER_PROVIDER || undefined,
     // Starts the run and answers at once (a tool call shares the plugin RPC timeout); the current ranking comes along.
@@ -1312,6 +1331,8 @@ export default function contribute(server: PluginServerContext) {
   };
   const dispatcher = new DispatchService({
     store: new DispatchStore(directory),
+    // Compass's suggestions for New's My issues and `{why}` (compass is set before New is ever opened).
+    compass: async () => compass ? compass.suggestions() : [],
     images: imageStore,
     linear: linearIssues,
     github: async (kind, repo, number) => {
@@ -1446,7 +1467,12 @@ export default function contribute(server: PluginServerContext) {
     onChange: () => feeds.home(),
     log: line => console.warn(line),
   });
-  handle(rpc.linearQueueRpc, async ({ filter, since, limit, open }) => { await requireReady(); return open ? linearQueue!.open() : linearQueue!.view({ filter, since, limit }); });
+  // The brief's one Since block (design §8): the queue's changes and what Compass heard, against the same stored point.
+  handle(rpc.linearQueueRpc, async ({ filter, since, limit, open }) => {
+    await requireReady();
+    const view = open ? await linearQueue!.open() : await linearQueue!.view({ filter, since, limit });
+    return { ...view, compass: compass ? await compass.since(view.since).catch(() => null) : null };
+  });
   handle(rpc.sweepQueueRpc, async ({ wait }, context) => { await requireReady(); return linearQueue!.sweepNow(actorOf(context).kind === "agent" ? "agent" : "manual", wait === false ? 0 : undefined); });
   handle(rpc.briefSettingsRpc, async () => { await requireReady(); return morningBrief!.view(); });
   handle(rpc.setBriefSettingsRpc, async input => { await requireReady(); return morningBrief!.setQueue(input); });
@@ -1525,7 +1551,8 @@ export default function contribute(server: PluginServerContext) {
         issueWorkspace: key => holders.get(key.toUpperCase())?.workspaceId ?? null,
       };
     },
-    allowed: chatAllowed, tight: () => !governor.allowsBackground(),
+    allowed: chatAllowed, tight: () => !governor.allowsBackground(), appOpen: () => appOpen(),
+    issues: async () => (await linearQueue?.needs())?.issues ?? new Map(),
     // Tell the agent (compass-reaches-an-agent-only-by-a-click): one queued message to the workspace's main agent.
     tell: async (workspaceId, text, by) => {
       const w = (await store.snapshot()).workspaces.find(x => x.id === workspaceId && !x.archived);
@@ -1723,7 +1750,7 @@ export default function contribute(server: PluginServerContext) {
     // The directory's agent list (metadata only): a claim never loads or refreshes the main agent.
     agentInfo: async agentId => { const row = gateway.directory.cached(agentId) ?? (await gateway.directory.read()).agents.find(r => r.agent.id === agentId)?.agent; return row ? { status: row.status, activeTurn: row.activeTurn, pendingPermissions: row.pendingPermissions, archivedAt: row.archivedAt } : null; } });
   // 0.15 polls priorities once a minute; the raised issues (Q8) ride the same answer instead of a read of their own.
-  handle(rpc.prioritiesRpc, async () => ({ items: await priorityStore.read(), queue: await linearQueue?.needs().catch(() => undefined), compass: await compass?.lines().catch(() => undefined) }));
+  handle(rpc.prioritiesRpc, async () => { polledAt = Date.now(); return { items: await priorityStore.read(), queue: await nobodyOnIt(), compass: await compass?.lines().catch(() => undefined) }; });
   // The chat's created cards: the engine's directory snapshot as it stands (never waits on or asks the daemon, wakes
   // nothing) and the store. Before the engine's first read the cards just show no state yet.
   // The engine's snapshot as it stands, plus remembered archived agents; ids it lacks are looked up once, not awaited.
@@ -1803,6 +1830,16 @@ export default function contribute(server: PluginServerContext) {
   const workspacesFeed = new WorkspacesFeed(listCache, () => store.snapshot(), () => waiting ?? loadError ?? hookError ?? writeHealth.message() ?? engine.error);
   const inboxFeed = new ValueFeed({ read: async () => { await requireReady(); return inboxAnswer({ ...await inbox.list(), error: inboxError }, undefined); }, key: v => v.etag ?? JSON.stringify(v) });
   let usageWatch: { close(): void } | null = null;
+  // "Nobody's on it" (nobody-s-on-it-is-needs-you): the queue's raises and Compass's urgent asks, one row per issue,
+  // from what the worker holds (linear-queue.json, compass.json): one count for every surface, never a read of its own.
+  const nobodyOnIt = async () => {
+    const q = await linearQueue?.needs().catch(() => undefined);
+    const list = compass ? await compass.suggestions(q?.issues).catch(() => []) : [];
+    if (!q && !list.length) return undefined;
+    const heard = compass ? heardWords(await compass.since(q?.since ?? null, list).catch(() => ({ from: [], lines: [], heard: 0 }))) : null;
+    return { needs: nobodyNeeds(q?.raised ?? [], list), timeZone: q?.timeZone ?? (await briefClock()).timeZone, heard,
+      revision: `${q?.revision ?? ""}|${list.map(x => `${x.note}${x.urgent ? "!" : ""}`).join(",")}` };
+  };
   // New's dispatches for Home's row: the last hour's (the client drops what its clock says is over), at most 5.
   const homeDispatches = async () => (await dispatcher.records().catch(() => [])).filter(r => Date.now() - Date.parse(r.at) < 3_600_000).slice(0, 5);
   const homeFeed = new ValueFeed({
@@ -1811,7 +1848,7 @@ export default function contribute(server: PluginServerContext) {
       const [items, rank, overseerView] = await Promise.all([priorityStore.read(), ranker!.status(), overseerStatus()]);
       // The worker's live resources change every tick: the client reads those once when Home opens (follow.usage).
       const meters = governor.allowsExtras() ? await usage.read() : NO_USAGE;
-      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches(), queue: await linearQueue?.needs().catch(() => undefined), compass: await compass?.lines().catch(() => undefined) };
+      return { priorities: items, rank, overseer: overseerView, usage: { available: meters.available, source: meters.source, accounts: meters.accounts }, usageLive: !!usageWatch, context: await contextRequests.list(), prStats: await prStats.anyOn(), dispatches: await homeDispatches(), queue: await nobodyOnIt(), compass: await compass?.lines().catch(() => undefined) };
     },
     key: v => JSON.stringify([v.priorities, v.rank, v.overseer, usageKey(v.usage), v.usageLive, v.context, v.prStats, v.dispatches, v.queue, v.compass]),
     // Smart Session's files are watched only while someone looks at Home (server/usage.ts watch()).
@@ -1822,6 +1859,9 @@ export default function contribute(server: PluginServerContext) {
   feeds.workspaces = () => void workspacesFeed.changed();
   feeds.inbox = () => void inboxFeed.changed();
   feeds.home = () => void homeFeed.changed();
+  // The daytime read runs only while an app client is open (the-brief-has-one-timer): a subscriber on the home feed,
+  // or on Paseo 0.15 (no subscriptions) a priorities poll in the last 2 minutes.
+  appOpen = () => homeFeed.size > 0 || Date.now() - polledAt < COMPASS.openWindowMs;
   priorityStore.onWrite = feeds.home;
   ranker!.onRunChange = feeds.home;
   let displayOff: (() => void) | null = null;

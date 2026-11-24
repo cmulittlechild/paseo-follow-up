@@ -46,9 +46,10 @@ export const ACTION_ICONS = ["git-pull-request", "file-text", "search", "folder-
 /**
  * `{body}`: the source's text (an issue's description, a PR's body, a typed task), for an action whose agent can't read
  * the tracker itself. `{words}`: the developer's own typed task, empty for an issue, PR or link: those have their own
- * home, and the agent reads them there (the built-ins reference the source, never paste it).
+ * home, and the agent reads them there (the built-ins reference the source, never paste it). `{why}`: why it matters,
+ * from Compass (the quote, who said it and when, and its date) when the issue is a Compass suggestion, else empty.
  */
-export const PLACEHOLDERS = ["title", "url", "key", "body", "words", "kind", "team", "repo", "base", "branch"] as const;
+export const PLACEHOLDERS = ["title", "url", "key", "body", "words", "kind", "team", "repo", "base", "branch", "why"] as const;
 export type Placeholder = typeof PLACEHOLDERS[number];
 export const BUILTIN_IDS = ["pr", "plan", "investigate", "open", "checkout"] as const;
 export type BuiltinId = typeof BUILTIN_IDS[number];
@@ -88,16 +89,16 @@ const builtin = (a: Omit<DispatchAction, "builtin" | "by" | "agent" | "hidden" |
 /** The built-in set, in order. The first visible one is ↵, the second ⌥↵. Nothing here names a team, repo or person. */
 export const BUILTIN_ACTIONS: readonly DispatchAction[] = [
   builtin({ id: "pr", name: "Create PR", icon: "git-pull-request", description: "Build it and open a PR",
-    instructions: "Work on {key} “{title}” ({url}).\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nBuild it and open a PR from {branch} against {base} in {repo}; register it with Follow-up.\n\n{words}",
+    instructions: "Work on {key} “{title}” ({url}).\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nBuild it and open a PR from {branch} against {base} in {repo}; register it with Follow-up.\n\n{why}\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "plan", name: "Plan as artifact", icon: "file-text", description: "A detailed plan to read before any code",
-    instructions: "Plan {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nPublish the plan as an artifact and register it as the spec. Then ask the developer one question: build it as planned, or change something. No code before they answer.\n\n{words}",
+    instructions: "Plan {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nPublish the plan as an artifact and register it as the spec. Then ask the developer one question: build it as planned, or change something. No code before they answer.\n\n{why}\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: true, askWhenPlanReady: true } }),
   builtin({ id: "investigate", name: "Investigate", icon: "search", description: "Find the cause; no code changes",
-    instructions: "Find the cause of {key} “{title}” ({url}) in {repo}, without changing code.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nReport what you found and end with one question for the developer: which fix.\n\n{words}",
+    instructions: "Find the cause of {key} “{title}” ({url}) in {repo}, without changing code.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nReport what you found and end with one question for the developer: which fix.\n\n{why}\n\n{words}",
     workspace: "worktree", follow: { goalFromSource: true, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "open", name: "Just open", icon: "folder-open", description: "The workspace and an agent with it loaded", hidden: true,
-    instructions: "Open {key} “{title}” ({url}) and wait for the developer.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\n\n{words}",
+    instructions: "Open {key} “{title}” ({url}) and wait for the developer.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\n\n{why}\n\n{words}",
     workspace: "local", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false } }),
   builtin({ id: "checkout", name: "Check out PR", icon: "git-branch", description: "A worktree on the PR's branch", appliesTo: ["pr"],
     instructions: "You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: description, review threads, linked docs.\nThen wait for the developer.",
@@ -105,15 +106,15 @@ export const BUILTIN_ACTIONS: readonly DispatchAction[] = [
 ];
 export const builtinAction = (id: BuiltinId) => BUILTIN_ACTIONS.find(a => a.id === id)!;
 /**
- * Instructions a built-in shipped with before (up to 2.4.0-beta.4: coaching plus the pasted issue `{body}`). A saved
- * copy still holding one of these was never edited, so it reads as the current built-in; an edited copy keeps the
- * developer's text.
+ * Instructions a built-in shipped with before (up to 2.4.0-beta.4: coaching plus the pasted issue `{body}`; up to
+ * 2.4.0-beta.8: without `{why}`). A saved copy still holding one of these was never edited, so it reads as the current
+ * built-in; an edited copy keeps the developer's text.
  */
 const SHIPPED_BEFORE: Partial<Record<BuiltinId, readonly string[]>> = {
-  pr: ["Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{body}"],
-  plan: ["Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{body}"],
-  investigate: ["Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{body}"],
-  open: ["Read {key} “{title}” ({url}) and wait for the developer.\n\n{body}"],
+  pr: ["Work on {key} “{title}” ({url}).\nRead the issue and its comments first. Plan the change, build it, run the tests and open a PR from {branch} against {base} in {repo}; register it with Follow-up. Don't stop to ask unless something blocks you; record decisions as tasks.\n\n{body}", "Work on {key} “{title}” ({url}).\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nBuild it and open a PR from {branch} against {base} in {repo}; register it with Follow-up.\n\n{words}"],
+  plan: ["Plan a detailed solution for {key} “{title}” ({url}).\nRead the issue, its comments and the code it touches in {repo}. Publish the plan as an artifact: the problem, the approach, the risky parts, the steps and how you'll test it. Register it as the spec. Then ask the developer one question: build it as planned, or change something. Don't write code before they answer.\n\n{body}", "Plan {key} “{title}” ({url}) in {repo}.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nPublish the plan as an artifact and register it as the spec. Then ask the developer one question: build it as planned, or change something. No code before they answer.\n\n{words}"],
+  investigate: ["Investigate {key} “{title}” ({url}) in {repo}.\nFind the cause. Report what's wrong, where, and two ways to fix it. Don't change any code. End with one question for the developer: which fix.\n\n{body}", "Find the cause of {key} “{title}” ({url}) in {repo}, without changing code.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\nReport what you found and end with one question for the developer: which fix.\n\n{words}"],
+  open: ["Read {key} “{title}” ({url}) and wait for the developer.\n\n{body}", "Open {key} “{title}” ({url}) and wait for the developer.\nRead {key} yourself, all of it: comments, attachments, linked docs and threads.\n\n{words}"],
   checkout: ["You're on {branch}, checked out from {key} “{title}” ({url}) in {repo}.\nRead the PR, its description and its review threads, then wait for the developer."],
 };
 /** A saved built-in with a formerly shipped text, upgraded to the current one. */
@@ -466,7 +467,12 @@ export type DispatchPlan = {
  * What New lists. `taken`: the listed keys a live workspace already has (their `routes[key].existing`); New folds them
  * and agents read them as "open it, don't start it again" (a-taken-issue-is-not-a-suggestion).
  */
-export type DispatchSources = { linear: LinearList; routes: Record<string, SourceRoute>; taken?: string[]; recent: DispatchRecord[] };
+/**
+ * What New lists. `compass`: Compass's suggestions (issues nobody started that a source said matter), each with its
+ * reason line; they sort first in My issues, and one not assigned to the developer joins it while its note is live.
+ */
+export type DispatchSources = { linear: LinearList; routes: Record<string, SourceRoute>; taken?: string[]; recent: DispatchRecord[]; compass?: CompassPick[] };
+export type CompassPick = { key: string; title: string; url: string | null; reason: string; source: string; note: string; urgent: boolean };
 
 // ---------- RPC inputs (shared/contracts.ts, the agent tools) ----------
 

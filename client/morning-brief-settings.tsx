@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
 import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
 import { raised, tint, withAlpha } from "./theme";
-import { CompassReading, CompassSection, compassKey } from "./compass-settings";
+import { CompassReading, CompassSection, CompassWhen, compassKey } from "./compass-settings";
 import { briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
 import { ASK_COST, inputLabel, inputRole, type BriefSource, type SourcesChange, type SourcesView } from "../shared/brief-sources";
 import { ASK } from "../shared/ask";
@@ -383,10 +383,12 @@ function WhenSection({ view, theme, compact }: { view: BriefSettingsView; theme:
   const times = [...new Set([...SWEEP_TIMES, q.sweepAt])].sort();
   const zoneFrom = view.clock.zoneFrom === "setting" ? "set here" : view.clock.zoneFrom === "device" ? "this device's" : "the host's";
   const usual = defaultWorkdays(view.clock.timeZone);
-  return <SettingsSection title="When" info="The morning read: Compass reads its sources, the Linear queue is swept and mcpproxy is asked again, once each workday at this time. The brief's changes are counted from your last read.">
+  return <SettingsSection title="When" info="The morning read: Compass reads its sources, the Linear queue is swept and mcpproxy is asked again, once each workday at this time. During the day Compass reads again while Follow-up is open. The brief's changes are counted from your last read.">
     <SettingsCard>
       <SettingsSelect label="Morning read at" hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
         options={times.map(v => ({ value: v, label: v }))} onValueChange={sweepAt => change.mutate({ sweepAt })} />
+      <CompassWhen theme={theme} compact={compact} part="cadence" />
+      <CompassWhen theme={theme} compact={compact} part="routing" />
       <SettingsSelect label="Changes since" hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
         value={q.since} disabled={change.isPending} options={[{ value: "read", label: "Your last read" }, { value: "workday", label: "Your last workday" }]} onValueChange={since => change.mutate({ since })} />
     </SettingsCard>
