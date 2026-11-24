@@ -111,6 +111,7 @@ import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
 import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
 import { MorningBrief, MorningBriefStore, mcpproxyChat } from "./server/morning-brief";
+import { matchPlan } from "./shared/morning-brief";
 import { askSource } from "./server/ask";
 import { BriefSources } from "./server/brief-sources";
 import { Compass, CompassStore } from "./server/compass";
@@ -435,11 +436,9 @@ export default function contribute(server: PluginServerContext) {
     if (ranker) void ranker.tick().catch(() => undefined);
     // The Morning brief's sweep, once a workday at its time (the-brief-has-one-timer: this loop, no timer of its own).
     if (linearQueue) void linearQueue.tick().catch(() => undefined);
-    // This week's plan: Find it for me looks again once a workday after the sweep time (same loop, same rule).
-    if (morningBrief) void morningBrief.tick().catch(() => undefined);
     // The brief's sources: mcpproxy is asked again once a workday after the sweep time (same loop, same rule).
     if (briefSources) void briefSources.tick().catch(() => undefined);
-    // Compass's morning read: once a workday after the sweep time (same loop, same rule).
+    // Compass's morning read: once a workday after the sweep time (same loop, same rule). It brings this week's plan too.
     if (compass) void compass.tick().catch(() => undefined);
     // Wake-ups, the Overseer's status and the directory's titles move with this tick; the feeds diff, so a quiet tick
     // pushes nothing.
@@ -1420,14 +1419,16 @@ export default function contribute(server: PluginServerContext) {
   };
   morningBrief = new MorningBrief({
     store: morningBriefStore, chat: mcpproxyChat(undefined, { allowed: chatAllowed }), env: () => process.env.FOLLOW_UP_PLAN_URL, deviceZone: () => clientTimeZone,
-    // From what discovery last found (never a call of its own: Settings must answer at once); unknown yet counts as ready.
-    chatReady: async () => {
-      const found = sourceDirectory().cached();
-      const g = await briefSources!.gate("chat", { cachedOnly: true });
-      return g.on && (!found || found.matched.some(m => m.recipe === "chat" && (!g.allowed || g.allowed(m.server))));
-    },
     readPlan: url => ranker!.readPlan(url),
-    lastRead: async () => { const p = (await ranker!.state()).planning; return p ? { url: p.url, at: p.at, title: p.value.title, items: p.value.items.length } : null; },
+    // The plan's items matched to issues and workspaces (the one predicate New reads): "14 items, 3 without an issue".
+    lastRead: async () => {
+      const p = (await ranker!.state()).planning;
+      if (!p) return null;
+      const holders = await issueHolders();
+      const m = matchPlan(p.value.items, key => holders.get(key)?.workspaceId ?? null);
+      return { url: p.url, at: p.at, title: p.value.title, items: p.value.items.length, withoutIssue: m.withoutIssue };
+    },
+    readPlans: async () => { await compass?.read("manual", { plans: true }); },
     onChange: () => feeds.home(), log: line => console.warn(line),
   });
   // The Morning brief's Linear queue (server/linear-queue.ts, docs/morning-brief.md): the whole queue swept each workday
@@ -1458,7 +1459,8 @@ export default function contribute(server: PluginServerContext) {
     if (view.url && view.url !== before) void ranker!.readPlan(view.url).then(() => feeds.home(), () => undefined);
     return view;
   });
-  handle(rpc.briefChatSearchRpc, async ({ kind, query }) => { await requireReady(); return morningBrief!.searchChat(kind, query); });
+  // An alias of compass_find for one minor release (the plan's pickers moved into Compass's source editor).
+  handle(rpc.briefChatSearchRpc, async ({ kind, query }) => { await requireReady(); return compass!.find(kind, query); });
   handle(rpc.dispatchSourcesRpc, async ({ fresh, query }) => { await requireReady(); return dispatcher.sources({ fresh, query }); });
   handle(rpc.dispatchPreviewRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.preview(input, actorOf(context)); });
   handle(rpc.dispatchRpc, async (input, context) => { await requireReady(); seen(context.paseo); return dispatcher.dispatch(input, actorOf(context)); });
@@ -1531,12 +1533,20 @@ export default function contribute(server: PluginServerContext) {
       enqueueMessage(w.mainAgentId, text, `compass-${randomUUID()}`, by === "developer" ? "developer" : by);
       return { agentId: w.mainAgentId };
     },
+    // Plans come from Compass on arrival: this week's plan, its title read at once.
+    onPlan: found => morningBrief!.recordPlan(found),
     onChange: () => { ranker?.markDue(); feeds.home(); }, log: line => console.warn(line),
   });
+  // Settings → Compass and `compass`: every priority input in one view (one-place-for-priority-inputs): the Compass
+  // sources, the built-in and mcpproxy inputs, this week's plan, and the brief's clock.
+  const compassAll = async () => {
+    const [view, brief, inputs] = await Promise.all([compass!.view(), morningBrief!.view(), briefSources!.view({ check: false })]);
+    return { ...view, plan: brief.plan, brief: { queue: brief.queue, clock: brief.clock }, inputs };
+  };
   handle(rpc.compassRpc, async ({ workspace }) => {
     await requireReady();
+    if (!workspace) return compassAll();
     const view = await compass!.view({ workspace });
-    if (!workspace) return view;
     // Why it matters (the panel) and compass {workspace}: where AI priority puts this workspace ("2nd of 14"), and
     // the Overseer to ask about a note (its agent while it runs; none when off).
     const { byWorkspace } = freshPriorities(await priorityStore.read(), Date.now());
@@ -1555,10 +1565,21 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.whySuggestedRpc, async input => { await requireReady(); return compass!.why(input); });
   handle(rpc.setCompassRpc, async (input, context) => {
     await requireReady();
-    const ids = new Set((await store.snapshot()).workspaces.map(w => w.id));
-    return compass!.set(input, actorBy(actorOf(context)), { workspaceExists: id => ids.has(id) });
+    const { plan, inputs, queue, ...own } = input;
+    if (Object.values(own).some(v => v !== undefined)) {
+      const ids = new Set((await store.snapshot()).workspaces.map(w => w.id));
+      await compass!.set(own, actorBy(actorOf(context)), { workspaceExists: id => ids.has(id) });
+    }
+    if (queue) await morningBrief!.setQueue(queue);
+    if (inputs) await briefSources!.set(inputs);
+    if (plan) {
+      const before = await morningBrief!.planUrl();
+      const view = await morningBrief!.setPlan(plan);
+      if (view.url && view.url !== before) void ranker!.readPlan(view.url).then(() => feeds.home(), () => undefined);
+    }
+    return compassAll();
   });
-  handle(rpc.readCompassRpc, async (_input, context) => { await requireReady(); const r = await compass!.readWithin(actorOf(context).kind === "agent" ? "agent" : "manual"); return { ...r, view: await compass!.view() }; });
+  handle(rpc.readCompassRpc, async (_input, context) => { await requireReady(); const r = await compass!.readWithin(actorOf(context).kind === "agent" ? "agent" : "manual"); return { ...r, view: await compassAll() }; });
   handle(rpc.briefSourcesRpc, async ({ check }) => { await requireReady(); return briefSources!.view({ check }); });
   handle(rpc.setBriefSourcesRpc, async input => { await requireReady(); return briefSources!.set(input); });
   handle(rpc.rankStatusRpc, async () => { await requireReady(); return ranker!.status(); });

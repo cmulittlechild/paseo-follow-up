@@ -6,7 +6,7 @@ import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, Settings
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentSettingsRpc, setAgentSettingRpc, setWaitRpc } from "../shared/contracts";
 import { WAIT_HOST_NOTE, WAIT_NOT_ATTACHED, waitNote, waitSwitchCopy } from "../shared/wait";
-import { hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
+import { OUTSIDE_READS, guardedProvider, hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
 import { NO_PROMPT_MODE, SETTINGS_ORDER, isReset, resetEntry } from "../shared/job-rows";
 import { JobRows, agentSettingsKey, useAgentSettings, type JobExtra } from "./job-rows";
 import { Button, errorText, text, type Theme } from "./kit";
@@ -36,6 +36,11 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
     <SettingsCard>
       <JobRows theme={theme} compact={compact} order={SETTINGS_ORDER} extra={more} />
     </SettingsCard>
+    {/* A job role on a provider Follow-up can't take tools from: what it no longer reads, and why (invariant 81). */}
+    {(data?.roles ?? []).filter(r => isJobRole(r.role) && !guardedProvider(r.provider) && OUTSIDE_READS[r.role]).map(r => {
+      const label = data?.catalog?.providers.find(p => p.id === r.provider)?.label ?? r.provider;
+      return <Text key={r.role} accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, paddingHorizontal: 4 }]}>{unguardedLine(r.role, label)}</Text>;
+    })}
     {/* Once, after the rows: what can't be picked and why (the pickers only list what can). */}
     {!!data?.catalog && unavailableLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{unavailableLine(data.catalog.providers)}</Text>}
   </SettingsSection>;
@@ -116,6 +121,10 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
 const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "dispatch" ? "the Overseer's agent" : role === "overseer" ? "Claude, newest Opus" : role === "about" ? "Claude Haiku" : "Claude Sonnet, hourly";
 /** "Not available in Paseo: Claude and Pi (turned off in Paseo); Antigravity (not installed)." Grouped by reason; a
  * provider whose name is also on a ready one isn't listed, so the line never contradicts the rows. */
+/** "On OpenCode, AI priority doesn't rank, since what it reads was written by other people…" (invariant 81). */
+export const unguardedLine = (role: AgentRole, label: string) =>
+  `On ${label}, ${OUTSIDE_READS[role]}, since what they read was written by other people and Follow-up can't take ${label}'s tools away. Pick Claude or Codex for all of it.`;
+
 function unavailableLine(providers: readonly { label: string; available: boolean; reason: string | null }[]): string | null {
   const ready = new Set(providers.filter(p => p.available).map(p => p.label));
   const groups = new Map<string, string[]>();

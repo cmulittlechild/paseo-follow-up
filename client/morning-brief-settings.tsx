@@ -6,45 +6,48 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
 import { Button, IconButton, Switch, errorText, text, type Theme } from "./kit";
 import { raised, tint, withAlpha } from "./theme";
-import { CompassSection } from "./compass-settings";
-import { briefChatSearchRpc, briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
-import { ASK_COST, type BriefSource, type SourcesChange, type SourcesView } from "../shared/brief-sources";
+import { CompassReading, CompassSection, compassKey } from "./compass-settings";
+import { briefSettingsRpc, briefSourcesRpc, setBriefPlanRpc, setBriefSettingsRpc, setBriefSourcesRpc } from "../shared/contracts";
+import { ASK_COST, inputLabel, inputRole, type BriefSource, type SourcesChange, type SourcesView } from "../shared/brief-sources";
 import { ASK } from "../shared/ask";
 import { QUEUE_STATE_TYPES, WEEKDAYS, defaultWorkdays, isZone, type Weekday } from "../shared/linear-queue";
 import {
-  PLAN_MODES, planCard, queueStateLabel, type BriefSettingsView, type ChatRef, type PlanChange, type PlanMode, type PlanView, type QueueChange,
+  PLAN_MODES, planCard, queueStateLabel, type BriefSettingsView, type PlanChange, type PlanMode, type PlanView, type QueueChange,
 } from "../shared/morning-brief";
 
 export const briefSettingsKey = ["follow-up", "brief-settings"];
 export const briefSourcesKey = ["follow-up", "brief-sources"];
-const MODE_LABEL: Record<PlanMode, string> = { auto: "Find it for me", link: "Use a link", off: "Off" };
+const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: "A link", off: "Off" };
 
 /**
- * Settings → Morning brief (docs/morning-brief.md#settings): the brief's sources, this week's plan link and the Linear
- * queue's settings. Every change goes through the same RPCs the agent tools run (set_brief_sources, set_brief_plan,
- * set_brief_settings).
+ * Settings → Compass (docs/compass.md#settings, one-place-for-priority-inputs): the one place for what sets the
+ * developer's priorities. What sets your priorities lists every input AI priority reads (the Compass sources, then the
+ * Linear queue, DMs and mentions, the calendar, mail, review requests and Ask servers, each with its role); then this
+ * week's plan, How to read your Compass, When, and Connections. Every change goes through the RPCs the agent tools run
+ * (set_compass, and set_brief_settings for the brief's own When).
  */
 export function MorningBriefCategory({ theme, compact }: { theme: Theme; compact: boolean }) {
   const c = theme.colors;
   const read = useRpc(briefSettingsRpc);
   const query = useQuery({ queryKey: briefSettingsKey, queryFn: async () => await read({}) as BriefSettingsView, refetchInterval: 15_000 });
-  if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading Morning brief settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
-  if (query.error || !query.data) return <SettingsCard><SettingsAction label="Couldn't load Morning brief settings" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
+  const sources = useSourcesView();
+  if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading Compass settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
+  if (query.error || !query.data) return <SettingsCard><SettingsAction label="Couldn't load Compass settings" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
   return <>
-    <CompassSection theme={theme} compact={compact} />
-    <SourcesSection view={query.data} theme={theme} compact={compact} />
+    <CompassSection theme={theme} compact={compact} after={<InputRows view={query.data} sources={sources} theme={theme} compact={compact} />} />
     <PlanSection view={query.data} theme={theme} compact={compact} />
-    <QueueSection view={query.data} theme={theme} compact={compact} />
+    <CompassReading theme={theme} compact={compact} />
+    <WhenSection view={query.data} theme={theme} compact={compact} />
+    <ConnectionsSection sources={sources} theme={theme} compact={compact} />
   </>;
 }
 
 /**
- * Sources: every server mcpproxy has, matched by its tools (never its name), plus GitHub and Paseo. Opening Settings
- * asks mcpproxy again (once per visit); after that the card only re-reads Follow-up's own state.
+ * The built-in inputs' read: every server mcpproxy has, matched by its tools (never its name), plus GitHub and Paseo.
+ * Opening Settings asks mcpproxy again (once per visit); after that the screen only re-reads Follow-up's own state.
  */
-function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
-  const c = theme.colors; const t = text(c, compact);
-  const read = useRpc(briefSourcesRpc); const write = useRpc(setBriefSourcesRpc); const writeQueue = useRpc(setBriefSettingsRpc);
+function useSourcesView() {
+  const read = useRpc(briefSourcesRpc); const write = useRpc(setBriefSourcesRpc);
   const cache = useQueryClient(); const toast = useToast();
   const checked = useRef(false);
   // While mcpproxy is being asked or a source read again, look again soon; otherwise every 15 s.
@@ -52,54 +55,83 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
     queryFn: async () => { const check = !checked.current; checked.current = true; return await read({ check }) as SourcesView; } });
   const change = useMutation({
     mutationFn: async (input: SourcesChange) => await write(input) as SourcesView,
-    onSuccess: value => cache.setQueryData(briefSourcesKey, value),
+    onSuccess: value => { cache.setQueryData(briefSourcesKey, value); void cache.invalidateQueries({ queryKey: compassKey }); },
     onError: error => toast.error(errorText(error)),
   });
+  return { query, change };
+}
+type SourcesState = ReturnType<typeof useSourcesView>;
+
+/**
+ * The built-in inputs as rows of What sets your priorities, after the Compass sources: each with its role, its switch,
+ * its health, and (behind its chevron) its own setting: the queue's states, the chat window, the calendar's days.
+ * Servers no recipe fits follow under "Other servers on mcpproxy", for Ask.
+ */
+function InputRows({ view, sources, theme, compact }: { view: BriefSettingsView; sources: SourcesState; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const writeQueue = useRpc(setBriefSettingsRpc); const cache = useQueryClient(); const toast = useToast();
+  const { query, change } = sources;
   const windows = useMutation({
     mutationFn: async (input: QueueChange) => await writeQueue(input) as BriefSettingsView,
     onSuccess: value => cache.setQueryData(briefSettingsKey, value),
     onError: error => toast.error(errorText(error)),
   });
   const data = query.data;
-  // What the brief reads first; servers it could Ask (off) after them, under their own label.
-  const used = (data?.sources ?? []).filter(r => r.kind !== "skipped" && !(r.kind === "ask" && !r.on));
+  // What the brief reads first (Paseo's own state is always read, so it isn't a row); servers it could Ask (off) after them.
+  const used = (data?.sources ?? []).filter(r => r.kind !== "skipped" && r.id !== "paseo" && !(r.kind === "ask" && !r.on));
   const askable = (data?.sources ?? []).filter(r => r.kind === "ask" && !r.on);
-  const notRead = (data?.sources ?? []).filter(r => r.kind === "skipped");
   const pending = change.isPending ? change.variables : null;
-  const [showNotRead, setShowNotRead] = useState(false);
   const checking = !!data?.checking || !!pending?.check;
-  const copy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
-  return <SettingsSection title="Sources" info="What the brief reads each morning. Follow-up finds each source by the tools mcpproxy offers, and only ever calls its read-only tools. A lookup is one read-only call. A server no recipe fits can be Asked: a fast model picks up to 3 read-only lookups and sums up what needs you. Preview one before turning it on. Agents can turn sources on and off too.">
-    {query.isPending && <ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
-    {query.error && <SettingsCard><SettingsAction label="Couldn't read the sources" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
-    {/* The section's one line: "5 sources read", or what failed, so a broken source shows above the fold. On desktop the
-        tab's line right above says it already (briefSummary), so only a phone, whose category screen has no such line, draws it. */}
-    {data && (compact || data.error) && (data.error || data.line.tone === "warn"
-      ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} />
-      : <Text style={t.meta}>{data.line.text}</Text>)}
-    {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
-      {[...used, ...askable].map((row, i) => <View key={row.id}>
-        {i === used.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border, gap: 2 }}>
-          <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Other servers on mcpproxy</Text>
-          <Text style={t.meta}>No recipe fits these. Preview one to see what a fast model would pick out for you.</Text>
-        </View>}
-        <SourceRow row={row} first={i === 0 || i === used.length} theme={theme} compact={compact} checking={checking} sweepAt={view.queue.sweepAt}
-          busy={data.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
-          previewing={data.previewing.includes(row.id) || pending?.preview === row.id}
-          onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} onCheck={() => change.mutate({ check: true })} onCopy={copy}
-          onPreview={() => change.mutate({ preview: row.id })} />
-      </View>)}
+  const toastCopy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
+  const q = view.queue;
+  const detail = (row: BriefSource): { line: string; body: ReactNode } | null => {
+    if (row.recipe === "linear") return { line: q.states.map(queueStateLabel).join(", "), body: <ChipGroup label="Counts as the queue" hint="Issues assigned to you in these states. At least one."
+      options={QUEUE_STATE_TYPES.map(st => ({ value: st, label: queueStateLabel(st) }))} value={q.states} disabled={windows.isPending}
+      onChange={states => windows.mutate({ states: states as typeof q.states })} theme={theme} compact={compact} /> };
+    if (row.recipe === "chat") return { line: `last ${q.chatHours} h`, body: <SettingsCard><SettingsSelect label="Chat window" hint="How far back AI priority reads DMs and mentions." value={String(q.chatHours)} disabled={windows.isPending}
+      options={[24, 48, 72].map(h => ({ value: String(h), label: `Last ${h} h` }))} onValueChange={v => windows.mutate({ chatHours: Number(v) as 24 | 48 | 72 })} /></SettingsCard> };
+    if (row.recipe === "calendar") return { line: q.calendarDays === 2 ? "today and tomorrow" : "today", body: <SettingsCard><SettingsSelect label="Meetings" hint="Which meetings AI priority reads." value={String(q.calendarDays)} disabled={windows.isPending}
+      options={[{ value: "1", label: "Today" }, { value: "2", label: "Today and tomorrow" }]} onValueChange={v => windows.mutate({ calendarDays: Number(v) as 1 | 2 })} /></SettingsCard> };
+    return null;
+  };
+  return <>
+    {query.isPending && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View>}
+    {query.error && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><Warning text={`Couldn't read the built-in sources: ${errorText(query.error)}`} action={<Button title="Retry" kind="ghost" theme={theme} compact={compact} onPress={() => void query.refetch()} />} theme={theme} compact={compact} /></View>}
+    {used.length > 0 && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border }}>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Built in</Text>
     </View>}
-    <SettingsCard>
-      <SettingsSelect label="Chat window" hint="How far back the brief reads DMs and mentions." value={String(view.queue.chatHours)} disabled={windows.isPending}
-        options={[24, 48, 72].map(h => ({ value: String(h), label: `Last ${h} h` }))} onValueChange={v => windows.mutate({ chatHours: Number(v) as 24 | 48 | 72 })} />
-      <SettingsSelect label="Calendar" hint="Which meetings the brief reads." value={String(view.queue.calendarDays)} disabled={windows.isPending}
-        options={[{ value: "1", label: "Today" }, { value: "2", label: "Today and tomorrow" }]} onValueChange={v => windows.mutate({ calendarDays: Number(v) as 1 | 2 })} />
-    </SettingsCard>
+    {[...used, ...askable].map((row, i) => <View key={row.id}>
+      {i === used.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border, gap: 2 }}>
+        <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Other servers on mcpproxy</Text>
+        <Text style={t.meta}>No recipe fits these. Preview one to see what a fast model would pick out for you.</Text>
+      </View>}
+      <SourceRow row={row} first={false} theme={theme} compact={compact} checking={checking} sweepAt={q.sweepAt} detail={detail(row)}
+        busy={data!.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
+        previewing={data!.previewing.includes(row.id) || pending?.preview === row.id}
+        onToggle={on => change.mutate({ on: { [row.id]: on } })} onRetry={() => change.mutate({ retry: row.id })} onCheck={() => change.mutate({ check: true })} onCopy={toastCopy}
+        onPreview={() => change.mutate({ preview: row.id })} />
+    </View>)}
+  </>;
+}
+
+/**
+ * Connections: what mcpproxy and GitHub let Follow-up read. One line (how many inputs read, or what failed), the
+ * servers it can't read (folded), and Check sources again.
+ */
+function ConnectionsSection({ sources, theme, compact }: { sources: SourcesState; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  const { query, change } = sources;
+  const data = query.data;
+  const [showNotRead, setShowNotRead] = useState(false);
+  if (!data) return null;
+  const notRead = data.sources.filter(r => r.kind === "skipped");
+  const checking = !!data.checking || !!(change.isPending && change.variables?.check);
+  return <SettingsSection title="Connections" info="What mcpproxy and GitHub let Follow-up read. Each source is found by the tools mcpproxy offers, never by its name, and only its read-only tools are ever called.">
+    {data.error || data.line.tone === "warn" ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} /> : <Text style={t.meta}>{data.line.text}</Text>}
     {notRead.length > 0 && <View style={{ gap: 6 }}>
       <Pressable accessibilityRole="button" aria-expanded={showNotRead} accessibilityState={{ expanded: showNotRead }} onPress={() => setShowNotRead(v => !v)}
         style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 24 }}>
-        <Text style={t.meta}>{`${notRead.length} more on mcpproxy the brief can't read`}</Text>
+        <Text style={t.meta}>{`${notRead.length} more on mcpproxy Follow-up can't read`}</Text>
         <Icon name={showNotRead ? "ChevronUp" : "ChevronDown"} size={13} color={c.foregroundMuted} />
       </Pressable>
       {showNotRead && notRead.map(row => <View key={row.id} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
@@ -107,10 +139,10 @@ function SourcesSection({ view, theme, compact }: { view: BriefSettingsView; the
         <Text style={t.meta}>{row.detail ?? row.adds}</Text>
       </View>)}
     </View>}
-    {data && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       <Button title="Check sources again" icon="RotateCcw" theme={theme} compact={compact} loading={checking} onPress={() => change.mutate({ check: true })} />
       {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${clock(data.checkedAt)}`}</Text>}
-    </View>}
+    </View>
   </SettingsSection>;
 }
 
@@ -134,12 +166,15 @@ function Warning({ text: line, action, theme, compact }: { text: string; action?
  * One source: healthy ones show no colour; one that failed says why in amber with Retry, one that needs a sign-in
  * gives the command to copy and Check again.
  */
-function SourceRow({ row, first, busy, checking, previewing, sweepAt, onToggle, onRetry, onCheck, onCopy, onPreview, theme, compact }: {
-  row: BriefSource; first: boolean; busy: boolean; checking: boolean; previewing: boolean; sweepAt: string; onToggle: (on: boolean) => void; onRetry: () => void; onCheck: () => void; onCopy: (command: string) => void; onPreview: () => void; theme: Theme; compact: boolean;
+function SourceRow({ row, first, busy, checking, previewing, sweepAt, detail, onToggle, onRetry, onCheck, onCopy, onPreview, theme, compact }: {
+  row: BriefSource; first: boolean; busy: boolean; checking: boolean; previewing: boolean; sweepAt: string; detail: { line: string; body: ReactNode } | null; onToggle: (on: boolean) => void; onRetry: () => void; onCheck: () => void; onCopy: (command: string) => void; onPreview: () => void; theme: Theme; compact: boolean;
 }) {
   const c = theme.colors; const t = text(c, compact);
   const bad = row.on && (row.health === "failed" || row.health === "sign-in");
-  const meta = [row.adds, row.cost, row.on && row.health === "ok" && row.readAt ? `read ${clock(row.readAt)}` : null].filter(Boolean).join(" · ");
+  const [open, setOpen] = useState(false);
+  // Its role first (one-place-for-priority-inputs), then its own setting's value, then the last read.
+  const meta = [row.kind === "ask" && !row.on ? null : inputRole(row), detail?.line ?? row.adds, row.on && row.health === "ok" && row.readAt ? `read ${clock(row.readAt)}` : null].filter(Boolean).join(" · ");
+  const label = inputLabel(row);
   // An Ask source that's off turns on only after a fresh preview that didn't fail (the server refuses otherwise).
   const ask = row.kind === "ask";
   const fresh = !!row.asked?.canTurnOn;
@@ -154,9 +189,9 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, onToggle, 
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 6 }}>
         {/* An Ask source's label is its server's own name: set as an identifier, like the server tags. */}
-        <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }, ask ? { fontFamily: MONO.fontFamily } : null]}>{row.label}</Text>
+        <Text style={[t.label, { color: row.on ? c.foreground : c.foregroundMuted }, ask ? { fontFamily: MONO.fontFamily } : null]}>{label}</Text>
         {/* The mcpproxy server it reads, unless it says the same as the label. */}
-        {row.server && row.server.toLowerCase() !== row.label.toLowerCase() && <Text style={[t.meta, MONO]}>{row.server}</Text>}
+        {row.server && row.server.toLowerCase() !== label.toLowerCase() && <Text style={[t.meta, MONO]}>{row.server}</Text>}
       </View>
       <Text style={t.meta}>{meta}</Text>
       {bad && <Warning text={row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")} theme={theme} compact={compact}
@@ -170,11 +205,13 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, onToggle, 
       {needsPreview && <View style={compact ? { marginTop: -6, marginBottom: -12 } : null}>{action("Preview", onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}</View>}
       {ask && !row.on && (previewing || row.asked) && <AskPreview row={row} previewing={previewing} fresh={fresh} sweepAt={sweepAt} onPreview={onPreview} onToggle={onToggle} busy={busy} theme={theme} compact={compact} />}
       {ask && row.on && row.asked && !row.asked.preview && !row.asked.error && <Text style={t.meta}>{row.asked.items.length ? `Found ${row.asked.items.length} for you at ${clock(row.asked.at)}` : `Nothing for you at ${clock(row.asked.at)}`}</Text>}
+      {open && detail && <View style={{ paddingTop: 8 }}>{detail.body}</View>}
     </View>
+    {detail && <IconButton theme={theme} compact={compact} icon={open ? "ChevronUp" : "ChevronDown"} label={`${open ? "Hide" : "Show"} ${label}'s setting`} onPress={() => setOpen(o => !o)} />}
     {ask && !row.on
       ? <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Off</Text>
       : row.canToggle
-      ? <Switch theme={theme} compact={compact} label={compact ? "" : row.on ? "On" : "Off"} accessibilityLabel={`Read ${row.label} in the brief`} value={row.on} disabled={busy} onChange={onToggle} />
+      ? <Switch theme={theme} compact={compact} label={compact ? "" : row.on ? "On" : "Off"} accessibilityLabel={`Read ${label}`} value={row.on} disabled={busy} onChange={onToggle} />
       : <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Always</Text>}
   </View>;
 }
@@ -232,11 +269,15 @@ function usePlanChange() {
   const write = useRpc(setBriefPlanRpc); const cache = useQueryClient(); const toast = useToast();
   return useMutation({
     mutationFn: async (input: PlanChange) => await write(input) as PlanView,
-    onSuccess: plan => { cache.setQueryData<BriefSettingsView>(briefSettingsKey, v => v ? { ...v, plan } : v); void cache.invalidateQueries({ queryKey: briefSettingsKey }); },
+    onSuccess: plan => { cache.setQueryData<BriefSettingsView>(briefSettingsKey, v => v ? { ...v, plan } : v); void cache.invalidateQueries({ queryKey: briefSettingsKey }); void cache.invalidateQueries({ queryKey: compassKey }); },
     onError: error => toast.error(errorText(error)),
   });
 }
 
+/**
+ * This week's plan: Compass (the newest claude.ai artifact a source with Posts the plan shares, as Compass reads
+ * it), A link, or Off. Who posts it is a source above, never a picker here (one-place-for-priority-inputs).
+ */
 function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const plan = view.plan;
@@ -253,16 +294,15 @@ function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme:
   };
   const reading = !!plan.url && !plan.read && change.isSuccess;
   const card = planCard({ ...plan, mode }, Date.now(), view.clock.timeZone, reading);
-  return <SettingsSection title="This week's plan" info="The brief reads it once a day and AI priority uses it to rank your work. Agents can set it too.">
+  return <SettingsSection title="This week's plan" info="AI priority ranks your work with it, and the brief shows it. A Compass source with Posts the plan brings it: the newest claude.ai artifact they share, read as soon as Compass sees it. Agents can set it too.">
     {env
       ? <Text style={t.meta}>Set by the environment (FOLLOW_UP_PLAN_URL), which wins over these settings. Unset it to choose here.</Text>
       : <Segmented<PlanMode> label="Where the plan comes from" value={mode} options={PLAN_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onChange={choose} disabled={change.isPending} theme={theme} compact={compact} />}
-    {!env && mode === "auto" && <WhoWhere plan={plan} busy={change.isPending} onChange={input => change.mutate(input)} theme={theme} compact={compact} />}
     {!env && mode === "link" && <LinkField initial={plan.link ?? ""} busy={change.isPending} onUse={link => change.mutate({ link, mode: "link" })} theme={theme} compact={compact} />}
-    {card && <PlanCardView card={card} busy={change.isPending} theme={theme} compact={compact}
-      onAnother={() => setPicked("link")} onRetry={() => change.mutate({ find: true })} onPaste={link => change.mutate({ link, mode: "link" })} />}
-    {!env && mode === "link" && plan.person && plan.channels.length > 0 && <SettingsCard>
-      <SettingsSwitch label="Replace when a newer one is found" hint={`Find it for me still looks in ${plan.channels.map(ch => `#${ch.name}`).join(", ")}.`} value={plan.replaceWhenNewer} disabled={change.isPending}
+    {card && <PlanCardView card={card} busy={change.isPending} theme={theme} compact={compact} onAnother={() => setPicked("link")} onPaste={link => change.mutate({ link, mode: "link" })} />}
+    {!env && plan.unmoved.length > 0 && <Warning text={`Who posts the plan moved into Compass as a source, but chat search couldn't find ${plan.unmoved.join(", ")}. Add them to a source with Posts the plan.`} theme={theme} compact={compact} />}
+    {!env && mode === "link" && plan.sources.length > 0 && <SettingsCard>
+      <SettingsSwitch label="Replace when a newer one arrives" hint={`A plan that ${plan.sources.map(x => `“${x.label}”`).join(" or ")} shares after you pasted this one takes over.`} value={plan.replaceWhenNewer} disabled={change.isPending}
         onValueChange={value => change.mutate({ replaceWhenNewer: value })} />
     </SettingsCard>}
   </SettingsSection>;
@@ -277,7 +317,7 @@ function Segmented<V extends string>({ label, value, options, onChange, disabled
       return <Pressable key={choice.value} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => onChange(choice.value)}
         style={state => ({ flexGrow: compact ? 1 : 0, flexBasis: compact ? 0 : "auto", minHeight: compact ? 44 : 30, paddingHorizontal: 12, borderRadius: 6, alignItems: "center", justifyContent: "center",
           backgroundColor: on ? c.surface0 : (state as { hovered?: boolean }).hovered ? tint(c.foreground, c) : "transparent", ...(on ? { boxShadow: "0px 0px 0px 1px rgba(127,127,127,0.18)" } : {}) })}>
-        <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{choice.label}</Text>
+        <Text numberOfLines={1} style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500", textAlign: "center" }}>{choice.label}</Text>
       </Pressable>;
     })}
   </View>;
@@ -302,82 +342,17 @@ function LinkField({ initial, busy, onUse, theme, compact, placeholder = "https:
   </View>;
 }
 
-/** "Posted by [person] in [channels]": each picked from the chat source's own search, or typed as a name. */
-function WhoWhere({ plan, busy, onChange, theme, compact }: { plan: PlanView; busy: boolean; onChange: (c: PlanChange) => void; theme: Theme; compact: boolean }) {
+function PlanCardView({ card, busy, onAnother, onPaste, theme, compact }: { card: NonNullable<ReturnType<typeof planCard>>; busy: boolean; onAnother: () => void; onPaste: (link: string) => void; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
-  const [open, setOpen] = useState<"people" | "channels" | null>(null);
-  const chips = (refs: ChatRef[], prefix: string, remove?: (r: ChatRef) => void) => refs.map(r => <View key={r.id ?? r.name} style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: compact ? 44 : 28, paddingLeft: 10, paddingRight: remove ? 4 : 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
-    <Text style={t.body}>{`${prefix}${r.name}`}</Text>
-    {remove && <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${prefix}${r.name}`} onPress={() => remove(r)} hitSlop={6} style={{ minWidth: compact ? 36 : 22, minHeight: compact ? 36 : 22, alignItems: "center", justifyContent: "center" }}>
-      <Icon name="X" size={12} color={c.foregroundMuted} />
-    </Pressable>}
-  </View>);
-  const personChip = (r: ChatRef) => <Pressable accessibilityRole="button" accessibilityLabel={`Posted by @${r.name}. Change`} disabled={busy} onPress={() => setOpen(open === "people" ? null : "people")}
-    style={state => ({ flexDirection: "row", alignItems: "center", gap: 6, minHeight: compact ? 44 : 28, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border,
-      backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : c.surface1 })}>
-    <Text style={t.body}>{`@${r.name}`}</Text>
-    <Icon name="ChevronDown" size={12} color={c.foregroundMuted} />
-  </Pressable>;
-  const label = (s: string) => <Text style={[t.meta, { width: compact ? undefined : 72, minWidth: compact ? 64 : undefined }]}>{s}</Text>;
-  const rowStyle = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 } as const;
-  return <View style={{ gap: 8 }}>
-    <View style={rowStyle}>
-      {label("Posted by")}
-      {plan.person ? personChip(plan.person)
-        : <Button title="Pick a person" icon="Plus" theme={theme} compact={compact} disabled={busy} onPress={() => setOpen(open === "people" ? null : "people")} />}
-    </View>
-    {open === "people" && <ChatPicker kind="people" exclude={plan.person ? [plan.person] : []} theme={theme} compact={compact} onCancel={() => setOpen(null)}
-      onPick={ref => { setOpen(null); onChange({ person: ref }); }} />}
-    <View style={rowStyle}>
-      {label("In")}
-      {chips(plan.channels, "#", r => onChange({ channels: plan.channels.filter(x => x !== r) }))}
-      {plan.channels.length < 5 && <Button title={plan.channels.length ? "Add" : "Pick channels"} icon="Plus" kind={plan.channels.length ? "ghost" : "secondary"} theme={theme} compact={compact} disabled={busy} onPress={() => setOpen(open === "channels" ? null : "channels")} />}
-    </View>
-    {open === "channels" && <ChatPicker kind="channels" exclude={plan.channels} theme={theme} compact={compact} onCancel={() => setOpen(null)}
-      onPick={ref => { setOpen(null); onChange({ channels: [...plan.channels, ref] }); }} />}
-  </View>;
-}
-
-function ChatPicker({ kind, exclude, onPick, onCancel, theme, compact }: { kind: "people" | "channels"; exclude: ChatRef[]; onPick: (r: ChatRef) => void; onCancel: () => void; theme: Theme; compact: boolean }) {
-  const taken = (r: ChatRef) => exclude.some(x => (x.id && x.id === r.id) || x.name.toLowerCase() === r.name.toLowerCase());
-  const c = theme.colors; const t = text(c, compact);
-  const search = useRpc(briefChatSearchRpc);
-  const [q, setQ] = useState("");
-  const [debounced, setDebounced] = useState("");
-  useEffect(() => { const id = setTimeout(() => setDebounced(q.trim()), 350); return () => clearTimeout(id); }, [q]);
-  const results = useQuery({ queryKey: ["follow-up", "brief-chat", kind, debounced], enabled: debounced.length >= 2, staleTime: 60_000,
-    queryFn: async () => await search({ kind, query: debounced }) as { results: ChatRef[]; error: string | null } });
-  const prefix = kind === "people" ? "@" : "#";
-  const typed = q.trim().replace(/^[#@]/, "");
-  const row = (label: string, hint: string | null, onPress: () => void, key: string) => <Pressable key={key} accessibilityRole="button" onPress={onPress}
-    style={state => ({ minHeight: compact ? 44 : 34, paddingHorizontal: 12, paddingVertical: 8, justifyContent: "center", borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-    <Text style={t.body}>{label}</Text>{hint && <Text style={t.meta}>{hint}</Text>}
-  </Pressable>;
-  return <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface1, overflow: "hidden" }}>
-    <View style={{ flexDirection: "row", gap: 8, padding: 8, alignItems: "center" }}>
-      <TextInput autoFocus accessibilityLabel={kind === "people" ? "Search people" : "Search channels"} value={q} onChangeText={setQ} placeholder={kind === "people" ? "Pick who posts it: search by name" : "Add a channel: search by name"}
-        placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field(theme, compact)} />
-      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
-    </View>
-    {results.isFetching && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>Searching…</Text>}
-    {results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8, color: c.statusWarning }]}>{results.data.error}</Text>}
-    {(results.data?.results ?? []).filter(r => !taken(r)).map(r => row(`${prefix}${r.name}`, null, () => onPick(r), r.id ?? r.name))}
-    {debounced.length >= 2 && !results.isFetching && !results.data?.results.length && !results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>{`Nothing matches "${debounced}".`}</Text>}
-    {typed.length >= 2 && !taken({ id: null, name: typed }) && !(results.data?.results ?? []).some(r => r.name.toLowerCase() === typed.toLowerCase()) && row(`Use "${prefix}${typed}" as typed`, null, () => onPick({ id: null, name: typed }), "typed")}
-  </View>;
-}
-
-function PlanCardView({ card, busy, onAnother, onRetry, onPaste, theme, compact }: { card: NonNullable<ReturnType<typeof planCard>>; busy: boolean; onAnother: () => void; onRetry: () => void; onPaste: (link: string) => void; theme: Theme; compact: boolean }) {
-  const c = theme.colors; const t = text(c, compact);
-  const warn = card.tone === "warn"; const error = card.tone === "error";
-  const icon = card.tone === "ok" ? "Check" : warn ? "TriangleAlert" : error ? "CircleAlert" : "Info";
-  const iconColor = card.tone === "ok" ? c.statusSuccess : warn ? c.statusWarning : error ? c.statusDanger : c.foregroundMuted;
-  return <View accessibilityRole={warn || error ? "alert" : undefined} style={{ flexDirection: "row", gap: 10, padding: compact ? 14 : 12, borderRadius: 8, borderWidth: 1, borderColor: warn ? withAlpha(c.statusWarning, 0.4) : c.border, backgroundColor: warn ? withAlpha(c.statusWarning, 0.14) : c.surface1 }}>
+  const warn = card.tone === "warn";
+  const icon = card.tone === "ok" ? "Check" : warn ? "TriangleAlert" : "Info";
+  const iconColor = card.tone === "ok" ? c.statusSuccess : warn ? c.statusWarning : c.foregroundMuted;
+  return <View accessibilityRole={warn ? "alert" : undefined} style={{ flexDirection: "row", gap: 10, padding: compact ? 14 : 12, borderRadius: 8, borderWidth: 1, borderColor: warn ? withAlpha(c.statusWarning, 0.4) : c.border, backgroundColor: warn ? withAlpha(c.statusWarning, 0.14) : c.surface1 }}>
     <View style={{ paddingTop: 2 }}><Icon name={icon} size={14} color={iconColor} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
       <Text style={t.label}>{card.title}</Text>
       <Text style={t.meta}>{card.line}</Text>
-      {(warn || error) && card.inUse && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 4 }}>
+      {warn && card.inUse && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 4 }}>
         <Text style={t.meta}>{card.inUse.line}</Text>
         <Button title="Open" kind="ghost" icon="ExternalLink" theme={theme} compact={compact} onPress={() => void openExternalUrl(card.inUse!.url).catch(() => undefined)} />
       </View>}
@@ -385,15 +360,18 @@ function PlanCardView({ card, busy, onAnother, onRetry, onPaste, theme, compact 
         {card.actions.includes("open") && <Button title="Open" icon="ExternalLink" grow={compact} theme={theme} compact={compact} onPress={() => void openExternalUrl(card.url).catch(() => undefined)} />}
         {card.actions.includes("another") && <Button title="Use another link" grow={compact} theme={theme} compact={compact} onPress={onAnother} />}
       </View>}
-      {(warn || error) && card.paste && <LinkField initial="" busy={busy} onUse={onPaste} theme={theme} compact={compact} placeholder={error ? "Or paste this week's link" : "Paste this week's link"} />}
-      {error && card.retry && <Button title="Look again" icon="RotateCcw" theme={theme} compact={compact} loading={busy} onPress={onRetry} />}
+      {warn && card.paste && <LinkField initial="" busy={busy} onUse={onPaste} theme={theme} compact={compact} placeholder="Paste this week's link" />}
     </View>
   </View>;
 }
 
 const SWEEP_TIMES = ["05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
 
-function QueueSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
+/**
+ * When: the brief's own settings (the morning read's time, "changes since", the zone and the workdays). Compass's
+ * morning read, the queue's sweep and the sources check all run once a workday at this time (the-brief-has-one-timer).
+ */
+function WhenSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const write = useRpc(setBriefSettingsRpc); const cache = useQueryClient(); const toast = useToast();
   const change = useMutation({
@@ -405,12 +383,9 @@ function QueueSection({ view, theme, compact }: { view: BriefSettingsView; theme
   const times = [...new Set([...SWEEP_TIMES, q.sweepAt])].sort();
   const zoneFrom = view.clock.zoneFrom === "setting" ? "set here" : view.clock.zoneFrom === "device" ? "this device's" : "the host's";
   const usual = defaultWorkdays(view.clock.timeZone);
-  return <SettingsSection title="Linear queue" info="What the morning sweep reads, when, and what the brief's changes are counted from. The sweep reads every issue assigned to you in these states.">
-    <ChipGroup label="Counts as the queue" hint="Issues assigned to you in these states. At least one."
-      options={QUEUE_STATE_TYPES.map(st => ({ value: st, label: queueStateLabel(st) }))} value={q.states} disabled={change.isPending}
-      onChange={states => change.mutate({ states: states as typeof q.states })} theme={theme} compact={compact} />
+  return <SettingsSection title="When" info="The morning read: Compass reads its sources, the Linear queue is swept and mcpproxy is asked again, once each workday at this time. The brief's changes are counted from your last read.">
     <SettingsCard>
-      <SettingsSelect label="Sweep at" hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
+      <SettingsSelect label="Morning read at" hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
         options={times.map(v => ({ value: v, label: v }))} onValueChange={sweepAt => change.mutate({ sweepAt })} />
       <SettingsSelect label="Changes since" hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
         value={q.since} disabled={change.isPending} options={[{ value: "read", label: "Your last read" }, { value: "workday", label: "Your last workday" }]} onValueChange={since => change.mutate({ since })} />

@@ -237,7 +237,7 @@ function fakeCompassClaude() {
   return `#!/usr/bin/env node
 if (!process.argv.some(a => a.startsWith("You read messages for one developer"))) { process.stderr.write("not logged in"); process.exit(1); }
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
-  const item = (/\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
+  const item = (/\\[(m\\d+)\\] dana[^\\n]*\\n?[^\\[]*APP-142 retries/.exec(input) || /\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
   const value = { notes: [
     { item, what: "APP-142 retries before the acme demo", keys: ["APP-142"], kind: "issue", strength: "high", untilWords: "Thursday", until: null, quote: "APP-142 retries are really important, the acme demo is Thursday" },
     { item, what: "Search filters", keys: [], kind: "feature", strength: "low", untilWords: "next week", until: null, quote: "Search filters can wait until next week" },
@@ -251,9 +251,10 @@ function fakeAskClaude() {
   return `#!/usr/bin/env node
 const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
 const items = process.argv.some(a => a.startsWith("You turn read-only lookup results"));
-if (!plan && !items) { process.stderr.write("not logged in"); process.exit(1); }
+const compass = process.argv.some(a => a.startsWith("You read messages for one developer"));
+if (!plan && !items && !compass) { process.stderr.write("not logged in"); process.exit(1); }
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
-  const value = plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
+  const value = compass ? { notes: [], retracts: [], nothing: true } : plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
     : { items: [
       { title: "T-7: review the retry limits for soft declines", why: "Waiting on your review, due tomorrow", url: "https://tracker.example/T-7", due: "2026-03-03" },
       { title: "T-12: bob asked about the refund export", why: "A question waiting on you since yesterday", url: "https://tracker.example/T-12", due: null },
@@ -375,6 +376,7 @@ if (tool === "read_channel") {
   reply(JSON.stringify({ messages: "Channel: DM (DDANA00001)\\n\\n" + [
     m("alice", "UALICE0001", 1, "on it"),
     m("dana", "UDANA00001", 2, "APP-142 retries are really important, the acme demo is Thursday. Search filters can wait until next week."),
+    m("dana", "UDANA00001", 26, "This week's plan: <https://claude.ai/artifact/0a1b2c3d-week-plan?share=K|roadmap>"),
   ].join("\\n\\n"), pagination_info: "" }));
 }
 // The Ask shots' tracker (fictional): two tickets waiting on the developer.
@@ -384,6 +386,7 @@ if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
 ] }));
 if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
 if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
+if (/list-events$/.test(tool)) reply(JSON.stringify({ events: [] }));
 reply("not available in the screenshot fixture", true);
 `;
 }
@@ -1104,7 +1107,7 @@ const PHONE = { width: 390, height: 844 };
 /** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
 const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
 const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", new: "new", display: "display", brief: "brief" };
-const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Morning brief" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Compass" };
 /** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
 async function openSettingsAt(page, category, vp = page.viewportSize()) {
   if (nativeSettingsTabs) {
@@ -3892,7 +3895,7 @@ async function compassShots({ shoot, call, home, seeded }) {
       await shoot(`compass-${name}-${device}-${theme}`, viewport, theme, async page => {
         await page.setViewportSize(viewport);
         await openSettingsAt(page, "brief", viewport);
-        const head = page.getByText("Compass", { exact: true }).first();
+        const head = page.getByText("What sets your priorities", { exact: true }).first();
         await head.waitFor();
         await head.evaluate(e => e.scrollIntoView({ block: "start" }));
         await drive?.(page);
@@ -3915,6 +3918,16 @@ async function compassShots({ shoot, call, home, seeded }) {
   await states("notes", async page => { await page.getByRole("button", { name: /Show 2 notes from Dana/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
   await states("editor", async page => { await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
   await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); }, { phoneOnly: true });
+  // One place for priority inputs: the built-in inputs follow the sources in the same list, each with its role; the
+  // Linear queue's states open behind its chevron.
+  await states("inputs", async page => {
+    const row = page.getByText("Your Linear queue", { exact: true }).first();
+    await row.waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: /Show Your Linear queue's setting/ }).first().click();
+    await page.getByText("Counts as the queue", { exact: true }).first().waitFor();
+    await row.evaluate(e => e.scrollIntoView({ block: "start" }));
+  });
+  await states("when", async page => { const h = page.getByText("When", { exact: true }).first(); await h.waitFor(); await h.evaluate(e => e.scrollIntoView({ block: "start" })); });
   await call("follow.set-agent-setting", { role: "about", entry: { provider: "gemini", model: null } });
   await states("blocked", page => page.getByText(/Compass doesn't read on Gemini/).first().waitFor());
   await call("follow.set-agent-setting", { role: "about", entry: null });
@@ -3974,7 +3987,7 @@ async function morningBriefShots({ shoot, call, home }) {
   const setSources = v => fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify(v));
   let ranHealth = { health: {}, errors: {} };
   const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, ...ranHealth, notStarted: [], last: null, slackSince: null,
-    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
+    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: i < items - 3 ? [`ACME-${200 + i}`] : [] })) } }, prev: {}, model: null }));
   // Sources sit above the plan: the plan's states scroll to it; the Sources states stay at the top.
   const states = async (name, drive, { top = false } = {}) => {
     for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
@@ -3994,58 +4007,48 @@ async function morningBriefShots({ shoot, call, home }) {
       });
     }
   };
-  await setChat({ messages: `1. **#planning** alice: This week's plan ${A1} 2026-03-02 09:12:00` });
+  // This week's plan comes from Compass: none until a source posts it; dana's DM (the fake history read) shares A1.
+  await setSources({ compass: true });
+  await states("plan-no-source", page => page.getByText("No source posts the plan").first().waitFor());
   await seedRead(A1, "Week of Mar 2", 18);
-  await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
-  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
-  // Sources: every source read (opening Settings asks the fake mcpproxy again; wait for its answer).
+  await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "dana" }], roles: ["priorities", "plan"] } });
+  await call("follow.read-compass", {});
+  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor({ timeout: 30_000 }));
+  // The plan's line under the source that posted it, at the top of the list.
+  await states("plan-source", page => page.getByText(/Shared this week.s plan/).first().waitFor({ timeout: 30_000 }), { top: true });
+  // The built-in inputs, in the same list: every source read (opening Settings asks the fake mcpproxy again).
   const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
+  const inputs = page => page.getByText("Your Linear queue", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "start" }));
   ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true });
+  await setSources({ compass: true, linear: true });
   await call("follow.sweep-queue", {});
-  await states("sources", sourcesReady, { top: true });
+  await states("sources", async page => { await sourcesReady(page); await inputs(page); }, { top: true });
   // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
   ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
-  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  await setSources({ compass: true, linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); await inputs(page); }, { top: true });
   // Ask: a server no recipe fits (the tracker) shows Preview; the preview (the fake claude plans one read and sums it up)
   // shows what it would add, with Turn on.
   ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true, ask: true });
+  await setSources({ compass: true, linear: true, ask: true });
   const trackerRow = page => page.getByText("tracker", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "center" }));
   await states("ask-off", async page => { await sourcesReady(page); await page.getByRole("button", { name: /Preview what Ask would read from tracker/ }).first().waitFor(); await trackerRow(page); }, { top: true });
   await call("follow.brief-sources", { check: true });
   await new Promise(r => setTimeout(r, 1500));
   await call("follow.set-brief-sources", { preview: "mcp:tracker" });
   await states("ask-preview", async page => { await sourcesReady(page); await page.getByText(/would add these 2 to today.s brief/).first().waitFor({ timeout: 30_000 }); await trackerRow(page); }, { top: true });
-  await setSources({});
+  await setSources({ compass: true });
   ranHealth = { health: {}, errors: {} };
-  await seedRead(A1, "Week of Mar 2", 18);
-  await states("picker", async page => {
-    await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
-    await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");
-    await page.getByText("#plans-archive").first().waitFor();
-  });
-  await setChat({ messages: "" });
-  await call("follow.set-brief-plan", { find: true });
-  await states("plan-missing", page => page.getByText("No plan this week yet").first().waitFor());
-  await setChat({ error: true });
-  await call("follow.set-brief-plan", { find: true });
-  await states("plan-error", page => page.getByText("Couldn't search").first().waitFor());
-  await setChat({ messages: "" });
   await call("follow.set-brief-plan", { link: A2, mode: "link" });
   // Read a minute after it was pasted (the daemon's clock is BASE + VIEW).
   await seedRead(A2, "Week 10 plan", 14, -60_000);
   await states("plan-pasted", page => page.getByText("Week 10 plan").first().waitFor());
   await call("follow.set-brief-plan", { mode: "off" });
   await states("plan-off", page => page.getByText("No plan", { exact: true }).first().waitFor());
-  await call("follow.set-brief-plan", { mode: "auto", person: null, channels: [] });
-  await states("plan-pick-first", page => page.getByText("Pick who posts it and where").first().waitFor());
-  await states("queue", async page => { const h = page.getByText("Linear queue", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 200); });
-  await states("queue-bottom", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
+  await states("when", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
   await briefSinceShots({ shoot, call, home });
 }
 

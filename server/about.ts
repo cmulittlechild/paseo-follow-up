@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { guardedProvider } from "../shared/agent-settings";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { JsonFileStore } from "./json-file-store";
@@ -386,8 +387,11 @@ export class AboutService {
   private start(w: Workspace, inputs: AboutInputs, hash: string): Promise<void> {
     const work = (async () => {
       const role = await this.role();
-      const result = await this.deps.jobs.run<SummaryOutput>({ name: "about", provider: role.provider, ...(role.model ? { model: role.model } : {}), thinking: role.thinking,
-        prompt: summaryPrompt(inputs, role.maxPromptChars ?? LIMITS.promptChars), maxPromptChars: Math.max(role.maxPromptChars ?? LIMITS.promptChars, LIMITS.promptChars), schema: summaryOutputSchema, maxOutputChars: 600, timeoutMs: 90_000 });
+      // Linked issues and threads are someone else's words: on a provider Follow-up can't take tools from, the Summary
+      // reads only the workspace's own work (a-job-that-reads-outside-content-can-only-read).
+      const own = guardedProvider(role.provider) ? inputs : { ...inputs, linkTexts: [] };
+      const result = await this.deps.jobs.run<SummaryOutput>({ name: "about", outside: own.linkTexts.length > 0, provider: role.provider, ...(role.model ? { model: role.model } : {}), thinking: role.thinking,
+        prompt: summaryPrompt(own, role.maxPromptChars ?? LIMITS.promptChars), maxPromptChars: Math.max(role.maxPromptChars ?? LIMITS.promptChars, LIMITS.promptChars), schema: summaryOutputSchema, maxOutputChars: 600, timeoutMs: 90_000 });
       const at = this.now();
       // A reply that isn't one short sentence fails the job; the previous sentence (if any) stays.
       if (!result.ok) { await this.deps.store.mutate(f => { f.failures[w.id] = { at, error: result.error }; }); return; }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
-import { useRpc } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, SettingsSection, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, Text } from "./text";
@@ -11,6 +11,7 @@ import { compassFindRpc, compassRpc, readCompassRpc, setCompassRpc } from "../sh
 import {
   COMPASS, ROLES, ROLE_INFO, type CompassChange, type CompassNote, type CompassSource, type GlossaryEntry, type Place, type Preset, type PresetView, type Role, type Who,
 } from "../shared/compass";
+import { type PlanView } from "../shared/morning-brief";
 
 export const compassKey = ["follow-up", "compass"];
 
@@ -26,6 +27,8 @@ type View_ = {
   lastRead: { at: string; trigger: string; ok: boolean; notes: number; error: string | null } | null;
   today: { extractions: number; cap: number };
   running: boolean;
+  /** This week's plan (Settings → Compass reads every priority input in one view). */
+  plan?: PlanView;
 };
 type Found = { id: string; name: string; place: Place };
 
@@ -37,21 +40,33 @@ const whoWhere = (s: CompassSource) => s.who.kind === "person" && s.places.lengt
 const day = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 const whoName = (w: Who) => w.kind === "person" ? w.person.name : w.kind === "people" ? w.people.map(p => p.name).join(", ") : w.kind === "me" ? "You" : "Everyone";
 
-/**
- * Settings → Morning brief → Compass (docs/compass.md): the people and places that set the developer's priorities, how
- * to read them, and the glossary. One editor for every source; presets only fill its fields. Every change goes through
- * the RPC `set_compass` runs, and Read now through `read_compass`.
- */
-export function CompassSection({ theme, compact }: { theme: Theme; compact: boolean }) {
-  const c = theme.colors; const t = text(c, compact);
-  const read = useRpc(compassRpc); const write = useRpc(setCompassRpc); const readNow = useRpc(readCompassRpc);
-  const cache = useQueryClient(); const toast = useToast();
-  const query = useQuery({ queryKey: compassKey, queryFn: async () => await read({}) as View_, refetchInterval: q => q.state.data?.running ? 2_000 : 30_000 });
-  const change = useMutation({
+/** Settings → Compass's one read: the sources, their notes, the plan and the inputs (`follow.compass`, as `compass` reads it). */
+export function useCompassView<T = View_>() {
+  const read = useRpc(compassRpc);
+  return useQuery({ queryKey: compassKey, queryFn: async () => await read({}) as T, refetchInterval: q => (q.state.data as View_ | undefined)?.running ? 2_000 : 30_000 });
+}
+function useCompassChange() {
+  const write = useRpc(setCompassRpc); const cache = useQueryClient(); const toast = useToast();
+  return useMutation({
     mutationFn: async (input: CompassChange) => await write(input) as View_,
     onSuccess: value => cache.setQueryData(compassKey, value),
     onError: error => toast.error(errorText(error)),
   });
+}
+
+/**
+ * Settings → Compass → What sets your priorities (docs/compass.md, one-place-for-priority-inputs): every input AI
+ * priority reads, in one list. First the Compass sources, the people and places the developer picked (one editor for
+ * every source; presets only fill its fields), then `after`: the built-in inputs (the Linear queue, DMs and mentions,
+ * the calendar, mail, review requests) and the mcpproxy servers Ask could read. Every change goes through the RPC
+ * `set_compass` runs, and Read now through `read_compass`.
+ */
+export function CompassSection({ theme, compact, after }: { theme: Theme; compact: boolean; after?: ReactNode }) {
+  const c = theme.colors; const t = text(c, compact);
+  const readNow = useRpc(readCompassRpc);
+  const cache = useQueryClient(); const toast = useToast();
+  const query = useCompassView();
+  const change = useCompassChange();
   const reading = useMutation({
     mutationFn: async () => await readNow({}) as { running: boolean; view: View_ },
     onSuccess: r => cache.setQueryData(compassKey, r.view),
@@ -60,7 +75,7 @@ export function CompassSection({ theme, compact }: { theme: Theme; compact: bool
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const data = query.data;
   const full = !!data && data.settings.sources.length >= COMPASS.sources;
-  return <SettingsSection title="Compass" info="The people and places that set your priorities. Follow-up reads what they say each workday morning, keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads it. Agents can set it up too.">
+  return <SettingsSection title="What sets your priorities" info="Everything AI priority, Needs you and the brief read, in one list. The people you add are read each workday morning: Follow-up keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads them. Nothing is ever posted. Agents can set it up too.">
     {query.isPending && <ActivityIndicator accessibilityLabel="Loading Compass" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <Text style={[t.meta, { color: c.statusWarning }]}>{`Couldn't load Compass: ${errorText(query.error)}`}</Text>}
     {data?.blocked && <Line icon="TriangleAlert" tone={c.statusWarning} text={data.blocked} theme={theme} compact={compact} />}
@@ -76,6 +91,7 @@ export function CompassSection({ theme, compact }: { theme: Theme; compact: bool
             onToggle={on => change.mutate({ source: { id: s.id, enabled: on } })} />)}
       {editing === "new" && <SourceEditor view={data} first={data.settings.sources.length === 0} busy={change.isPending} theme={theme} compact={compact} onCancel={() => setEditing(null)}
         onSave={input => change.mutate(input, { onSuccess: () => setEditing(null) })} />}
+      {after}
     </View>}
     {data && editing !== "new" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       {full
@@ -84,8 +100,17 @@ export function CompassSection({ theme, compact }: { theme: Theme; compact: bool
       {data.settings.sources.length > 0 && <Button title="Read now" icon="RotateCcw" kind="ghost" theme={theme} compact={compact} loading={reading.isPending || data.running} disabled={!!data.blocked} onPress={() => reading.mutate()} />}
       {data.settings.sources.length > 0 && <Text style={t.meta}>{statusLine(data)}</Text>}
     </View>}
-    {data && <ReadingNotes value={data.settings.instructions} busy={change.isPending} theme={theme} compact={compact} onSave={v => change.mutate({ instructions: v })} />}
-    {data && <Glossary entries={data.settings.glossary} busy={change.isPending} theme={theme} compact={compact} onSave={g => change.mutate({ glossary: g })} />}
+  </SettingsSection>;
+}
+
+/** Settings → Compass → How to read your Compass: the words every source is read with, and the glossary. */
+export function CompassReading({ theme, compact }: { theme: Theme; compact: boolean }) {
+  const query = useCompassView(); const change = useCompassChange();
+  const data = query.data;
+  if (!data) return null;
+  return <SettingsSection title="How to read your Compass" info="Words every source is read with; each source's own How to read this comes after them. They change how messages are understood, never what is read.">
+    <ReadingNotes value={data.settings.instructions} busy={change.isPending} theme={theme} compact={compact} onSave={v => change.mutate({ instructions: v })} />
+    <Glossary entries={data.settings.glossary} busy={change.isPending} theme={theme} compact={compact} onSave={g => change.mutate({ glossary: g })} />
   </SettingsSection>;
 }
 
@@ -123,6 +148,7 @@ function SourceRow({ view, source, first, busy, onEdit, onToggle, theme, compact
           <Text style={[t.meta, { color: c.foreground }]}>{ROLE_INFO[r].label}</Text>
         </View>)}
       </View>
+      {source.enabled && source.roles.includes("plan") && <PlanLine source={source} plan={view.plan} theme={theme} compact={compact} />}
       {source.instructions ? <RichText plain numberOfLines={2} style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</RichText> : null}
       {source.enabled && (live
         ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${open ? "Hide" : "Show"} ${live} note${live === 1 ? "" : "s"} from ${source.label}`} onPress={() => setOpen(o => !o)} hitSlop={compact ? 0 : 6}
@@ -141,6 +167,29 @@ function SourceRow({ view, source, first, busy, onEdit, onToggle, theme, compact
       </Pressable>
     </View>
     <Switch theme={theme} compact={compact} label={compact ? "" : source.enabled ? "On" : "Off"} accessibilityLabel={`Read ${source.label}`} value={source.enabled} disabled={busy} onChange={onToggle} />
+  </View>;
+}
+
+/**
+ * This week's plan under the source that posted it ("This week's plan · Week of Nov 23 · posted Sun 18:05 · 14 items, 3
+ * without an issue", with Open), or that none has come from it yet. Plans come from Compass on arrival.
+ */
+function PlanLine({ source, plan, theme, compact }: { source: CompassSource; plan?: PlanView; theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c, compact);
+  if (!plan || plan.mode === "off" || plan.source === "env") return null;
+  const mine = plan.found?.source === source.id ? plan.found : plan.previous?.source === source.id && !plan.found ? plan.previous : null;
+  const inUse = !!mine && plan.url === mine.url;
+  const posted = mine?.postedAt ? new Date(mine.postedAt).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : null;
+  const last = inUse && plan.previous?.url === mine?.url && !plan.found;
+  const line = inUse ? `Shared ${last ? "last week's plan" : "this week's plan"}${plan.read?.title ? `, ${plan.read.title}` : ""}${posted ? ` · ${posted}` : ""}`
+    : mine ? "Shared a plan; a pasted link is in use instead" : "No plan shared yet: the newest claude.ai artifact becomes the plan";
+  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={inUse ? "Check" : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
+    <RichText plain style={[t.meta, { flexShrink: 1, minWidth: 0 }]}>{line}</RichText>
+    {inUse && <Pressable accessibilityRole="link" accessibilityLabel={`Open this week's plan from ${source.label}`} onPress={() => void openExternalUrl(mine!.url).catch(() => undefined)} hitSlop={compact ? 0 : 6}
+      style={{ minHeight: compact ? 44 : 20, marginTop: compact ? -12 : 0, justifyContent: compact ? "center" : "flex-start" }}>
+      <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>Open</Text>
+    </Pressable>}
   </View>;
 }
 
@@ -284,7 +333,6 @@ function ReadingNotes({ value, busy, onSave, theme, compact }: { value: string; 
   useEffect(() => setDraft(value), [value]);
   const dirty = draft.trim() !== value.trim();
   return <SubmitScope enabled={dirty && !busy} onSubmit={() => onSave(draft)} style={{ gap: 6 }}>
-    <Text style={[t.label, { color: c.foreground }]}>How to read your Compass</Text>
     <TextInput accessibilityLabel="How to read your Compass" multiline value={draft} onChangeText={v => setDraft(v.slice(0, COMPASS.instructions))} placeholder="P0 means today. 'The renewal' is the acme renewal. Customer asks wait for the plan unless they name a date."
       placeholderTextColor={c.foregroundMuted} style={{ minHeight: 72, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>

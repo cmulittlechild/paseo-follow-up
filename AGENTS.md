@@ -81,9 +81,9 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
-| Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
+| Settings → Compass (was Morning brief): this week's plan (from Compass, a link, off; the one-time import and the move into Compass), the queue's settings and the brief's When | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
-| Compass: the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
+| Compass: the one place for priority inputs (Settings → Compass: its sources and the built-in inputs, each with a role), the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching, plans on arrival; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts`, `shared/reviewers-click.ts`, `shared/keep-in-place.ts`, `client/reviewers-button.tsx` | [prs](docs/prs.md) |
@@ -1009,8 +1009,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 78. **The brief has one timer** (`the-brief-has-one-timer`). The sweep runs once each workday at the sweep time in the
    developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
    governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
-   fresh install; nothing else reads Linear on a schedule. Find it for me and the sources check (mcpproxy asked again)
-   ride the same loop, once a workday after the sweep time, and so does Compass's morning read (`Compass.tick`). The zone is the setting's, else the developer's device's,
+   fresh install; nothing else reads Linear on a schedule. The sources check (mcpproxy asked again) rides the same
+   loop, once a workday after the sweep time, and so does Compass's morning read (`Compass.tick`), which brings this
+   week's plan too: Find it for me's own daily search is gone (folded into Compass). The zone is the setting's, else the developer's device's,
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
    `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
@@ -1040,7 +1041,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
    old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
 81. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
-   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
+   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Compass) goes
    through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
    `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
    even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
@@ -1058,14 +1059,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    plan reader's (and Settings' title read) is the Artifact tool's `read` only. A refused call is logged by tool and
    action name only (`ai-jobs.jsonl` `refused`) and the job still completes on what it read. Codex jobs run in a
    read-only sandbox without the shell tool. Compass's extraction runs only on those two: with Summaries on any other provider it reads nothing at all and says why (compass-text-is-data). A job on any other provider (`server/job-agent.ts`) runs as a Paseo agent
-   with that provider's own tools and has no such guard yet: an open gap, not an exemption. 2026-11-23:
-   the plan reader kept the Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
-   `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete).
+   with that provider's own tools, so a job that reads outside content (`outside` on its spec: AI priority, Ask,
+   Compass, the plan reader, a Summary with linked issues or threads) never starts there: `AiJobs.run` refuses it
+   before any runner (`guardedProvider`, reason `unguarded`), the Summary leaves the linked text out and runs on the
+   workspace's own work, and Settings → Agents and the source say why in one line. 2026-11-23: the plan reader kept the
+   Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
+   `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete; an outside job on another
+   provider never reaches a runner).
 82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
    channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
    shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
    channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
-   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
+   2026-11-22: the ranker, the Summary, Linked, New and the plan's finder each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
 83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
@@ -1298,6 +1303,17 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (planned, so an agent confirms on the developer's ask), audited as its caller. Tell queues one message to the
    workspace's main agent (invariant 36) that carries the quote as someone else's words. Reads, the morning read,
    Home's lines, Catch up and `why_suggested` never queue a message. Guarded by `tests/compass-agent.test.ts`.
+
+108. **One place for priority inputs** (`one-place-for-priority-inputs`). Everything AI priority reads is an input
+   in one list, Settings → Compass's What sets your priorities (or `compass` / `set_compass` for agents): the Compass
+   sources, then the Linear queue, DMs and mentions, the calendar, mail, review requests and Ask servers, each with its
+   role. There is no second setting for the same input: who posts this week's plan is a source with Posts the plan,
+   never a picker of its own, and the plan arrives with Compass's read (`MorningBrief.recordPlan`), read at once. The
+   brief's tools stay one minor release as aliases. The move from the Morning brief tab carries every setting over once
+   (`moveToCompass`): Find it for me's person and channels become a source (or join the same person's), and a name
+   chat search can't find stays, by name, in `plan.unmoved` for Settings to show, so nothing is lost (invariant 7).
+   2026-11-23, the developer: "fewer things to learn beats fewer PRs"; the plan's person was picked twice, once as a
+   Compass source and once in the plan card. Guarded by `tests/compass-move.test.ts`.
 
 ## Bugs
 

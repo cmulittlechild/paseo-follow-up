@@ -28,7 +28,6 @@ const NOT_AGENT_BOUND: Record<string, string> = {
   "compass-settings.tsx|\"Issue key\"": "a setting",
   "why-it-matters.tsx|\"Search workspaces\"": "a search (picks the workspace a note moves to)",
   "morning-brief-settings.tsx|\"The plan's link\"": "a setting",
-  "morning-brief-settings.tsx|{kind === \"people\" ? \"Search people\" : \"Search channels\"}": "a setting's search",
   "morning-brief-settings.tsx|\"Time zone\"": "a setting",
   "new-settings.tsx|\"Team key\"": "a setting",
   "new-settings.tsx|{`Base for ${name}`}": "a setting",

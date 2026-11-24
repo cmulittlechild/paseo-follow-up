@@ -4,7 +4,7 @@ import { JsonFileStore } from "./json-file-store";
 import { NoSourceError, type SourceDirectory } from "./source-tools";
 import type { AiJobs } from "./ai-jobs";
 import type { MorningBriefStore } from "./morning-brief";
-import { parseChatRefs } from "../shared/morning-brief";
+import { artifactLinks, parseChatRefs } from "../shared/morning-brief";
 import { isWorkday, zoned, type Clock } from "../shared/linear-queue";
 import {
   COMPASS, EXTRACT_SYSTEM, ROLE_INFO, applyCompassChange, batchItems, compassFileSchema, emptyCompassFile, extractPrompt, extractReplySchema, guardedProvider,
@@ -40,6 +40,11 @@ export type CompassDeps = {
    * (invariant 36). Null when the workspace has no main agent to tell. The only way a note reaches an agent.
    */
   tell?: (workspaceId: string, text: string, by: string) => Promise<{ agentId: string } | null>;
+  /**
+   * A "Posts the plan" source shared a claude.ai artifact (plans come from Compass on arrival): the brief records it as
+   * this week's plan and reads its title at once (MorningBrief.recordPlan). Resolves whether it was new.
+   */
+  onPlan?: (found: { url: string; postedAt: string; where: string; source: string }) => Promise<boolean>;
   /** Notes changed: AI priority's next tick runs once (Ranker.markDue) and the feeds push. */
   onChange?: () => void;
   now?: () => number;
@@ -153,7 +158,7 @@ export class Compass {
   }
 
   /** Read now (Settings' Read now, read_compass): every enabled source, or one. Joins a read already going. */
-  read(trigger: "morning" | "manual" | "agent" | "added", opts: { source?: string } = {}): Promise<CompassFile["lastRead"]> {
+  read(trigger: "morning" | "manual" | "agent" | "added", opts: { source?: string; plans?: boolean } = {}): Promise<CompassFile["lastRead"]> {
     return this.reading ??= this.readOnce(trigger, opts).finally(() => { this.reading = null; });
   }
   /** Read now, waiting at most `ms`; then `running` (read_compass). */
@@ -164,10 +169,10 @@ export class Compass {
     return r === "t" ? { running: true } : { running: false, lastRead: r };
   }
 
-  private async readOnce(trigger: string, opts: { source?: string }): Promise<CompassFile["lastRead"]> {
+  private async readOnce(trigger: string, opts: { source?: string; plans?: boolean }): Promise<CompassFile["lastRead"]> {
     const at = new Date(this.now()).toISOString();
     const settings = await this.settings();
-    const sources = settings.sources.filter(s => s.enabled && (!opts.source || s.id === opts.source) && noteRole(s.roles));
+    const sources = settings.sources.filter(s => s.enabled && (!opts.source || s.id === opts.source) && (!opts.plans || s.roles.includes("plan")) && noteRole(s.roles));
     const blocked = await this.blocked();
     const finish = async (ok: boolean, notes: number, error: string | null) => {
       const lastRead = { at, trigger, ok, notes, error };
@@ -228,6 +233,12 @@ export class Compass {
       const kind = whose(m.by);
       if (kind) items.push({ id: `m${items.length + 1}`, by: m.by, at: m.at, link: m.link, text: m.text, ...(kind === "context" ? { context: true } : {}) });
     }
+    // Plans come from Compass on arrival: the newest claude.ai artifact the source's people shared here.
+    if (source.roles.includes("plan") && this.d.onPlan) {
+      const posted = items.filter(i => !i.context).flatMap(i => artifactLinks(i.text).map(url => ({ url, at: i.at }))).sort((a, b) => b.at.localeCompare(a.at))[0];
+      const where = place.sub === "dm" ? "their DM" : `#${place.name}`;
+      if (posted) await this.d.onPlan({ url: posted.url, postedAt: posted.at, where, source: source.id }).catch(() => false);
+    }
     const status = read.slow ? "slow-path" as const : "ok" as const;
     const partialNote = read.partial ? `More than ${COMPASS.pagesMax * COMPASS.pageSize} messages since the last read; the newest were read.` : null;
     if (!items.some(i => !i.context)) {
@@ -242,7 +253,7 @@ export class Compass {
       if (extractions >= COMPASS.extractionsPerDay) break;
       const { batch } = batchItems(rest);
       const r = await this.d.jobs.run({
-        name: "compass-extract", system: EXTRACT_SYSTEM, schema: extractReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking,
+        name: "compass-extract", outside: true, system: EXTRACT_SYSTEM, schema: extractReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking,
         prompt: extractPrompt({ source, global: settings.instructions, items: batch, open, now, clock }), maxPromptChars: 24_000, maxOutputChars: 8_000, timeoutMs: 90_000,
       });
       extractions++;
