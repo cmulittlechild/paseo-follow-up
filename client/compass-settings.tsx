@@ -118,7 +118,7 @@ export function CompassReading({ theme, compact }: { theme: Theme; compact: bool
 /** The daytime read's choices (the-brief-has-one-timer): only while Follow-up is open, on workdays 08:00-20:00. */
 const CADENCE_LABEL: Record<CompassSettings["cadence"], string> = { off: "Mornings only", "1h": "Every hour", "2h": "Every 2 hours", "4h": "Every 4 hours" };
 /** Where Compass's suggestions go: an issue nobody started that a source said matters. */
-const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": "Urgent in Needs you, the rest in New", "new-only": "Only in New", off: "Off" };
+const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": "Needs you and New", "new-only": "New only", off: "Off" };
 
 /**
  * When's Compass rows: the daytime read (Off, 1, 2 or 4 h while the app is open) and where suggestions go. The same

@@ -134,6 +134,21 @@ test("Q8: a sweep's raise reaches an open Home on the home feed, with no RPC and
   } finally { await c.close(); }
 });
 
+// 2026-11-24, Compass PR 4 renders: on 0.15 a priorities answer that changed Compass's lines skipped the queue
+// (`setCompass(...) || setQueue(...)` short-circuits), so a Compass note hid every Nobody's-on-it row. Every store an
+// answer carries is set, whatever the others did.
+test("on Paseo 0.15 one priorities answer sets every store it carries: Compass lines never hide Nobody's on it", { timeout: 60_000 }, async () => {
+  const stores = await bundleStores();
+  mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: Date.parse("2026-11-12T12:00:00Z") });
+  const host = fakeHost(false, { "follow.priorities": { items: [], queue: RAISED, compass: { "ws-1": "Dana: client call Tue" } } });
+  const extras = stores.createHomeExtras(host.client as never);
+  try {
+    for (let t = 0; t < 2_000; t += 250) { mock.timers.tick(250); await settle(); }
+    assert.deepEqual(extras.compass(), { "ws-1": "Dana: client call Tue" });
+    assert.deepEqual(extras.queue().needs.map(r => r.key), ["ACME-142"], "the queue is set in the same answer");
+  } finally { await extras.stop(); mock.timers.reset(); }
+});
+
 test("Q8 on Paseo 0.15: the raised issues ride the priorities poll, not a read of their own", { timeout: 60_000 }, async () => {
   const stores = await bundleStores();
   mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: Date.parse("2026-11-12T12:00:00Z") });

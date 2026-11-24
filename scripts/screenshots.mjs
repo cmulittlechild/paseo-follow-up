@@ -4046,11 +4046,13 @@ async function compassSuggestShots({ shoot, call, home, seeded }) {
   });
   // New: My issues with OPS-12 moved up with its reason, ACME-177 and ACME-40 joining with the compass glyph.
   const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
-  await each("new", async page => {
+  await each("new", async (page, phone) => {
     await openHome(page);
     await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
     await dialog(page).waitFor();
     await dialog(page).getByText("Dana: before the audit").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    // Desktop: select OPS-12 (an issue the fake Linear has) so the preview shows its actions and {why}.
+    if (!phone) await dialog(page).getByRole("button", { name: /^OPS-12 Rotate/ }).first().click();
   });
   // Settings → Compass → When: the morning read, then During the day and Issues nobody's on.
   await each("when", async (page, phone, viewport) => {

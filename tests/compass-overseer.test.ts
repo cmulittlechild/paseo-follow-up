@@ -7,8 +7,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { digestLines } from "../shared/nobody";
 import { digestFile } from "../shared/overseer";
-import { overseerDigest } from "../server/agent-hook.mjs";
 import { compassSettingsSchema, type CompassNote } from "../shared/compass";
+
+type Hook = { overseerDigest: (file: unknown, seen: unknown, now?: number) => { text: string } };
+const hook = () =>
+  // @ts-expect-error plain JS hook, generated into hook-source.ts
+  import("../server/agent-hook.mjs") as Promise<Hook>;
 
 const NOW = Date.parse("2026-11-24T09:00:00Z");
 const EXPIRY = compassSettingsSchema.parse({}).expiry;
@@ -38,7 +42,8 @@ test("the digest block: live notes soonest first, who · until · what · where 
   assert.ok(many.join("\n").length < 2_000, "about 300-400 tokens");
 });
 
-test("the digest file carries the block and its hash moves with it; the hook prints it to the Overseer", () => {
+test("the digest file carries the block and its hash moves with it; the hook prints it to the Overseer", async () => {
+  const { overseerDigest } = await hook();
   const plain = digestFile("agent-overseer", [], NOW);
   const withCompass = digestFile("agent-overseer", [], NOW, ["This week's plan: Week of Nov 23, 14 items, 3 without an issue", "Dana · until 2026-11-26 · invoice export · unplaced · n-1"]);
   assert.equal(plain.compass, undefined);

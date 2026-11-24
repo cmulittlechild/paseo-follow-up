@@ -108,7 +108,9 @@ export function createHomeExtras(client: PluginClientContext) {
   const pollHome = () => together([
     poll(PRIORITY_POLL_MS, async () => {
       const answer = await client.rpc(prioritiesRpc, {});
-      const queued = setCompass(answer.compass) || setQueue(answer.queue);
+      // Set every store the answer carries: `a() || b()` skips b once a changed (a Compass line hid Nobody's on it).
+      const compassMoved = setCompass(answer.compass), queueMoved = setQueue(answer.queue);
+      const queued = compassMoved || queueMoved;
       if (JSON.stringify(answer.items) === JSON.stringify(priorities)) return queued;
       priorities = answer.items; return true;
     }),

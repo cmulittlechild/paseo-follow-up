@@ -1128,7 +1128,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    news without New's buttons. 2026-11-23, two critiques: it was a card above the strip that Needs you didn't count,
    with a second action set in the brief; then Home read it once per mount, so the sidebar badge said 5 beside Home's
    6 and a morning raise never reached an open Home. Compass PR 4 (design §7, §16): an urgent ask from a person and a
-   raise in the queue were two row kinds for one fact. Guarded by `tests/brief-since.test.ts`,
+   raise in the queue were two row kinds for one fact. 2026-11-24, its renders: on Paseo 0.15 a priorities answer whose
+   Compass lines changed never set the queue (`setCompass(…) || setQueue(…)` short-circuits, `client/home-view.ts`), so
+   any Compass note hid every row; one answer now sets every store it carries. Guarded by `tests/brief-since.test.ts`,
    `tests/feed-recovery.test.ts`, `tests/idle-rpc.test.ts` and `tests/compass-suggestions.test.ts`.
 87. **Follow-up archives only on the developer's click** (`follow-up-archives-only-on-the-developer-s-click`). The row
    menu's Archive workspace… (any row with a workspace; first in triage on a row ready to archive, else last in tidy)

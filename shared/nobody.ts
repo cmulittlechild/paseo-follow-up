@@ -20,6 +20,8 @@ export type Suggestion = {
   key: string;
   /** The issue's own title when the queue knows it, else what the note says. */
   title: string;
+  /** Whether `title` is the issue's own (false: the note's words, which the reason already says). */
+  titled: boolean;
   url: string | null;
   /** "Dana: renewal call Thu": who said what, and its date. */
   reason: string;
@@ -91,7 +93,7 @@ export function suggestions(notes: readonly CompassNote[], settings: Pick<Compas
     const soon = !!n.until && workdaysUntil(n.until, ctx.now, ctx.clock) <= settings.routing.urgentWithinWorkdays;
     const urgent = settings.routing.suggestions === "needs-you-and-new" && !!src?.enable_needs_you && strong(n) && soon;
     const known = ctx.issue?.(key) ?? null;
-    out.push({ note: n.id, key, title: known?.title ?? n.what, url: known?.url ?? null, reason: suggestionReason(n, ctx.now, ctx.clock), source: label, until: n.until, urgent, at: n.at, why: whyText(n, label) });
+    out.push({ note: n.id, key, title: known?.title ?? n.what, titled: !!known, url: known?.url ?? null, reason: suggestionReason(n, ctx.now, ctx.clock), source: label, until: n.until, urgent, at: n.at, why: whyText(n, label) });
   }
   return out.sort((a, b) => Number(b.urgent) - Number(a.urgent) || (a.until ?? "9999").localeCompare(b.until ?? "9999") || b.at.localeCompare(a.at));
 }
@@ -198,8 +200,8 @@ export function compassSince(notes: readonly CompassNote[], input: {
       sub: clip(n.quote ? `“${n.quote}”` : n.what, 140), source: null, workspace: { workspaceId: ws, title }, url: n.link });
   }
   const freshSuggest = input.suggestions.filter(s => after(s.at));
-  for (const s of freshSuggest.filter(s => s.urgent)) out.push({ id: `c:needs:${s.key}`, kind: "needs", head: `${s.key} · in Needs you`, meta: null, sub: `${s.title} · ${s.reason}`, source: null, workspace: null, url: s.url });
-  for (const s of freshSuggest.filter(s => !s.urgent).slice(0, SUGGEST_MAX)) out.push({ id: `c:suggest:${s.key}`, kind: "suggestion", head: `${s.key} · nobody's on it`, meta: when(s.until), sub: `${s.title} · ${s.reason}`, source: s.key, workspace: null, url: s.url });
+  for (const s of freshSuggest.filter(s => s.urgent)) out.push({ id: `c:needs:${s.key}`, kind: "needs", head: `${s.key} · in Needs you`, meta: null, sub: s.titled ? `${s.title} · ${s.reason}` : s.reason, source: null, workspace: null, url: s.url });
+  for (const s of freshSuggest.filter(s => !s.urgent).slice(0, SUGGEST_MAX)) out.push({ id: `c:suggest:${s.key}`, kind: "suggestion", head: `${s.key} · nobody's on it`, meta: when(s.until), sub: s.titled ? `${s.title} · ${s.reason}` : s.reason, source: s.key, workspace: null, url: s.url });
   for (const n of notes.filter(n => n.state === "retracted" && after(n.endedAt))) out.push({ id: `c:dropped:${n.id}`, kind: "dropped", head: `${noteWho(n)} dropped ${n.what}`, meta: null, sub: null, source: null, workspace: null, url: n.link });
   const unplaced = notes.filter(n => n.state === "live" && !n.match.workspace && !n.match.issue).length;
   if (unplaced) out.push({ id: "c:unplaced", kind: "unplaced", head: unplaced === 1 ? "1 note isn't on any workspace" : `${unplaced} notes aren't on any workspace`, meta: null, sub: "Pin it to a workspace in Settings → Compass, or start one from its words.", source: null, workspace: null, url: null });

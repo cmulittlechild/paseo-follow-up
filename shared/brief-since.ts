@@ -110,9 +110,19 @@ export function sinceBlock(view: { since: string | null; changes: readonly Since
   // One Since block for every source (design §8): "Since Friday · Dana, your Linear queue".
   const who = [...(view.compass?.from ?? []), "your Linear queue"].join(", ");
   const title = words ? `${words} · ${who}` : view.compass?.from.length ? `${who[0]!.toUpperCase()}${who.slice(1)}` : "Your Linear queue";
-  const heard = (view.compass?.lines ?? []).map(compassLine);
+  // One issue, one line: a Compass ask about an issue the queue also has news on rides that line (its reason after
+  // the title) instead of a line of its own.
+  const queued = new Set(view.changes.map(c => c.key.toUpperCase()));
+  const said = new Map<string, string>();
+  const heard = (view.compass?.lines ?? []).filter(l => {
+    const key = /^c:(?:needs|suggest):(.+)$/.exec(l.id)?.[1];
+    if (!key || !queued.has(key.toUpperCase())) return true;
+    said.set(key.toUpperCase(), (l.sub ?? "").split(" · ").slice(-1)[0] ?? "");
+    return false;
+  }).map(compassLine);
   const first = heard.filter(l => l.id.startsWith("c:heard:") || l.id.startsWith("c:needs:") || l.id.startsWith("c:suggest:"));
   const last = heard.filter(l => !first.includes(l));
+  const withSaid = (l: SinceLine): SinceLine => { const k = l.id.toUpperCase(); const r = said.get(k); return r ? { ...l, sub: l.sub ? `${l.sub} · ${r}` : r } : l; };
   const link = `${view.counts.all} issue${view.counts.all === 1 ? "" : "s"} by priority`;
   const staying = view.changes.filter(c => !c.kinds.includes("left"));
   const left = view.changes.filter(c => c.kinds.includes("left"));
@@ -135,7 +145,7 @@ export function sinceBlock(view: { since: string | null; changes: readonly Since
   const more = Math.max(0, shown.length - drawn);
   const quiet = !view.changes.length && !heard.length;
   // Compass first (moved, Needs you, suggestions), then the queue, then what dropped, what isn't placed, a failed read.
-  return { title, lines: [...first, ...lines, ...last], more, link, empty: quiet ? `${view.compass ? "Nothing new" : "Nothing moved in your queue"} ${words ? words.replace(/^Since/, "since") : "yet"}.` : null };
+  return { title, lines: [...first, ...lines.map(withSaid), ...last], more, link, empty: quiet ? `${view.compass ? "Nothing new" : "Nothing moved in your queue"} ${words ? words.replace(/^Since/, "since") : "yet"}.` : null };
 }
 
 /** A Compass line as the block draws it: the compass glyph for what was heard, × for dropped, amber for a failed read. */
