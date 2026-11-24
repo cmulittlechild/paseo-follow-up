@@ -1,11 +1,12 @@
 // Renders Follow-up's slide set: the README's cover and the plugin page's media (paseo-plugin.json `media`, cover
 // first). Every slide is 16:10 (1920×1200 at 2×), because Paseo's plugin page shows media as 288×180 tiles and its
 // list card shows the first one at aspect 1.6. Same frame and colours on every slide (assets/icon.svg: tile #222126,
-// accent dot #B79CF0): Follow-up's icon, name and a "Paseo plugin" pill top left.
+// accent dot #B79CF0): Follow-up's icon, name and a "Paseo plugin" pill at the top of the text column.
 //   - follow-up-slide-1-cover.png: a two-line headline (the second line in the accent), a subline, pills naming the
 //     pillars and an honest footnote; a real Home screenshot in a desktop window and Catch up in an overlapping phone.
-//   - follow-up-slide-2…7: one feature each, a short headline and one plain line saying what it does for you on the
-//     left, and that feature's real element zoomed in on the right, cropped from a 6× render and never upscaled.
+//   - follow-up-slide-2…7: one feature each, a short headline and one plain line saying what it does for you, beside
+//     that feature's real element zoomed in, cropped from a 6× render and never upscaled. The sides alternate through
+//     the carousel: slide 2 has its text on the right and the element on the left, slide 3 the other way round, and so on.
 // An HTML composition rendered with headless Chromium. The sources come from `scripts/screenshots.mjs --only frames`
 // (synthetic data only); scripts/readme-shots.sh runs both.
 //
@@ -64,6 +65,7 @@ const css = `
   body { background: radial-gradient(1300px 900px at 16% 30%, #2b2832 0%, var(--bg) 62%), var(--bg); color: var(--ink);
     font-family: Inter, "Liberation Sans", Arial, sans-serif; position: relative; -webkit-font-smoothing: antialiased; }
   .left { position: absolute; left: 112px; top: 100px; width: 760px; height: 1000px; display: flex; flex-direction: column; z-index: 2; }
+  .slide.flip { background: radial-gradient(1300px 900px at 84% 30%, #2b2832 0%, var(--bg) 62%), var(--bg); }
   .brand { display: flex; align-items: center; gap: 22px; }
   .brand img { width: 76px; height: 76px; border-radius: 17px; box-shadow: 0 0 0 1px var(--line); }
   .brand .name { font-size: 40px; font-weight: 600; letter-spacing: -0.02em; }
@@ -96,16 +98,22 @@ function page(s) {
     <div class="pills">${s.pills.map(p => `<span>${esc(p)}</span>`).join("")}</div><p class="foot">${esc(footnote)}</p></div>
     <div class="window"><div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><img src="${data(s.desktop)}" alt=""></div>
     <div class="phone" style="left:1480px;top:330px"><img src="${data(s.phone)}" alt="" style="width:372px"></div></body>`;
-  // The element: as big as the right-hand box allows, never past its own pixels (the slide renders at 2×, so an image
-  // of w device pixels shows crisp up to w/2 CSS pixels).
-  const { w, h } = size(s.src), box = s.phone ? { x: 1180, y: 70, w: 520, h: 1060 } : { x: 900, y: 90, w: 940, h: 1020 };
+  // The element: as big as its box allows, never past its own pixels (the slide renders at 2×, so an image of w device
+  // pixels shows crisp up to w/2 CSS pixels). Even-numbered slides mirror it: the box on the left, the text on the right.
+  const flip = Number.parseInt(s.name) % 2 === 0;
+  const { w, h } = size(s.src), right = s.phone ? { x: 1180, y: 70, w: 520, h: 1060 } : { x: 900, y: 90, w: 940, h: 1020 };
+  const box = flip ? { ...right, x: W - right.x - right.w } : right;
   const k = Math.min(box.w / (w / 2), box.h / (h / 2), 1);
   const cw = Math.round(w / 2 * k), ch = Math.round(h / 2 * k);
   const left = box.x + Math.round((box.w - cw) / 2), top = box.y + Math.round((box.h - ch) / 2);
   const shot = s.phone
     ? `<div class="phone" style="left:${left - 13}px;top:${top - 13}px"><img src="${data(s.src)}" alt="" style="width:${cw}px;height:${ch}px"></div>`
     : `<div class="shot" style="left:${left}px;top:${top}px;width:${cw}px;height:${ch}px"><img src="${data(s.src)}" alt=""></div>`;
-  return `<body class="slide"><div class="left">${brand}${headline(s.headline)}<p class="line">${esc(s.line)}</p></div>${shot}</body>`;
+  // Mirrored, the text starts GAP clear of the element (or where the mirror of the left column would), and keeps the
+  // left column's 112px margin on the right.
+  const col = flip ? Math.max(W - 112 - 760, left + cw + GAP) : 0;
+  const colStyle = flip ? ` style="left:${col}px;width:${W - 112 - col}px"` : "";
+  return `<body class="slide${flip ? " flip" : ""}"><div class="left"${colStyle}>${brand}${headline(s.headline)}<p class="line">${esc(s.line)}</p></div>${shot}</body>`;
 }
 
 await harness();
@@ -125,7 +133,8 @@ try {
       // until the wider line fits.
       const px = await p.evaluate(gap => {
         const h = document.querySelector("h1"), art = document.querySelector(".slide .shot, .slide .phone, .cover .window");
-        const max = Math.min(760, art.getBoundingClientRect().left - gap - h.getBoundingClientRect().left);
+        const l = document.querySelector(".left").getBoundingClientRect(), a = art.getBoundingClientRect(), hl = h.getBoundingClientRect().left;
+        const max = Math.min(760, a.left > l.left ? a.left - gap - hl : l.right - hl);
         let px = parseFloat(getComputedStyle(h).fontSize);
         while (px > 56 && Math.max(...[...h.children].map(c => c.getBoundingClientRect().width)) > max) h.style.fontSize = `${(px -= 2)}px`;
         return px;
