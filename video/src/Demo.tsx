@@ -6,10 +6,10 @@ const fontFamily = "Inter";
 
 export type Box = { x: number; y: number; width: number; height: number };
 export type Take = {
-  fps: number; seconds: number; view: { width: number; height: number }; scale: number;
+  fps: number; seconds: number; view: { width: number; height: number }; scale: number; surface?: Box | null;
   beats: Record<string, number>;
   pointer: [number, number, number][]; presses: [number, number, number][];
-  focus: { t: number; name: string; box: Box | null; zoom: number | null }[];
+  shots: { t: number; name: string; boxes: Box[] }[];
   typing: [number, number][];
 };
 
@@ -18,8 +18,6 @@ export type Take = {
 // stays put in screen space under it.
 const W = 1920, H = 1200;
 const WIN = { x: 160, y: 56, w: 1600, h: 1000 };
-/** Zoomed in, the subject is framed this many px above the frame's centre, clear of the caption under it. */
-const SAFE = 80;
 const INK = "#F4F2F7", LILAC = "#B79CF0", FIELD = "#141318";
 
 const CAPTIONS: { beat: string; words: string; accent: string }[] = [
@@ -45,45 +43,41 @@ function pointerAt(take: Take, t: number): [number, number] {
   return [xa + (xb - xa) * k, ya + (yb - ya) * k];
 }
 
-// ---------- the camera: springs toward what the take says to look at ----------
+// ---------- the camera: one framing per shot, from the take's shot list ----------
 type Cam = { s: number; x: number; y: number };
-/** Zoom per focus name where the take's own choice frames too tight (Catch up's card box is its body, not its title). */
-const ZOOM: Record<string, number> = { card: 1.2 };
+const WIDE: Cam = { s: 1, x: W / 2, y: H / 2 };
+const CAPTION_TOP = H - 184; // screen y where the caption band starts
+const MOVE = 1.6; // seconds a camera move takes
+const moveEase = Easing.bezier(0.45, 0, 0.2, 1);
+
 /**
- * One camera state per frame, simulated forward once: a critically damped spring (no overshoot, ~0.8 s to settle)
- * on log-zoom and centre, chasing the latest focus box (logged before the pointer moves, so the camera anticipates).
+ * The framing of one shot. Two framings exist, both snapped to real UI bounds: the whole window, and the Follow-up
+ * surface pane edge to edge (left edge on Paseo's sidebar divider, right edge on the window's, the title bar whole at
+ * the top). A shot gets the pane when every box it logged fits inside that frame above the caption; otherwise the
+ * window. So the camera only ever rests on one of two compositions and never cuts through content.
  */
-function cameraTrack(take: Take, frames: number, fps: number): Cam[] {
-  const LEAD = 0.1, OMEGA = 2 * Math.PI * 0.75;
-  const target = (t: number): Cam => {
-    let f: Take["focus"][number] | undefined;
-    for (const e of take.focus) if (e.t <= t + LEAD) f = e;
-    if (!f || !f.box) return { s: 1, x: W / 2, y: H / 2 };
-    const [x0, y0] = toStage(take, f.box.x, f.box.y), [x1, y1] = toStage(take, f.box.x + f.box.width, f.box.y + f.box.height);
-    const fit = Math.min((W * 0.78) / Math.max(1, x1 - x0), (H * 0.7) / Math.max(1, y1 - y0));
-    const s = clamp(ZOOM[f.name] ?? f.zoom ?? fit, 1, 1.7);
-    return { s, x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
-  };
-  const out: Cam[] = [];
-  let cur = target(0), v = { s: 0, x: 0, y: 0 };
-  let ls = Math.log(cur.s);
-  const dt = 1 / fps / 4;
-  for (let f = 0; f < frames; f++) {
-    for (let k = 0; k < 4; k++) {
-      const g = target((f + k / 4) / fps), lg = Math.log(g.s);
-      v.s += (OMEGA * OMEGA * (lg - ls) - 2 * OMEGA * v.s) * dt; ls += v.s * dt;
-      v.x += (OMEGA * OMEGA * (g.x - cur.x) - 2 * OMEGA * v.x) * dt; cur.x += v.x * dt;
-      v.y += (OMEGA * OMEGA * (g.y - cur.y) - 2 * OMEGA * v.y) * dt; cur.y += v.y * dt;
-    }
-    const s = Math.exp(ls);
-    // Keep the frame on the window (plus a margin of the field) once zoomed in.
-    const vw = W / s, vh = H / s, m = 48;
-    const bx0 = Math.max(0, WIN.x - m), bx1 = Math.min(W, WIN.x + WIN.w + m), by0 = Math.max(0, WIN.y - m), by1 = Math.min(H, WIN.y + WIN.h + m + 60);
-    const x = vw >= bx1 - bx0 ? W / 2 : clamp(cur.x, bx0 + vw / 2, bx1 - vw / 2);
-    const y = vh >= by1 - by0 ? H / 2 : clamp(cur.y, by0 + vh / 2, by1 - vh / 2);
-    out.push({ s, x: s <= 1.0005 ? W / 2 : x, y: s <= 1.0005 ? H / 2 : y });
-  }
-  return out;
+function framing(take: Take, boxes: Box[]): Cam {
+  if (!boxes.length || !take.surface) return WIDE;
+  const [px0] = toStage(take, take.surface.x, 0), [px1] = toStage(take, take.surface.x + take.surface.width, 0);
+  const s = W / (px1 - px0);
+  const cam = { s, x: (px0 + px1) / 2, y: WIN.y - 10 + H / s / 2 };
+  const screen = (x: number, y: number) => { const [sx, sy] = toStage(take, x, y); return [W / 2 + s * (sx - cam.x), H / 2 + s * (sy - cam.y)]; };
+  const fits = boxes.every(b => {
+    const [x0, y0] = screen(b.x, b.y), [x1, y1] = screen(b.x + b.width, b.y + b.height);
+    return x0 >= 0 && x1 <= W && y0 >= 0 && y1 <= CAPTION_TOP - 16;
+  });
+  return fits ? cam : WIDE;
+}
+
+/** The camera at time t: holds each shot's framing, easing from the previous one over MOVE seconds (none when equal). */
+function cameraAt(take: Take, frames: Cam[], t: number): Cam {
+  let i = -1;
+  for (let k = 0; k < take.shots.length; k++) if (take.shots[k].t <= t) i = k;
+  if (i < 0) return frames[0] ?? WIDE;
+  const to = frames[i], from = i > 0 ? frames[i - 1] : to;
+  const k = moveEase(clamp((t - take.shots[i].t) / MOVE, 0, 1));
+  const ls = Math.log(from.s) + (Math.log(to.s) - Math.log(from.s)) * k;
+  return { s: Math.exp(ls), x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
 }
 
 // ---------- pieces ----------
@@ -187,17 +181,17 @@ const Caption = ({ take, t, zoom, fps }: { take: Take; t: number; zoom: number; 
 export const Demo = ({ take }: { take: Take | null }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
-  const cams = useMemo(() => (take ? cameraTrack(take, durationInFrames, fps) : []), [take, durationInFrames, fps]);
+  const shotFrames = useMemo(() => (take ? take.shots.map(sh => framing(take, sh.boxes)) : []), [take]);
   if (!take) return null;
   const t = frame / fps;
-  const cam = cams[Math.min(frame, cams.length - 1)];
+  const cam = cameraAt(take, shotFrames, t);
   // The last half second dissolves into the first frame of the app, so the loop's cut is invisible.
   const loopFade = interpolate(frame, [durationInFrames - 16, durationInFrames - 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) });
   const shadow = interpolate(cam.s, [1, 1.5], [1, 0.4], { extrapolateRight: "clamp" });
   const video = { position: "absolute" as const, inset: 0, width: WIN.w, height: WIN.h };
   return (
     <AbsoluteFill style={{ background: FIELD, overflow: "hidden" }}>
-      <AbsoluteFill style={{ transformOrigin: "0 0", transform: `translate(${W / 2}px, ${H / 2 - SAFE * clamp((cam.s - 1) / 0.18, 0, 1)}px) scale(${cam.s}) translate(${-cam.x}px, ${-cam.y}px)` }}>
+      <AbsoluteFill style={{ transformOrigin: "0 0", transform: `translate(${W / 2}px, ${H / 2}px) scale(${cam.s}) translate(${-cam.x}px, ${-cam.y}px)` }}>
         <Field t={t} />
         <div style={{ position: "absolute", left: WIN.x, top: WIN.y, width: WIN.w, height: WIN.h, borderRadius: 18, overflow: "hidden",
           boxShadow: `0 ${40 * shadow}px ${120 * shadow}px rgba(0,0,0,${0.55 * shadow}), 0 0 0 1px rgba(255,255,255,0.09)`, background: "#fff" }}>

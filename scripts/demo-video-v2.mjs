@@ -1,17 +1,24 @@
-// Records the take for Follow-up's demo video v2 (the edit itself lives in video/, a Remotion project):
-// `npm run video:v2:take` through ~/paseo-harness/tools/harness-slot, then `npm --prefix video run render`.
+// Records the take for Follow-up's demo video v2 from its shot list; the edit (video/, a Remotion project) plays the
+// same shots. `npm run video:v2:take -- --as-version <stable>` through ~/paseo-harness/tools/harness-slot, then
+// `node render.mjs` in video/ (docs/testing.md "Demo video v2").
 // v1 (scripts/demo-video.mjs) bakes its cursor and caption band into the frames. v2 records the bare app instead, twice
-// as sharp (1280×800 CSS px at 2×, so a 1.6× zoom stays crisp), and logs what the edit needs to animate: every pointer
-// position, each press, the beats and the boxes the camera frames. Writes, to --out (default video/public/take/):
+// as sharp (1280×800 CSS px at 2×, so the 1.6× pane framing stays crisp), and logs what the edit needs: every pointer
+// position, each press, the beats, the Follow-up pane's box and the shot list (each shot's start and the UI boxes it
+// frames). Writes, to --out (default video/public/take/):
 //   raw.mp4    the app at 2560×1600, 30 fps, at the take's own pacing (the app's waits squeezed, as in v1)
-//   take.json  { fps, seconds, view, beats, pointer: [[t, x, y]], presses: [[t, x, y]], focus: [{ t, name, box }],
-//              typing: [[from, to]] }: times in the video's seconds, positions in CSS px of the 1280×800 view
+//   take.json  { fps, seconds, view, surface, beats, pointer: [[t, x, y]], presses: [[t, x, y]],
+//              shots: [{ t, name, boxes }], typing: [[from, to]] }: times in the video's seconds, CSS px of the view
 // Usage: node scripts/demo-video-v2.mjs [--out <dir>] [--as-version <X.Y.Z>] [--keep-frames]
 //
-// The take is v1's: Home with Needs you on top; Catch up (Allow, Skip, the recommended answer); what Follow-up sent
-// back to agents by itself; a question to the Overseer from Home's search and its answer; Home again. Boot, fixture,
-// synthetic names and the stitch's dead-time squeeze are v1's too (see its header). The pointer glides on a slight arc
-// with minimum-jerk easing, as a hand moves, so the app's hover states follow the same path the edit draws.
+// The shot list (each shot holds one framing; it starts still while the camera settles, then the action happens
+// inside the frame with time to read it):
+//   1 Home, the whole window: the inbox, then Catch up.
+//   2 Catch up, its header and every card: Allow, Skip, the recommended answer and Send.
+//   3 Done while you were away: what went back to agents by itself.
+//   4 Ask the Overseer: Home's search, then the question and its answer.
+//   5 Home, the whole window: back to the Morning brief it opened on, so the loop is seamless.
+// Boot, fixture, synthetic names and the stitch's dead-time squeeze are v1's (see its header). The pointer glides on a
+// slight arc with minimum-jerk easing, as a hand moves, so the app's hover states follow the path the edit draws.
 //
 // Needs PLAYWRIGHT_CORE, CHROMIUM (docs/testing.md) and FFMPEG (with libx264; video/'s ffmpeg-static works:
 // FFMPEG=video/node_modules/ffmpeg-static/ffmpeg after `npm --prefix video ci`).
@@ -24,7 +31,7 @@ import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { createInterface } from "node:readline";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { openHome, homeRow } from "./ui-home.mjs";
+import { openHome } from "./ui-home.mjs";
 import { harness } from "./harness.mjs";
 import { assertNoRealNames } from "./real-names.mjs";
 
@@ -79,18 +86,32 @@ const HIDE_HARNESS_PROJECT = () => {
 // ---------- the log ----------
 const now = () => Date.now() / 1000;
 const live = []; // scripted spans, kept at full length by the stitch
-const pointerLog = []; const pressLog = []; const focusLog = []; const typingLog = [];
+const pointerLog = []; const pressLog = []; const typingLog = [];
 async function scripted(work) { const a = now(); try { return await work(); } finally { live.push([a, now()]); } }
 const rest = (page, ms) => scripted(() => page.waitForTimeout(ms));
 let pointer = { x: VIEW.width * 0.86, y: VIEW.height * 0.9 };
 async function moveTo(page, x, y) { await page.mouse.move(x, y); pointerLog.push([now(), x, y]); pointer = { x, y }; }
-/** The camera's subject from now on: a box in CSS px (or null for the whole app), with how close to frame it. */
-async function focus(name, target, { zoom } = {}) {
-  let box = null;
-  if (target && typeof target.boundingBox === "function") { await target.waitFor(); box = await target.boundingBox(); }
-  else if (target) box = target;
-  focusLog.push({ t: now(), name, box: box && { x: box.x, y: box.y, width: box.width, height: box.height }, zoom: zoom ?? null });
+/**
+ * The shot list, recorded with the take so the edit frames exactly what was played. `shot(name, ...targets)` starts a
+ * shot: the edit frames the union of every box logged for it (`frame(name, ...)` adds one mid-shot, such as the next
+ * Catch up card or the Overseer's answer), so each shot holds one framing snapped to real UI bounds. No targets: the
+ * whole window. Each shot starts with SETTLE of stillness while the camera eases in.
+ */
+const shotLog = [];
+const SETTLE = 1500;
+async function boxOf(target) {
+  await target.waitFor();
+  const b = await target.boundingBox();
+  if (!b) throw new Error("shot: a target has no box");
+  return { x: b.x, y: b.y, width: b.width, height: b.height };
 }
+async function shot(page, name, ...targets) {
+  const boxes = []; for (const t of targets) boxes.push(await boxOf(t));
+  shotLog.push({ t: now(), name, boxes });
+  log(`shot: ${name}`);
+  await rest(page, SETTLE);
+}
+async function frame(...targets) { for (const t of targets) shotLog.at(-1).boxes.push(await boxOf(t)); }
 
 // ---------- motion: a hand, not a robot ----------
 const minJerk = t => t * t * t * (10 - 15 * t + 6 * t * t);
@@ -160,7 +181,6 @@ try {
   };
   const kept = await boot().catch(error => { log(`${error.message}; booting once more`); return boot(); });
   const { root, home, port } = kept;
-  const ws = key => kept.workspaces.find(w => w.key === key);
   const origin = `http://127.0.0.1:${port}`;
   const serverId = (await fs.readFile(join(home, "server-id"), "utf8")).trim();
   await fs.writeFile(join(root, "clock-offset"), JSON.stringify({ fake: VIEW_TIME, real: Date.now(), rate: 0.001 }));
@@ -191,6 +211,18 @@ try {
   await moveTo(page, pointer.x, pointer.y);
   assertNoRealNames(await page.evaluate(() => document.body.innerText), "Home");
   if (await page.locator('[data-testid^="sidebar-project-row-"]').filter({ hasText: "overseer-home", visible: true }).count()) throw new Error("the harness's overseer-home project still shows in the sidebar");
+  // The Follow-up surface: the pane right of Paseo's sidebar that holds Home (the search's nearest ancestor as tall as
+  // the view and reaching its right edge; Home's list column alone is as tall). The edit's zoomed framing is this pane
+  // edge to edge, so a zoom's edges land on real UI bounds.
+  const surface = await page.getByRole("textbox", { name: /^Search,? or ask the Overseer$/ }).first().evaluate(el => {
+    for (let up = el.parentElement; up; up = up.parentElement) {
+      const r = up.getBoundingClientRect();
+      if (r.height >= innerHeight * 0.95 && r.right >= innerWidth - 2) return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }
+    return null;
+  });
+  if (!surface || surface.x < 100 || surface.width > VIEW.width * 0.9) throw new Error(`no Follow-up surface pane: ${JSON.stringify(surface)}`);
+  log(`surface pane ${JSON.stringify(surface)}`);
 
   // The take.
   const cdp = await context.newCDPSession(page);
@@ -204,79 +236,77 @@ try {
   const mark = name => { marks[name] = now(); log(`beat: ${name}`); };
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: VIEW.width * SCALE, maxHeight: VIEW.height * SCALE, everyNthFrame: 1 });
   await moveTo(page, pointer.x + 1, pointer.y);
+  // Shot 1, Home (the whole window): the inbox, then Catch up.
   mark("home");
-  await focus("home", null);
-  await rest(page, 1300);
-  await glide(page, VIEW.width * 0.6, VIEW.height * 0.48, 760);
-  await rest(page, 250);
-  await focus("catchup-button", catchUp, { zoom: 1.45 });
-  await glideClick(page, catchUp, { ms: 820 });
-  mark("catchup");
+  shotLog.push({ t: now(), name: "home", boxes: [] });
+  await rest(page, 1600);
+  await glide(page, VIEW.width * 0.62, VIEW.height * 0.46, 800);
+  await rest(page, 200);
+  await glideClick(page, catchUp, { ms: 700, rest: 450 });
+  // Shot 2, Catch up: its header and every card it deals. Allow, Skip, the recommended answer, each read first.
   const card = page.locator("[data-catch-up-card]");
   const allow = visible(card.getByRole("button", { name: /^Allow/ }));
   await allow.waitFor();
-  await focus("card", visible(card));
-  await rest(page, 800);
-  await glideClick(page, allow, { rest: 550 });
+  mark("catchup");
+  const header = visible(page.getByText(/^Catch up\s*\d+ of \d+$/));
+  await shot(page, "catchup", header, visible(card));
+  await glideClick(page, allow, { ms: 700, rest: 600 });
   await visible(card.getByText(/#151/)).waitFor();
-  await focus("card", visible(card));
-  await rest(page, 700);
-  await glideClick(page, visible(page.getByRole("button", { name: /^Skip this (?!workspace)/ })), { rest: 450 });
+  await frame(visible(card));
+  await rest(page, 900);
+  await glideClick(page, visible(page.getByRole("button", { name: /^Skip this (?!workspace)/ })), { rest: 500 });
   const recommended = visible(card.getByRole("radio").filter({ hasText: "Recommended" }));
   await recommended.waitFor();
-  await focus("card", visible(card));
-  await rest(page, 900);
+  await frame(visible(card));
+  await rest(page, 1400);
   await glideClick(page, recommended, { rest: 450, dx: 0.2 });
-  await rest(page, 300);
+  await rest(page, 350);
   const sends = page.getByRole("button", { name: /^Send to agent/ }).filter({ visible: true });
   await sends.first().waitFor();
   const tops = await sends.evaluateAll(els => els.map(e => e.getBoundingClientRect().top + window.scrollY));
-  await glideClick(page, sends.nth(tops.indexOf(Math.min(...tops))), { rest: 400 });
-  await rest(page, 900);
-  const leave = visible(page.getByRole("button", { name: /^Leave Catch up/ }));
-  await focus("leave", leave, { zoom: 1.2 });
-  await glideClick(page, leave, { ms: 700, rest: 350 });
-  await visible(page.getByText(/^Done while you were away$/i)).waitFor();
+  const send = sends.nth(tops.indexOf(Math.min(...tops)));
+  await frame(send);
+  await glideClick(page, send, { rest: 450 });
+  await rest(page, 1100);
+  await glideClick(page, visible(page.getByRole("button", { name: /^Leave Catch up/ })), { ms: 650, rest: 250 });
+  // Shot 3, Done while you were away: what went back to agents by itself.
+  const done = visible(page.getByText(/^Done while you were away$/i));
+  await done.waitFor();
   mark("repairs");
-  await focus("home", null);
-  await rest(page, 400);
-  const repairs = visible(page.getByText(/^Sent 2 repairs to the main agent/));
-  await focus("repairs", repairs, { zoom: 1.5 });
-  await glideTo(page, repairs, { ms: 800, dx: 0.3 });
-  await rest(page, 1200);
-  const viewsRow = await homeRow(page, ws("views").title);
-  await focus("repairs-row", viewsRow, { zoom: 1.5 });
-  await glideClick(page, viewsRow, { ms: 700, rest: 400, dx: 0.25 });
-  await rest(page, 900);
-  await focus("home", null);
-  await rest(page, 1300);
+  const sent2 = visible(page.getByText(/^Sent 2 repairs to the main agent/));
+  const sent1 = visible(page.getByText(/^Sent 1 repair to the main agent/));
+  await shot(page, "repairs", done, sent2, sent1);
+  await glideTo(page, sent2, { ms: 800, dx: 0.35 });
+  await rest(page, 2200);
+  // Shot 4, Ask the Overseer: Home's search, then the Overseer's answer beside it.
   mark("overseer");
   const search = visible(page.getByRole("textbox", { name: /^Search,? or ask the Overseer$/ }));
-  await focus("search", search, { zoom: 1.6 });
-  await glideClick(page, search, { ms: 750, rest: 280, dx: 0.3 });
+  await shot(page, "overseer", search);
+  await glideClick(page, search, { ms: 750, rest: 300, dx: 0.3 });
   await rest(page, 250);
   const typeFrom = now();
-  await scripted(() => search.pressSequentially(QUESTION, { delay: 42 }));
+  await scripted(() => search.pressSequentially(QUESTION, { delay: 45 }));
   typingLog.push([typeFrom, now()]);
   const askRow = visible(page.getByRole("button", { name: /^Ask the Overseer: / }));
   await askRow.waitFor();
-  await rest(page, 500);
-  await glideClick(page, askRow, { ms: 600, rest: 400, dx: 0.35 });
+  await rest(page, 600);
+  await glideClick(page, askRow, { ms: 600, rest: 450, dx: 0.35 });
   await visible(page.getByText(QUESTION)).waitFor();
-  await focus("overseer-panel", visible(page.getByText(QUESTION)), { zoom: 1.35 });
-  await rest(page, 1000);
+  await rest(page, 900);
   await fs.writeFile(join(home, "fixture-gate-overseer"), "");
   const answer = visible(page.getByText(/^Billing retries is waiting on you/));
   await answer.waitFor({ timeout: 30000 });
-  await focus("answer", answer, { zoom: 1.45 });
-  await rest(page, 2800);
+  await frame(visible(page.getByText(QUESTION)), answer);
+  await glide(page, (await answer.boundingBox()).x + 120, (await answer.boundingBox()).y + 110, 900);
+  await rest(page, 3000);
+  // Shot 5, Home again (the whole window): back to the Morning brief, the pane it opened on, so the loop is seamless.
   mark("end");
-  // Back to the Morning brief, the pane Home opened on, so the loop's last frame is its first.
-  await focus("home", null);
-  await glideClick(page, visible(page.getByText("Morning brief", { exact: true })), { ms: 800, rest: 300, dx: 0.5 });
+  shotLog.push({ t: now(), name: "end", boxes: [] });
+  await rest(page, 700);
+  await glideClick(page, visible(page.getByText("Morning brief", { exact: true })), { ms: 800, rest: 300 });
   await rest(page, 500);
   await glide(page, VIEW.width * 0.86, VIEW.height * 0.9, 900);
-  await rest(page, 1700);
+  await rest(page, 1500);
   mark("stop");
   await cdp.send("Page.stopScreencast");
   await writes;
@@ -305,11 +335,11 @@ try {
     "-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv420p", "-g", "15", "-movflags", "+faststart", raw], { maxBuffer: 1 << 24 });
   const r3 = n => Math.round(n * 1000) / 1000;
   const take = {
-    fps: FPS, seconds: r3(seconds), view: VIEW, scale: SCALE,
+    fps: FPS, seconds: r3(seconds), view: VIEW, scale: SCALE, surface,
     beats: Object.fromEntries(Object.entries(marks).map(([k, t]) => [k, r3(remap(t))])),
     pointer: pointerLog.filter(([t]) => t <= t1).map(([t, x, y]) => [r3(remap(t)), r3(x), r3(y)]),
     presses: pressLog.map(([t, x, y]) => [r3(remap(t)), r3(x), r3(y)]),
-    focus: focusLog.map(f => ({ ...f, t: r3(remap(f.t)) })),
+    shots: shotLog.map(sh => ({ ...sh, t: r3(remap(sh.t)) })),
     typing: typingLog.map(([a, b]) => [r3(remap(a)), r3(remap(b))]),
   };
   await fs.writeFile(join(out, "take.json"), JSON.stringify(take, null, 1));
