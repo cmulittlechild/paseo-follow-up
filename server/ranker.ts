@@ -205,7 +205,7 @@ export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceD
     },
     async planning(url) {
       const model = (await opts.model?.()) ?? "sonnet";
-      const r = await jobs.run({ name: "rank-plan", prompt: `Read this artifact with the Artifact tool (action "read"): ${url}\nThen reply with the JSON object.`, system: PLAN_SYSTEM, schema: planReplySchema, model,
+      const r = await jobs.run({ name: "rank-plan", outside: true, prompt: `Read this artifact with the Artifact tool (action "read"): ${url}\nThen reply with the JSON object.`, system: PLAN_SYSTEM, schema: planReplySchema, model,
         // Always Claude: the Artifact tool is Claude Code's.
         provider: "claude", runner: claudeRunner(opts.claude ?? "claude", planArgs, PLAN_ENV, ARTIFACT_READ), timeoutMs: 180_000, maxOutputChars: 20_000 });
       if (!r.ok) throw new Error(r.error);
@@ -409,7 +409,7 @@ export class Ranker {
     const modelStart = this.now();
     // Claude follows the rules as written; other models get the reason rule restated at the end.
     const system = role.provider === "claude" ? RANK_SYSTEM : RANK_SYSTEM + RANK_STRICT;
-    let r = await this.d.jobs.run({ name: "rank", prompt, system, schema: rankReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, maxPromptChars, maxOutputChars: 40_000, timeoutMs: 240_000 });
+    let r = await this.d.jobs.run({ name: "rank", outside: true, prompt, system, schema: rankReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, maxPromptChars, maxOutputChars: 40_000, timeoutMs: 240_000 });
     const add = (a: number | null | undefined, b: number | null | undefined) => a == null && b == null ? null : (a ?? 0) + (b ?? 0);
     let cost = r.costUsd, inTok = r.inputTokens ?? null, outTok = r.outputTokens ?? null, retried = false;
     // Reasons missing (Codex at low effort left most empty): one small follow-up for just those workspaces, with only
@@ -418,7 +418,7 @@ export class Ranker {
     const missing = r.ok ? emptyReasons(r.value, inputs) : [];
     if (r.ok && missing.length) {
       retried = true;
-      const again = await this.d.jobs.run({ name: "rank-reasons", prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars, [], clock.timeZone), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
+      const again = await this.d.jobs.run({ name: "rank-reasons", outside: true, prompt: rankPrompt(reasonInputs(inputs, missing), day, maxPromptChars, [], clock.timeZone), system: role.provider === "claude" ? REASON_SYSTEM : REASON_SYSTEM + RANK_STRICT.replace('"priorities"', '"reasons"'),
         schema: reasonReplySchema, provider: role.provider, model: role.model ?? undefined, thinking: role.thinking, maxPromptChars, maxOutputChars: 20_000, timeoutMs: 120_000 });
       cost = add(cost, again.costUsd); inTok = add(inTok, again.inputTokens); outTok = add(outTok, again.outputTokens);
       if (again.ok) r = { ...r, value: fillReasons(r.value, again.value) };

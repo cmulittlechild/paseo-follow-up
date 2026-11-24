@@ -14,6 +14,13 @@
     minutes.
   - `providersFor` offers every provider in the catalog to every role. `CLI_JOB_PROVIDERS` (Claude, Codex) only
     names the providers with a headless CLI fast path; any other provider runs jobs through `server/job-agent.ts`.
+  - **Outside content stays on a guarded provider** (`a-job-that-reads-outside-content-can-only-read`, invariant 81).
+    A job whose prompt carries words someone else wrote is marked `outside` (AI priority's `rank`, `rank-reasons` and
+    `rank-plan`, Ask's `ask-plan` and `ask-items`, `compass-extract`, and a Summary with linked issues or threads).
+    `AiJobs.run` refuses it before any runner on a provider `guardedProvider` doesn't name (anything but Claude or
+    Codex), with reason `unguarded`, since a job agent there has its provider's own tools. The Summary leaves the linked
+    text out there and still runs on the workspace's own work. Settings → Agents says what doesn't run under the rows
+    (`OUTSIDE_READS`), and the source's own row (Compass, an Ask server) says why.
   - `catalogFrom` keeps each model's description (cut to 200 characters), which the recommendations read.
 - **RPCs and tools.** `follow.agent-settings`, `follow.set-agent-setting` and `follow.set-wait`; tools
   `agent_settings`, `set_agent_setting` and `set_wait_for_jobs`.
@@ -169,8 +176,8 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   - `gh search prs --review-requested=@me`.
   - The weekly planning artifact, read through one Claude turn with only the Artifact tool's read (the job guard
     refuses every other action), at most once a day. Its link
-    is Settings → Morning brief's ([morning-brief.md](morning-brief.md#settings)): `FOLLOW_UP_PLAN_URL`, else a pasted
-    link, else the one Find it for me found (or last week's).
+    is Settings → Compass's ([morning-brief.md](morning-brief.md#settings)): `FOLLOW_UP_PLAN_URL`, else a pasted
+    link, else the newest a Compass source with Posts the plan shared (or last week's).
 - **When it runs.** It hashes its inputs and calls the model only when they changed. It runs hourly on the
   developer's workdays, 08:00–20:00 in their zone (the brief's clock: Settings → Morning brief's zone, else the device's, else the host's; the workdays
   are the zone's usual week), within the daily cap, while the governor allows background work.

@@ -1,7 +1,7 @@
 import { queueViewSchema } from "./queue";
-import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
+import { briefPlanInputSchema, compassSetSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
 import { sourcesChangeSchema } from "./brief-sources";
-import { compassChangeSchema, noteActionSchema } from "./compass";
+import { noteActionSchema } from "./compass";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -374,7 +374,7 @@ export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", 
 // Compass (shared/compass.ts, server/compass.ts, docs/compass.md): the sources that set the developer's priorities.
 export const compassRpc = defineRpc({ name: "follow.compass", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }), output: z.unknown() });
 export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
-export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassChangeSchema, output: z.unknown() });
+export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassSetSchema, output: z.unknown() });
 export const readCompassRpc = defineRpc({ name: "follow.read-compass", input: z.strictObject({}), output: z.unknown() });
 /** Why it matters' menu and compass_note: pin, edit, unpin a note, or tell its workspace's main agent. */
 export const compassNoteRpc = defineRpc({ name: "follow.compass-note", input: noteActionSchema, output: z.unknown() });

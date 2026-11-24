@@ -106,3 +106,21 @@ test("refused calls keep tool and action names only", () => {
     ["Artifact.publish", "Bash", "Artifact.other", "other"]);
   assert.deepEqual(refusedCalls(undefined), []);
 });
+
+test("a job that reads outside content never starts on a provider Follow-up can't take tools from (invariant 81's other-provider gap)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "job-unguarded-"));
+  try {
+    let ran = 0;
+    const jobs = new AiJobs({ logPath: join(dir, "ai-jobs.jsonl"), runner: async () => { ran++; return { text: "{\"ok\":true}", costUsd: null, inputTokens: null, outputTokens: null }; } });
+    const spec = { name: "rank", prompt: "x", schema: z.object({ ok: z.boolean() }) };
+    const refused = await jobs.run({ ...spec, outside: true, provider: "opencode" });
+    assert.equal(refused.ok, false);
+    assert.equal(!refused.ok && refused.reason, "unguarded");
+    assert.match(!refused.ok ? refused.error : "", /can't take opencode's tools away/);
+    assert.equal(ran, 0, "refused before any runner, an injected one included");
+    assert.equal((await jobs.run({ ...spec, outside: true, provider: "claude" })).ok, true);
+    assert.equal((await jobs.run({ ...spec, outside: true, provider: "codex" })).ok, true);
+    assert.equal((await jobs.run({ ...spec, provider: "opencode" })).ok, true, "a job over Follow-up's own state still runs anywhere");
+    assert.equal(ran, 3);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

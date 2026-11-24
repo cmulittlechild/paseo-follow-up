@@ -141,43 +141,39 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
 
 ## Settings
 
-Settings → Morning brief (`client/morning-brief-settings.tsx`, `shared/morning-brief.ts`, `server/morning-brief.ts`),
-stored host-scoped in `morning-brief.json` ([data-files.md](data-files.md); not `brief.json`, the hooks' file).
+Settings → Compass (it was Settings → Morning brief: [compass.md](compass.md#settings--compass-one-place-for-priority-inputs);
+`client/morning-brief-settings.tsx`, `shared/morning-brief.ts`, `server/morning-brief.ts`), stored host-scoped in
+`morning-brief.json` ([data-files.md](data-files.md); not `brief.json`, the hooks' file).
 
 **This week's plan** has three modes:
 
-- **Find it for me:** posted by a person in one to five channels, each picked from the chat source's own people and
-  channel search (`brief_chat_search`), or typed as a name. Follow-up makes one search, `from:<person> in:<channel>…
-  has:link after:<14 days ago>`, newest first, and takes the newest message that links a claude.ai artifact. The link
-  is kept without its share key (`canonicalArtifactUrl`). The card says where and when it was found and that it was
-  read (title, item count), with Open and Use another link.
-- **Use a link:** paste it; it stays until changed. With Find it for me set up too, "Replace when a newer one is found"
-  lets a link found after the paste take over.
+- **From Compass:** a Compass source with the role Posts the plan provides it: the newest claude.ai artifact its
+  people share, recorded as Compass reads it and read at once ([compass.md](compass.md#this-weeks-plan-from-compass)).
+  The link is kept without its share key (`canonicalArtifactUrl`). The card says which source and place it came from,
+  when, and what the read found (title, items, how many have no issue), with Open and Use another link.
+- **Use a link:** paste it; it stays until changed. "Replace when a newer one arrives" lets a plan Compass finds after
+  the paste take over.
 - **Off:** the brief and AI priority read no plan.
 
-**Not found** keeps the plan it has (last week's) and says so in amber, naming the plan in use (with Open) and a paste
-field right there. A failed search says why, which plan the brief reads meanwhile, and offers Look again plus the same
-paste field. The line under the tab is built from the same card (`briefSummary` from `planCard`), so it never says
-"found" while the card says otherwise. Changing who or where clears what was found for the old ones and searches at
-once.
+**None this week** keeps the plan it has (last week's) and says so in amber, naming the plan in use (with Open) and a
+paste field right there. With no source that posts the plan, the card says to give one the role. The line under the
+tab is built from the same card (`briefSummary` from `planCard`), so it never says the plan is in while the card says
+otherwise.
 
 **The link in use** (`effectivePlan`): `FOLLOW_UP_PLAN_URL` when set (Settings shows it read-only and changes nothing),
-else Off reads nothing, else the pasted link (or a newer find, with replace-when-newer), else this week's find, else
-last week's. The ranker reads that link once a day (one Claude turn with the Artifact tool, [ai-roles.md](ai-roles.md));
-a new link is read right away so Settings can show its title, and that read is the ranker's for the day.
-
-**When it searches** (`the-brief-has-one-timer`): once a workday after the sweep time, from the same 15 s loop as the
-sweep (`MorningBrief.tick`); on Look again; and when the developer or an agent changes who or where. Never while
-Settings is closed otherwise.
+else Off reads nothing, else the pasted link (or a newer plan from Compass, with replace-when-newer), else this week's
+plan from Compass, else last week's. The ranker reads that link once a day (one Claude turn with the Artifact tool,
+[ai-roles.md](ai-roles.md)); a new link is read right away so Settings can show its title, and that read is the
+ranker's for the day.
 
 **The one-time import** (decision Q6): the first time the file is read with nothing set, the morning-brief skill's
 registry (`~/.codex/skills/morning-brief/references/sources.json`) is read at run time. Its `claude_artifact`
-source's discovery block (author and channels) becomes Find it for me and its verified link the first find; with no
-discovery block, its link becomes Use a link. It runs once, found or not, never replaces a choice already made, and
-never copies, logs or edits the file. The chat search is whichever server has the chat recipe's tools
-([Sources](#sources)), never a server named in code.
+source's discovery block (author and channels) becomes the plan's person and channels, which the one-time move then
+turns into a Compass source, and its verified link the first plan; with no discovery block, its link becomes Use a
+link. It runs once, found or not, never replaces a choice already made, and never copies, logs or edits the file.
 
-**Linear queue:** which states count (Triage, Backlog, Todo, In Progress; at least one), the sweep time, "changes
+**Linear queue and When:** which states count (Triage, Backlog, Todo, In Progress; at least one; behind the Linear
+queue row's chevron), the sweep time (When's "Morning read at"), "changes
 since" (your last read, or always your last workday: both stored points, invariant 77, so there is no "last 24 h"),
 the time zone (blank: automatic) and the workdays (the zone's usual week until changed).
 
@@ -202,7 +198,7 @@ shape and input schema.
 | Recipe | Required tools | Adds | Default |
 | --- | --- | --- | --- |
 | Linear | `list_issues`, `get_issue` (plus `get_user`, `list_teams`) | the queue (the sweep), New, the Summary, Linked | on |
-| Chat | a message search taking `filters` and a query (the one that also reaches private channels and DMs, when there are several), a channel search (plus people search, read thread) | DMs and mentions over the chat window, Find it for me | on |
+| Chat | a message search taking `filters` and a query (the one that also reaches private channels and DMs, when there are several), a channel search (plus people search, read thread) | DMs and mentions over the chat window; Compass's conversation reader | on |
 | Calendar | an events list taking a time range | today's meetings (or today and tomorrow) | on |
 | Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |
 
@@ -225,7 +221,7 @@ that was down when the worker first asked is found once it's back. A failed disc
 connector, since a headless host can't open a browser); `failed` (not connected, quarantined, or the last read's one
 line, with Retry; a sign-in row has Check again and the command to copy); `off` (turned off here, or in mcpproxy). The last read is the newest of the ranker's run (chat,
 calendar, mail, GitHub; `ranker.json` keeps each failed source's line), the sweep (Linear) and a Retry. A source turned
-off is skipped by the ranker (shown as off, not failed) and by Find it for me.
+off is skipped by the ranker (shown as off, not failed) and by Compass.
 
 **Windows:** the chat window (24, 48 or 72 h; default 48) and the calendar (today, or today and tomorrow), stored with
 the queue's settings.
@@ -266,7 +262,7 @@ the model does with them, a call still has to pass validation and a link still h
 | --- | --- | --- |
 | A morning sweep of 150 issues | about 7, plus up to 20 for issues that left (and one `get_user`, once ever) | 0 |
 | The ranker | none of its own (it reads the snapshot) | unchanged |
-| Find it for me | one chat search a workday (and on Look again or a change) | 0; a new link's title is the ranker's daily plan read |
+| This week's plan | none of its own: it arrives with Compass's read | 0; a new link's title is the ranker's daily plan read |
 | Chat, calendar, mail (in the ranker's run) | 2 chat, 1 calendar, 1 mail (off by default) | 0 |
 | Discovery | 2 calls: on Settings open, Check sources again and once a workday morning | 0 |
 | An Ask source (each one turned on) | at most 3, once a workday morning | 1 (the items), plus 1 when its plan is made (weekly, or when its tools change); about 3 k tokens |

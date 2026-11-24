@@ -103,7 +103,7 @@ export const RECIPES: readonly Recipe[] = [
     required: ["list_issues", "get_issue"],
   },
   {
-    id: "chat", label: "Chat", adds: "DMs and mentions in the chat window, and this week's plan link", cost: "2 lookups, plus 1 for the plan", defaultOn: true,
+    id: "chat", label: "Chat", adds: "DMs and mentions in the chat window", cost: "2 lookups", defaultOn: true,
     roles: {
       messages: { name: /search/, not: /user|people|channel|file|emoji/, props: ["filters"], anyProps: ["keywords", "query", "natural_language_query"], prefer: /private|dm|all/ },
       channels: { name: /search_?channels|channels_?search/ },
@@ -345,6 +345,23 @@ export function briefSources(input: {
   rows.push({ id: PASEO_SOURCE, kind: "builtin", recipe: null, label: "Paseo", server: null, adds: "Your workspaces, their asks and PRs", cost: "no outside calls", on: true, canToggle: false, health: "ok", detail: null, command: null, readAt: null, readTools: 0 });
   return rows;
 }
+
+/**
+ * A built-in input as Settings → Compass lists it among the sources (one-place-for-priority-inputs): its name in the
+ * developer's words and the role it plays. The queue and review requests set priorities; the chat window, the
+ * calendar, mail, Paseo and Ask servers are Background, read into AI priority with no notes.
+ */
+export function inputLabel(row: Pick<BriefSource, "id" | "recipe" | "kind" | "label">): string {
+  if (row.recipe === "linear") return "Your Linear queue";
+  if (row.recipe === "chat") return "Your DMs and mentions";
+  if (row.recipe === "calendar") return "Your calendar";
+  if (row.recipe === "mail") return "Your mail";
+  if (row.id === GITHUB_SOURCE) return "Review requests";
+  if (row.id === PASEO_SOURCE) return "Your workspaces";
+  return row.label;
+}
+export const inputRole = (row: Pick<BriefSource, "id" | "recipe">): "Sets my priorities" | "Background" =>
+  row.recipe === "linear" || row.id === GITHUB_SOURCE ? "Sets my priorities" : "Background";
 
 /** The brief's one Sources sentence: muted "5 sources read" until something fails, then what failed. */
 export function sourcesLine(rows: readonly BriefSource[]): { tone: "muted" | "warn"; text: string } {

@@ -1,0 +1,3 @@
+- Settings → Morning brief is now Settings → Compass: one list of everything that sets your priorities, the people you follow and your Linear queue, chat, calendar, mail and review requests, each with its role.
+- This week's plan comes from Compass: give a source Posts the plan and the newest plan they share is picked up as soon as Compass reads it, with how many items have no issue. Find it for me's person and channels move over on their own.
+- On a provider other than Claude or Codex, jobs that read other people's words no longer run there, and Settings → Agents says which.

@@ -6,7 +6,48 @@ morning Follow-up reads what those people said, a fast model turns it into **not
 its workspace, and AI priority ranks the work by it.
 
 Files: `shared/compass.ts` (the model, validation, dates, matching, a note's life), `server/compass.ts` (the reads, the
-extraction job, `compass.json`), `client/compass-settings.tsx` (the Compass card in Settings → Morning brief).
+extraction job, `compass.json`), `client/compass-settings.tsx` and `client/morning-brief-settings.tsx` (Settings →
+Compass).
+
+## Settings → Compass: one place for priority inputs
+
+Settings → Compass (it was Settings → Morning brief; the category id `brief` stays, so links land here) is the one
+place for everything AI priority reads (invariant 108, `one-place-for-priority-inputs`):
+
+- **What sets your priorities:** one list. First the Compass sources (the people and places the developer picked),
+  then the built-in inputs, each with its role (`inputLabel`, `inputRole` in `shared/brief-sources.ts`): your Linear
+  queue and review requests (Sets my priorities), your DMs and mentions, your calendar and your mail (Background).
+  Each has its switch and health, and its own setting behind its chevron: the queue's states, the chat window, the
+  calendar's days. Servers no recipe fits follow, for Ask. Paseo's own state is always read and isn't a row.
+- **This week's plan:** From Compass, Use a link, or Off. A source with Posts the plan shows the plan it brought on
+  its row ("This week's plan · Week of Nov 23 · posted Sun 18:05 · 14 items, 3 without an issue", with Open).
+- **How to read your Compass** and the glossary.
+- **When:** the morning read's time, changes since, the zone and the workdays (`set_brief_settings`).
+- **Connections:** what mcpproxy and GitHub let Follow-up read, what it can't, and Check sources again.
+
+`compass` returns all of it (`plan`, `inputs`, `brief` beside the sources), and `set_compass` changes all of it
+(`plan`, `inputs`, `queue` beside a source's fields). The brief's tools (`brief_plan`, `set_brief_plan`,
+`brief_sources`, `set_brief_sources`, `brief_chat_search`) stay as aliases for one minor release; `brief_settings`
+keeps the brief's own fields.
+
+**The one-time move.** The first read after the update turns Find it for me's person and channels into one Compass
+source (`moveToCompass`, `MorningBrief.moveOnce`): that person, read in their DM and those channels, with Sets my
+priorities and Posts the plan. The same person already a source gains the plan role and the places it lacks instead.
+A name kept without a chat id is looked up once by the chat search (an exact name); one still not found stays in
+`plan.unmoved`, by name, and the plan card says to add it. Nothing else moves: the brief's queue, windows and switches
+were already stored where they are read. A file with `plan.mode: "auto"` reads as `compass`.
+
+## This week's plan, from Compass
+
+A source with **Posts the plan** provides the plan. As Compass reads it (the morning read, Read now, a new place's
+week), the newest claude.ai artifact link one of the source's own people shared (`artifactLinks`, share key dropped)
+goes to `MorningBrief.recordPlan`: a newer one becomes this week's, the one before it last week's, and its title is
+read at once through the plan reader (Artifact `read` only, under the job guard). The same link again, or an older
+one a week's read meets, changes nothing. There is no search of its own and no timer: Find it for me's daily search is
+gone (the-brief-has-one-timer). The plan's items are matched to issues and workspaces (`matchPlan`: an item's first
+key is its issue, its workspace by the one predicate New reads), and the card counts the items without an issue.
+`effectivePlan` keeps its order: `FOLLOW_UP_PLAN_URL`, Off, a pasted link (a newer plan from Compass replaces it when
+"replace when newer" is on), else Compass's newest plan, else last week's.
 
 ## The rule that keeps it generic
 
@@ -113,9 +154,9 @@ after the note ends.
 
 | Tool | Kind | Does |
 | --- | --- | --- |
-| `compass` | read | Sources, glossary, presets, each place's last read, live notes (optionally one workspace's) with the titles of the workspaces they went to, and `blocked`. |
+| `compass` | read | Sources, glossary, presets, each place's last read, live notes (optionally one workspace's) with the titles of the workspaces they went to, `blocked`, and (without `workspace`) `plan`, `inputs` and `brief`: every priority input. |
 | `compass_find` | read | People or channels from the chat tool's own search, each with the place `set_compass` takes. |
-| `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry. |
+| `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry; `plan` (mode, link, replaceWhenNewer, find), `inputs` (on, retry, check, preview) and `queue` (states, chat and calendar windows). |
 | `read_compass` | planned | Read now; waits up to 30 s, then `running`. |
 | `compass_note` | planned | Pin (a workspace, what, optional until and strength), edit, unpin, or tell (one message to the workspace's main agent, only on the developer's ask). Audited as `agent:<id>`. |
 | `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched. Needs you rows don't come from Compass yet. |

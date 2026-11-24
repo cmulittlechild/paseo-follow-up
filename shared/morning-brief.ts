@@ -1,23 +1,23 @@
 import { z } from "zod";
 import { type Clock, BRIEF_SETTINGS_DEFAULT, QUEUE_STATE_TYPES, SINCE_MODES, WEEKDAYS, briefSettingsSchema, isZone, type BriefSettings } from "./linear-queue";
 import { ASK, askCallSchema, askItemSchema } from "./ask";
-import { compassSettingsSchema, emptyCompass } from "./compass";
+import { COMPASS, compassChangeSchema, compassSettingsSchema, emptyCompass, type CompassSettings, type CompassSource, type Place } from "./compass";
+import { sourcesChangeSchema } from "./brief-sources";
 
 /**
- * Settings → Morning brief (docs/morning-brief.md#settings): the Linear queue's settings and this week's plan link,
- * stored host-scoped in `morning-brief.json` (never device-scoped: invariant 22). Pure: the store, the finder and the
- * one-time import are server/morning-brief.ts.
+ * Settings → Compass (docs/morning-brief.md#settings, docs/compass.md): the brief's own settings (sweep time, since,
+ * zone, workdays), the queue's, and this week's plan, stored host-scoped in `morning-brief.json` (never device-scoped:
+ * invariant 22). Pure: the store, the one-time import and the one-time move are server/morning-brief.ts.
  *
- * The plan has three modes: **auto** ("Find it for me": the newest message from a person in some channels that links
- * a claude.ai artifact, over 14 days), **link** (pasted; it stays until changed, or until a newer one is found when
- * Find it for me is set up and "replace when newer" is on) and **off**. `FOLLOW_UP_PLAN_URL` overrides every mode
- * and shows read-only.
+ * The plan has three modes: **compass** (the newest claude.ai artifact a Compass source with "Posts the plan" shares,
+ * found as Compass reads it), **link** (pasted; it stays until changed, or until a newer one arrives from Compass when
+ * "replace when newer" is on) and **off**. `FOLLOW_UP_PLAN_URL` overrides every mode and shows read-only. Before
+ * Compass, "auto" (Find it for me) searched one person's channels each morning; it reads as "compass", and its
+ * person and channels move into a Compass source once (`moveToCompass`, one-place-for-priority-inputs).
  */
 
-export const PLAN_MODES = ["auto", "link", "off"] as const;
+export const PLAN_MODES = ["compass", "link", "off"] as const;
 export type PlanMode = typeof PLAN_MODES[number];
-/** How far back Find it for me looks. */
-export const PLAN_FIND_DAYS = 14;
 export const PLAN_CHANNELS_MAX = 5;
 
 /** A chat person or channel: its id when known (from a picker or the import), else its name (searched by name). */
@@ -28,38 +28,43 @@ export const chatRefSchema = z.object({
 export type ChatRef = z.infer<typeof chatRefSchema>;
 
 export const planSettingsSchema = z.object({
-  mode: z.enum(PLAN_MODES).default("off"),
+  /** "auto" (Find it for me, before Compass) reads as "compass". */
+  mode: z.preprocess(v => v === "auto" ? "compass" : v, z.enum(PLAN_MODES)).default("compass"),
   /** The pasted link (canonical: no share key), and when it was pasted. */
   link: z.string().max(300).nullable().default(null),
   linkAt: z.string().nullable().default(null),
+  /**
+   * Find it for me's person and channels, from before Compass. They move into a Compass source once (`moveToCompass`)
+   * and are cleared; a name chat search couldn't find stays in `unmoved`, so nothing is lost (invariant 7).
+   */
   person: chatRefSchema.nullable().default(null),
   channels: z.array(chatRefSchema).max(PLAN_CHANNELS_MAX).default([]),
-  /** With a pasted link and Find it for me set up: a link found after the paste replaces it. */
+  /** When the one-time move ran, and what it couldn't carry over (names, shown once in Settings). */
+  movedAt: z.string().nullable().default(null),
+  unmoved: z.array(z.string().max(100)).max(PLAN_CHANNELS_MAX + 1).default([]),
+  /** With a pasted link: a plan Compass finds after the paste replaces it. */
   replaceWhenNewer: z.boolean().default(false),
 });
 export type PlanSettings = z.infer<typeof planSettingsSchema>;
 
-/** A link Find it for me found: where and when it was posted, and when Follow-up found it. */
+/** A plan link Compass found: which source shared it, where and when, and when Follow-up found it. */
 export const foundPlanSchema = z.object({
   url: z.string().max(300),
   postedAt: z.string().max(40).nullable(),
   where: z.string().max(100).nullable(),
   foundAt: z.string(),
+  /** The Compass source whose message linked it (null: found by Find it for me, before Compass). */
+  source: z.string().max(40).nullable().default(null),
 });
 export type FoundPlan = z.infer<typeof foundPlanSchema>;
 
-export const PLAN_CHECK_STATUSES = ["found", "not-found", "error", "unavailable"] as const;
 export const morningBriefFileSchema = z.object({
   version: z.literal(1),
   queue: briefSettingsSchema,
   plan: planSettingsSchema,
-  /** The newest link Find it for me found, and the one before it (last week's, kept while this week's isn't found). */
+  /** The newest plan Compass found, and the one before it (last week's, kept while this week's isn't found). */
   found: foundPlanSchema.nullable(),
   previous: foundPlanSchema.nullable(),
-  /** The last search: found, not found (nothing new in 14 days), failed, or no chat search to ask. */
-  check: z.object({ at: z.string(), status: z.enum(PLAN_CHECK_STATUSES), error: z.string().max(300).nullable() }).nullable(),
-  /** The day (in the brief's zone) Find it for me last ran on its own, with the morning sweep. */
-  findDay: z.string().nullable(),
   /** When the one-time import from the morning-brief skill's registry ran (it runs once, found or not). */
   importedAt: z.string().nullable(),
   /**
@@ -80,7 +85,7 @@ export const morningBriefFileSchema = z.object({
 });
 export type MorningBriefFile = z.infer<typeof morningBriefFileSchema>;
 export const emptyMorningBrief = (): MorningBriefFile => ({
-  version: 1, queue: { ...BRIEF_SETTINGS_DEFAULT }, plan: planSettingsSchema.parse({}), found: null, previous: null, check: null, findDay: null, importedAt: null, sources: { on: {}, checkedAt: null, reads: {}, plans: {}, asked: {} }, compass: emptyCompass(),
+  version: 1, queue: { ...BRIEF_SETTINGS_DEFAULT }, plan: planSettingsSchema.parse({}), found: null, previous: null, importedAt: null, sources: { on: {}, checkedAt: null, reads: {}, plans: {}, asked: {} }, compass: emptyCompass(),
 });
 
 /** A claude.ai artifact link without a query string or fragment, so no share key travels. */
@@ -89,16 +94,11 @@ export function canonicalArtifactUrl(url: string | null | undefined): string | n
   try { const u = new URL(url.trim()); if (u.hostname !== "claude.ai" || !/^\/(code\/)?artifact\/[\w-]+$/.test(u.pathname)) return null; return `https://claude.ai${u.pathname}`; } catch { return null; }
 }
 
-/** Whether Find it for me has what it needs: a person and at least one channel. */
-export const findReady = (p: PlanSettings) => !!p.person && p.channels.length > 0;
-/** Whether a search runs: Find it for me, or a pasted link that a newer find may replace. */
-export const searches = (p: PlanSettings) => findReady(p) && (p.mode === "auto" || (p.mode === "link" && p.replaceWhenNewer));
-
 export type PlanSource = "env" | "link" | "found" | "previous" | "off" | "none";
 /**
  * The plan link the brief and the ranker read, and where it comes from. The environment wins; Off reads nothing;
- * a pasted link stays unless a newer one was found and "replace when newer" is on; Find it for me reads this week's
- * find, else last week's (not found keeps last week's plan).
+ * a pasted link stays unless Compass found a newer one and "replace when newer" is on; From Compass reads this
+ * week's plan, else last week's (none this week keeps last week's).
  */
 export function effectivePlan(file: Pick<MorningBriefFile, "plan" | "found" | "previous">, env: string | null | undefined): { url: string | null; source: PlanSource } {
   const fromEnv = canonicalArtifactUrl(env);
@@ -106,7 +106,7 @@ export function effectivePlan(file: Pick<MorningBriefFile, "plan" | "found" | "p
   const p = file.plan;
   if (p.mode === "off") return { url: null, source: "off" };
   if (p.mode === "link") {
-    const newer = searches(p) && file.found && (!p.linkAt || Date.parse(file.found.foundAt) > Date.parse(p.linkAt)) && file.found.url !== p.link;
+    const newer = p.replaceWhenNewer && file.found && (!p.linkAt || Date.parse(file.found.foundAt) > Date.parse(p.linkAt)) && file.found.url !== p.link;
     if (newer) return { url: file.found!.url, source: "found" };
     return p.link ? { url: p.link, source: "link" } : { url: null, source: "none" };
   }
@@ -114,6 +114,9 @@ export function effectivePlan(file: Pick<MorningBriefFile, "plan" | "found" | "p
   if (file.previous) return { url: file.previous.url, source: "previous" };
   return { url: null, source: "none" };
 }
+
+/** Whether a source provides the plan: it is on and has the "Posts the plan" role. */
+export const planSources = (c: Pick<CompassSettings, "sources">): CompassSource[] => c.sources.filter(s => s.enabled && s.roles.includes("plan"));
 
 /** A found link replaces the stored one; the stored one becomes last week's when it differs. */
 export function recordFound(file: Pick<MorningBriefFile, "found" | "previous">, next: FoundPlan): Pick<MorningBriefFile, "found" | "previous"> {
@@ -152,10 +155,25 @@ export const planChangeSchema = z.strictObject({
   person: refInput.nullable().optional(),
   channels: z.array(refInput).max(PLAN_CHANNELS_MAX).optional(),
   replaceWhenNewer: z.boolean().optional(),
-  /** Search now (Find it for me's "Look again"). */
+  /** Read the plan's sources now (Compass's Read now, for the sources that post the plan). */
   find: z.boolean().optional(),
 });
+/** Who posts the plan is a Compass source now; a change naming a person or channels is refused with this line. */
+export const PLAN_WHO_MOVED = "Who posts the plan is a Compass source now: give a source the role \"Posts the plan\" (set_compass, or Settings → Compass).";
 export type PlanChange = z.infer<typeof planChangeSchema>;
+
+/**
+ * `set_compass` (and Settings → Compass): one change for every priority input (one-place-for-priority-inputs). The
+ * Compass sources' own fields, plus `plan` (this week's plan: From Compass, a link, off), `inputs` (the built-in and
+ * mcpproxy inputs: on/off, Retry, check, an Ask preview) and `queue` (the Linear queue's states and the chat and
+ * calendar windows). The brief's own fields (sweep time, since, zone, workdays) stay with `set_brief_settings`.
+ */
+export const compassSetSchema = compassChangeSchema.extend({
+  plan: planChangeSchema.optional(),
+  inputs: sourcesChangeSchema.optional(),
+  queue: queueChangeSchema.pick({ states: true, chatHours: true, calendarDays: true }).optional(),
+});
+export type CompassSet = z.infer<typeof compassSetSchema>;
 
 /** The plan settings after a change, or why the change is refused. A pasted link must be a claude.ai artifact. */
 export function applyPlanChange(p: PlanSettings, c: PlanChange, now: number): { ok: true; plan: PlanSettings } | { ok: false; error: string } {
@@ -168,11 +186,7 @@ export function applyPlanChange(p: PlanSettings, c: PlanChange, now: number): { 
       if (url !== p.link) { next.link = url; next.linkAt = new Date(now).toISOString(); }
     }
   }
-  if (c.person !== undefined) next.person = c.person ? { id: c.person.id ?? null, name: c.person.name.replace(/^@/, "") } : null;
-  if (c.channels) {
-    const seen = new Set<string>();
-    next.channels = c.channels.map(ch => ({ id: ch.id ?? null, name: ch.name.replace(/^#/, "") })).filter(ch => { const k = ch.id ?? ch.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
-  }
+  if (c.person !== undefined || c.channels !== undefined) return { ok: false, error: PLAN_WHO_MOVED };
   if (c.replaceWhenNewer !== undefined) next.replaceWhenNewer = c.replaceWhenNewer;
   if (c.mode) next.mode = c.mode;
   // Pasting a link is choosing it.
@@ -207,11 +221,12 @@ export function importFromRegistry(json: string, now: number): { plan: PlanSetti
   const url = canonicalArtifactUrl(str(src.url, 2000));
   const at = new Date(now).toISOString();
   const plan = planSettingsSchema.parse({});
-  if (person && channels.length) { plan.mode = "auto"; plan.person = person; plan.channels = channels; }
+  // Its person and channels move into a Compass source on the next read (moveToCompass).
+  if (person && channels.length) { plan.mode = "compass"; plan.person = person; plan.channels = channels; }
   else if (url) { plan.mode = "link"; plan.link = url; plan.linkAt = at; }
   else return null;
   const posted = str(d.selected_shared_at, 40);
-  const found = url && plan.mode === "auto" ? { url, postedAt: posted && !Number.isNaN(Date.parse(posted)) ? new Date(posted).toISOString() : null, where: str(d.selected_shared_in), foundAt: at } : null;
+  const found = url && plan.mode === "compass" ? { url, postedAt: posted && !Number.isNaN(Date.parse(posted)) ? new Date(posted).toISOString() : null, where: str(d.selected_shared_in), foundAt: at, source: null } : null;
   return { plan, found };
 }
 
@@ -263,30 +278,92 @@ export function parseChatRefs(text: string, kind: "people" | "channels"): ChatRe
   return out;
 }
 
-/** "@alice in #planning, #roadmap": the same handles the pickers' chips show. */
-export function findWhere(p: Pick<PlanSettings, "person" | "channels">): string {
-  return `${p.person ? `@${p.person.name}` : "someone"} in ${p.channels.map(c => `#${c.name}`).join(", ") || "a channel"}`;
+/** Every claude.ai artifact link in a message's text, canonical (no share key), in order. */
+export function artifactLinks(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(new RegExp(ARTIFACT.source, "g"))) { const u = canonicalArtifactUrl(m[0]); if (u && !out.includes(u)) out.push(u); }
+  return out;
+}
+
+// ---------- the one-time move: Find it for me becomes a Compass source ----------
+
+/** A chat id as Compass keeps it (the chat tool's own id). */
+const compassId = (id: string | null) => id && /^[A-Za-z0-9._:-]{2,40}$/.test(id) ? id : null;
+
+/**
+ * Find it for me's person and channels as a Compass source that posts the plan and sets priorities, read in those
+ * channels and the person's DM (design §2: "the one-time move"). The same person already a source gains the plan role
+ * and the places it lacks, so nothing is listed twice. `resolve` gives a chat id for a name the old settings kept
+ * without one (the chat search, server-side); a ref still without one stays in `unmoved`, by name, shown once in
+ * Settings. Past the caps (sources, places) the rest stays in `unmoved` too. Pure: nothing here reads.
+ */
+export function moveToCompass(plan: PlanSettings, compass: CompassSettings, ctx: { now: number; newId: () => string; resolve?: Map<string, string> }): { plan: PlanSettings; compass: CompassSettings; moved: boolean } {
+  const at = new Date(ctx.now).toISOString();
+  const cleared = { ...plan, person: null, channels: [], movedAt: at };
+  if (!plan.person && !plan.channels.length) return { plan: { ...plan, movedAt: at }, compass, moved: false };
+  const idOf = (r: ChatRef, kind: "@" | "#") => compassId(r.id) ?? compassId(ctx.resolve?.get(`${kind}${r.name.toLowerCase()}`) ?? null);
+  const unmoved: string[] = [];
+  const personId = plan.person ? idOf(plan.person, "@") : null;
+  if (!plan.person || !personId) {
+    // No one to read: the channels alone would read everyone (a later release), so the whole thing waits, by name.
+    return { plan: { ...cleared, unmoved: [...(plan.person ? [`@${plan.person.name}`] : []), ...plan.channels.map(c => `#${c.name}`)].slice(0, PLAN_CHANNELS_MAX + 1) }, compass, moved: false };
+  }
+  const person = { id: personId, name: plan.person.name };
+  const places: Place[] = [{ kind: "conversation", sub: "dm", id: personId, name: person.name }];
+  for (const ch of plan.channels) {
+    const id = idOf(ch, "#");
+    if (!id) { unmoved.push(`#${ch.name}`); continue; }
+    places.push({ kind: "conversation", sub: "channel", id, name: ch.name });
+  }
+  const key = (p: Place) => `${p.kind}:${p.id}`;
+  const sources = compass.sources.map(x => ({ ...x }));
+  const same = sources.find(x => x.who.kind === "person" && x.who.person.id === personId);
+  if (same) {
+    const have = new Set(same.places.map(key));
+    const add = places.filter(p => !have.has(key(p)));
+    const room = COMPASS.places - same.places.length;
+    unmoved.push(...add.slice(Math.max(room, 0)).map(p => p.kind === "conversation" && p.sub !== "dm" ? `#${p.name}` : `@${person.name}`));
+    same.places = [...same.places, ...add.slice(0, Math.max(room, 0))];
+    if (!same.roles.includes("plan")) same.roles = [...same.roles, "plan"];
+    same.enabled = true;
+  } else if (sources.length >= COMPASS.sources) {
+    return { plan: { ...cleared, unmoved: [`@${person.name}`, ...plan.channels.map(c => `#${c.name}`)].slice(0, PLAN_CHANNELS_MAX + 1) }, compass, moved: false };
+  } else {
+    unmoved.push(...places.slice(COMPASS.places).map(p => `#${p.name}`));
+    sources.push({
+      id: ctx.newId(), label: `${person.name} · plan`.slice(0, COMPASS.labelChars), who: { kind: "person", person }, places: places.slice(0, COMPASS.places),
+      roles: ["priorities", "plan"], instructions: "", enable_needs_you: true, enabled: true, addedBy: "developer", addedAt: at,
+    });
+  }
+  return { plan: { ...cleared, unmoved: unmoved.slice(0, PLAN_CHANNELS_MAX + 1) }, compass: { ...compass, sources }, moved: true };
+}
+
+// ---------- plan items, matched ----------
+
+/** A plan's items matched to issues and workspaces: an item's first key is its issue; one with no key has none. */
+export function matchPlan(items: readonly { level?: string; title: string; keys?: readonly string[] }[], workspaceOf: (key: string) => string | null): { items: { title: string; issue: string | null; workspace: string | null }[]; withoutIssue: number } {
+  const out = items.map(i => { const issue = i.keys?.[0]?.toUpperCase() ?? null; return { title: i.title, issue, workspace: issue ? workspaceOf(issue) : null }; });
+  return { items: out, withoutIssue: out.filter(i => !i.issue).length };
 }
 
 // ---------- what Settings and the agent tools read ----------
 
-/** What the plan read last saw (the ranker's cached read): its title and item count, when. */
-export type PlanRead = { url: string; at: string; title: string | null; items: number };
+/** What the plan read last saw (the ranker's cached read): its title, item count and how many have no issue, when. */
+export type PlanRead = { url: string; at: string; title: string | null; items: number; withoutIssue?: number };
 export type PlanView = {
-  mode: MorningBriefFile["plan"]["mode"];
+  mode: PlanMode;
   link: string | null; linkAt: string | null;
-  person: ChatRef | null; channels: ChatRef[];
   replaceWhenNewer: boolean;
   /** The link the brief and the ranker read, and where it comes from. */
   url: string | null; source: PlanSource;
   /** FOLLOW_UP_PLAN_URL, when set: it wins, and Settings shows it read-only. */
   env: string | null;
   found: FoundPlan | null; previous: FoundPlan | null;
-  check: MorningBriefFile["check"];
   read: PlanRead | null;
-  /** Whether there is a chat search to find it with. */
-  canFind: boolean;
-  findDays: number;
+  /** The Compass sources that post the plan (id, label), and the label of the one the plan in use came from. */
+  sources: { id: string; label: string }[];
+  /** Names the one-time move couldn't carry into Compass (no chat id found), to add by hand. */
+  unmoved: string[];
   importedAt: string | null;
 };
 export type BriefSettingsView = {
@@ -317,52 +394,49 @@ export function shortWhen(iso: string | null, now: number, timeZone: string): st
 export type PlanCard =
   | { tone: "ok"; title: string; line: string; url: string; actions: ("open" | "another")[] }
   | { tone: "warn"; title: string; line: string; paste: boolean; inUse: { line: string; url: string } | null }
-  | { tone: "error"; title: string; line: string; retry: boolean; paste: boolean; inUse: { line: string; url: string } | null }
   | { tone: "quiet"; title: string; line: string };
 
+const names = (v: Pick<PlanView, "sources">) => v.sources.map(x => x.label).join(", ");
+/** "14 items, 3 without an issue". */
+export const itemsLine = (r: Pick<PlanRead, "items" | "withoutIssue">) =>
+  `${r.items} ${r.items === 1 ? "item" : "items"}${r.withoutIssue ? `, ${r.withoutIssue} without an issue` : ""}`;
+
 /**
- * The plan card under the mode: what the brief reads and how Follow-up got it. Found and pasted links are a neutral
- * card with a check (§7: one primary per screen); not found is amber, keeps last week's and offers a paste field.
+ * The plan card: what the brief reads and how Follow-up got it. A plan in use is a neutral card with a check (§7: one
+ * primary per screen); none this week is amber, keeps last week's and offers a paste field.
  */
-export function planCard(v: Pick<PlanView, "mode" | "url" | "source" | "found" | "previous" | "check" | "read" | "person" | "channels" | "canFind" | "findDays" | "link" | "linkAt" | "replaceWhenNewer">, now: number, timeZone: string, reading = false): PlanCard | null {
+export function planCard(v: Pick<PlanView, "mode" | "url" | "source" | "found" | "previous" | "read" | "sources" | "link" | "linkAt" | "replaceWhenNewer">, now: number, timeZone: string, reading = false): PlanCard | null {
   const when = (iso: string | null) => shortWhen(iso, now, timeZone);
-  const readLine = v.read ? `read ${when(v.read.at) ?? ""}, ${v.read.items} ${v.read.items === 1 ? "item" : "items"}`.replace(" ,", ",") : reading ? "reading its title…" : "not read yet";
+  const readLine = v.read ? `read ${when(v.read.at) ?? ""}, ${itemsLine(v.read)}`.replace(" ,", ",") : reading ? "reading its title…" : "not read yet";
   const title = v.read?.title || "This week's plan";
+  const from = (f: FoundPlan | null) => [v.sources.find(x => x.id === f?.source)?.label ?? null, f?.where ?? null].filter(Boolean).join(" in ");
   if (v.source === "env") return { tone: "ok", title, line: `Set by the environment (FOLLOW_UP_PLAN_URL) · ${readLine}`, url: v.url!, actions: ["open"] };
   if (v.mode === "off") return { tone: "quiet", title: "No plan", line: "The brief and AI priority read no weekly plan." };
   if (v.mode === "link") {
     if (!v.url) return null;
-    if (v.source === "found") return { tone: "ok", title, line: `A newer one, found in ${v.found?.where ? `#${v.found.where}` : findWhere(v)}${when(v.found?.postedAt ?? null) ? `, ${when(v.found!.postedAt)}` : ""} · ${readLine}`, url: v.url, actions: ["open", "another"] };
-    const rest = v.replaceWhenNewer && findReady(v as PlanSettings) ? ` · replaced if a newer one is found in ${v.channels.map(c => `#${c.name}`).join(", ")}` : "";
+    if (v.source === "found") return { tone: "ok", title, line: `A newer one from ${from(v.found) || "Compass"}${when(v.found?.postedAt ?? null) ? `, ${when(v.found!.postedAt)}` : ""} · ${readLine}`, url: v.url, actions: ["open", "another"] };
+    const rest = v.replaceWhenNewer && v.sources.length ? ` · replaced by a newer one from ${names(v)}` : "";
     return { tone: "ok", title, line: `Pasted ${when(v.linkAt) ?? ""} · ${readLine}${rest}`.replace("Pasted  ·", "Pasted ·"), url: v.url, actions: ["open"] };
   }
-  // Find it for me.
-  if (!v.person || !v.channels.length) return { tone: "quiet", title: "Pick who posts it and where", line: `Follow-up looks for the newest message from them that links a claude.ai artifact, over ${v.findDays} days.` };
-  // What the brief reads while this week's isn't found: last week's link, or nothing.
+  // From Compass.
+  if (!v.sources.length) return { tone: "quiet", title: "No source posts the plan", line: "Give a source the role Posts the plan, like your product lead's DM. The newest claude.ai artifact they share becomes this week's plan." };
   const kept = v.found ?? v.previous;
-  const inUse = kept ? { line: `In use: last week's, posted ${when(kept.postedAt) ?? "earlier"}`, url: kept.url } : null;
-  const fallback = kept ? "The brief uses last week's until this works." : "The brief reads no plan until this works.";
-  if (!v.canFind) return { tone: "error", title: "No chat search connected", line: "Find it for me searches your chat through mcpproxy. Paste the link instead.", retry: false, paste: true, inUse };
-  if (v.check?.status === "error") return { tone: "error", title: "Couldn't search", line: `${v.check.error ?? "The chat search failed."} ${fallback}`, retry: true, paste: true, inUse };
-  if (v.check?.status === "not-found" || (!v.found && v.previous)) {
-    const since = new Date(now - v.findDays * 86_400_000).toISOString();
-    return { tone: "warn", title: kept ? "No plan this week yet" : "No plan found", line: `Nothing from ${findWhere(v)} since ${when(since)} links an artifact.${kept ? " The brief uses last week's until one shows up." : ""}`, paste: true, inUse };
-  }
-  if (!v.found || !v.url) return { tone: "quiet", title: "Looking…", line: `Searching ${findWhere(v)} for the newest artifact link.` };
-  const where = v.found.where ? `#${v.found.where}` : v.channels.map(c => `#${c.name}`).join(", ");
-  return { tone: "ok", title, line: `Found in ${where}${when(v.found.postedAt) ? `, ${when(v.found.postedAt)}` : ""} · claude.ai artifact · ${readLine}`, url: v.url, actions: ["open", "another"] };
+  if (!v.found && v.previous) return { tone: "warn", title: "No plan this week yet", line: `Nothing new from ${names(v)} links an artifact. The brief uses last week's until one shows up.`, paste: true, inUse: { line: `In use: last week's, posted ${when(v.previous.postedAt) ?? "earlier"}`, url: v.previous.url } };
+  if (!kept || !v.url) return { tone: "quiet", title: "Waiting for a plan", line: `The newest claude.ai artifact ${names(v)} shares becomes this week's plan, as Compass reads it.` };
+  const where = from(v.found);
+  return { tone: "ok", title, line: `${where ? `From ${where}` : "From Compass"}${when(v.found!.postedAt) ? `, ${when(v.found!.postedAt)}` : ""} · ${readLine}`, url: v.url, actions: ["open", "another"] };
 }
 
 /**
- * Settings → Morning brief's line under the tab: the plan and the sweep. Built from the same card the screen shows, so
- * the line never says "found" while the card says not found or failed.
+ * Settings → Compass's line under the tab: the plan and the sweep. Built from the same card the screen shows, so the
+ * line never says "found" while the card says otherwise.
  */
 export function briefSummary(v: BriefSettingsView, now = Date.now(), sources?: { tone: "muted" | "warn"; text: string }): string {
   const card = planCard(v.plan, now, v.clock.timeZone);
   const plan = v.plan.source === "env" ? "plan set by the environment" : v.plan.mode === "off" ? "no plan"
-    : v.plan.mode === "link" ? (v.plan.source === "found" ? "a newer plan found" : "plan from a link")
-    : !card || card.tone === "quiet" ? (card?.title.startsWith("Pick") ? "pick where the plan is posted" : "looking for the plan")
-    : card.tone === "ok" ? "this week's plan found" : card.tone === "warn" ? (card.inUse ? "using last week's plan" : "no plan found") : !card.retry ? "no chat search connected" : card.inUse ? "plan search failed, using last week's" : "plan search failed";
-  // A source that failed or needs a sign-in leads the line (Settings → Morning brief → Sources says which).
+    : v.plan.mode === "link" ? (v.plan.source === "found" ? "a newer plan from Compass" : "plan from a link")
+    : !card || card.tone === "quiet" ? (card?.title.startsWith("No source") ? "no source posts the plan" : "waiting for the plan")
+    : card.tone === "ok" ? "this week's plan in" : "using last week's plan";
+  // A source that failed or needs a sign-in leads the line (the source list says which).
   return `${sources?.tone === "warn" ? `${sources.text} · ` : ""}Sweeps ${v.queue.sweepAt} on workdays · ${plan}`;
 }
