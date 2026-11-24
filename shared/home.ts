@@ -89,6 +89,11 @@ export type Workstream = {
   due?: string | null;
   /** A fresh external priority (Priority sort): the one-line reason and its sources. Never invented. */
   priority?: { score: number; reason: string; source: { kind: PrioritySourceKind; label: string } | null } | null;
+  /**
+   * The workspace's first live Compass note as one line ("Dana: APP-142 before the demo"), on the row that owns its
+   * lines. A live note is a reason: a row the ranker gave no reason shows it (docs/compass.md).
+   */
+  compass?: string | null;
   /** Sending rows: the Send now the server would take (never one that waits on the developer: that's in Needs you). */
   sendNow?: { batchId: string; count: number; what: string } | null;
   /** Changes whenever anything shown on the row changes, so a memoised row re-renders only then. */
@@ -200,7 +205,7 @@ export function badges(input: { headline: Headline | null; row?: InboxRow; works
 
 function sigOf(s: Omit<Workstream, "sig">): string {
   return [s.group, s.tier, s.icon, s.tone, s.title, s.agent, s.line, s.word, s.at, s.wakeAt ?? "", s.readyToArchive, s.badges.map(b => b.text).join("|"), s.pr ? `${s.pr.label}:${s.pr.checks?.text}` : "",
-    s.priority ? `${s.priority.reason}:${s.priority.source?.label}` : "", s.sendNow ? `send:${s.sendNow.batchId}` : ""].join("\u0001");
+    s.priority ? `${s.priority.reason}:${s.priority.source?.label}` : "", s.compass ?? "", s.sendNow ? `send:${s.sendNow.batchId}` : ""].join("\u0001");
 }
 const sendNowOf = (s: Sending) => s.state === "queued" && s.canSendNow ? { batchId: s.batchId, count: s.count, what: s.what } : null;
 const make = (s: Omit<Workstream, "sig">): Workstream => ({ ...s, sig: sigOf(s) });
@@ -226,7 +231,9 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   /** The machine holds auto-sends without a line to show (the agent tools): queued Sending rows still say so. */
   autoSendsHeld?: boolean;
   /** Decision Q8: how many raised Linear issues are in Needs you (the worker's count, on the home feed). */
-  raised?: number }): HomeModel {
+  raised?: number;
+  /** Each workspace's first live Compass note as one line (the worker's, with the priorities). */
+  compass?: Readonly<Record<string, string>> }): HomeModel {
   const held = !!input.hold || !!input.autoSendsHeld;
   // Workspaces Follow-up keeps off the list (the Overseer's own): no row, no count.
   const hidden = new Set(input.hidden ?? []);
@@ -323,6 +330,8 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
   const rowsOf = new Map<string, Workstream[]>();
   for (const s of out) if (s.workspaceId) rowsOf.set(s.workspaceId, [...rowsOf.get(s.workspaceId) ?? [], s]);
   const owner = new Map([...fresh.byWorkspace].map(([id, p]) => [id, priorityRow(p, rowsOf.get(id) ?? [], tracked.get(id)?.mainAgentId ?? null)]));
+  // A Compass line belongs to the row a whole-workspace reason would: the workspace's own row or its main agent's.
+  const noteOwner = new Map(Object.keys(input.compass ?? {}).map(id => [id, owner.get(id) ?? priorityRow({ workspaceId: id }, rowsOf.get(id) ?? [], tracked.get(id)?.mainAgentId ?? null)]));
   const finished: Workstream[] = out.map(s => {
     const w = s.workspaceId ? tracked.get(s.workspaceId) : undefined;
     const p = s.workspaceId && owner.get(s.workspaceId) === s.key ? fresh.byWorkspace.get(s.workspaceId) : undefined;
@@ -333,7 +342,8 @@ export function buildHome(input: { rows: InboxRow[]; tracked: Workspace[]; paseo
     // Rule 5 of main-agent claims: a quiet badge for a day after an agent or Follow-up changed the main agent.
     // Last in line, so it never pushes out a badge that asks for something.
     const badges = w && recentMainChange(w, now) ? [...s.badges, { text: "Main agent changed", tone: "muted" as const }].slice(0, 2) : s.badges;
-    return make({ ...stripSig(s), badges, activityAt, urgent, due, priority });
+    const compass = s.workspaceId && noteOwner.get(s.workspaceId) === s.key ? input.compass![s.workspaceId] : null;
+    return make({ ...stripSig(s), badges, activityAt, urgent, due, priority, compass });
   });
   const byGroup = new Map<HomeGroupId, Workstream[]>(HOME_GROUPS.map(g => [g, []]));
   for (const s of finished) byGroup.get(s.group)!.push(s);

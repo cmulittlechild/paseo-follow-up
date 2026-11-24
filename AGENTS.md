@@ -83,7 +83,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
-| Compass: the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx` | [compass](docs/compass.md) |
+| Compass: the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
@@ -1239,7 +1239,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    read is never written to disk or a log: `compass.json` keeps a note's quote (at most 280 characters) until 7 days
    after it ends, and `ai-jobs.jsonl` keeps no text. Guarded by `tests/compass-read.test.ts`.
 103. **A Compass note ends** (`a-compass-note-ends`). Every note has an end: its date plus `graceDays`, `undatedDays`
-   after it was last said, a retraction, or a newer note from the same source on the same subject. An ended note leaves
+   after it was last said, a retraction, or a newer note from the same source on the same subject. A note pinned by hand
+   ends on its date, or when it is unpinned if it has none (the developer's unpin is its end). An ended note leaves
    AI priority at once. Notes from different people that disagree are all kept, attributed: Follow-up never picks
    between people. Guarded by `tests/compass-extract.test.ts`.
 104. **A changed review is an update, never a cancel** (`a-changed-review-updates-never-cancels`). A sent batch whose
@@ -1289,6 +1290,12 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    read. Every `governor.allowsBackground()` in the worker is listed with why no click goes through it. 2026-11-23: the
    turn-on sheet showed only "Paused while this machine is busy" with Turn on off, and a workspace's Refresh did
    nothing while the machine was busy. Guarded by `tests/developer-reads.test.ts`.
+
+107. **Compass reaches an agent only by a click** (`compass-reaches-an-agent-only-by-a-click`). A Compass note reaches
+   an agent only when someone asks: Tell the agent in the panel's Why it matters (one click), or `compass_note` tell
+   (planned, so an agent confirms on the developer's ask), audited as its caller. Tell queues one message to the
+   workspace's main agent (invariant 36) that carries the quote as someone else's words. Reads, the morning read,
+   Home's lines, Catch up and `why_suggested` never queue a message. Guarded by `tests/compass-agent.test.ts`.
 
 ## Bugs
 

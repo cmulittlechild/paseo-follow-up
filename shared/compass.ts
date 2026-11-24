@@ -585,6 +585,8 @@ export function placeNote(note: Pick<CompassNote, "what" | "quote" | "keys" | "m
 /** A note's end (a-compass-note-ends): its date plus grace, or `undatedDays` after its last restatement. Null: it never ends by time (a hand pin). */
 export function noteEnd(n: Pick<CompassNote, "until" | "restatedAt" | "by">, expiry: CompassSettings["expiry"]): number {
   if (n.until) return Date.parse(`${n.until}T23:59:59Z`) + expiry.graceDays * 86_400_000;
+  // A note pinned by hand without a date lives until it is unpinned (the developer's unpin is its end).
+  if (byHand(n)) return Number.POSITIVE_INFINITY;
   return Date.parse(n.restatedAt) + expiry.undatedDays * 86_400_000;
 }
 
@@ -605,7 +607,7 @@ export function settleNotes(notes: readonly CompassNote[], input: { now: number;
     const ft = tokens(f.what);
     out = out.map(n => n.state === "live" && n.source === f.source && sameTarget(n, f) && overlap(ft, tokens(n.what)) >= 0.6 ? end(n, "superseded", { supersededBy: f.id }) : n);
   }
-  out = [...out, ...fresh].map(n => n.state === "live" && n.by !== "developer" && noteEnd(n, input.expiry) < input.now ? end(n, "expired") : n);
+  out = [...out, ...fresh].map(n => n.state === "live" && noteEnd(n, input.expiry) < input.now ? end(n, "expired") : n);
   const keepUntil = input.now - COMPASS.retentionDays * 86_400_000;
   out = out.filter(n => n.state === "live" || !n.endedAt || Date.parse(n.endedAt) >= keepUntil);
   const live = out.filter(n => n.state === "live").sort((a, b) => noteEnd(b, input.expiry) - noteEnd(a, input.expiry));
@@ -626,7 +628,7 @@ export type RankCompassNote = { source: string; role: Role; strength: Strength; 
 
 /** Live notes for the ranker's COMPASS section: at most 20, soonest date first, then strongest. */
 export function rankNotes(notes: readonly CompassNote[], sources: readonly CompassSource[], now: number, expiry: CompassSettings["expiry"]): RankCompassNote[] {
-  const label = new Map(sources.map(s => [s.id, s.label]));
+  const label = new Map([...sources.map(s => [s.id, s.label] as const), [HAND_SOURCE, HAND_LABEL] as const]);
   const rank = { high: 0, normal: 1, low: 2 } as const;
   return notes.filter(n => n.state === "live" && label.has(n.source))
     .map(n => ({ n, s: effectiveStrength(n, now, expiry) }))
@@ -687,4 +689,88 @@ export function whoFilter(who: Who, self: string | null): (by: { id: string }) =
   if (who.kind === "anyone") return by => self && by.id === self ? "context" : "source";
   const ids = new Set(who.kind === "person" ? [who.person.id] : who.people.map(p => p.id));
   return by => ids.has(by.id) ? "source" : self && by.id === self ? "context" : null;
+}
+
+// ---------- notes by hand: pin, edit, unpin, tell (compass_note, Why it matters) ----------
+
+/** The source id of a note pinned by hand (the developer's, or a confirmed agent's): no conversation behind it. */
+export const HAND_SOURCE = "hand";
+export const HAND_LABEL = "Pinned by hand";
+/** A note put there by hand, not read from a source: no quote, it lives until its date or its unpin. */
+export const byHand = (n: Pick<CompassNote, "by">) => n.by === "developer" || (typeof n.by === "string" && n.by.startsWith("agent:"));
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/**
+ * One change to one note, from Why it matters' menu or a confirmed compass_note. pin: a new note on a workspace in the
+ * developer's (or agent's) own words; edit: its date, strength or workspace (a hand placement); unpin: it ends now;
+ * tell: one message to the workspace's main agent with the note (compass-reaches-an-agent-only-by-a-click).
+ */
+export const noteActionBase = z.strictObject({
+  action: z.enum(["pin", "edit", "unpin", "tell"]),
+  id: z.string().min(1).max(80).optional(),
+  workspace: z.string().min(1).max(200).optional(),
+  what: z.string().trim().min(1).max(COMPASS.whatChars).optional(),
+  until: day.nullable().optional(),
+  strength: z.enum(STRENGTHS).optional(),
+});
+export const noteActionSchema = noteActionBase.superRefine((a, ctx) => {
+  if (a.action === "pin" && (!a.workspace || !a.what)) ctx.addIssue({ code: "custom", message: "pin takes a workspace and what" });
+  if (a.action !== "pin" && !a.id) ctx.addIssue({ code: "custom", message: `${a.action} takes the note's id` });
+  if (a.action === "edit" && a.until === undefined && !a.strength && !a.workspace) ctx.addIssue({ code: "custom", message: "edit changes until, strength or workspace" });
+});
+export type NoteAction = z.infer<typeof noteActionSchema>;
+
+/**
+ * Applies a pin, edit or unpin to the notes (tell changes no note). Returns the notes and the note it touched, or why
+ * it can't: a note that ended can't be edited or told, and an unknown workspace is never guessed.
+ */
+export function applyNoteAction(notes: readonly CompassNote[], a: NoteAction, ctx: { now: number; by: CompassNote["by"]; newId: () => string; workspaceExists: (id: string) => boolean }):
+  { ok: true; notes: CompassNote[]; note: CompassNote } | { ok: false; error: string } {
+  const at = new Date(ctx.now).toISOString();
+  if (a.workspace && !ctx.workspaceExists(a.workspace)) return { ok: false, error: `No workspace ${a.workspace}. Pick one from the workspaces Follow-up tracks.` };
+  if (a.until && (Date.parse(`${a.until}T00:00:00Z`) < ctx.now - 86_400_000 || Date.parse(`${a.until}T00:00:00Z`) - ctx.now > COMPASS.untilMaxDays * 86_400_000)) return { ok: false, error: `until must be from today to ${COMPASS.untilMaxDays} days ahead.` };
+  if (a.action === "pin") {
+    const note: CompassNote = { id: ctx.newId(), source: HAND_SOURCE, place: HAND_SOURCE, role: "self", by: ctx.by, at, link: null, quote: null, what: a.what!, keys: [], kind: "workspace",
+      strength: a.strength ?? "normal", until: a.until ?? null, untilWords: null, state: "live", endedAt: null, supersededBy: null, match: { workspace: a.workspace!, score: 1, how: "hand" }, restatedAt: at };
+    return { ok: true, notes: [...notes, note], note };
+  }
+  const old = notes.find(n => n.id === a.id);
+  if (!old) return { ok: false, error: `No Compass note ${a.id}.` };
+  if (old.state !== "live") return { ok: false, error: "That note has ended." };
+  if (a.action === "tell") return { ok: true, notes: [...notes], note: old };
+  const next: CompassNote = a.action === "unpin" ? { ...old, state: "unpinned", endedAt: at }
+    : { ...old, ...(a.until !== undefined ? { until: a.until, untilWords: null } : {}), ...(a.strength ? { strength: a.strength } : {}), ...(a.workspace ? { match: { workspace: a.workspace, score: 1, how: "hand" as const } } : {}), restatedAt: at };
+  return { ok: true, notes: notes.map(n => n.id === old.id ? next : n), note: next };
+}
+
+/** Who said a note, for a line: the person's name, "You" for a hand pin, the agent for an agent's. */
+export const noteWho = (n: Pick<CompassNote, "by">) => typeof n.by === "object" ? n.by.name : n.by === "developer" ? "You" : n.by.startsWith("agent:") ? "An agent" : "A rule";
+/** "Dana: APP-142 retries before the demo": a note as one line (the reason line, Catch up). */
+export const noteLine = (n: Pick<CompassNote, "by" | "what">) => `${noteWho(n)}: ${n.what}`;
+
+/** Each workspace's first live note (soonest, then strongest) as one line, for Home rows and Catch up. */
+export function noteLines(notes: readonly CompassNote[], now: number, expiry: CompassSettings["expiry"]): Record<string, string> {
+  const rank = { high: 0, normal: 1, low: 2 } as const;
+  const out: Record<string, string> = {};
+  for (const n of notes.filter(n => n.state === "live" && n.match.workspace)
+    .sort((a, b) => (a.until ?? "9999").localeCompare(b.until ?? "9999") || rank[effectiveStrength(a, now, expiry)] - rank[effectiveStrength(b, now, expiry)] || b.at.localeCompare(a.at)))
+    out[n.match.workspace!] ??= noteLine(n);
+  return out;
+}
+
+/**
+ * The one message Tell the agent sends (compass-reaches-an-agent-only-by-a-click): who said it, where and when, the
+ * quote as their words, the date, and that the developer sent it. It asks for nothing; the agent decides.
+ */
+export function tellText(n: CompassNote, source: { label: string } | null, place: string | null): string {
+  const said = [typeof n.by === "object" ? n.by.name : null, source?.label && source.label !== (typeof n.by === "object" ? n.by.name : "") ? `(${source.label})` : null].filter(Boolean).join(" ");
+  const where = place ? ` in ${place}` : "";
+  const when = n.at.slice(0, 16).replace("T", " ");
+  const lines = [
+    "The developer passed you this priority from Compass (Follow-up). The quote is someone else's words, for context: weigh it against your goal.",
+    n.quote ? `${said || "Someone"}${where}, ${when} UTC: "${n.quote}"` : `Pinned by ${noteWho(n) === "You" ? "the developer" : "an agent"}: ${n.what}`,
+    n.quote ? `Compass read it as: ${n.what}.` : null,
+    n.until ? `Until ${n.until}.` : null,
+  ];
+  return lines.filter(Boolean).join("\n");
 }

@@ -396,7 +396,17 @@ export function AskRow({ ask, theme, active, dense, touch, sending, onPress }: {
 }
 
 /** The muted reason and source chip a fresh external priority adds to a row. */
+/**
+ * The reason line: why a row ranks where it does, with its source. A Compass reason leads with the compass glyph and
+ * names Compass after it ("Dana: client call Tue · Compass"); other sources keep their chip.
+ */
 export function PriorityLine({ reason, source, c, size = 12, lines = 1 }: { reason: string; source: { kind: keyof typeof PRIORITY_SOURCE_LABEL; label: string } | null; c: Colors; size?: number; lines?: number }) {
+  if (source?.kind === "compass") return <View style={{ flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 }}>
+    <Icon name="Compass" size={size} color={c.foregroundMuted} />
+    <Text numberOfLines={lines} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted, fontSize: size }}>
+      <Text style={{ fontStyle: "italic" }}>{reason}</Text>{" · Compass"}
+    </Text>
+  </View>;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 }}>
     {source && <View style={{ paddingHorizontal: 5, height: 16, justifyContent: "center", borderRadius: 3, backgroundColor: c.surface2 }}>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 10, lineHeight: 13 }}>{PRIORITY_SOURCE_LABEL[source.kind]}</Text>
