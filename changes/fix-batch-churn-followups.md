@@ -1,3 +1,4 @@
 - A workspace whose agent is working again no longer sits in Needs you as "Finished · No ask stated".
-- When an agent says part of a repair waits on a person, such as one review thread that needs the reviewer's call, that part shows in Needs you and on the workspace's Home row, with Open #N and Hand back to agent. Later messages tell the agent to leave it and count only the threads it acts on, and an agent that says it is already on it keeps the part.
+- When an agent says part of a repair waits on a person, such as one review thread that needs the reviewer's call, that part shows in Needs you and on the workspace's Home row, with Open #N and Hand back to agent.
+- Later messages tell the agent to leave that part and count only the threads it acts on. An agent that says it is already on it keeps the part.
 - Activity says which PR changed on GitHub ("#270 changed on GitHub") instead of "1 repair updated on GitHub".
