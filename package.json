@@ -47,6 +47,7 @@
     "shots": "node scripts/screenshots.mjs",
     "shots:readme": "sh scripts/readme-shots.sh",
     "video": "node scripts/demo-video.mjs",
+    "video:v2:take": "node scripts/demo-video-v2.mjs",
     "check:paseo-keys": "tsx scripts/check-paseo-keys.ts"
   },
   "devDependencies": {

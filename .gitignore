@@ -6,3 +6,6 @@ test-results/
 .feeds-check/
 .dispatch-shots/
 .demo-video/
+video/public/take/
+video/out/
+video/node_modules/
