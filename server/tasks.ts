@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { communicationReady } from "../shared/communication";
 import { taskSchedule } from "../shared/task-trigger";
 import { isWorkspaceRoot, type WorkspaceAgent } from "./workspace-agent";
-import { taskUpdate } from "../shared/send-decision";
+import { personPart, taskUpdate } from "../shared/send-decision";
 
 function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 /**
@@ -24,7 +24,9 @@ export function tasksFor(w: Workspace, now = Date.now(), wording: TaskWording = 
     if (!s?.complete || pr.error || s.state !== "OPEN" || s.draft) continue;
     if (s.conflict) add("conflict", pr.key, `Resolve merge conflicts on ${pr.repo}#${pr.number}`, [s.head, s.base, "conflict"]);
     if (s.threads.length || s.reviewDecision === "CHANGES_REQUESTED") {
-      const reason = s.threads.length ? `${s.threads.length} open thread${s.threads.length === 1 ? "" : "s"}` : "changes requested";
+      // a-person-part-is-a-person-item: the agent's count leaves out the part it said waits on a person (the PR row keeps all).
+      const n = s.threads.length - (s.threads.length > 1 && personPart(w, `review:${pr.key}`) ? 1 : 0);
+      const reason = s.threads.length ? `${n} open thread${n === 1 ? "" : "s"}` : "changes requested";
       const fix = wording.reviewFix ? wording.reviewFix(pr.repo) : "/fix-pr";
       add("review", pr.key, fix ? `Use ${fix} for ${pr.repo}#${pr.number} (${reason})` : `Address review comments on ${pr.repo}#${pr.number} (${reason}): read the unresolved threads, fix, push, then reply and resolve`, [s.head, s.reviewDecision, [...s.threads].sort((a, b) => a.id.localeCompare(b.id))], s.threads.length ? s.threads.map(t => `${t.id}@${t.updatedAt}`).sort() : undefined);
     }
@@ -84,7 +86,13 @@ export function messageText(w: Workspace, batch: Pick<Batch, "tasks">): string {
   // so the agent reads an update, never a fresh "do this" (invariant a-changed-review-updates-never-cancels).
   const at = w.batches.indexOf(batch as Batch);
   const before = at < 0 ? w.batches : w.batches.slice(0, at);
-  return orderTasks(w, batch.tasks).map((t, i) => { const update = taskUpdate(before, t); return `${i + 1}. ${t.title}${update ? ` (${update})` : ""}`; }).join("\n");
+  return orderTasks(w, batch.tasks).map((t, i) => {
+    // a-person-part-is-a-person-item: the part the agent said waits on a person stays with the developer.
+    const part = personPart({ batches: before }, t.key);
+    // Its own sentence after the item, quoted: inside the update's parentheses it read three colons deep, after "fix".
+    const update = taskUpdate(before, t);
+    return `${i + 1}. ${t.title}${update ? ` (${update})` : ""}${part ? `. Leave this part for a person: "${part.text.replace(/\s+/g, " ").trim()}"` : ""}`;
+  }).join("\n");
 }
 
 export function batchPrompt(w: Workspace, batch: Batch): string {

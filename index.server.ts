@@ -919,10 +919,10 @@ export default function contribute(server: PluginServerContext) {
     return withImages(action === "send" || action === "resend" ? images : undefined, refs => engine.answer(workspaceId, questionId, choice, words, action, actorOf(context), refs));
   });
   handle(rpc.declareDoneRpc, async ({ agentId, summary }, { paseo }) => { await requireReady(); return engine.declareDone(agentId, summary, await callerWorkspaceId(agentId, paseo, false)); });
-  handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly }, { paseo }) => {
+  handle(rpc.acknowledgeRpc, async ({ agentId, batchId, outcome, result, humanOnly, waitingOn }, { paseo }) => {
     await requireReady();
     const agent = (await paseo.agents.ref(agentId).refresh())?.agent;
-    try { return await engine.acknowledge(agentId, batchId, outcome, result, await callerWorkspaceId(agentId, paseo), humanOnly); }
+    try { return await engine.acknowledge(agentId, batchId, outcome, result, await callerWorkspaceId(agentId, paseo), humanOnly, waitingOn); }
     catch (error) {
       if (agent?.workspaceId) await store.mutate(state => {
         const w = state.workspaces.find(w => w.id === agent.workspaceId);

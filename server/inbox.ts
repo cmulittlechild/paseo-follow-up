@@ -1090,7 +1090,12 @@ export class Inbox {
     for (const { agent } of roots.values()) if (agent.workspaceId) rootsPer.set(agent.workspaceId, (rootsPer.get(agent.workspaceId) ?? 0) + 1);
     const row = (agent: AgentInfo, delegatedFrom: string | null, e: Entry | undefined): InboxRow => {
       const turn = this.turns.get(agent.id);
-      const turnStartedAt = turn && ["running", "initializing"].includes(agent.status) ? new Date(turn.at).toISOString() : null;
+      // A worker started mid-turn (a reload, an update) never saw this turn start: the prompt that started it (Paseo's
+      // lastUserMessageAt, Follow-up's own messages included) stands in. A flag newer than that prompt stays (a turn
+      // that failed after it, or one Paseo started on its own), so it only drops what a newer turn outlived
+      // (a-running-agent-is-not-finished, running-is-not-stale).
+      const running = ["running", "initializing"].includes(agent.status);
+      const turnStartedAt = !running ? null : turn ? new Date(turn.at).toISOString() : agent.lastUserMessageAt ?? null;
       const live = liveFlag(agent.status, e?.needs ?? null, e?.brief ? { kind: e.brief.kind, source: e.brief.source, state: e.brief.state, ask: e.brief.ask, questionIds: e.brief.questionIds, at: e.brief.at, ...(reviewersBriefPr(e.brief) ? { prKey: reviewersBriefPr(e.brief)! } : {}) } : null, turnStartedAt, !!agent.backgroundWork, this.waitingMains.has(agent.id));
       return {
       agentId: agent.id, workspaceId: agent.workspaceId, title: agent.title || "Agent",

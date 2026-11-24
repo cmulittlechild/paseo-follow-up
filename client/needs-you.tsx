@@ -3,7 +3,7 @@ import { FINISH_ASK } from "../shared/status";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
 import { Icon, useToast } from "@getpaseo/plugin/client/ui";
-import { useRpc } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { answerQuestionRpc, checkPrActionRpc, controlRpc, queueActionRpc, sendRpc } from "../shared/contracts";
 import { agentName, needsYou, workspaceSnoozed, type NeedItem } from "../shared/attention";
@@ -119,7 +119,11 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           {openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open agent" accessibilityLabel="Open main agent" onPress={openMain} />}
         </>;
       // The agent said only a person can move it: ask the reviewer again (the PR sheet's reviewers), or hand it back.
-      case "person": return item.review && item.prKey && actions.openPr
+      // Only a part of it (one thread waits on the reviewer's call): the developer's first move is to read that part on the PR.
+      case "person": if (item.part) return item.pr
+        ? <Button theme={theme} compact={compact} icon="ExternalLink" title={`Open #${item.pr.number}`} accessibilityLabel={`Open #${item.pr.number} to see ${item.detail || item.title}`} accessibilityHint="Opens in your browser" onPress={() => void openExternalUrl(item.pr!.url).catch(() => undefined)} />
+        : null;
+      return item.review && item.prKey && actions.openPr
         ? <Button theme={theme} compact={compact} icon="UserPlus" title="Ask for re-review" accessibilityLabel={`Ask for a re-review: ${item.title}`} onPress={() => actions.openPr!(item.prKey!, "reviewers")} />
         : null;
       case "check": return <Button theme={theme} compact={compact} icon="RefreshCw" title="Check state" loading={inspect.isPending} disabled={busy} onPress={() => inspect.mutate(item.actionId)} />;
@@ -146,13 +150,15 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   };
   // A second, quieter action after the primary and its PR link, so the link never wraps onto a line of its own.
   const secondary = (item: NeedItem) => item.kind === "person"
-    ? <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title="Send to agent" accessibilityLabel={`Send it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
+    ? <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title={compact ? "Hand back" : "Hand back to agent"} accessibilityLabel={`Hand it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
     : null;
   return <PrLinksProvider prs={prLinksByNumber(w.prs)}><View>
     {items.map((item, index) => {
       const g = glyph(item, c);
       // A row about one PR opens it in one click, beside its action and never instead of it.
-      const link = item.pr ? <PrLinkButton link={item.pr} theme={theme} compact={compact} /> : null;
+      // A person part's own action is Open #N, so it doesn't draw the link a second time.
+      let link = item.pr ? <PrLinkButton link={item.pr} theme={theme} compact={compact} /> : null;
+      if (item.kind === "person" && item.part && item.pr) link = null;
       const act = action(item);
       // A stack's Merge names its scope on the row ("Merges #1628, #1629, then #1630"); a click-time blocker shows here too.
       const merging = item.kind === "merge" ? mergeControl(item.prKey, { theme, compact }) : null;

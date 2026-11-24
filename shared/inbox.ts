@@ -242,7 +242,13 @@ export function liveFlag<B extends { kind: string; state: string; questionIds?: 
   // without a known turn start nothing is dropped here (the reducer and the load repair cover those turns).
   if (!["running", "initializing"].includes(status) || !turnStartedAt) return { needs, brief };
   const stale = brief?.state === "open" && (brief.kind === "error" || brief.kind === "paused") && !brief.questionIds?.length && !!brief.at && brief.at < turnStartedAt;
-  return { needs: withoutRunState(needs, turnStartedAt), brief: stale ? null : brief };
+  // a-running-agent-is-not-finished: a finish that asked nothing is outlived by the agent's next turn, whoever started
+  // it (Follow-up's own message, another agent, a schedule). Shown, not erased: the stored flag stays, and the next turn
+  // end replaces it. A finish with a real ask or an open question still stands while the agent works.
+  const outlived = finishOutlived(needs, brief, turnStartedAt);
+  // Its card goes with it: Home's detail and the chat drew "Finished · No ask stated" above a working agent.
+  const outlivedCard = outlived && brief?.state === "open" && (!brief.at || brief.at < turnStartedAt);
+  return { needs: withoutRunState(outlived ? withoutFinishBefore(needs, turnStartedAt) : needs, turnStartedAt), brief: stale || outlivedCard ? null : brief };
 }
 /**
  * A row as the client draws it: without the add-reviewers flags and brief of PRs the agent merges itself. The daemon
@@ -259,6 +265,28 @@ export function withoutWithdrawnAsks<R extends Pick<InboxRow, "needs" | "brief">
   if (!needsGone && !briefGone) return row;
   const needs = needsGone ? reasons!.length ? { reasons: reasons!, since: reasons!.map(r => r.at).sort()[0] } : null : row.needs;
   return { ...row, needs, brief: briefGone ? null : row.brief };
+}
+/**
+ * Whether a running agent's newer turn outlived this open brief, which asked nothing (no ask in words, no question):
+ * every surface reads it as the turn before ("No ask was stated · the agent kept going"), never "Finished · No ask
+ * stated" above the work (a-running-agent-is-not-finished). The chat's card reads the stored brief, so it asks this
+ * of the agent's inbox row.
+ */
+export function briefOutlived(b: { kind: string; state: string; source?: string; questionIds?: string[]; at?: string } | null | undefined, row: { status?: string; turnStartedAt?: string | null } | null | undefined): boolean {
+  if (!b || b.state !== "open" || !row?.turnStartedAt || !["running", "initializing"].includes(row.status ?? "")) return false;
+  if (b.questionIds?.length || !(b.source === "none" || ["done", "unknown"].includes(b.kind))) return false;
+  return !b.at || b.at < row.turnStartedAt;
+}
+/** Whether a running agent's last finish asked nothing: no ask in words (source none, or a done brief), no question. */
+export function finishOutlived(needs: Needs | null, brief: { kind: string; state: string; source?: string; questionIds?: string[] } | null, turnStartedAt: string): boolean {
+  if (!needs?.reasons.some(r => r.reason === "finished" && r.at < turnStartedAt)) return false;
+  if (brief?.state !== "open") return true;
+  return !brief.questionIds?.length && (brief.source === "none" || ["done", "unknown"].includes(brief.kind));
+}
+function withoutFinishBefore(needs: Needs | null, before: string): Needs | null {
+  if (!needs) return null;
+  const reasons = needs.reasons.filter(r => !(r.reason === "finished" && r.at < before));
+  return reasons.length ? { reasons, since: reasons.map(r => r.at).sort()[0] } : null;
 }
 function withoutReasons(needs: Needs | null, drop: readonly Reason[]): Needs | null {
   if (!needs) return null;

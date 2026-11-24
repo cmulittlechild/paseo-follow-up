@@ -1964,7 +1964,17 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
       { state: "person", ...pick("ny-person"), wait: "#262 waits on its reviewer" },
       { state: "task-action", ...pick("ny-action"), wait: "A task waits on this. The agent works on the rest" },
     ];
-    const TALL = { width: DESKTOP.width, height: 1300 };
+    const stepClock = async ms => { const c = JSON.parse(await fs.readFile(clockFile, "utf8")); await setDaemonClock(Math.round(c.fake + (Date.now() - c.real) * c.rate) + ms); };
+  const runningNotFinished = async label => {
+    await stepClock(5_000);
+    let row = null;
+    await until(`${label}: Webhook signatures working, not finished`, async () => {
+      row = (await call("follow.inbox-list", {})).rows.find(r => r.agentId === w.agentId);
+      return row?.status === "running" && !row.needs?.reasons.some(r => r.reason === "finished");
+    }, { tries: 120, every: 500 }).catch(error => { throw new Error(`${error.message}: ${JSON.stringify({ status: row?.status, turnStartedAt: row?.turnStartedAt, needs: row?.needs, brief: row?.brief && { kind: row.brief.kind, source: row.brief.source, state: row.brief.state } })}`); });
+  };
+
+  const TALL = { width: DESKTOP.width, height: 1300 };
     for (const s of states) for (const theme of ["light", "dark"]) {
       const settleOn = async page => { if (s.wait) await page.getByText(s.wait).filter({ visible: true }).first().waitFor(); else await page.waitForTimeout(1500); };
       await shoot(`ny-${s.state}-panel-${theme}`, TALL, theme, async page => {
@@ -2034,7 +2044,17 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
     }
     const spec = NEEDS_YOU_STATES.find(w => w.key === "ny-tasks");
     const action = NEEDS_YOU_STATES.find(w => w.key === "ny-action");
-    const TALL = { width: DESKTOP.width, height: 1300 };
+    const stepClock = async ms => { const c = JSON.parse(await fs.readFile(clockFile, "utf8")); await setDaemonClock(Math.round(c.fake + (Date.now() - c.real) * c.rate) + ms); };
+  const runningNotFinished = async label => {
+    await stepClock(5_000);
+    let row = null;
+    await until(`${label}: Webhook signatures working, not finished`, async () => {
+      row = (await call("follow.inbox-list", {})).rows.find(r => r.agentId === w.agentId);
+      return row?.status === "running" && !row.needs?.reasons.some(r => r.reason === "finished");
+    }, { tries: 120, every: 500 }).catch(error => { throw new Error(`${error.message}: ${JSON.stringify({ status: row?.status, turnStartedAt: row?.turnStartedAt, needs: row?.needs, brief: row?.brief && { kind: row.brief.kind, source: row.brief.source, state: row.brief.state } })}`); });
+  };
+
+  const TALL = { width: DESKTOP.width, height: 1300 };
     const fold = page => page.getByRole("button", { name: /^Agent's tasks: / }).filter({ visible: true }).last();
     const panel = async page => {
       await page.setViewportSize(TALL);
@@ -3200,6 +3220,16 @@ async function prLinkShots({ shoot, billing }) {
     { key: "merge", title: "Search filters", prompt: WORKSPACES.find(w => w.key === "search").prompt, link: "Open pull request #151" },
     { key: "reviewers", title: REVIEW_MODE_STATES[0].title, prompt: REVIEW_MODE_STATES[0].prompt, link: "Open pull request #246" },
   ];
+  const stepClock = async ms => { const c = JSON.parse(await fs.readFile(clockFile, "utf8")); await setDaemonClock(Math.round(c.fake + (Date.now() - c.real) * c.rate) + ms); };
+  const runningNotFinished = async label => {
+    await stepClock(5_000);
+    let row = null;
+    await until(`${label}: Webhook signatures working, not finished`, async () => {
+      row = (await call("follow.inbox-list", {})).rows.find(r => r.agentId === w.agentId);
+      return row?.status === "running" && !row.needs?.reasons.some(r => r.reason === "finished");
+    }, { tries: 120, every: 500 }).catch(error => { throw new Error(`${error.message}: ${JSON.stringify({ status: row?.status, turnStartedAt: row?.turnStartedAt, needs: row?.needs, brief: row?.brief && { kind: row.brief.kind, source: row.brief.source, state: row.brief.state } })}`); });
+  };
+
   const TALL = { width: DESKTOP.width, height: 1300 };
   for (const r of rows) for (const theme of ["light", "dark"]) {
     // The row may sit below the fold on a phone: bring it on screen.
@@ -3658,10 +3688,22 @@ async function batchChurnShots({ shoot, seeded, call, home, cli }) {
   await agentSays([msg("Thread 2 on #270 asks for key rotation, which needs Sam's call.")]);
   await sendAndWait(first);
   await call("follow.acknowledge", { agentId: w.agentId, batchId: first.id, outcome: "blocked",
-    result: "Fixed thread 1 on #270. Thread 2 asks whether signing keys rotate; that needs Sam's call before I change the scheme." });
+    result: "Fixed thread 1 on #270. Thread 2 asks whether signing keys rotate; that needs Sam's call before I change the scheme.",
+    // a-person-part-is-a-person-item: the part only Sam can move shows in Needs you, and the next message leaves it.
+    waitingOn: "Thread 2 on #270: whether signing keys rotate is Sam's call." });
   await editPr(270, { threads: 4, replies: { 1: "2026-03-04T11:40:00Z" } });
   const second = await pendingBatch(b => b.id !== first.id);
   await until("the blocked answer moved on", async () => (await ws())?.batches.find(b => b.id === first.id)?.movedOn?.why === "changed", { tries: 120, every: 500 });
+
+  const stepClock = async ms => { const c = JSON.parse(await fs.readFile(clockFile, "utf8")); await setDaemonClock(Math.round(c.fake + (Date.now() - c.real) * c.rate) + ms); };
+  const runningNotFinished = async label => {
+    await stepClock(5_000);
+    let row = null;
+    await until(`${label}: Webhook signatures working, not finished`, async () => {
+      row = (await call("follow.inbox-list", {})).rows.find(r => r.agentId === w.agentId);
+      return row?.status === "running" && !row.needs?.reasons.some(r => r.reason === "finished");
+    }, { tries: 120, every: 500 }).catch(error => { throw new Error(`${error.message}: ${JSON.stringify({ status: row?.status, turnStartedAt: row?.turnStartedAt, needs: row?.needs, brief: row?.brief && { kind: row.brief.kind, source: row.brief.source, state: row.brief.state } })}`); });
+  };
 
   const TALL = { width: DESKTOP.width, height: 1300 };
   // Activity folds after a few rows; the older (healed) ones sit behind "Show all N".
@@ -3707,12 +3749,17 @@ async function batchChurnShots({ shoot, seeded, call, home, cli }) {
     await shoot(`bc-${name}-home-phone-dark`, PHONE, "dark", homeShot(words.home, true));
     if (extra) await extra();
   };
-  await state("churn", { panel: /Next message to Webhook signatures/, activity: /updated on GitHub/, home: spec.title }, async () => {
+  const PART = /Part of #270 waits on its reviewer/;
+  await state("churn", { panel: /Next message to Webhook signatures/, activity: /#270 changed on GitHub/, home: PART }, async () => {
+    // The person part in the panel's Needs you.
+    await shoot("bc-churn-needs-light", TALL, "light", panel("Needs you", PART));
+    await shoot("bc-churn-needs-phone-dark", PHONE, "dark", panelPhone("Needs you", PART));
     // The queued message itself (Preview): the review line says what moved since the last message.
     for (const [theme, viewport] of [["light", DESKTOP], ["dark", PHONE]]) await shoot(`bc-churn-preview-${theme === "light" ? "light" : "phone-dark"}`, viewport, theme, async page => {
       await panel("Messages to the agent", /Next message to Webhook signatures/)(page);
       await page.getByRole("button", { name: /^Preview the next message/ }).filter({ visible: true }).first().click();
       await page.getByText(/since the last message: 2 new threads, 1 with new replies/).filter({ visible: true }).first().waitFor({ timeout: 60000 });
+      await page.getByText(/Leave this part for a person: "Thread 2 on #270/).filter({ visible: true }).first().waitFor({ timeout: 60000 });
       if (viewport === PHONE) await page.setViewportSize(PHONE);
       await page.waitForTimeout(400);
     });
@@ -3727,6 +3774,9 @@ async function batchChurnShots({ shoot, seeded, call, home, cli }) {
   await call("follow.control", { workspaceId: w.workspaceId, enable_auto_sends: true });
   await editPr(271, { conflict: true });
   await pendingBatch(b => b.tasks.some(t => t.kind === "conflict"));
+  // a-running-agent-is-not-finished: the agent is on a new turn, so its last finish (no ask) leaves Needs you. The inbox
+  // reads Paseo's agent list through a cache timed on the crawling clock, so step the clock past it first.
+  await runningNotFinished("on-it");
   await state("on-it", { panel: /is on it/, activity: /already on/, home: spec.title });
 
   // c. Records an older release left, healed at start-up.
@@ -3752,6 +3802,7 @@ async function batchChurnShots({ shoot, seeded, call, home, cli }) {
     try { const b = (await ws())?.batches ?? []; return b.find(x => x.id === "shots-old-churn")?.movedOn?.why === "changed" && b.find(x => x.id === "shots-old-answer")?.movedOn?.why === "retried"; }
     catch { return false; }
   }, { tries: 600, every: 500 });
+  await runningNotFinished("healed");
   const healed = (await ws()).batches;
   if (healed.find(x => x.id === "shots-old-answer").state !== "blocked") throw new Error("the answered batch wasn't restored as blocked");
   await state("healed", { panel: "Messages to the agent", activity: /sent again/, home: spec.title });
