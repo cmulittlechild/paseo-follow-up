@@ -26,6 +26,7 @@ import { DismissX, RevealScope, useDismiss } from "./dismiss";
 import { overviewKey, workspaceKey } from "./keys";
 import { PrLinksProvider, RichText } from "./rich-text";
 import { useMergeButtons } from "./merge-button";
+import { reviewerClick, useHeldNeeds, useReviewerButtons } from "./reviewers-button";
 import { mergeScope } from "../shared/merge-click";
 import { prLinksByNumber } from "../shared/presentation";
 import { deliveryStatus } from "../shared/queue";
@@ -99,7 +100,11 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   const queueAct = useMutation({ mutationFn: (input: { itemId: string; action: "retry" | "cancel" }) => queueAction(input),
     onSuccess: (_r, input) => { toast.show(input.action === "retry" ? "Sending it again" : "Cancelled; it won't be sent", { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
   const inspect = useMutation({ mutationFn: (actionId: string) => check({ workspaceId: w.id, actionId }), onSuccess: reply => { toast.show(reply.result, { variant: reply.state === "failed" ? "warning" : "info" }); refresh(); }, onError: fail });
-  const items = rows ?? needsYou(w, now);
+  const reviewerControl = useReviewerButtons(w);
+  // a-clicked-row-holds-its-place: a row clicked here keeps its spot (with its outcome) after the next read drops it,
+  // so a run of clicks down the list lands on the rows aimed at. A surface passing `rows` held them itself (the block).
+  const held = useHeldNeeds(w.id, rows ? [] : needsYou(w, now));
+  const items = rows ?? held;
   const mergeControl = useMergeButtons(w);
   const dismiss = useDismiss();
   if (!items.length) return null;
@@ -145,7 +150,8 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : sendButton(item.what)} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.what} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
       // One click merges what the button names (a-click-on-merge-merges); the sheet's confirm only when the scope can't be known.
       case "merge": return mergeControl(item.prKey, { theme, compact, fallback: actions.openPr ? () => actions.openPr!(item.prKey, "merge") : undefined }).button;
-      case "reviewers": return actions.openPr && <Button theme={theme} compact={compact} icon="UserPlus" title="Add reviewers" onPress={() => actions.openPr!(item.prKey, "reviewers")} />;
+      // One click asks the people the row names (a-click-on-add-reviewers-asks); the sheet's picker only when nobody is set.
+      case "reviewers": return reviewerControl(item.prKey, { theme, compact, after: actions.after, fallback: actions.openPr ? () => actions.openPr!(item.prKey, "reviewers") : undefined })?.button ?? null;
     }
   };
   // A second, quieter action after the primary and its PR link, so the link never wraps onto a line of its own.
@@ -164,28 +170,32 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       const merging = item.kind === "merge" ? mergeControl(item.prKey, { theme, compact }) : null;
       const scopeLine = item.kind === "merge" ? mergeScope(w, item.prKey)?.detail ?? null : null;
       const notice = merging?.notice ?? null;
+      // A reviewers row's why-not sits in its own text column on phones too, so the row never changes layout under the next tap.
+      const asked = item.kind === "reviewers" ? reviewerControl(item.prKey, { theme, compact })?.notice ?? null : null;
       // The action and its link are one group, so the link never wraps under the button (a long "Add reviewers").
       const pair = act && link ? <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 }}>{act}{link}</View> : null;
       const more = secondary(item);
       const button = act || link || more ? <>{pair ?? <>{act}{link}</>}{more}</> : null;
       const said = !!untitled?.has(item.key);
+      // A reviewers row whose request went out reads as a receipt: muted title, nothing left to remove.
+      const receipt = item.kind === "reviewers" && reviewerClick(w.id, item.prKey)?.outcome?.state === "submitted";
+      const titleStyle = (base: object) => receipt ? [base, { color: c.foregroundMuted }] : base;
       // The small x, top right, on every kind (dismissing-anything-in-needs-you-sends-the-agent-nothing).
-      const x = <DismissX theme={theme} compact={compact} label={`Remove ${item.kind === "question" ? item.questionId : item.title}`}
+      const x = receipt ? null : <DismissX theme={theme} compact={compact} label={`Remove ${item.kind === "question" ? item.questionId : item.title}`}
         onPress={() => dismiss({ workspaceId: w.id, key: item.key }, { onDismissed: actions.after })} />;
       // Phones: the action sits at the row's right edge so rows never grow a second line of controls. A send batch
       // (the primary, with its task list) and Retry's pair keep their buttons full width under the row.
       // A stack's scope line and a blocker need the row's full width, so those rows put their button under the text.
-      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && !scopeLine && !notice;
+      // So does a reviewers row: its one click asks the people its title names, so the title shows them in full.
+      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && item.kind !== "reviewers" && !scopeLine && !notice;
       if (inline) return <CardRow key={item.key} theme={theme} compact first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
         <RevealScope style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          {/* A row with the quiet link under it is taller: the glyph stays on the title's line. */}
-          <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
+          <View><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            {!said && <RichText numberOfLines={2} style={t.label}>{item.title}</RichText>}
+            {!said && <RichText numberOfLines={2} style={titleStyle(t.label)}>{item.title}</RichText>}
             {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" || item.kind === "message" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
-            {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
           </View>
-          <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>
+          <View>{pair ?? button}</View>
           {/* Top right, a step away from the action so a thumb aimed at it doesn't land here. */}
           {/* Flush (Catch up's bordered card): no pull to the edge, so the armed Dismiss pill keeps clear of the border. */}
           <View style={{ alignSelf: "flex-start", marginTop: -4, marginRight: flush ? 0 : -6, marginLeft: 2 }}>{x}</View>
@@ -195,7 +205,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
         <RevealScope style={{ flexDirection: "row", gap: 9 }}>
           <View style={{ paddingTop: 2 }}><Icon name={g.name} size={14} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-            {!said && <RichText style={compact ? t.label : t.body}>{item.title}</RichText>}
+            {!said && <RichText style={titleStyle(compact ? t.label : t.body)}>{item.title}</RichText>}
             {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "question" ? 2 : 3} style={t.meta}>{item.detail}</RichText>}
             {scopeLine && <RichText style={t.meta}>{scopeLine}</RichText>}
             {item.kind === "question" && <QuestionState workspace={w} questionId={item.questionId} theme={theme} />}
@@ -204,7 +214,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
               {button}
               {item.kind === "send" && item.blocker && <Text style={[t.small, { flexShrink: 1 }]}>{item.blocker}</Text>}
             </View>}
-            {notice}
+            {notice ?? asked}
           </View>
           <View style={{ marginTop: -3, marginRight: flush ? 2 : -5 }}>{x}</View>
         </RevealScope>
@@ -238,14 +248,22 @@ export function NeedsYouBlock({ workspace: w, theme, compact, actions, now, brie
   /** That brief's own card, drawn when it points at no open question. */ briefCard?: ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   useReviewerSettings(); // re-renders on a No review change, so the block's rows and count drop the asks at once
-  const all = needsYou(w, now);
+  // Held before grouping: a clicked reviewers row keeps its place, and the brief it folds stays folded.
+  const live = needsYou(w, now);
+  const all = useHeldNeeds(w.id, live);
   const block = needsYouBlock(all, brief && briefCard ? brief : null, w.questions);
+  // The count is the rows still open or still in flight; a held row whose request is done is drawn as a receipt, not
+  // counted. Mid-run the number matches the rows on screen; once every held row is done the card says so.
+  const held = all.filter(i => !live.includes(i));
+  const inFlight = held.filter(i => i.kind === "reviewers" && reviewerClick(w.id, i.prKey)?.running).length;
+  const count = block.count - held.length + inFlight;
+  const asked = !count && held.length > 0 && held.every(i => i.kind === "reviewers");
   // An accordion: one question open at a time (the block's first by default); its header closes it again.
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
-  if (!block.count) return null;
+  if (!block.count) return null; // held rows keep the block drawn after its last ask is done
   // In Later the block stays (its moves still work) but reads Later, without the attention border.
   const later = workspaceSnoozed(w, all, now) && w.snooze ? laterLabel(w.snooze.until, now) : null;
-  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : "CircleAlert"} title={later ? `Later ${later}` : "Needs you"} tone={later ? "plain" : "attention"} count={block.count} style={style}>
+  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : asked ? "Check" : "CircleAlert"} title={later ? `Later ${later}` : asked ? "Reviewers requested" : "Needs you"} tone={later || !count ? "plain" : "attention"} count={count || undefined} style={style}>
     {block.cards.map(card => card.kind === "brief"
       ? <View key="brief" style={{ borderTopWidth: 1, borderTopColor: theme.colors.border }}>{briefCard}</View>
       : <QuestionAsk key={card.questionId} workspace={w} questionId={card.questionId} context={card.brief ? brief?.context ?? null : null} theme={theme} compact={compact} now={now} openAgent={actions.openAgent}

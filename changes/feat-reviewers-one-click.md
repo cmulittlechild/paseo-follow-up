@@ -1,0 +1,1 @@
+- Add reviewers asks the people the row names in one click, with no sheet in between. Click it on several rows in a row: each one goes out, and the rows stay where they are.

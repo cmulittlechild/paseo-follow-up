@@ -23,6 +23,7 @@ import { foldedAsk, needsYouBlock, onceViolation } from "./needs-block";
 import { compactPrStatus, prLink, prPresentation } from "./presentation";
 import { agentMerges } from "./pr-workflow";
 import { mergeScope } from "./merge-click";
+import { reviewersScope } from "./reviewers-click";
 import { GONE_REASON } from "./queue";
 import { taskSchedule } from "./task-trigger";
 import { taskDue } from "./task-due";
@@ -550,6 +551,19 @@ export const INVARIANTS: Invariant[] = [
         const scope = mergeScope(w, i.prKey);
         if (!scope) return `${i.key}: its stack can't be read, so Merge asks again`;
         if (scope.prs.at(-1)?.key !== i.prKey) return `${i.key}: its Merge would not merge #${i.number} last`;
+      }
+      return null;
+    },
+  },
+  {
+    id: "a-click-on-add-reviewers-asks",
+    why: "2026-11-24: Add reviewers on a Needs you row (\"Add reviewers to #240: Ravi\") opened the PR sheet, where a second Add reviewers asked. The row's click now asks exactly the people its title names, so the title and the click read one list; a row that names nobody opens the picker",
+    check(w, now) {
+      for (const i of needsYou(w, now)) {
+        if (i.kind !== "reviewers") continue;
+        const pr = w.prs.find(p => p.key === i.prKey);
+        const asked = pr ? reviewersScope(pr)?.names ?? [] : [];
+        if (asked.join("\n") !== i.suggested.join("\n")) return `${i.key}: names ${i.suggested.join(", ") || "nobody"} but its click asks ${asked.join(", ") || "nobody"}`;
       }
       return null;
     },
