@@ -436,7 +436,7 @@ export function briefSummary(v: BriefSettingsView, now = Date.now(), sources?: {
   const plan = v.plan.source === "env" ? "plan set by the environment" : v.plan.mode === "off" ? "no plan"
     : v.plan.mode === "link" ? (v.plan.source === "found" ? "a newer plan from Compass" : "plan from a link")
     : !card || card.tone === "quiet" ? (card?.title.startsWith("No source") ? "no source posts the plan" : "waiting for the plan")
-    : card.tone === "ok" ? "this week's plan in" : "using last week's plan";
+    : card.tone === "ok" ? "this week's plan is in" : "using last week's plan";
   // A source that failed or needs a sign-in leads the line (the source list says which).
   return `${sources?.tone === "warn" ? `${sources.text} · ` : ""}Sweeps ${v.queue.sweepAt} on workdays · ${plan}`;
 }

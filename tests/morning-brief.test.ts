@@ -203,7 +203,7 @@ test("the plan card: from Compass, pasted, none this week (amber, keeps last wee
   assert.match(planCard({ ...base, source: "env" }, TUE, "Asia/Jerusalem")!.line, /^Set by the environment/);
   // The line under the tab is built from the same card, so it never says "in" while the card says otherwise.
   const summary = (plan: PlanView) => briefSummary({ queue: { states: ["triage"], sweepAt: "07:00", timeZone: null, workdays: null, since: "read", chatHours: 48, calendarDays: 1 }, clock: { timeZone: "Asia/Jerusalem", workdays: ["Mon"], zoneFrom: "host" }, plan }, TUE);
-  assert.equal(summary(base), "Sweeps 07:00 on workdays · this week's plan in");
+  assert.equal(summary(base), "Sweeps 07:00 on workdays · this week's plan is in");
   assert.equal(summary({ ...base, found: null, previous: found }), "Sweeps 07:00 on workdays · using last week's plan");
   assert.equal(summary({ ...base, found: null, url: null }), "Sweeps 07:00 on workdays · waiting for the plan");
   assert.equal(summary({ ...base, sources: [], found: null, url: null }), "Sweeps 07:00 on workdays · no source posts the plan");

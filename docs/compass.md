@@ -19,8 +19,8 @@ place for everything AI priority reads (invariant 108, `one-place-for-priority-i
   queue and review requests (Sets my priorities), your DMs and mentions, your calendar and your mail (Background).
   Each has its switch and health, and its own setting behind its chevron: the queue's states, the chat window, the
   calendar's days. Servers no recipe fits follow, for Ask. Paseo's own state is always read and isn't a row.
-- **This week's plan:** From Compass, Use a link, or Off. A source with Posts the plan shows the plan it brought on
-  its row ("This week's plan · Week of Nov 23 · posted Sun 18:05 · 14 items, 3 without an issue", with Open).
+- **This week's plan:** Compass, A link, or Off. A source with Posts the plan shows the plan it brought on
+  its row ("Shared this week's plan, Week of Nov 23 · Sun 18:05", with Open).
 - **How to read your Compass** and the glossary.
 - **When:** the morning read's time, changes since, the zone and the workdays (`set_brief_settings`).
 - **Connections:** what mcpproxy and GitHub let Follow-up read, what it can't, and Check sources again.

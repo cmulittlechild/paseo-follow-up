@@ -17,7 +17,7 @@ import {
 
 export const briefSettingsKey = ["follow-up", "brief-settings"];
 export const briefSourcesKey = ["follow-up", "brief-sources"];
-const MODE_LABEL: Record<PlanMode, string> = { compass: "From Compass", link: "Use a link", off: "Off" };
+const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: "A link", off: "Off" };
 
 /**
  * Settings → Compass (docs/compass.md#settings, one-place-for-priority-inputs): the one place for what sets the
@@ -97,6 +97,9 @@ function InputRows({ view, sources, theme, compact }: { view: BriefSettingsView;
   return <>
     {query.isPending && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View>}
     {query.error && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><Warning text={`Couldn't read the built-in sources: ${errorText(query.error)}`} action={<Button title="Retry" kind="ghost" theme={theme} compact={compact} onPress={() => void query.refetch()} />} theme={theme} compact={compact} /></View>}
+    {used.length > 0 && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border }}>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Built in</Text>
+    </View>}
     {[...used, ...askable].map((row, i) => <View key={row.id}>
       {i === used.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border, gap: 2 }}>
         <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Other servers on mcpproxy</Text>
@@ -272,8 +275,8 @@ function usePlanChange() {
 }
 
 /**
- * This week's plan: From Compass (the newest claude.ai artifact a source with Posts the plan shares, as Compass reads
- * it), Use a link, or Off. Who posts it is a source above, never a picker here (one-place-for-priority-inputs).
+ * This week's plan: Compass (the newest claude.ai artifact a source with Posts the plan shares, as Compass reads
+ * it), A link, or Off. Who posts it is a source above, never a picker here (one-place-for-priority-inputs).
  */
 function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
@@ -299,7 +302,7 @@ function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme:
     {card && <PlanCardView card={card} busy={change.isPending} theme={theme} compact={compact} onAnother={() => setPicked("link")} onPaste={link => change.mutate({ link, mode: "link" })} />}
     {!env && plan.unmoved.length > 0 && <Warning text={`Who posts the plan moved into Compass as a source, but chat search couldn't find ${plan.unmoved.join(", ")}. Add them to a source with Posts the plan.`} theme={theme} compact={compact} />}
     {!env && mode === "link" && plan.sources.length > 0 && <SettingsCard>
-      <SettingsSwitch label="Replace when a newer one arrives" hint={`A plan ${plan.sources.map(x => x.label).join(", ")} shares after you pasted this one takes over.`} value={plan.replaceWhenNewer} disabled={change.isPending}
+      <SettingsSwitch label="Replace when a newer one arrives" hint={`A plan that ${plan.sources.map(x => `“${x.label}”`).join(" or ")} shares after you pasted this one takes over.`} value={plan.replaceWhenNewer} disabled={change.isPending}
         onValueChange={value => change.mutate({ replaceWhenNewer: value })} />
     </SettingsCard>}
   </SettingsSection>;
@@ -314,7 +317,7 @@ function Segmented<V extends string>({ label, value, options, onChange, disabled
       return <Pressable key={choice.value} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => onChange(choice.value)}
         style={state => ({ flexGrow: compact ? 1 : 0, flexBasis: compact ? 0 : "auto", minHeight: compact ? 44 : 30, paddingHorizontal: 12, borderRadius: 6, alignItems: "center", justifyContent: "center",
           backgroundColor: on ? c.surface0 : (state as { hovered?: boolean }).hovered ? tint(c.foreground, c) : "transparent", ...(on ? { boxShadow: "0px 0px 0px 1px rgba(127,127,127,0.18)" } : {}) })}>
-        <Text style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{choice.label}</Text>
+        <Text numberOfLines={1} style={{ color: on ? c.foreground : c.foregroundMuted, fontSize: compact ? 14 : 13, fontWeight: "500", textAlign: "center" }}>{choice.label}</Text>
       </Pressable>;
     })}
   </View>;

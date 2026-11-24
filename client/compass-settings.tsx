@@ -11,7 +11,7 @@ import { compassFindRpc, compassRpc, readCompassRpc, setCompassRpc } from "../sh
 import {
   COMPASS, ROLES, ROLE_INFO, type CompassChange, type CompassNote, type CompassSource, type GlossaryEntry, type Place, type Preset, type PresetView, type Role, type Who,
 } from "../shared/compass";
-import { itemsLine, type PlanView } from "../shared/morning-brief";
+import { type PlanView } from "../shared/morning-brief";
 
 export const compassKey = ["follow-up", "compass"];
 
@@ -180,16 +180,14 @@ function PlanLine({ source, plan, theme, compact }: { source: CompassSource; pla
   const mine = plan.found?.source === source.id ? plan.found : plan.previous?.source === source.id && !plan.found ? plan.previous : null;
   const inUse = !!mine && plan.url === mine.url;
   const posted = mine?.postedAt ? new Date(mine.postedAt).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : null;
-  const parts = inUse ? [plan.read?.title ?? null, posted ? `posted ${posted}` : null, plan.read ? itemsLine(plan.read) : "not read yet"].filter(Boolean)
-    : [mine ? "a pasted link is in use instead" : "no artifact shared yet; the newest one becomes the plan"];
-  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, padding: compact ? 10 : 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface0 }}>
-    <View style={{ paddingTop: compact ? 3 : 2 }}><Icon name={inUse ? "Check" : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
-    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{inUse && plan.previous?.url === mine?.url && !plan.found ? "Last week's plan" : "This week's plan"}</Text>
-      <RichText plain style={t.meta}>{parts.join(" · ")}</RichText>
-    </View>
+  const last = inUse && plan.previous?.url === mine?.url && !plan.found;
+  const line = inUse ? `Shared ${last ? "last week's plan" : "this week's plan"}${plan.read?.title ? `, ${plan.read.title}` : ""}${posted ? ` · ${posted}` : ""}`
+    : mine ? "Shared a plan; a pasted link is in use instead" : "No plan shared yet: the newest claude.ai artifact becomes the plan";
+  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={inUse ? "Check" : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
+    <RichText plain style={[t.meta, { flexShrink: 1, minWidth: 0 }]}>{line}</RichText>
     {inUse && <Pressable accessibilityRole="link" accessibilityLabel={`Open this week's plan from ${source.label}`} onPress={() => void openExternalUrl(mine!.url).catch(() => undefined)} hitSlop={compact ? 0 : 6}
-      style={{ minHeight: compact ? 44 : 20, justifyContent: "center" }}>
+      style={{ minHeight: compact ? 44 : 20, marginTop: compact ? -12 : 0, justifyContent: compact ? "center" : "flex-start" }}>
       <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>Open</Text>
     </Pressable>}
   </View>;

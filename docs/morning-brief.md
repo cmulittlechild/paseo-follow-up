@@ -147,11 +147,11 @@ Settings → Compass (it was Settings → Morning brief: [compass.md](compass.md
 
 **This week's plan** has three modes:
 
-- **From Compass:** a Compass source with the role Posts the plan provides it: the newest claude.ai artifact its
+- **Compass:** a Compass source with the role Posts the plan provides it: the newest claude.ai artifact its
   people share, recorded as Compass reads it and read at once ([compass.md](compass.md#this-weeks-plan-from-compass)).
   The link is kept without its share key (`canonicalArtifactUrl`). The card says which source and place it came from,
   when, and what the read found (title, items, how many have no issue), with Open and Use another link.
-- **Use a link:** paste it; it stays until changed. "Replace when a newer one arrives" lets a plan Compass finds after
+- **A link:** paste it; it stays until changed. "Replace when a newer one arrives" lets a plan Compass finds after
   the paste take over.
 - **Off:** the brief and AI priority read no plan.
 
