@@ -186,18 +186,16 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       // Phones: the action sits at the row's right edge so rows never grow a second line of controls. A send batch
       // (the primary, with its task list) and Retry's pair keep their buttons full width under the row.
       // A stack's scope line and a blocker need the row's full width, so those rows put their button under the text.
-      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && !scopeLine && !notice;
+      // So does a reviewers row: its one click asks the people its title names, so the title shows them in full.
+      const inline = compact && button && item.kind !== "send" && !(item.kind === "retry" && !item.exhausted) && item.kind !== "person" && item.kind !== "reviewers" && !scopeLine && !notice;
       if (inline) return <CardRow key={item.key} theme={theme} compact first={index === 0 && flush} style={flush ? { paddingHorizontal: 0 } : undefined}>
         <RevealScope style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          {/* A row with the quiet link under it is taller: the glyph stays on the title's line. */}
-          <View style={item.kind === "reviewers" ? { alignSelf: "flex-start", paddingTop: 2 } : undefined}><Icon name={g.name} size={16} color={g.color} /></View>
+          <View><Icon name={g.name} size={16} color={g.color} /></View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {!said && <RichText numberOfLines={2} style={titleStyle(t.label)}>{item.title}</RichText>}
             {"detail" in item && !!item.detail && !sameText(item.detail, item.title.replace(/^Q\d+ · /, "")) && <RichText linkColor={c.foreground} numberOfLines={item.kind === "answer" || item.kind === "message" ? 3 : 1} style={t.meta}>{item.detail}</RichText>}
-            {item.kind === "reviewers" && <NoReviewLink repo={item.prKey.split("#")[0]} theme={theme} compact />}
-            {asked}
           </View>
-          <View style={item.kind === "reviewers" ? { alignSelf: "flex-start" } : undefined}>{pair ?? button}</View>
+          <View>{pair ?? button}</View>
           {/* Top right, a step away from the action so a thumb aimed at it doesn't land here. */}
           {/* Flush (Catch up's bordered card): no pull to the edge, so the armed Dismiss pill keeps clear of the border. */}
           <View style={{ alignSelf: "flex-start", marginTop: -4, marginRight: flush ? 0 : -6, marginLeft: 2 }}>{x}</View>
