@@ -11,156 +11,150 @@ Start new work in one step, rank it by what the people you follow ask for, and u
 - **The morning brief shows what moved** in your Linear queue and what Compass heard since you last looked, with Create PR and Plan on urgent issues that have no workspace.
 - **Any provider, GitHub optional:** agents on OpenCode, Pi, Copilot, Cursor and more get Follow-up's tools, and everything but the PR features works without the GitHub CLI.
 - **Paste or drop images** into replies, Dispatch and the Overseer, and see **PR statistics** for the repositories you turn on.
-- **Agent's tasks come due on their own** when their PR merges or their date arrives, and long stacks stay fast and easy to scan. Plus many smaller fixes.
+- **Tasks come due on their own** when their PR merges or their date arrives, and long stacks stay fast and easy to scan. Plus many smaller fixes.
 
 <details><summary>Full changelog since 2.3.0</summary>
 
-### Home and Needs you
+### Dispatch
 
-- Follow-up now works when your agents run on OpenCode, Pi, Copilot, Cursor or any other provider Paseo supports, not only Claude Code and Codex: they get Follow-up's tools, the Needs you call and, on Paseo 0.17, its instructions.
-- Ask uses a fast model to pick a few read-only lookups each morning and sums up what needs you. Every lookup is checked first, and it never changes anything.
-- An issue raised to Urgent or High that has no workspace shows in Needs you until you start it or remove it.
+- Dispatch: start work from your Linear issues, a pasted link or a sentence. Pick an action (Create PR, Plan as artifact, Investigate and more) and Follow-up creates the workspace, starts the agent and tracks it.
+- Open Dispatch from Home's button, the sidebar's Dispatch row, ⌘K (typing "new" finds it too), or its key from anywhere: ⌘⇧N in the desktop app, ⌘⇧O in a browser tab (Settings → Display).
+- Agents can start new work for you from a Linear issue, a GitHub issue or PR, a link or a sentence: they show what they would start and where, and start it only once you agree. A start can be undone for 10 minutes.
+- The Overseer now starts new workspaces the way Dispatch does, so it picks the project your team's work usually goes to and says why.
+- Home shows what Dispatch just started, with Undo for 10 minutes.
+- In Dispatch's text box, Shift+Enter starts a new line, and the arrow keys move through a task of more than one line. Search all of Linear runs from its row.
+- Dispatch's text box is the main element now: wide, at the top, and it grows as you write.
+- Dispatch suggests only issues you could start. An issue another workspace already has, linked or with a PR that names it, folds into one row at the end of My issues, and Enter there opens that workspace.
+- Settings → Dispatch: reorder, hide or reset its actions, pick which project each Linear team's work goes to, and set the base branch per project.
+- Settings → Agents → Dispatch picks the agent Dispatch starts; it's the Overseer's until you choose one.
+- The sidebar's Dispatch row is optional: switch it off in Settings → Dispatch. Dispatch stays on Home, in Command-K and on its key.
+- Settings → Dispatch suggests hiding Paseo's own New workspace row, since Dispatch starts workspaces too.
+- A new agent's first message is short: the issue, a line to read all of it itself, what to do, and your own words. Neither Dispatch nor the Overseer pastes the issue's description into it any more.
+- Dispatch's first message to the agent no longer repeats your words, and branch names end on a whole word.
+- Typing in Dispatch no longer makes the preview flicker, and a project or agent you picked stays while you type.
+- On a phone, Dispatch's other actions wrap instead of cutting off their names.
+- The Overseer starts only the issues you approved: picking Skip for one decision on its card keeps that issue from starting.
+
+### Compass and the morning brief
+
+- Compass: pick the people whose words set your priorities, like your product lead's DM. Each workday morning Follow-up notes what they asked for, in their words, and AI priority ranks by it.
+- Settings → Compass is one list of everything that sets your priorities, the people you follow and your Linear queue, chat, calendar, mail and review requests, each with its role.
+- Settings → Compass reads as one list: every source and built-in input has the same row, Add a source sits right under your sources, and Connections no longer repeats a row's failure.
+- Compass reads more than chat: a doc or a notes file on this machine, a Linear project or milestone, a GitHub label or milestone, and your calendar's meetings, which date the work they match. Trackers and calendars need no model.
+- A Compass source can read everyone in a team or customer channel, the newest 40 messages each read, and your reading notes can narrow it.
+- Tell Compass how to read each source in your own words ("P0 means today"), and teach it your names for things with a glossary. Agents can set it up for you too.
+- Compass also reads during the day while Follow-up is open: every 2 hours by default, or set it in Settings → Compass → When. The Overseer now knows what Compass heard.
+- Compass on screen: the panel's new Why it matters shows where AI priority ranks the workspace and the notes behind it, with the quote, who said it and until when.
+- From a Compass note you can open the message, ask the Overseer about it, tell the workspace's agent, change its date, move it or unpin it. An agent can pin a note in your words.
 - Home's reason line and Catch up show a workspace's Compass note with the compass glyph.
 - When someone you follow in Compass says an issue nobody has started is urgent, it shows in Needs you as "Nobody's on it", beside issues raised in your Linear queue. Less urgent ones sort first in Dispatch, with who asked.
+- This week's plan comes from Compass: give a source Posts the plan and the newest plan they share is picked up as soon as Compass reads it, with how many items have no issue. Find it for me's person and channels move over on their own.
+- In Settings → Compass, pick where this week's plan comes from. Find it for me looks for the newest artifact link from the person and channels you pick, or paste a link, or turn it off.
+- When no plan shows up this week, the brief keeps last week's and says so, with a field to paste the new link.
+- This week's plan is read and never changed: Follow-up now refuses any attempt to publish, edit or delete the plan, whatever the plan's text says.
+- The morning brief shows what moved in your Linear queue since you last read it: new urgent issues, raises, due dates that moved, and issues that left. Urgent issues with no workspace come with Create PR and Plan right there.
 - The morning brief says what Compass heard since you last looked, in the same "Since" block as your Linear queue, and Home's brief line says who it heard from.
-- Agents can start new work for you from a Linear issue, a GitHub issue or PR, a link or a sentence: they show what they would start and where, and start it only once you agree. A start can be undone for 10 minutes.
-- Open Dispatch from Home's button, the sidebar's Dispatch row, ⌘K (typing "new" finds it too), or its key from anywhere: ⌘⇧N in the desktop app, ⌘⇧O in a browser tab (Settings → Display).
-- Home shows what Dispatch just started, with Undo for 10 minutes.
-- GitHub is now optional. Without the GitHub CLI, workspaces, Needs you, questions, Catch up, the Overseer, tasks and Compass all work, and setup offers GitHub instead of failing.
-- The sidebar's Dispatch row is optional: switch it off in Settings → Dispatch. Dispatch stays on Home, in Command-K and on its key.
+- Follow-up reads your whole Linear queue every workday morning, not just the 75 newest issues, and tracks what changed: raised from Low to High, new and urgent, a due date moved, or left your queue and why.
+- AI priority weighs what changed in your Linear queue, and an urgent or newly raised issue with no workspace shows as not started.
+- Choose which Linear states count as your queue, when the morning sweep runs, your time zone and your workdays. Agents can change these too.
+- The morning sweep and AI priority's hours follow your own time zone and its usual working week. Agents can read the queue and sweep it.
+- "47 issues by priority" opens your whole queue, grouped by priority, with No workspace and Changed filters and Start… on every issue.
+- Your Linear queue shows who opened each issue and how long ago, or "opened by you" for your own. Hover for the exact date and time.
+- An issue raised to Urgent or High that has no workspace shows in Needs you until you start it or remove it.
+- A raised issue that already has a PR in a workspace no longer shows in Needs you.
+- Settings → Compass now lists every source the brief reads: your issue tracker, chat, calendar, GitHub and Paseo, each with what it adds and whether it's working. Mail is there too, off until you turn it on.
+- The brief now reads today's meetings, and you can pick how far back it reads chat (24, 48 or 72 hours). Agents can turn sources on and off too.
+- A source that failed says why and offers Retry. One that needs a sign-in tells you where to sign in.
+- A server the morning brief doesn't know can still feed it: turn on Ask for it in Settings → Compass → Sources. Preview what it would find first, then turn it on.
+- Ask uses a fast model to pick a few read-only lookups each morning and sums up what needs you. Every lookup is checked first, and it never changes anything.
+- Follow-up finds each source by the tools mcpproxy offers, so a renamed server still works. It only ever calls read-only tools.
+
+### Any provider, GitHub optional
+
+- Follow-up now works when your agents run on OpenCode, Pi, Copilot, Cursor or any other provider Paseo supports, not only Claude Code and Codex: they get Follow-up's tools, the Needs you call and, on Paseo 0.17, its instructions.
+- Helper agents never default to a provider you don't have: with no Claude installed, summaries, AI priority and the Overseer run on what Paseo has. Settings → Agents says in one line what agents on other providers don't get.
+- On a provider other than Claude or Codex, jobs that read other people's words no longer run there, and Settings → Agents says which.
+- On Paseo 0.17, agents get Follow-up's standing instructions once, in their system prompt, so Codex agents no longer get them repeated with every message.
 - On Paseo 0.17.2 and later, a message Paseo holds until the agent's turn ends reads "Queued", and a message that had to stop the agent's turn says so.
-- PR statistics: see who opens, merges and reviews PRs, and how long PRs wait for a first review, per repository you turn on. Open it from Home's header icon or ⌘K "Follow-up: PR stats".
-- Sort the leaderboard by PRs opened, merged, wait for a first review, reviews given or review turnaround, for this week, last week, 30 or 90 days. A person opens their PRs and the reviews they gave.
-- Send to Paseo can color its button by how a PR's workspace is doing (needs you, working, ready to merge), using the same colors as Home.
+- A new agent in a project Follow-up follows by default now gets Follow-up's tools from its very first session, and starts a little faster.
+- GitHub is now optional. Without the GitHub CLI, workspaces, Needs you, questions, Catch up, the Overseer, tasks and Compass all work, and setup offers GitHub instead of failing.
+- Each GitHub feature (PR status, merge, reviewers, waiting for checks, PR stats) says in one line what's missing and how to turn it on. Installing and signing in is picked up without a restart.
+- While GitHub is off, a workspace's Refresh checks for it again at once.
+
+### Home and Needs you
+
+- The search shortcut (⌘⇧K by default), ⌘K "Follow-up: Search" and / now always put the cursor in Home's search, also from Catch up, PR stats or Settings, while Home is still loading, and when you opened Home before.
 - On Paseo 0.17.1 or newer, Done shows as a green badge on the workspace's sidebar row instead of a label, with its own switch in the sidebar's Show menu.
 - Archive a workspace from its row menu. It asks first and says what archiving does to that workspace, such as uncommitted changes in its worktree being lost.
-- When an agent says part of a repair waits on a person, such as one review thread that needs the reviewer's call, that part shows in Needs you and on the workspace's Home row, with Open #N and Hand back to agent.
-- Later messages tell the agent to leave that part and count only the threads it acts on. An agent that says it is already on it keeps the part.
-- Home's PR chip now counts the PRs with failed checks, the same number the panel's status line shows.
-- Home's PR chip and the panel's status line now show the worst PR in a workspace, so a failing PR further up a stack is never hidden behind a green check.
-- The chat's "No ask stated" card now points at what Needs you is waiting on instead.
+- The row menu no longer offers Copy PR link.
 - A closed agent's real ask with nothing new for 3 days moves to a folded Older group under Needs you, out of the count. It comes back if the agent runs again.
-- On an action card, Sign off shows ✕ instead of ✓ and is never the main button, because Done is what tells the agent. The card has no Q1 chip.
-- In Dispatch's text box, Shift+Enter starts a new line, and the arrow keys move through a task of more than one line. Search all of Linear runs from its row.
-- Dispatch opens again after you visit Home a second time. It used to land on Home with nothing open.
+- Needs you no longer lists closed agents' flags that ask nothing, or flags from archived workspaces.
+- The chat's "No ask stated" card now points at what Needs you is waiting on instead.
 - An ask shows once in Needs you: when the agent's note at the end of its turn is about a blocked task, it folds into that task's card instead of sitting beside it.
 - A blocked task that needs you to do something, not decide, now has a Done button instead of asking you to write a decision.
 - Done on an action card is one click everywhere: the panel, Home and the chat card show one Done button, with Add note and Reply instead beside it, instead of an option to pick and then Send.
-- Home and the workspace panel stay fast on stacks with hundreds of PRs.
-- What Follow-up sends the agent (conflicts, review comments, failed checks) now reads "repairs" everywhere: Messages, Needs you, Home, Activity, Settings. "Tasks" means only the agent's own to-do list.
-- The search shortcut (⌘⇧K by default), ⌘K "Follow-up: Search" and / now always put the cursor in Home's search, also from Catch up, PR stats or Settings, while Home is still loading, and when you opened Home before.
+- On an action card, Sign off shows ✕ instead of ✓ and is never the main button, because Done is what tells the agent. The card has no Q1 chip.
+- On an action card, Add note and Reply instead fit beside Done in the narrow panel. Done keeps its Ctrl ⏎ hint where there's room, and Ctrl+Enter sends Done on the chat card too.
+- Sign off & next and `/ok next` skip the rows Needs you no longer shows.
+- Report an issue and Rename title with AI also open on the screen you're looking at.
 
-### Questions and answers
+### Agent's tasks
 
-- A server the morning brief doesn't know can still feed it: turn on Ask for it in Settings → Compass → Sources. Preview what it would find first, then turn it on.
-- In Settings → Compass, pick where this week's plan comes from. Find it for me looks for the newest artifact link from the person and channels you pick, or paste a link, or turn it off.
-- When no plan shows up this week, the brief keeps last week's and says so, with a field to paste the new link.
-- The morning brief shows what moved in your Linear queue since you last read it: new urgent issues, raises, due dates that moved, and issues that left. Urgent issues with no workspace come with Create PR and Plan right there.
-- Settings → Compass now lists every source the brief reads: your issue tracker, chat, calendar, GitHub and Paseo, each with what it adds and whether it's working. Mail is there too, off until you turn it on.
-- The brief now reads today's meetings, and you can pick how far back it reads chat (24, 48 or 72 hours). Agents can turn sources on and off too.
-- Settings → Compass is one list of everything that sets your priorities, the people you follow and your Linear queue, chat, calendar, mail and review requests, each with its role.
-- Compass: pick the people whose words set your priorities, like your product lead's DM. Each workday morning Follow-up notes what they asked for, in their words, and AI priority ranks by it.
-- Paste or drop images into Dispatch, the Overseer, More context, question and brief answers, and reply boxes on desktop. They go to the agent with your words.
-- Agents can attach image files the same way when they answer or start work for you.
+- Tasks no longer sit forever as "Manual". Each task now says what moves it: waiting for its pull request, due because it merged or deployed, due because you answered the question it waited on, or a re-check date.
+- When a task comes due, its agent is reminded at the end of its turn to do the check and close it, or to set a new re-check date. It is reminded at most twice, and nothing is closed for it.
+- A due task the agent ignores twice shows as stale. Finished tasks are cleared from storage after 30 days.
 - The workspace panel's Tasks card is now "Agent's tasks": one line by default ("6 open · 2 due · 1 stale"), amber only when the agent let a task go stale. Open it to see what moves each task, due ones first with the agent's note.
-- The next message to the agent and the PR repairs in it have their own card, and finished tasks are listed in Activity.
-- The header line names the task the agent owes next, and question cards in the panel show the question before its context.
-- Add note and Reply instead fit beside Done in the narrow panel. Done keeps its Ctrl ⏎ hint where there's room, and Ctrl+Enter sends Done on the chat card too.
-- The Overseer starts only the issues you approved: picking Skip for one decision on its card keeps that issue from starting.
+- The workspace panel's header line names the task the agent owes next, and question cards in the panel show the question before its context.
+- In the workspace panel, the next message to the agent and the PR repairs in it have their own card, and finished tasks are listed in Activity.
 - Polish in the workspace panel: stale tasks are a clearer amber in light mode, "in Activity" under the tasks is a link, the Questions tab counts only real questions, and a question without options just asks for your answer.
+- Adding a task that looks like one already open no longer makes a second copy. The agent gets the open task's id and updates it, or says it really is a separate task. Repeating its own exact title updates that task.
+- The Follow-up skill no longer tells agents that tasks are manual. It says what the tool says: a task comes due when its pull requests merge or deploy, or on its re-check date.
+- A task waiting on your decision no longer shows a second card for a question you already have or answered. The task shows which question it waits on, and an extra card from before closes as "Already asked as Q1."
 
 ### Repairs and PRs
 
-- Compass reads more than chat: a doc or a notes file on this machine, a Linear project or milestone, a GitHub label or milestone, and your calendar's meetings, which date the work they match. Trackers and calendars need no model.
-- Dispatch: start work from your Linear issues, a pasted link or a sentence. Pick an action (Create PR, Plan as artifact, Investigate and more) and Follow-up creates the workspace, starts the agent and tracks it.
-- Each GitHub feature (PR status, merge, reviewers, waiting for checks, PR stats) says in one line what's missing and how to turn it on. Installing and signing in is picked up without a restart.
-- While GitHub is off, a workspace's Refresh checks for it again at once.
-- Turn it on per repository in Settings → Following → PR statistics. It reads GitHub slowly in the background, stops whenever GitHub's limit runs low, and stays on this machine.
-- Send to Paseo can now show when a PR's agent is closed, instead of the PR looking like nobody owns it.
-- Add reviewers asks the people the row names in one click, with no sheet in between. Click it on several rows in a row: each one goes out, and the rows stay where they are.
+- What Follow-up sends the agent (conflicts, review comments, failed checks) now reads "repairs" everywhere: Messages, Needs you, Home, Activity, Settings. "Tasks" means only the agent's own to-do list.
+- When an agent says part of a repair waits on a person, such as one review thread that needs the reviewer's call, that part shows in Needs you and on the workspace's Home row, with Open #N and Hand back to agent.
+- Later messages tell the agent to leave a part that waits on a person and count only the threads it acts on. An agent that says it is already on it keeps the part.
+- An agent can say it is already on a repair. Follow-up then waits for that work instead of sending the same items again, and it no longer shows as a failure.
+- A review that keeps getting new comments no longer sends "do this" then "never mind" seconds later: the agent gets an update saying what is new, and only a review that is really gone reads "No longer needed".
+- Repairs keep going out on their own when a subagent is stuck in an error or never goes idle, and older stuck or duplicate repairs tidy themselves up after the update.
 - Agents wait for CI without polling GitHub: they ask Follow-up once and get one message when the checks finish, so your GitHub limit lasts longer.
 - Activity says which PR changed on GitHub ("#12 changed on GitHub") instead of "1 repair updated on GitHub".
 - Long stacks are easier to scan: the stack bar groups PRs instead of drawing a thin line, and the Pull requests list folds runs of PRs that are just in review, so the ones that need fixing stay in view.
-- When a task comes due, its agent is reminded at the end of its turn to do the check and close it, or to set a new re-check date. It is reminded at most twice, and nothing is closed for it.
-- Dispatch suggests only issues you could start. An issue another workspace already has, linked or with a PR that names it, folds into one row at the end of My issues, and Enter there opens that workspace.
+- Home's PR chip and the panel's status line now show the worst PR in a workspace, so a failing PR further up a stack is never hidden behind a green check.
+- Home's PR chip now counts the PRs with failed checks, the same number the panel's status line shows.
+- A PR that holds a merge now says "checks failed", in the same words as the PR rows.
+- On a phone, the stack bar is no longer a row of tiny tap targets. Tap the PR rows below it instead.
+- Home and the workspace panel stay fast on stacks with hundreds of PRs.
+- Add reviewers asks the people the row names in one click, with no sheet in between. Click it on several rows in a row: each one goes out, and the rows stay where they are.
+- Send to Paseo can now show when a PR's agent is closed, instead of the PR looking like nobody owns it.
+- Send to Paseo can color its button by how a PR's workspace is doing (needs you, working, ready to merge), using the same colors as Home.
+
+### PR statistics
+
+- PR statistics: see who opens, merges and reviews PRs, and how long PRs wait for a first review, per repository you turn on. Open it from Home's header icon or ⌘K "Follow-up: PR stats".
+- Sort the PR statistics leaderboard by PRs opened, merged, wait for a first review, reviews given or review turnaround, for this week, last week, 30 or 90 days. A person opens their PRs and the reviews they gave.
+- Turn PR statistics on per repository in Settings → Following → PR statistics. It reads GitHub slowly in the background, stops whenever GitHub's limit runs low, and stays on this machine.
 - Turning on PR statistics works while your machine is busy: the cost estimate still loads, and if it can't, the dialog says why and still lets you turn them on.
 - Refresh on the PR stats page and on a workspace reads right away even when the machine is busy; only background work waits.
-- Repairs keep going out on their own when a subagent is stuck in an error or never goes idle, and older stuck or duplicate repairs tidy themselves up after the update.
 
-### The Overseer and AI priority
+### Images
 
-- Helper agents never default to a provider you don't have: with no Claude installed, summaries, AI priority and the Overseer run on what Paseo has. Settings → Agents says in one line what agents on other providers don't get.
-- "47 issues by priority" opens your whole queue, grouped by priority, with No workspace and Changed filters and Start… on every issue.
-- Compass on screen: the panel's new Why it matters shows where AI priority ranks the workspace and the notes behind it, with the quote, who said it and until when.
-- From a note you can open the message, ask the Overseer about it, tell the workspace's agent, change its date, move it or unpin it. An agent can pin a note in your words.
-- Compass also reads during the day while Follow-up is open: every 2 hours by default, or set it in Settings → Compass → When. The Overseer now knows what Compass heard.
-- The Overseer now starts new workspaces the same way, so it picks the project your team's work usually goes to and says why.
-- Settings → Agents → Dispatch picks the agent Dispatch starts; it's the Overseer's until you choose one.
-- AI priority weighs those changes, and an urgent or newly raised issue with no workspace shows as not started.
-- The morning sweep and AI priority's hours follow your own time zone and its usual working week. Agents can read the queue and sweep it.
-- A new agent's first message is short: the issue, a line to read all of it itself, what to do, and your own words. Neither Dispatch nor the Overseer pastes the issue's description into it any more.
-
-### Summary and Linked items
-
-- Choose which Linear states count as your queue, when the morning sweep runs, your time zone and your workdays. Agents can change these too.
-- Settings → Dispatch: reorder, hide or reset its actions, pick which project each Linear team's work goes to, and set the base branch per project.
-- Follow-up reads your whole Linear queue every workday morning, not just the 75 newest issues, and tracks what changed: raised from Low to High, new and urgent, a due date moved, or left your queue and why.
-- Your Linear queue shows who opened each issue and how long ago, or "opened by you" for your own. Hover for the exact date and time.
-
-### Agents and tools
-
-- Follow-up finds each source by the tools mcpproxy offers, so a renamed server still works. It only ever calls read-only tools.
-- A new agent in a project Follow-up follows by default now gets Follow-up's tools from its very first session, and starts a little faster.
-
-### Setup, Settings and updates
-
-- Settings → Dispatch suggests hiding Paseo's own New workspace row, since Dispatch starts workspaces too.
-
-### Performance
-
-- Follow-up gives back memory more reliably once a busy stretch is over.
-
-### Phone
-
-- On a phone, Dispatch's other actions wrap instead of cutting off their names.
-
-### More
-
+- Paste or drop images into Dispatch, the Overseer, More context, question and brief answers, and reply boxes on desktop. They go to the agent with your words.
 - Every field that takes images has an Add image button that opens your file picker on desktop and in the browser.
-- A source that failed says why and offers Retry. One that needs a sign-in tells you where to sign in.
-- This week's plan comes from Compass: give a source Posts the plan and the newest plan they share is picked up as soon as Compass reads it, with how many items have no issue. Find it for me's person and channels move over on their own.
-- A Compass source can read everyone in a team or customer channel, the newest 40 messages each read, and your reading notes can narrow it.
-- Tell Compass how to read each source in your own words ("P0 means today"), and teach it your names for things with a glossary. Agents can set it up for you too.
-- Each image shows as a small thumbnail you can remove. Past six images or 5 MB, or for an agent that can't read images, the field says so before you send.
-- Dispatch's text box is the main element now: wide, at the top, and it grows as you write.
-- A due task the agent ignores twice shows as stale. Finished tasks are cleared from storage after 30 days.
-- Report an issue and Rename title with AI also open on the screen you're looking at.
-- This week's plan is read and never changed: Follow-up now refuses any attempt to publish, edit or delete the plan, whatever the plan's text says.
-- When Follow-up does hit one of its own limits, it says what didn't fit in a plain sentence instead of showing raw error data.
+- Each attached image shows as a small thumbnail you can remove. Past six images or 5 MB, or for an agent that can't read images, the field says so before you send.
+- Agents can attach image files too when they answer or start work for you.
 
 ### Fixes
 
-- The row menu no longer offers Copy PR link.
-- On a provider other than Claude or Codex, jobs that read other people's words no longer run there, and Settings → Agents says which.
-- Settings → Compass reads as one list: every source and built-in input has the same row, Add a source sits right under your sources, and Connections no longer repeats a row's failure.
-- Adding a task that looks like one already open no longer makes a second copy. The agent gets the open task's id and updates it, or says it really is a separate task. Repeating its own exact title updates that task.
-- On Paseo 0.17, agents get Follow-up's standing instructions once, in their system prompt, so Codex agents no longer get them repeated with every message.
-- With a row menu open, Enter no longer opens the selected workspace behind it.
-- A workspace whose agent is working again no longer sits in Needs you as "Finished · No ask stated".
-- A PR that holds a merge now says "checks failed", in the same words as the PR rows.
-- On a phone, the stack bar is no longer a row of tiny tap targets. Tap the PR rows below it instead.
-- Needs you no longer lists closed agents' flags that ask nothing, or flags from archived workspaces.
-- Sign off & next and `/ok next` skip the rows Needs you no longer shows.
-- Dispatch's first message to the agent no longer repeats your words, and branch names end on a whole word.
-- Typing in Dispatch no longer makes the preview flicker, and a project or agent you picked stays while you type.
-- Tasks no longer sit forever as "Manual". Each task now says what moves it: waiting for its pull request, due because it merged or deployed, due because you answered the question it waited on, or a re-check date.
-- The Follow-up skill no longer tells agents that tasks are manual. It says what the tool says: a task comes due when its pull requests merge or deploy, or on its re-check date.
-- A raised issue that already has a PR in a workspace no longer shows in Needs you.
+- Dispatch opens again after you visit Home a second time. It used to land on Home with nothing open.
 - Asking the Overseer to start workspaces in chat works again, including "create workspaces for these" with several issues. It no longer asks you again on a card.
 - Workspaces with very long stacks work again: PR status, Merge when ready and Add reviewers no longer fail with "Too big: expected array to have <=50 items" past 50 PRs.
-- A review that keeps getting new comments no longer sends "do this" then "never mind" seconds later: the agent gets an update saying what is new, and only a review that is really gone reads "No longer needed".
-- An agent can say it is already on a repair. Follow-up then waits for that work instead of sending the same items again, and it no longer shows as a failure.
-- A task waiting on your decision no longer shows a second card for a question you already have or answered. The task shows which question it waits on, and an extra card from before closes as "Already asked as Q1."
+- When Follow-up does hit one of its own limits, it says what didn't fit in a plain sentence instead of showing raw error data.
+- With a row menu open, Enter no longer opens the selected workspace behind it.
+- A workspace whose agent is working again no longer sits in Needs you as "Finished · No ask stated".
+- Follow-up gives back memory more reliably once a busy stretch is over.
 
 </details>
 
