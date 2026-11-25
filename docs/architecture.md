@@ -258,5 +258,10 @@ At `agent.session_open` (`purpose: "interactive"` only), the worker decides the 
 - **Untracked root**: a root agent in a workspace Follow-up doesn't track.
 - **Subagent**: anything else. It gets no Follow-up tools.
 
+A brand-new agent's first session gets the same treatment as any later one. Paseo runs `agent.session_open` before
+it lists the agent it is creating, so when the workspace is followed by default, discovery counts the opening agent
+from the request (`discover(..., opening)`) and tracks the workspace with it as the main agent in that session
+(invariant 118).
+
 `withTools` then attaches the matching tool set natively, or through the per-launch stdio bridge, and sets the
 `FOLLOW_UP_*` env flags that the hook reads. The full list is in [hooks.md](hooks.md#env-flags). `withWait` adds Wait's tools to every interactive Claude session on top ([wait.md](wait.md)).
