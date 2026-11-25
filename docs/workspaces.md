@@ -173,7 +173,9 @@ Tests: `tests/main-claim.test.ts`, `tests/main-handover.test.ts`.
      main-agent turn. A hold the developer set stays until they resume; Resume and the `clear_hold` tool clear any hold.
    - A lost provider conversation sets `goneAgent` (`server/delivery.ts`, `conversationGone`), and Follow-up stops
      sending to that agent.
-7. **Done label.** Paseo's Done label is set only when the label changes.
+7. **Done label.** Paseo's Done label is set only when the label changes. On Paseo 0.17.1 and later the worker sets
+   none: Done is a sidebar row badge drawn by the client, and a Done label set before the upgrade comes off once
+   (invariant 113, `row-badges-replace-sidebar-labels`).
 
 The repair wording follows the PR workflow ([prs.md](prs.md)): the review-fix command (e.g. `/fix-pr`), and GitHub
 retargeting instead of Graphite restacks.
@@ -443,7 +445,7 @@ text view of it. Each blocker has an owner:
   waiting or observation gaps.
 - **Hysteresis.** A queued Done check survives the agent's own turns, and completion checks never auto-send.
 
-Done labels the workspace but never archives it. Tests: `tests/done-loop.test.ts`.
+Done labels (or, on Paseo 0.17.1+, badges) the workspace but never archives it. Tests: `tests/done-loop.test.ts`.
 
 ## Deploy state and the latch
 

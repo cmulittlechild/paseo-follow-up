@@ -60,6 +60,11 @@ export interface Gateway {
   /** Whether a batch's message is in its recipient's chat (by messageId). Null: unknown, e.g. reading it would wake the agent. */
   arrived?(w: Workspace, batch: Batch): Promise<boolean | null>;
   label(w: Workspace, assigned: boolean): Promise<void>;
+  /**
+   * Paseo 0.17.1+ draws Follow-up's Done as a sidebar row badge (client/row-badges.tsx), so the worker writes no
+   * Done label there and takes back one it wrote before (row-badges-replace-sidebar-labels). Absent or false: the label.
+   */
+  rowBadges?(): Promise<boolean>;
   /** A tick begins: the gateway may list agents once for it (a-send-lists-agents-at-most-once-per-tick). */
   tickStarted?(): void;
 }
@@ -390,10 +395,12 @@ export class Engine {
       if (due && !repairWait(runtime) && !runtime.reason) await this.queue!.retry(heldItem!.id).catch(() => undefined);
       current = findWorkspace(await this.store.snapshot(), original.id);
       const done = !current.archived && !!current.completion && completionBlockers(current, this.now()).length === 0;
-      if (done || current.managedDoneLabel) {
-        if (done && !current.managedDoneLabel) await this.store.mutateWorkspace(current.id, w => { w.managedDoneLabel = true; });
-        await this.gateway.label(current, done);
-        if (!done) await this.store.mutateWorkspace(current.id, w => { w.managedDoneLabel = false; });
+      // On a host with row badges the client's Done badge says it; a label we wrote before comes off once.
+      const labelled = done && !(await this.gateway.rowBadges?.().catch(() => false));
+      if (labelled || current.managedDoneLabel) {
+        if (labelled && !current.managedDoneLabel) await this.store.mutateWorkspace(current.id, w => { w.managedDoneLabel = true; });
+        await this.gateway.label(current, labelled);
+        if (!labelled) await this.store.mutateWorkspace(current.id, w => { w.managedDoneLabel = false; });
       }
       const after = findWorkspace(await this.store.snapshot(), original.id);
       this.observedPass.set(original.id, { w: after, runtime: runtimeKey, at: untouched ? last!.at : this.now(), dueAt: nextDue(after, this.now()) });

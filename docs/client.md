@@ -70,6 +70,7 @@ Nothing polls while the app is hidden.
 | `client/home-view.ts` | Home's derived model: sort choice, priorities, titles for search, limits. |
 | `client/home-data.ts` | Paseo's own workspace list, for untracked rows (Quiet) and header buttons. |
 | `client/sidebar-view.tsx`, `client/sidebar-visibility.ts` | Home's list as Paseo's sidebar (on hosts that support it), and its registration. |
+| `client/row-badges.tsx`, `shared/row-badges.ts` | Paseo 0.17.1+: Follow-up's badges on Paseo's own sidebar workspace rows (`addWorkspaceRowBadgeItem`). One item, "Follow-up: Done" in the sidebar's Show menu: a green Done where Home shows the workspace as Done, read from the live store (no poll of its own). It replaces the worker's Done label there; older hosts register nothing and keep the label (invariant 113). |
 | `client/panel.tsx` | The workspace panel: this workspace only. |
 | `client/recovery-actions.ts` | The Recovery block's one primary action per state (`recovery-offers-one-primary-action`): Retry recovery after a failure, Run recovery (or Run queued recovery) otherwise, plus Open recovery agent when an agent exists. |
 | `client/large.tsx` | The panel as a two-column screen. |

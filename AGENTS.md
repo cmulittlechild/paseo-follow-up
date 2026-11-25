@@ -95,7 +95,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/row-badges.tsx`, `shared/row-badges.ts`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Pasted images in every field whose words reach an agent (caps, the store, who takes them, the one component) | `shared/images.ts`, `server/image-store.ts`, `server/image-support.ts`, `client/image-attach.tsx`, `client/unsent-images.ts` | [client](docs/client.md#pasted-images), [rpcs-and-tools](docs/rpcs-and-tools.md#pasted-images) |
 | Shared copy and errors, scale bounds | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts`, `shared/scale.ts` | [client](docs/client.md) |
@@ -1373,6 +1373,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    send, and, signed out, `gh auth token` spawned 8 times in 90 s. Guarded by `tests/works-without-github.test.ts`,
    `tests/works-without-github-worker.test.ts` (the real worker, no gh on the host) and `npm run test:no-gh`
    ([docs/prs.md](docs/prs.md#without-github-optional-integration)).
+113. **Row badges replace sidebar labels** (`row-badges-replace-sidebar-labels`). On a Paseo that draws plugin badges
+   on sidebar workspace rows (0.17.1 or later, read once from server_info's version: `hostAtLeast` in
+   `server/host-features.ts`), Follow-up writes no workspace label: Done is the client's row badge (`client/row-badges.tsx`,
+   `shared/row-badges.ts`: CircleCheck, `success`, shown where Home shows the workspace as Done), and a Done label the
+   worker wrote before the upgrade (`managedDoneLabel`) comes off once. On an older Paseo, a 0.17.1 prerelease or an
+   unreadable version, nothing registers on the client and the Done label stays. One badge item per signal the
+   developer would switch off on its own in the Show menu ("Follow-up: Done"), never one per label. The badge reads the
+   live store the pill and Home already share, so it adds no poll, no request and no daemon write. Trade-off: an app
+   older than 0.17.1 on a newer daemon shows neither. Guarded by `tests/row-badges.test.ts` and
+   `tests/row-badges-client.test.ts`.
 
 ## Bugs
 
