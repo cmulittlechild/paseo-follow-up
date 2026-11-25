@@ -1,20 +1,21 @@
 // Renders Follow-up's slide set: the README's cover and the plugin page's media (paseo-plugin.json `media`, cover
 // first). Every slide is 16:10 (1920×1200 at 2×), because Paseo's plugin page shows media as 288×180 tiles and its
-// list card shows the first one at aspect 1.6. Same frame and colours on every slide (assets/icon.svg: tile #222126,
-// accent dot #B79CF0): Follow-up's icon, name and a "Paseo plugin" pill at the top of the text column.
-//   - follow-up-slide-1-cover.png: a two-line headline (the second line in the accent), a subline, pills naming the
-//     pillars and an honest footnote; a real Home screenshot in a desktop window and Catch up in an overlapping phone.
-//   - follow-up-slide-2…6: one feature each, a short headline and one plain line saying what it does for you, beside
-//     that feature's real element zoomed in, cropped from a 6× render and never upscaled. The sides alternate through
-//     the carousel: slide 2 has its text on the right and the element on the left, slide 3 the other way round, and so on.
+// list card shows the first one at aspect 1.6. One look on every slide, grown from assets/icon.svg (tile #222126,
+// accent #B79CF0): a pale lilac paper ground, Follow-up's icon and name centred at the top, a one-line serif headline
+// (Instrument Serif, its second part in a deeper lilac italic) over one plain line, and a real screen on a white sheet
+// below them that runs off the bottom edge.
+//   - follow-up-slide-1-cover.png: the headline and the purpose line over Home, at its full size.
+//   - follow-up-slide-2…6: one feature each, a short headline and one plain line saying what it does for you, over that
+//     feature's real element filling the sheet's width, cropped from an 8× render. Slide 6 is a phone screen, on a
+//     narrower sheet with phone corners.
 // An HTML composition rendered with headless Chromium. The sources come from `scripts/screenshots.mjs --only frames`
 // (synthetic data only); scripts/readme-shots.sh runs both.
 //
 //   node scripts/cover.mjs --from <frames out dir> --out <dir> [--only cover,decision,…]
-//     [--headline "First line|Second line"] [--subline "…"] (or COVER_HEADLINE, COVER_SUBLINE)
+//     [--headline "First part|Second part"] [--subline "…"] (or COVER_HEADLINE, COVER_SUBLINE)
 //
-// Needs PLAYWRIGHT_CORE and CHROMIUM (docs/testing.md). The font (Inter) loads from Google Fonts; without a network
-// the system sans-serif stands in. Run it through ~/paseo-harness/tools/harness-slot (it starts a browser).
+// Needs PLAYWRIGHT_CORE and CHROMIUM (docs/testing.md). The fonts (Instrument Serif, Inter) load from Google Fonts;
+// without a network system fonts stand in. Run it through ~/paseo-harness/tools/harness-slot (it starts a browser).
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -36,8 +37,7 @@ export const SLIDES = [
   { name: "1-cover", kind: "cover",
     headline: process.env.COVER_HEADLINE || "Every agent,|one inbox.",
     subline: process.env.COVER_SUBLINE || "Your agents work in parallel. Your attention span doesn't.",
-    pills: ["Inbox", "Overseer", "Catch up", "After the merge"],
-    desktop: "cover-home", phone: "catch-up-phone-light" },
+    src: "cover-home" },
   { name: "2-decision", headline: "Answer|in seconds", line: "Agents always tell you exactly what they need from YOU.", src: "slide-decision" },
   { name: "3-overseer", headline: "Ask across|every workspace", line: "One agent knows them all. Ask it anything from Home's search box.", src: "slide-overseer" },
   { name: "4-repairs", headline: "Fixes go back|by themselves", line: "Failed checks, conflicts and review comments go to the agent that made the PR.", src: "slide-repairs" },
@@ -47,72 +47,50 @@ export const SLIDES = [
 if (arg("--headline")) SLIDES[0].headline = arg("--headline");
 if (arg("--subline")) SLIDES[0].subline = arg("--subline");
 const onlyNames = arg("--only")?.split(",");
-const footnote = "Actual Follow-up screens with sample data, in the Paseo web app. The phone frame shows the same web app at phone size.";
 
-const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]).replace(/'/g, "\u2019");
 const file = name => { const p = join(resolve(from), `follow-up-${name}.png`); if (!existsSync(p)) fail(`no ${p}; run screenshots.mjs --only frames first`); return p; };
 const data = name => `data:image/png;base64,${readFileSync(file(name)).toString("base64")}`;
 const size = name => { const b = readFileSync(file(name)); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; };
 const icon = `data:image/svg+xml;base64,${readFileSync(new URL("../assets/icon.svg", import.meta.url)).toString("base64")}`;
-const headline = h => { const [a, b = ""] = h.split("|"); return `<h1><span>${esc(a)}</span>${b ? `<span class="two">${esc(b)}</span>` : ""}</h1>`; };
+// One line: "First part|Second part" sets the second part in the accent italic.
+const headline = h => { const [a, b = ""] = h.split("|"); return `<h1>${esc(a)}${b ? ` <em>${esc(b)}</em>` : ""}</h1>`; };
 
-const GAP = 100; // CSS px between the headline and the shot's edge; its shadow fades out within it
+const SHEET = 1440; // CSS px: the widest sheet, Home's own width at 1:1
+const PHONE_SHEET = 760;
+const STRETCH = 1.15; // the most a source is enlarged past its own pixels
+const SIDE = 80; // the headline keeps this clear of each edge
+const MIN_SHOWN = 560; // CSS px of the sheet that must stay on the slide below the words
 const css = `
-  :root { --tile: #222126; --bg: #18171b; --accent: #B79CF0; --ink: #f4f2f7; --muted: #a39fae; --line: rgba(255,255,255,.10); }
+  :root { --ground: #f4f0fa; --ink: #222126; --accent: #7a55d6; --muted: #625d6c; }
   * { box-sizing: border-box; margin: 0; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; }
-  body { background: radial-gradient(1300px 900px at 16% 30%, #2b2832 0%, var(--bg) 62%), var(--bg); color: var(--ink);
-    font-family: Inter, "Liberation Sans", Arial, sans-serif; position: relative; -webkit-font-smoothing: antialiased; }
-  .left { position: absolute; left: 112px; top: 100px; width: 760px; height: 1000px; display: flex; flex-direction: column; z-index: 2; }
-  .slide.flip { background: radial-gradient(1300px 900px at 84% 30%, #2b2832 0%, var(--bg) 62%), var(--bg); }
-  .brand { display: flex; align-items: center; gap: 22px; }
-  .brand img { width: 76px; height: 76px; border-radius: 17px; box-shadow: 0 0 0 1px var(--line); }
-  .brand .name { font-size: 40px; font-weight: 600; letter-spacing: -0.02em; }
-  .brand .tag { font-size: 22px; font-weight: 600; color: #1d1a24; background: var(--accent); padding: 7px 16px; border-radius: 999px; }
-  h1 { font-weight: 800; letter-spacing: -0.045em; line-height: 1.02; }
-  h1 span { display: block; white-space: nowrap; width: max-content; }
-  h1 .two { color: var(--accent); }
-  .cover h1 { margin-top: 150px; font-size: 150px; }
-  .slide h1 { margin-top: auto; font-size: 128px; }
-  .sub { margin-top: 52px; font-size: 42px; line-height: 1.35; color: var(--muted); max-width: 740px; font-weight: 500; text-wrap: pretty; }
-  .line { margin-top: 40px; margin-bottom: auto; font-size: 34px; line-height: 1.4; color: var(--muted); max-width: 660px; text-wrap: pretty; }
-  .pills { margin-top: 52px; display: flex; flex-wrap: wrap; gap: 12px; }
-  .pills span { font-size: 23px; font-weight: 500; padding: 11px 20px; border-radius: 999px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1.5px var(--line); }
-  .pills span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-right: 12px; vertical-align: 3px; }
-  .foot { margin-top: auto; font-size: 19px; line-height: 1.5; color: #77727f; max-width: 640px; }
-  .window { position: absolute; left: 930px; top: 150px; width: 1240px; border-radius: 16px; overflow: hidden; background: #fff;
-    box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 40px 120px rgba(0,0,0,.55); }
-  .window .bar { height: 44px; background: #ececef; display: flex; align-items: center; gap: 9px; padding-left: 18px; border-bottom: 1px solid #dcdce1; }
-  .window .bar i { width: 13px; height: 13px; border-radius: 50%; display: block; }
-  .window img { display: block; width: 1240px; }
-  .phone { position: absolute; padding: 13px; border-radius: 62px; background: #0d0c0f; box-shadow: 0 0 0 2px #3a3840, 0 40px 100px rgba(0,0,0,.6); }
-  .phone img { display: block; border-radius: 50px; }
-  .shot { position: absolute; border-radius: 22px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 40px 120px rgba(0,0,0,.55); }
-  .shot img { display: block; width: 100%; height: 100%; }
+  body { background: var(--ground); color: var(--ink); font-family: Inter, "Liberation Sans", Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding-top: 64px; -webkit-font-smoothing: antialiased; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand img { width: 52px; height: 52px; border-radius: 12px; }
+  h1 { margin-top: 26px; font: 400 140px/1.04 "Instrument Serif", Georgia, serif; letter-spacing: -0.02em; white-space: nowrap; }
+  .cover h1 { font-size: 156px; }
+  h1 em { font-style: italic; color: var(--accent); }
+  .line { margin-top: 30px; font-size: 34px; line-height: 1.3; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .stage { margin-top: 56px; flex: 1 0 0; width: 100%; display: flex; justify-content: center; align-items: flex-start; }
+  .sheet { flex: none; overflow: hidden; background: #fff; border-radius: 20px;
+    box-shadow: 0 0 0 1px rgba(34,33,38,.10), 0 30px 80px rgba(60,40,110,.18); }
+  .sheet.phone { border-radius: 56px; }
+  .sheet img { display: block; width: 100%; }
 `;
-const brand = `<div class="brand"><img src="${icon}" alt=""><span class="name">Follow-up</span><span class="tag">Paseo plugin</span></div>`;
+const brand = `<div class="brand"><img src="${icon}" alt="">Follow-up</div>`;
 
 function page(s) {
-  if (s.kind === "cover") return `<body class="cover"><div class="left">${brand}${headline(s.headline)}<p class="sub">${esc(s.subline)}</p>
-    <div class="pills">${s.pills.map(p => `<span>${esc(p)}</span>`).join("")}</div><p class="foot">${esc(footnote)}</p></div>
-    <div class="window"><div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><img src="${data(s.desktop)}" alt=""></div>
-    <div class="phone" style="left:1480px;top:330px"><img src="${data(s.phone)}" alt="" style="width:372px"></div></body>`;
-  // The element: as big as its box allows, never past its own pixels (the slide renders at 2×, so an image of w device
-  // pixels shows crisp up to w/2 CSS pixels). Even-numbered slides mirror it: the box on the left, the text on the right.
-  const flip = Number.parseInt(s.name) % 2 === 0;
-  const { w, h } = size(s.src), right = s.phone ? { x: 1180, y: 70, w: 520, h: 1060 } : { x: 900, y: 90, w: 940, h: 1020 };
-  const box = flip ? { ...right, x: W - right.x - right.w } : right;
-  const k = Math.min(box.w / (w / 2), box.h / (h / 2), 1);
-  const cw = Math.round(w / 2 * k), ch = Math.round(h / 2 * k);
-  const left = box.x + Math.round((box.w - cw) / 2), top = box.y + Math.round((box.h - ch) / 2);
-  const shot = s.phone
-    ? `<div class="phone" style="left:${left - 13}px;top:${top - 13}px"><img src="${data(s.src)}" alt="" style="width:${cw}px;height:${ch}px"></div>`
-    : `<div class="shot" style="left:${left}px;top:${top}px;width:${cw}px;height:${ch}px"><img src="${data(s.src)}" alt=""></div>`;
-  // Mirrored, the text starts GAP clear of the element (or where the mirror of the left column would), and keeps the
-  // left column's 112px margin on the right.
-  const col = flip ? Math.max(W - 112 - 760, left + cw + GAP) : 0;
-  const colStyle = flip ? ` style="left:${col}px;width:${W - 112 - col}px"` : "";
-  return `<body class="slide${flip ? " flip" : ""}"><div class="left"${colStyle}>${brand}${headline(s.headline)}<p class="line">${esc(s.line)}</p></div>${shot}</body>`;
+  // Every desktop sheet is SHEET wide and every phone sheet PHONE_SHEET, so the set lines up; the element fills it,
+  // stretched at most STRETCH past its own pixels (the slide renders at 2×, so an image of w device pixels shows crisp
+  // up to w/2 CSS pixels). A tall element runs off the slide's bottom; a short one ends its sheet just below it.
+  const { w } = size(s.src);
+  const width = s.phone ? PHONE_SHEET : SHEET;
+  if (width > w / 2 * STRETCH) fail(`${s.name}: follow-up-${s.src}.png is ${w} px wide, too small for a ${width} px sheet; shoot it at a higher scale`);
+  const words = s.kind === "cover" ? s.subline : s.line;
+  return `<body class="${s.kind === "cover" ? "cover" : "slide"}">${brand}${headline(s.headline)}<p class="line">${esc(words)}</p>
+    <div class="stage"><div class="sheet${s.phone ? " phone" : ""}" style="width:${width}px"><img src="${data(s.src)}" alt=""></div></div></body>`;
 }
 
 await harness();
@@ -123,23 +101,23 @@ try {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, headless: true });
   try {
     for (const s of SLIDES.filter(x => !onlyNames || onlyNames.some(n => x.name.endsWith(n)))) {
-      writeFileSync(join(dir, "slide.html"), `<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=block" rel="stylesheet"><style>${css}</style></head>${page(s)}</html>`);
+      writeFileSync(join(dir, "slide.html"), `<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@500;600&display=block" rel="stylesheet"><style>${css}</style></head>${page(s)}</html>`);
       const p = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
       await p.goto(`file://${join(dir, "slide.html")}`);
       await p.evaluate(() => document.fonts.ready);
       await p.waitForFunction(() => [...document.images].every(i => i.complete));
-      // Each headline line stays on one line, and clear of the shot and its shadow by at least GAP: the size steps down
-      // until the wider line fits.
-      const px = await p.evaluate(gap => {
-        const h = document.querySelector("h1"), art = document.querySelector(".slide .shot, .slide .phone, .cover .window");
-        const l = document.querySelector(".left").getBoundingClientRect(), a = art.getBoundingClientRect(), hl = h.getBoundingClientRect().left;
-        const max = Math.min(760, a.left > l.left ? a.left - gap - hl : l.right - hl);
+      // The headline stays on one line, SIDE clear of each edge: the size steps down until it fits.
+      const px = await p.evaluate(max => {
+        const h = document.querySelector("h1");
         let px = parseFloat(getComputedStyle(h).fontSize);
-        while (px > 56 && Math.max(...[...h.children].map(c => c.getBoundingClientRect().width)) > max) h.style.fontSize = `${(px -= 2)}px`;
+        while (px > 56 && h.getBoundingClientRect().width > max) h.style.fontSize = `${(px -= 2)}px`;
         return px;
-      }, GAP);
+      }, W - 2 * SIDE);
       if (px <= 56) fail(`${s.name}: the headline is too long even at 56px; shorten it`);
-      if (await p.evaluate(() => { const l = document.querySelector(".left"); return l.scrollHeight > l.clientHeight; })) fail(`${s.name}: the left column overflows`);
+      // The plain line fits the slide, and the words leave at least MIN_SHOWN px of the screen below them.
+      const fit = await p.evaluate(() => ({ line: document.querySelector(".line").getBoundingClientRect().width, sheet: document.querySelector(".sheet").getBoundingClientRect().top }));
+      if (fit.line > W - 2 * SIDE) fail(`${s.name}: the line is wider than the slide; shorten it`);
+      if (H - fit.sheet < MIN_SHOWN) fail(`${s.name}: the words leave too little of the screen (${Math.round(H - fit.sheet)}px)`);
       const out = resolve(outDir, `follow-up-slide-${s.name}.png`);
       await p.screenshot({ path: out });
       await p.close();

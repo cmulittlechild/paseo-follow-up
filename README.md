@@ -12,7 +12,7 @@ Your agents work in parallel. Your attention span doesn't. Agent tools, Paseo in
 you visit each one to find out whether it needs you. Follow-up is a [Paseo](https://paseo.sh) plugin organised around
 your attention instead. The work comes to you, in one place, ranked.
 
-<img alt="Follow-up: Every agent, one inbox. Home lists every workspace by what it needs from you in a desktop window, and a phone beside it shows Catch up on an agent's question with lettered options" src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-slide-1-cover.png">
+<img alt="Follow-up: Every agent, one inbox. Home lists every workspace by what it needs from you, with an agent's question and its lettered options open beside the list" src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-slide-1-cover.png">
 
 [![Follow-up in 36 seconds: Home, Catch up, automatic follow-ups, the Overseer](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2-poster.png)](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2.mp4)
 

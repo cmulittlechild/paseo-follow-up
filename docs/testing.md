@@ -232,10 +232,11 @@ PLAYWRIGHT_CORE=<playwright-core dir> CHROMIUM=<chromium binary> ~/paseo-harness
   `home` and `phone` on Paseo 0.15, `sidebar` on the global Paseo CLI (`HARNESS_PASEO=0.16`: 0.16 or later), then the
   `frames` set on the same CLI. `frames` shoots 1600×900 light/dark pairs of the real app in context
   (`follow-up-frame-<name>-{light,dark}.png`, the README's `<picture>` pairs), Catch up on a phone
-  (`follow-up-catch-up-phone-{light,dark}.png`), and `slide-*` crops of one element each at 6×. `scripts/cover.mjs`
+  (`follow-up-catch-up-phone-{light,dark}.png`), and `slide-*` crops of one element each at 8×. `scripts/cover.mjs`
   then composes the 16:10 slides (1920×1200 at 2×, `follow-up-slide-<n>-<name>.png`): the cover carries the headline
   and the purpose line (`--headline "a|b"`, `--subline`, or `COVER_HEADLINE`/`COVER_SUBLINE`), each other slide a
-  short feature headline, one plain line and its crop zoomed to read on Paseo's 288×180 tiles. `paseo-plugin.json`
+  short feature headline, one plain line and its crop filling a white sheet of one width (a tall one runs off the
+  slide's bottom), to read on Paseo's 288×180 tiles. `paseo-plugin.json`
   `media` lists the slides, cover first, so they ship in the npm package; the demo video sits right after the cover as an absolute jsDelivr URL pinned to a commit, because the npm package leaves the video out (a relative path would point into it), and the README links the video's poster; nothing at runtime reads `docs/screenshots/`, and the README, the guide and the release notes load their images from GitHub, so `package.json` `files` ships the slides (`follow-up-slide-*.png`) and nothing else from that folder. Everything goes through `harness-slot` and is
   shown as the latest stable tag. Re-run it whenever Home's rows, the panel's copy or the fixture change, then read
   every image, and each slide at 288×180, before committing.

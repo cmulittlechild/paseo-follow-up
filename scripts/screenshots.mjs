@@ -4849,7 +4849,8 @@ function pick(key) { const w = [...NEEDS_YOU_STATES, ...PICK_NOTES, ...MERGE_CLI
  *
  * frames (README images, `npm run shots:readme`): 16:9 frames of the app in context, Paseo's sidebar visible, as
  * light/dark pairs (`frame-<surface>-<theme>`: Home, the sidebar view, the Overseer, a task waiting on a deploy), the
- * cover's sources (`cover-home`, Home in light; `catch-up-phone-<theme>`, Catch up on a phone) for scripts/cover.mjs.
+ * the README's Catch up on a phone (`catch-up-phone-<theme>`), and the slide set's sources for scripts/cover.mjs
+ * (`cover-home`, Home in light, and the `slide-*` crops).
  */
 const FRAME = { width: 1600, height: 900 };
 async function galleryShots({ shoot, call, home, billing }) {
@@ -4917,9 +4918,9 @@ async function galleryShots({ shoot, call, home, billing }) {
   await both("home", homeDrive);
   await pair("home", homeDrive);
   if (F) await shoot("cover-home", DESKTOP, "light", page => homeDrive(page, DESKTOP));
-  // Slide sources: one element each, cropped tight at 6× so a slide can zoom it about 3× and it still reads in Paseo's
-  // 288×180 media tile. Phone width where the element has a narrow form.
-  const SLIDE = { scale: 6 };
+  // Slide sources: one element each, cropped tight at 8× so a slide can zoom it about 4× (filling the slide's sheet, as
+  // Home fills the cover) and it still reads in Paseo's 288×180 media tile. Phone width where the element has a narrow form.
+  const SLIDE = { scale: 8 };
   // A tall phone window, so the whole element fits above the bottom dock.
   const TALL = { width: PHONE.width, height: 1600 };
   // The decision card as the agent's chat shows it: one bordered card, question, lettered options and the pick.
@@ -4966,7 +4967,7 @@ async function galleryShots({ shoot, call, home, billing }) {
     await page.waitForTimeout(300);
   };
   await pair("deploy", deployDrive);
-  if (F) await shoot("slide-deploy", DESKTOP, "light", async page => { await tasksDrive(page, DESKTOP, { task: "Check retries in staging after the deploy", billingPanel: true }); return region(page, "Agent's tasks", "Check retries in staging after the deploy", { minWidth: 280, padBottom: 40 }); }, SLIDE);
+  if (F) await shoot("slide-deploy", DESKTOP, "light", async page => { await tasksDrive(page, DESKTOP, { task: "Check retries in staging after the deploy", billingPanel: true }); return region(page, "Agent's tasks", "Check retries in staging after the deploy", { minWidth: 280, padX: 10, padBottom: 34 }); }, SLIDE);
   // The question as a decision card: Home's detail pane (desktop) and the phone's full-height detail.
   await both("decision-card", async (page, vp) => {
     await openHome(page); await narrow(page, vp);
@@ -5009,9 +5010,9 @@ async function galleryShots({ shoot, call, home, billing }) {
     await page.waitForTimeout(1200);
   };
   await both("catch-up", catchUp);
-  // The README's Catch up phone image is a light/dark <picture> pair, and the cover's phone frame uses the light one.
+  // The README's Catch up phone image is a light/dark <picture> pair; slide 6 takes its own sharper render below.
   if (F) for (const theme of ["light", "dark"]) await shoot(`catch-up-phone-${theme}`, PHONE, theme, page => catchUp(page, PHONE));
-  if (F) await shoot("slide-catch-up", PHONE, "light", page => catchUp(page, PHONE), { scale: 4 });
+  if (F) await shoot("slide-catch-up", PHONE, "light", page => catchUp(page, PHONE), { scale: 5 });
   // Settings → General.
   await both("settings", async (page, vp) => { await narrow(page, vp); await openSettingsAt(page, "general", vp); await page.waitForTimeout(600); });
   // New, from Home: the Linear list and the first issue's preview.
