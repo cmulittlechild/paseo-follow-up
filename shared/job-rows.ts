@@ -1,5 +1,6 @@
 import { EMPTY_AGENT_SETTINGS, ROLE_DEFAULTS, ROLE_INFO, SAME_LABEL, hasSame, isJobRole, labelsFor, resolveRole, roleSummary, type AgentRole, type AgentSettingsView, type Catalog, type RoleConfig, type SavedRole } from "./agent-settings";
 import { ROLE_NEED, isRecommended, recommend, type Recommendation } from "./recommend";
+import { NEW_NAME } from "./new-name";
 
 /**
  * One job row, as both setup's Helper agents step and Settings → Agents show it (client/job-rows.tsx renders it).
@@ -30,7 +31,7 @@ export type JobRowModel = {
 export const NO_PROMPT_MODE: Record<string, string> = { claude: "bypassPermissions", codex: "full-access" };
 
 const WONT_RUN: Record<AgentRole, string> = {
-  about: "this won't run", ranker: "this won't run", overseer: "the Overseer can't start", recovery: "recovery agents won't start", dispatch: "New can't start work",
+  about: "this won't run", ranker: "this won't run", overseer: "the Overseer can't start", recovery: "recovery agents won't start", dispatch: `${NEW_NAME} can't start work`,
 };
 
 /** A recommendation's label, in the same words as a saved pick. */

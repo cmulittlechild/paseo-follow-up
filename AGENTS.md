@@ -79,7 +79,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Batches, repairs, tasks, questions, spec, Done, status invariants | `server/engine.ts`, `shared/status.ts`, `shared/send-decision.ts`, `shared/task-rows.ts`, `shared/send-words.ts`, `shared/task-status.ts`, `shared/status-invariants.ts`, `server/status-check.ts`, `server/tasks.ts`, `server/obligations.ts`, `server/batch-archive.ts`, `server/questions.ts`, `server/spec.ts`, `server/delivery.ts`, `server/message-queue.ts`, `shared/queue.ts`, `server/session-guard.ts`, `shared/follow-up.ts`, `shared/model.ts`, `shared/questions.ts`, `shared/put-in-chat.ts`, `shared/spec.ts`, `shared/task-trigger.ts`, `shared/task-due.ts`, `shared/task-view.ts`, `shared/task-dup.ts`, `shared/communication.ts`, `shared/activity.ts` | [workspaces](docs/workspaces.md) |
 | Needs-you inbox, brief, Home | `server/inbox.ts`, `server/inbox-classifier.ts`, `shared/message-sender.ts`, `server/inbox-directory.ts`, `server/turn-timeline.ts`, `shared/inbox.ts`, `shared/brief.ts`, `shared/headline.ts`, `shared/home.ts`, `shared/sending.ts`, `shared/needs-block.ts`, `shared/search.ts`, `shared/sort.ts`, `shared/attention.ts`, `server/dismiss.ts`, `client/dismiss.tsx`, `shared/catch-up.ts`, `client/catch-up.tsx`, `client/more-context.tsx`, `shared/dictation.ts`, `client/dictation.tsx`, `server/context-requests.ts` | [needs-you](docs/needs-you.md) |
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
-| New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
+| Dispatch (New before 2.4): start work from an issue, PR, link or words | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-name.ts`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
 | Settings → Compass (was Morning brief): this week's plan (from Compass, a link, off; the one-time import and the move into Compass), the queue's settings and the brief's When | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
@@ -120,9 +120,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
      three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
-     from the worker's start (VmHWM, so the cold-start tick counts; 317: CI's median 302.5 plus 4 standard deviations of
-     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (230: CI's
-     median 215.5 plus 4 standard deviations, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`),
+     from the worker's start (VmHWM, so the cold-start tick counts; 322.8: CI's median 304 plus 4 standard deviations of
+     main's own CI readings, at least `MIN_READINGS` of them, checked against `tests/fixtures/ci-peak-rss.txt`),
+     **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (235.4: CI's median 217 plus 4 standard deviations, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`),
      both read with the daemon on the live host's allocator env (`LIVE_MALLOC_ENV`, the `MALLOC_*` lines of Paseo's env
      file), which `test:scale` always sets (`scale-runner-facts`): without it glibc's arena count is a race in the
      cold-start tick, and on 2026-11-23 it moved CI's plain peak 25-35 MB (312-335 vs 299-312 on the same runners), so
@@ -1388,6 +1388,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    older than 0.17.1 on a newer daemon shows neither. Guarded by `tests/row-badges.test.ts` and
    `tests/row-badges-client.test.ts`.
 
+114. **Dispatch's sidebar row is optional; Dispatch stays reachable** (`new-row-is-optional`). The sidebar's
+   Dispatch row (called New before 2.4) is one Display switch, `enable_new_sidebar_row` (on by default; unreadable means
+   on, invariant 7), shown in Settings → Dispatch and set by agents with `set_display`; the row is registered only while
+   it's on, live on every device (`contributeNewRow`, `client/new-entry.tsx`). Off removes only the row: Home's
+   + Dispatch, ⌘K and Dispatch's key never read it. Where the switch shows, so does the tip to hide Paseo's own New
+   workspace row, naming the place (Paseo 0.17.4 gives plugins no way to change or open its sidebar settings;
+   [docs/dispatch.md](docs/dispatch.md#paseos-new-workspace)). Every user-facing name for the feature builds from
+   `shared/new-name.ts`, so a rename is one line, and ⌘K still finds it by its old name. 2026-11-25, the developer:
+   "The "New" button on the left sidebar should be optional and configurable in the onboarding and settings, also
+   recommend on its config to turn off the "New workspace" default button". Guarded by `tests/new-row.test.ts`.
 116. **Every search request lands in the visible search** (`every-search-request-lands-in-the-visible-search`). Every
    way to ask for Home's search (the search key, ⌘K "Follow-up: Search", `/`) ends with the caret in the Home search
    field on screen, whatever was mounted, loading or focused before. One owner holds the request
@@ -1412,6 +1422,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Home never opened and with Home in the history, a second press, on Home with a row, a button or a text box focused,
    Home loading, Catch up, PR stats, the queue, the log, Settings, ⌘K and `/`, desktop and 390×844, and with Home as
    the sidebar view; writes `search-focus.json`).
+
+117. **A prompt says each thing once** (`a-prompt-says-each-thing-once`). Whatever the source (typed words, a Linear
+   issue, a GitHub issue or PR, a link) and whatever the action, Dispatch's first message carries no text twice:
+   `renderAction` (`shared/dispatch.ts`) says a text value another placeholder holds in full only once, in the fuller
+   one (`repeatedValues`: typed words' title is their first sentence), and a line left naming nothing points at it
+   ("Work on the task below"); a long value (a link, a sentence, `LONG_VALUE`) is written once, then reads "it".
+   Derived branch names end on a word (`cutAtWord`), the `-2` suffix included. 2026-11-25, the developer's first real
+   dispatch from typed words: `Work on “<the words>”.`, the PR line, then the same words again, on a branch ending
+   `…-now-impro`. Guarded by `tests/prompt-once.test.ts` (every built-in over every source kind).
 
 118. **An agent's first session gets its tools** (`an-agent-s-first-session-gets-its-tools`). A brand-new agent's
    first session gets what any later session would: a main agent in a workspace Follow-up follows by default gets the

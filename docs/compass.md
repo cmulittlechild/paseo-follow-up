@@ -50,7 +50,7 @@ goes to `MorningBrief.recordPlan`: a newer one becomes this week's, the one befo
 read at once through the plan reader (Artifact `read` only, under the job guard). The same link again, or an older
 one a week's read meets, changes nothing. There is no search of its own and no timer: Find it for me's daily search is
 gone (the-brief-has-one-timer). The plan's items are matched to issues and workspaces (`matchPlan`: an item's first
-key is its issue, its workspace by the one predicate New reads), and the card counts the items without an issue.
+key is its issue, its workspace by the one predicate Dispatch reads), and the card counts the items without an issue.
 `effectivePlan` keeps its order: `FOLLOW_UP_PLAN_URL`, Off, a pasted link (a newer plan from Compass replaces it when
 "replace when newer" is on), else Compass's newest plan, else last week's.
 
@@ -92,7 +92,7 @@ key is its issue, its workspace by the one predicate New reads), and the card co
 - **Glossary:** the developer's words → an issue key (or workspace or account), checked when saved, read by matching
   before anything else.
 - **expiry** (undated days 7, grace 1, decay 3 workdays) is editable. **routing** (where suggestions go: urgent ones to
-  Needs you and the rest to New, New only, or off; how strong and how soon is urgent) and **cadence** (the daytime
+  Needs you and the rest to Dispatch, Dispatch only, or off; how strong and how soon is urgent) and **cadence** (the daytime
   read: Off, 1 h, 2 h, 4 h; default 2 h) are in Settings → Compass → When and `set_compass`.
 
 ## Reading
@@ -199,13 +199,13 @@ A live note about an issue (`match.issue`) that has no workspace (invariant 95's
   date within `routing.urgentWithinWorkdays` workdays): a **Nobody's on it** row in Needs you
   (nobody-s-on-it-is-needs-you). A raised Linear issue is the same row kind: one row per issue (`nobodyNeeds`) whatever
   the reasons, the first drawn as its reason line with its source ("Dana: renewal call Thu · Compass", "Linear ·
-  Raised Low → Urgent"), every one in its screen-reader label and `why_suggested`. One Start… (New on the issue), one
+  Raised Low → Urgent"), every one in its screen-reader label and `why_suggested`. One Start… (Dispatch on the issue), one
   two-click Remove (`follow.dismiss {issue}` takes the raise and every Compass ask on it), one count on the home feed.
-- **Everything else** sorts first in New's **My issues**, with its reason line. An issue not assigned to the developer
+- **Everything else** sorts first in Dispatch's **My issues**, with its reason line. An issue not assigned to the developer
   joins My issues with the compass glyph while its note is live. A search shows no suggestion.
 - **Remove** is per note (`dismiss_item {compass: noteId}`, kept in `compass.json` `removed`); a later note on the same
   issue suggests it again. Routing `off` turns suggestions off; notes still reorder AI priority.
-- **`{why}`** (an-action-is-data): New's placeholder for a suggestion's quote, who said it, when and its date
+- **`{why}`** (an-action-is-data): Dispatch's placeholder for a suggestion's quote, who said it, when and its date
   (`whyText`). The built-ins carry it; for any other source it is empty and its line drops.
 
 ## The brief: one Since block
@@ -213,7 +213,7 @@ A live note about an issue (`match.issue`) that has no workspace (invariant 95's
 The brief's "Since" block is one block for every source (design §8): "Since Friday · Dana, your Linear queue". Against
 the brief's own stored point (a-change-is-against-what-you-last-saw), Compass's lines (`compassSince`) come first:
 workspaces it heard about (at most 3, with the quote), what went to Needs you (named once, no second Start…), other
-suggestions (at most 2, with New's actions), then the queue's changes, then notes dropped ("Dana dropped Okta SSO"),
+suggestions (at most 2, with Dispatch's actions), then the queue's changes, then notes dropped ("Dana dropped Okta SSO"),
 "N notes aren't on any workspace" and a failed read. Home's brief row adds "1 from Dana" (`heardWords`) when Compass
 heard anything since.
 
@@ -233,7 +233,7 @@ reads a source. Why it matters' Ask the Overseer puts a question about a note in
 | `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry; `routing`; `cadence`; `plan` (mode, link, replaceWhenNewer, find), `inputs` (on, retry, check, preview) and `queue` (states, chat and calendar windows). |
 | `read_compass` | planned | Read now; waits up to 30 s, then `running`. |
 | `compass_note` | planned | Pin (a workspace, what, optional until and strength), edit, unpin, or tell (one message to the workspace's main agent, only on the developer's ask). Audited as `agent:<id>`. |
-| `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched, and `needsYou`: whether it is a suggestion, urgent (Nobody's on it) or first in New, and why. |
+| `why_suggested` | read | The notes behind a workspace, issue or note: what, quote, who, when, source, role, strength, until and how it matched, and `needsYou`: whether it is a suggestion, urgent (Nobody's on it) or first in Dispatch, and why. |
 
 `dismiss_item {compass: noteId}` removes one suggestion; `dismiss_item {issue}` removes a Nobody's-on-it row.
 "Set up Compass from my DM with my PM" is `compass` → `compass_find` → `set_compass` (dry run, then confirm).

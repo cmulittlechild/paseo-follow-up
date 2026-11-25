@@ -123,13 +123,13 @@ test("scale budget: the realistic idle budget is computed from its named terms, 
   assert.match(await readFile("scripts/scale-budget.mjs", "utf8"), /REALISTIC_IDLE_BUDGET_MB = CI_IDLE_P50_MB \+ SPREAD_SDS \* CI_IDLE_SD_MB;/, "computed, not typed in");
   assert.equal(b.idleBudgetMb("realistic"), b.REALISTIC_IDLE_BUDGET_MB);
   const xs = (await readFile("tests/fixtures/ci-idle-rss.txt", "utf8")).split("\n").filter(Boolean).map(Number).sort((x, y) => x - y);
-  assert.ok(xs.length >= 5 && xs.every(Number.isFinite), "at least five CI readings, numbers only");
+  assert.ok(xs.length >= b.MIN_READINGS && xs.every(Number.isFinite), `at least ${b.MIN_READINGS} CI readings, numbers only`);
   const mean = xs.reduce((n, x) => n + x, 0) / xs.length;
   const sd = Math.sqrt(xs.reduce((n, x) => n + (x - mean) ** 2, 0) / xs.length);
   assert.ok(Math.abs(median(xs) - b.CI_IDLE_P50_MB) <= 1, `CI_IDLE_P50_MB ${b.CI_IDLE_P50_MB} vs the readings' median ${median(xs)}`);
   assert.ok(Math.abs(sd - b.CI_IDLE_SD_MB) <= 1, `CI_IDLE_SD_MB ${b.CI_IDLE_SD_MB} vs the readings' ${sd.toFixed(2)}`);
   assert.ok(xs.every(x => x <= b.REALISTIC_IDLE_BUDGET_MB), "every reading it came from passes");
-  assert.ok(Math.min(...xs) + 25 > b.REALISTIC_IDLE_BUDGET_MB, "a +25 MB regression fails every run");
+  assert.ok(median(xs) + 25 > b.REALISTIC_IDLE_BUDGET_MB, "a +25 MB regression fails the typical run");
 });
 
 test("scale budget: the realistic peak budget is computed from its named terms, which match CI's readings", async () => {
@@ -141,13 +141,14 @@ test("scale budget: the realistic peak budget is computed from its named terms, 
   assert.equal(b.peakBudgetMb("300"), 300); assert.equal(b.peakBudgetMb(undefined), 0);
   assert.throws(() => b.peakBudgetMb("roomy"), /Unknown peak budget/);
   const xs = (await readFile("tests/fixtures/ci-peak-rss.txt", "utf8")).split("\n").filter(Boolean).map(Number).sort((x, y) => x - y);
-  assert.ok(xs.length >= 5 && xs.every(Number.isFinite), "at least five CI readings, numbers only");
+  assert.ok(xs.length >= b.MIN_READINGS && xs.every(Number.isFinite), `at least ${b.MIN_READINGS} CI readings, numbers only`);
   const mean = xs.reduce((n, x) => n + x, 0) / xs.length;
   const sd = Math.sqrt(xs.reduce((n, x) => n + (x - mean) ** 2, 0) / xs.length);
   assert.ok(Math.abs(median(xs) - b.CI_PEAK_P50_MB) <= 1, `CI_PEAK_P50_MB ${b.CI_PEAK_P50_MB} vs the readings' median ${median(xs)}`);
   assert.ok(Math.abs(sd - b.CI_PEAK_SD_MB) <= 1, `CI_PEAK_SD_MB ${b.CI_PEAK_SD_MB} vs the readings' ${sd.toFixed(2)}`);
   assert.ok(xs.every(x => x <= b.REALISTIC_PEAK_BUDGET_MB), "every reading it came from passes");
-  assert.ok(Math.min(...xs) + 21 > b.REALISTIC_PEAK_BUDGET_MB, "a +21 MB regression fails every run");
+  assert.ok(Math.min(...xs) + 28 > b.REALISTIC_PEAK_BUDGET_MB, "a +28 MB regression fails every run");
+  assert.ok(median(xs) + 20 > b.REALISTIC_PEAK_BUDGET_MB, "--retain-mb 20 fails the typical run");
 });
 
 test("the idle window starts drained: no awake agent running and no timeline read for a tick plus a margin", async () => {

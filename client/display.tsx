@@ -11,6 +11,7 @@ import { Text } from "./text";
 import { displayPreferences, displayRpc, trustCountText } from "../shared/display";
 import { sidebarVisibility } from "./sidebar-visibility";
 import { appVisible, onVisible } from "./visibility";
+import { NEW_NAME } from "../shared/new-name";
 
 type Display = import("zod").infer<typeof displayPreferences.schema>;
 const listeners = new Set<(values: Display) => void>();
@@ -103,7 +104,7 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
         <SettingsSelect label="Search from anywhere" hint="Jumps to Home's search from any screen, even mid-message. On Home, / works too."
           value={searchShortcutOf(settings.values.search_shortcut)} options={searchShortcutOptions(isMac())} disabled={settings.saving}
           onValueChange={(search_shortcut: SearchShortcut) => save({ search_shortcut })} />
-        <SettingsSelect label="New from anywhere" hint={newShortcutHint(isDesktopApp(), isMac())}
+        <SettingsSelect label={`${NEW_NAME} from anywhere`} hint={newShortcutHint(isDesktopApp(), isMac())}
           value={newShortcutPreset(settings.values.new_shortcut, isDesktopApp())} options={newShortcutOptions(isMac())} disabled={settings.saving}
           onValueChange={(new_shortcut: NewShortcut) => save({ new_shortcut })} />
       </SettingsCard>

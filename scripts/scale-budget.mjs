@@ -25,20 +25,23 @@ export const LIVE_MALLOC_ENV = Object.freeze({ MALLOC_ARENA_MAX: "2", MALLOC_MMA
 
 /**
  * test:scale's idle budget (realistic seed), derived from CI's own distribution: test:scale runs on CI's runner, so its
- * budget comes from what that runner reads, not from harness terms. 2026-11-23: 26 CI readings of test:scale's idle
- * median under LIVE_MALLOC_ENV (tests/fixtures/ci-idle-rss.txt: 26 runners, AMD EPYC 7763/9V74/9V45 and Intel 8573C,
- * 6973P and 6975P). The earlier fixture (2026-11-13, median 220, SD 7.5) was read without the allocator env; its spread
- * was mostly the arena race.
+ * budget comes from what that runner reads, not from harness terms. 2026-11-25: main's 36 CI readings of test:scale's
+ * idle median under LIVE_MALLOC_ENV from 2026-11-23 08:28 to 2026-11-25 12:26 (tests/fixtures/ci-idle-rss.txt, every
+ * runner: AMD EPYC 7763/9V74/9V45, Intel 8573C, 8370C, 6973P and 6975P). The 2026-11-23 fixture (26 readings, median
+ * 215.5, SD 3.7) understated CI's spread: SD 4.6 on main, 5.3 over all 125 PR and main runs since. The fixture holds at
+ * least MIN_READINGS. The one before (2026-11-13, median 220, SD 7.5) was read without the allocator env.
  *   CI_IDLE_P50_MB: the median of those readings. CI_IDLE_SD_MB: their standard deviation.
- *   SPREAD_SDS: how many standard deviations of run-to-run noise the budget absorbs (4 × 3.7 ≈ 15 MB).
- * What it catches: a regression that adds 15 MB puts the median at the budget and fails about half the runs; one that
- * adds 25 MB fails every run (even the lowest reading, 208, would read 233). A synthetic 20 MB retained from the start
- * (scale-check --retain-mb 20) read 236 and 241 on CI. tests/scale-budget.test.ts checks these constants against the
+ *   SPREAD_SDS: how many standard deviations of run-to-run noise the budget absorbs (4 × 4.6 ≈ 18 MB).
+ * What it catches: a regression that adds 18 MB puts the median at the budget and fails about half the runs; one that
+ * adds 25 MB fails all but the lowest readings (the median would read 242; the lowest, 199, is an outlier). A synthetic
+ * 20 MB retained from the start (scale-check --retain-mb 20) read 236 and 241 on CI. tests/scale-budget.test.ts checks these constants against the
  * fixture (drift over 1 MB fails).
  */
-export const CI_IDLE_P50_MB = 215.5;
-export const CI_IDLE_SD_MB = 3.7;
+export const CI_IDLE_P50_MB = 217;
+export const CI_IDLE_SD_MB = 4.6;
 export const SPREAD_SDS = 4;
+/** The fewest CI readings a budget is derived from: a standard deviation from a couple of dozen understates the tail. */
+export const MIN_READINGS = 30;
 export const REALISTIC_IDLE_BUDGET_MB = CI_IDLE_P50_MB + SPREAD_SDS * CI_IDLE_SD_MB;
 /**
  * A named budget for scale-check's --idle-rss-budget: `realistic` (test:scale) or a number of MB. Names keep the
@@ -55,18 +58,21 @@ export function idleBudgetMb(value) {
 
 /**
  * test:scale's worker peak budget (lifetime VmHWM, realistic seed), derived from CI's own distribution the same way.
- * 2026-11-23: 26 readings under LIVE_MALLOC_ENV (tests/fixtures/ci-peak-rss.txt, the same runners as the idle fixture).
+ * 2026-11-25: main's 36 readings under LIVE_MALLOC_ENV (tests/fixtures/ci-peak-rss.txt, the same runs as the idle
+ * fixture). The 2026-11-23 fixture (26 readings, median 302.5, SD 3.7, budget 317.3) understated CI's spread: the same
+ * commit read 307 and 318 on two runs (76740d3e), 297 and 307 on another (23c209c3), with no runner or arena pattern;
+ * 3 of ~127 runs failed on noise (318, 322, and #322's). SD 4.7 on main, 5.5 over all 125 runs.
  * The earlier fixture (2026-11-16, median 278, SD 10.8, budget 321.2) was read without the allocator env, and on
  * 2026-11-23 main's plain peak sat at 312-335 on most runners: the arena race, not the code (scale-runner-facts).
  * The peak is the ~2 s cold-start tick (the scale-diag line's peakSplit), anonymous memory.
  *   CI_PEAK_P50_MB: the median of those readings. CI_PEAK_SD_MB: their standard deviation. SPREAD_SDS as above.
  * What it catches: a regression that adds 15 MB puts the median at the budget and fails about half the runs; one that
- * adds 21 MB fails every run (even the lowest reading, 297, would read 318). --retain-mb 20 read 321 and 325 on CI;
+ * adds 28 MB fails every run (even the lowest reading, 295, would read 323). --retain-mb 20 read 321 and 325 on CI;
  * #283's pre-fix head (28881bc4), the last real regression, read 412-413. tests/scale-budget.test.ts checks these
  * constants against the fixture (drift over 1 MB fails).
  */
-export const CI_PEAK_P50_MB = 302.5;
-export const CI_PEAK_SD_MB = 3.7;
+export const CI_PEAK_P50_MB = 304;
+export const CI_PEAK_SD_MB = 4.7;
 export const REALISTIC_PEAK_BUDGET_MB = CI_PEAK_P50_MB + SPREAD_SDS * CI_PEAK_SD_MB;
 /** A named budget for scale-check's --rss-budget: `realistic` (test:scale) or a number of MB. */
 export const PEAK_BUDGETS = { realistic: REALISTIC_PEAK_BUDGET_MB };

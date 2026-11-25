@@ -95,7 +95,7 @@ Follow-up's MCP tool calls, and its CLI fallback in a shell call, render as one-
 
 ## Settings
 
-Project tracking uses Paseo's settings kit: one switch per project, with its remote or path as the hint and the explanation in the section's info tip. Display settings hold the sidebar row, header button and composer pill switches. A Questions section above the projects holds the question mode select (Stop, Work around, Keep building) with the chosen mode's rule as its hint.
+Project tracking uses Paseo's settings kit: one switch per project, with its remote or path as the hint and the explanation in the section's info tip. Display settings hold the sidebar row, header button and composer pill switches. Dispatch's own sidebar row is the exception: its switch is the last section of Settings → Dispatch, next to what it opens. A Questions section above the projects holds the question mode select (Stop, Work around, Keep building) with the chosen mode's rule as its hint.
 
 ## Empty, loading and error
 
