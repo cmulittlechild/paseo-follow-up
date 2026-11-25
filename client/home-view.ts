@@ -14,6 +14,7 @@ import type { z } from "zod";
 export type QueueNeeds = z.infer<typeof queueNeedsSchema>;
 const NO_QUEUE: QueueNeeds = { needs: [], timeZone: "UTC", revision: "" };
 import { onVisible, whileVisible } from "./visibility";
+import { createWebSearchFocus } from "./search-focus";
 import type { ContextRequest } from "../shared/catch-up";
 
 /**
@@ -67,7 +68,6 @@ export function createHomeExtras(client: PluginClientContext) {
   const readContext = async () => setContext((await client.rpc(contextListRpc, {})).requests);
   const agents = new Map<string, AgentLite>();
   let version = 0;
-  let focusToken = 0; let focusPending = false;
   let stopped = false;
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -94,6 +94,8 @@ export function createHomeExtras(client: PluginClientContext) {
     void run();
     return () => { off = true; runs.delete(wake); if (next) { clearTimeout(next); timers.delete(next); next = null; } };
   };
+  const searchFocus = createWebSearchFocus();
+  const offSearchFocus = searchFocus.install();
   const offVisible = onVisible(() => { for (const r of runs) void r(); });
   const together = (stops: (() => void)[]) => () => { for (const s of stops) s(); };
   const readRank = async () => {
@@ -288,15 +290,11 @@ export function createHomeExtras(client: PluginClientContext) {
       return out;
     },
     agents: () => [...agents.values()],
-    /** Bumped by ⌘K "Follow-up: Search" and the search key; the visible search field focuses when it changes. */
-    focusToken: () => focusToken,
     /**
-     * Asks Home's search to take the cursor: now if Home is mounted, else as soon as it mounts (a Home opened by this
-     * very request mounts after the call, so a bare token bump would be missed).
+     * The one owner of "put the caret in Home's search" (every-search-request-lands-in-the-visible-search): the search
+     * key, ⌘K "Follow-up: Search" and `/` ask it; the search field on screen takes it (client/search-focus.ts).
      */
-    focusSearch() { focusToken++; focusPending = true; emit(); },
-    /** True once per focusSearch: the search field that takes it focuses. */
-    takeFocus() { const was = focusPending; focusPending = false; return was; },
+    searchFocus,
     /** Calls `listener` when an agent's status, attention or permissions change (see above). */
     onActivity(listener: () => void) { activity.add(listener); return () => { activity.delete(listener); }; },
     /** Each update Paseo sends about one agent (null when it's removed). */
@@ -304,7 +302,7 @@ export function createHomeExtras(client: PluginClientContext) {
       const set = agentWatchers.get(agentId) ?? new Set(); set.add(listener); agentWatchers.set(agentId, set);
       return () => { set.delete(listener); if (!set.size) agentWatchers.delete(agentId); };
     },
-    async stop() { stopped = true; stopFeeds(); offVisible(); activity.clear(); for (const t of timers) clearTimeout(t); timers.clear(); if (pending) clearTimeout(pending); listeners.clear(); unsubscribe(); await release?.(); },
+    async stop() { stopped = true; stopFeeds(); offVisible(); offSearchFocus(); activity.clear(); for (const t of timers) clearTimeout(t); timers.clear(); if (pending) clearTimeout(pending); listeners.clear(); unsubscribe(); await release?.(); },
   };
 }
 export type HomeExtras = ReturnType<typeof createHomeExtras>;

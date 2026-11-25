@@ -1,0 +1,1 @@
+- The search shortcut (⌘⇧K by default), ⌘K "Follow-up: Search" and / now always put the cursor in Home's search, also from Catch up, PR stats or Settings, while Home is still loading, and when you opened Home before.
