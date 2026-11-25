@@ -155,7 +155,7 @@ export function ghCheck(r: GhResult): Check {
   const label = "GitHub";
   if ("login" in r) return { id: "gh", label, state: "ok", detail: r.login ? `Signed in as ${r.login}` : "Signed in", fix: null };
   // Optional (works-without-github): never a failure. Without it, everything but GitHub's own parts works.
-  const optional = `Optional. Without it, workspaces, Needs you, questions, briefs, Catch up, the Overseer, tasks and Compass all work. With it: ${GITHUB_ADDS}.`;
+  const optional = `Optional: everything else works without it. Adds ${GITHUB_ADDS}.`;
   if (r.error === "missing") return { id: "gh", label, state: "off", detail: `The GitHub CLI isn't installed. ${optional}`, fix: fix("To turn it on, install the GitHub CLI on the computer running Paseo, then sign in there. Follow-up picks it up on its own.", GITHUB_LOGIN_COMMAND, null, GITHUB_CLI_URL) };
   if (r.error === "signed-out") return { id: "gh", label, state: "off", detail: `The GitHub CLI isn't signed in. ${optional}`, fix: fix("To turn it on, sign in on the computer running Paseo. Follow-up picks it up on its own.", GITHUB_LOGIN_COMMAND) };
   return { id: "gh", label, state: "warn", detail: `Couldn't reach GitHub${r.message ? `: ${r.message}` : "."}`, fix: fix("Check that computer's network, then check again.") };

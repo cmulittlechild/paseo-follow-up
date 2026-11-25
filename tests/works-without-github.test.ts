@@ -11,6 +11,7 @@ import { httpApi } from "../server/github-api";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
 import { Store } from "../server/store";
 import { stateSchema } from "../shared/model";
+import { liveLine } from "../shared/attention";
 import { GithubOffError, githubOffLine, isGithubOff } from "../shared/github-setup";
 
 /**
@@ -110,6 +111,7 @@ test("works-without-github: the engine reads nothing, keeps what it knew and say
   assert.match(w.prs[1].error ?? "", /^PR status needs GitHub\. The GitHub CLI isn't installed/);
   assert.equal(w.batches.length, 0, "no repairs from nothing read");
   assert.match(githubOffLine(w.githubOff)!.title, /GitHub not connected/);
+  assert.equal(liveLine(w, clock).text, "GitHub not connected · PR status is off", "Home's line says why, never \"retrying\"");
   // Turned on: the next tick reads and the line goes.
   off = null;
   await engine.tick();

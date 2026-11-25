@@ -39,6 +39,9 @@ signing in is picked up without a restart.
 - **Background.** PR stats' sync doesn't start, the ranker's review requests count as off (not failed), the brief's
   GitHub source says how to turn it on, and the Summary leaves out PR bodies quietly.
 - **Setup.** The readiness check's GitHub row is `off` (optional) with Get the GitHub CLI and `gh auth login`.
+- **On screen.** The panel header's line says "Not checking GitHub" and its Refresh ("Check GitHub again") checks
+  once at once (`follow.refresh` runs `GithubSetup.check` first); Home's Sources line says GitHub isn't connected or is
+  signed out.
 
 Guarded by `tests/works-without-github.test.ts`, `tests/works-without-github-worker.test.ts` (the real worker with no
 gh) and `npm run test:no-gh` (a real daemon, gh missing and signed out).

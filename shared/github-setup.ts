@@ -30,11 +30,13 @@ export function githubOffText(off: GithubOff, what: string | null): string {
 export const GITHUB_ADDS = "PR status, review threads and failed checks as repairs, merge, reviewers, Wait for checks, deploy checks and PR stats";
 
 /** The Pull requests card's line while GitHub is off (the same slot as the budget's line, githubWaitLine). */
-export function githubOffLine(off: GithubOff | null | undefined): { title: string; detail: string; label: string; command: string } | null {
+export function githubOffLine(off: GithubOff | null | undefined): { title: string; detail: string; label: string; command: string; url: string | null } | null {
   if (!off) return null;
   const title = off === "missing" ? "GitHub not connected · PR status is off" : "GitHub signed out · PR status is off";
-  const detail = `${githubOnSteps(off)} Follow-up picks it up on its own.`;
-  return { title, detail, label: `${title}. ${detail}`, command: GITHUB_LOGIN_COMMAND };
+  // The card links to the install page itself (url), so its words carry no raw address.
+  const steps = off === "missing" ? `Install the GitHub CLI on the computer running Paseo, then run ${GITHUB_LOGIN_COMMAND}.` : githubOnSteps(off);
+  const detail = `${steps} Follow-up picks it up on its own.`;
+  return { title, detail, label: `${title}. ${detail}`, command: GITHUB_LOGIN_COMMAND, url: off === "missing" ? GITHUB_CLI_URL : null };
 }
 
 /** Thrown by every GitHub read or write while GitHub is off; its message is githubOffText's. */

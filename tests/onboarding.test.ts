@@ -156,7 +156,7 @@ test("checks: everything ready", async () => {
 
 test("checks: GitHub is optional (works-without-github): missing or signed out is off, never a failure, and says how to turn it on", async () => {
   let gh = byId((await new ReadinessChecks(deps({ gh: async () => ({ error: "missing", message: "" }) })).run()).checks, "gh");
-  assert.equal(gh.state, "off"); assert.match(gh.detail, /isn't installed/); assert.match(gh.detail, /Optional/); assert.match(gh.detail, /Needs you/);
+  assert.equal(gh.state, "off"); assert.match(gh.detail, /isn't installed/); assert.match(gh.detail, /Optional/); assert.match(gh.detail, /everything else works without it/); assert.match(gh.detail, /PR status/);
   assert.equal(gh.fix?.command, "gh auth login"); assert.equal(gh.fix?.url, "https://cli.github.com"); assert.match(gh.fix!.text, /picks it up on its own/);
 
   gh = byId((await new ReadinessChecks(deps({ gh: async () => ({ error: "signed-out", message: "" }) })).run()).checks, "gh");

@@ -1,5 +1,6 @@
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
+import { openExternalUrl } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import type { Pr, Workspace } from "../shared/model";
 import { compactPrStatus, githubWaitLine, orderedStacks, settledForDisplay } from "../shared/presentation";
@@ -166,6 +167,9 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{wait.title}</Text>
         <Text style={t.meta}>{wait.detail}</Text>
+        {off?.url && <Pressable accessibilityRole="link" accessibilityLabel="Get the GitHub CLI (opens cli.github.com)" onPress={() => void openExternalUrl(off.url!).catch(() => undefined)} hitSlop={compact ? 10 : 6} style={{ alignSelf: "flex-start", minHeight: compact ? 44 : undefined, justifyContent: "center" }}>
+          <Text style={[t.meta, { color: c.accent }]}>Get the GitHub CLI</Text>
+        </Pressable>}
       </View>
     </View>}
     {!hits && <HeldMerges workspace={w} theme={theme} compact={compact} framed />}

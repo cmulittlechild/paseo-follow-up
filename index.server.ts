@@ -949,7 +949,13 @@ export default function contribute(server: PluginServerContext) {
     await requireReady();
     return store.mutate(state => controlWorkspace(state, input, Date.now(), clientTimeZone));
   });
-  handle(rpc.refreshRpc, async ({ workspaceId }) => { await requireReady(); void engine.tick({ workspaceId }); return { ok: true }; });
+  handle(rpc.refreshRpc, async ({ workspaceId }) => {
+    await requireReady();
+    // While GitHub is off, Refresh checks it again first (one gh check, on the click), so turning it on shows at once.
+    if (githubSetup().off()) void githubSetup().check().catch(() => undefined).then(() => engine.tick({ workspaceId }));
+    else void engine.tick({ workspaceId });
+    return { ok: true };
+  });
   handle(rpc.refineTasksRpc, async ({ workspaceId, tasks }) => {
     await requireReady();
     const result = await store.mutate(state => {

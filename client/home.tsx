@@ -896,6 +896,8 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, 
   useTick(30_000);
   const now = Date.now();
   const offline = sources.inbox.offlineSince();
+  // works-without-github: the worker sets githubOff on every workspace with PRs while GitHub is off.
+  const githubOff = sources.live.all().find(w => w.githubOff)?.githubOff ?? null;
   const observed = sources.live.all().flatMap(w => w.prs.map(p => p.snapshot?.observedAt).filter((x): x is string => !!x)).sort().at(-1) ?? null;
   const date = new Date(now).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
   const time = new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -935,7 +937,9 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, 
     {section("Sources")}
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>{dot(offline === null)}<Text style={t.meta}>Paseo {offline === null ? "live" : `offline ${age(new Date(offline).toISOString(), now)}`}</Text></View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>{dot(!!observed && now - Date.parse(observed) < 15 * 60_000)}<Text style={t.meta}>GitHub {observed ? age(observed, now) : "no PRs yet"}</Text></View>
+      {githubOff
+        ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.foregroundMuted }} /><Text style={t.meta}>{githubOff === "missing" ? "GitHub not connected" : "GitHub signed out"}</Text></View>
+        : <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>{dot(!!observed && now - Date.parse(observed) < 15 * 60_000)}<Text style={t.meta}>GitHub {observed ? age(observed, now) : "no PRs yet"}</Text></View>}
     </View>
   </ScrollView>;
 }
