@@ -393,7 +393,7 @@ function DefaultsStep({ theme, compact, held }: { theme: Theme; compact: boolean
 function HelpersStep({ theme, compact, deps }: { theme: Theme; compact: boolean; deps: SetupDeps }) {
   const c = theme.colors; const t = text(c);
   return <View style={{ gap: 12 }}>
-    <Panel c={c}><JobRows theme={theme} compact={compact} order={SETUP_ORDER} preselect /></Panel>
+    <Panel c={c}><JobRows theme={theme} compact={compact} order={SETUP_ORDER} preselect brief /></Panel>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
       <Text style={t.meta}>Permissions and limits are in </Text>
       <Pressable accessibilityRole="link" accessibilityLabel="Open Follow-up settings, Agents" onPress={() => deps.openSettings("agents")} hitSlop={8} style={{ minHeight: compact ? 44 : 20, justifyContent: "center" }}>
@@ -424,7 +424,7 @@ function NewRowChoice({ theme, compact }: { theme: Theme; compact: boolean }) {
     <Panel c={c}>
       <SwitchRow first theme={theme} compact={compact} label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : "Ctrl K")} value={row.value} disabled={row.saving} onChange={row.set} />
     </Panel>
-    {row.value !== false && <Text style={t.meta}>{NEW_ROW.paseo}</Text>}
+    {row.value !== false && <Text style={t.meta}>{NEW_ROW.paseoShort}</Text>}
   </View>;
 }
 

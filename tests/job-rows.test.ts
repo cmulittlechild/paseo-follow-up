@@ -16,8 +16,8 @@ test("both surfaces render the shared JobRows and nothing row-like of their own"
   for (const [name, s] of [["setup", setup], ["settings", settings]] as const) {
     const uses = [...s.matchAll(/<JobRows\b([^>]*)\/>/g)];
     assert.equal(uses.length, 1, `${name} renders JobRows once`);
-    // Only placement props may differ: which order, Settings' More, setup's preselect.
-    const props = [...uses[0][1].matchAll(/(\w+)=/g)].map(m => m[1]).filter(p => !["theme", "compact", "order", "extra", "preselect"].includes(p));
+    // Only placement props may differ: which order, Settings' More, setup's preselect and one-line rows (Q161).
+    const props = [...uses[0][1].matchAll(/(\w+)=/g)].map(m => m[1]).filter(p => !["theme", "compact", "order", "extra", "preselect", "brief"].includes(p));
     assert.deepEqual(props, [], `${name} passes no row content of its own`);
     assert.doesNotMatch(s, /label="Provider"|label="Model"|label="Effort"|"Recommended"|ROLE_NEED|function RoleCard|function JobRow\b/, `${name} builds no pickers, chip or need line itself`);
   }

@@ -113,6 +113,8 @@ First, pick where it lives:
   - the count of `hook-state/native-*.json`.
 - **Choices** write through the same RPCs the Settings screen uses.
 - **Helper agents step and Settings → Agents share one component.** `client/job-rows.tsx` (`JobRows`) renders both;
+  setup passes `brief` (Q161), so each helper is one line (`JobLine`: its name, the model it will use, Change, which
+  opens the same pickers, and its switch), plus a line only when it can't run;
   `shared/job-rows.ts` decides what each row says (`jobRow`: what the job does, the current pick, the Recommended
   chip, the need line, an amber line when the saved provider can't run here), the header (`jobsHeader`, with Use
   recommended) and what Use recommended saves (`recommendedEntry`: provider, model and effort only; limits and
@@ -132,8 +134,8 @@ First, pick where it lives:
   to switch AI priority to a provider it can't run on. The step's lead says Follow-up works with every agent
   Paseo runs, and that agents on Claude Code or Codex also get turn-end reminders and Wait.
 - **The tour** ("Where to find things") is its own last step: Home, the workspace panel, Needs you, the Summary and
-  Dispatch, with Dispatch's sidebar-row switch and the tip about Paseo's New workspace (the same as Settings →
-  Dispatch, `new-row-is-optional`).
+  Dispatch, with Dispatch's sidebar-row switch and the tip about Paseo's New workspace as one line
+  (`NEW_ROW.paseoShort`, Q163; Settings → Dispatch keeps the full `NEW_ROW.paseo`, `new-row-is-optional`).
 - **Trying it as a stranger:** `node scripts/screenshots.mjs --only onboarding --variant <v>` packs the plugin, installs
   it on a fresh PASEO_HOME with no mcpproxy and walks every shown step: `no-gh` (no GitHub CLI, Claude), `claude`,
   `codex`, `other` (only a plugin provider, standing in for any other provider) and `none` (no provider, no gh).
