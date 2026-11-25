@@ -411,7 +411,7 @@ function FindPicker({ kind, onPick, onCancel, theme, compact }: { kind: FindKind
     {(results.data?.results ?? []).map(r => <Pressable key={r.id} accessibilityRole="button" onPress={() => onPick(r)}
       style={state => ({ minHeight: compact ? 44 : 34, paddingHorizontal: 12, paddingVertical: 6, justifyContent: "center", borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
       <Text style={t.body}>{kind === "channels" ? `#${r.name}` : r.name}</Text>
-      {r.detail && <Text style={t.meta}>{r.detail}</Text>}
+      {r.detail && <RichText plain style={t.meta}>{r.detail}</RichText>}
     </Pressable>)}
     {debounced.length >= 2 && !results.isFetching && !results.data?.results.length && !results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>{`Nothing matches "${debounced}".`}</Text>}
   </SubmitScope>;
