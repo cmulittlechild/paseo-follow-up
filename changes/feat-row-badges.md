@@ -1,0 +1,1 @@
+- On Paseo 0.17.1 or newer, Done shows as a green badge on the workspace's sidebar row instead of a label, with its own switch in the sidebar's Show menu.
