@@ -3012,15 +3012,15 @@ async function newShots({ shoot, call, out, home, billing }) {
   await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { id: "elsewhere", name: "Try elsewhere", icon: "play", description: "On a provider this host lacks",
     instructions: "Work on {title}.", agent: { provider: "no-such-provider" }, workspace: "worktree", branch: "title", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } } });
 
-  const FIELD = "Paste a link or describe the task";
-  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  const FIELD = "Task";
+  const dialog = page => page.locator('[role="dialog"][aria-label="Dispatch"]').filter({ visible: true }).first();
   const row = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
   // A preview is up: its instructions toggle, or (project still to pick) the line standing in for the fields.
   const preview = page => dialog(page).getByText(/^((Show|Hide) instructions|From, branch and agent fill in once you pick a project\.)$/).filter({ visible: true }).first().waitFor();
   const narrow = async (page, vp) => { if (vp.width < 768) { await page.setViewportSize(vp); await page.waitForTimeout(300); } };
   const openFromHome = async (page, vp, { list = true } = {}) => {
     await openHome(page); await narrow(page, vp);
-    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await page.getByRole("button", { name: /^Dispatch( \(.+\))?$/ }).filter({ visible: true }).last().click();
     await dialog(page).waitFor();
     if (list) await row(page, /^WEB-31 Invoice/).waitFor();
   };
@@ -3067,6 +3067,21 @@ async function newShots({ shoot, call, out, home, billing }) {
       check(`${device} ${theme}: a pasted key in the list selects that row`, await dialog(page).getByText("From your link").count() > 0);
       if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
     await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
+    // A real task's worth of words: the field grows with them (to about seven lines), the preview stays put while
+    // typing (preview-stays-while-typing) and its first message says the words once (a-prompt-says-each-thing-once).
+    await shoot(name("long"), vp, theme, async page => {
+      await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it for the quarterly review, so include the actor, the action, the target and the time in the workspace's zone. Keep the existing filters: whatever the page shows is what the file holds. Large exports should stream rather than build in memory, and the button should say how many rows it will write.");
+      if (!phone) {
+        const field = dialog(page).getByRole("textbox", { name: FIELD }).first();
+        const box = await field.boundingBox();
+        // Taller than its 96 px start, with every line in view (no scroll inside the field).
+        const hidden = await field.evaluate(el => el.scrollHeight - el.clientHeight);
+        check(`${theme} ${device}: the task field is wide and grew with the words`, !!box && box.width >= 600 && box.height > 96 && hidden <= 1, { box, hidden });
+        await dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first().click();
+        const message = (await dialog(page).getByText(/^Work on the task below\./).allInnerTexts())[0] ?? "";
+        check(`${theme} ${device}: the first message says the words once`, message.split("Add a CSV export to the audit log page").length === 2, { message });
+      }
+    });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
     await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ issues? already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
       check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
@@ -3133,16 +3148,16 @@ async function newShots({ shoot, call, out, home, billing }) {
   // The ways in (desktop): Home's + New, ⌘K, the sidebar row, the key in a browser tab (Ctrl+Shift+O) and in the
   // desktop app (Ctrl+Shift+N; Chrome keeps Ctrl+Shift+N for incognito, so only the app gets it).
   for (const theme of ["light", "dark"]) {
-    await shoot(`new-entry-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("button", { name: /^New \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor(); });
+    await shoot(`new-entry-home-${theme}`, DESKTOP, theme, async page => { await openHome(page); await page.getByRole("button", { name: /^Dispatch \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor(); });
     await shoot(`new-entry-cmdk-${theme}`, DESKTOP, theme, async page => {
-      await openHome(page); await page.keyboard.press("Control+k"); await page.keyboard.type("Follow-up: New");
-      const item = page.getByText("Follow-up: New… (Ctrl+Shift+O)", { exact: true }).filter({ visible: true }).first();
+      await openHome(page); await page.keyboard.press("Control+k"); await page.keyboard.type("new");
+      const item = page.getByText("Follow-up: Dispatch… (Ctrl+Shift+O)", { exact: true }).filter({ visible: true }).first();
       await item.waitFor(); await shoot.now(`new-cmdk-row-${theme}`, page, theme);
       await item.click(); await dialog(page).waitFor();
     });
     await shoot(`new-entry-sidebar-${theme}`, DESKTOP, theme, async page => {
       await openChat(page, billing.title, billing.prompt);
-      const side = page.getByRole("button", { name: "New", exact: true }).filter({ visible: true }).first();
+      const side = page.getByRole("button", { name: "Dispatch", exact: true }).filter({ visible: true }).first();
       await side.waitFor(); await side.click(); await dialog(page).waitFor();
       check(`${theme}: the sidebar row opens New`, true);
     });
@@ -3165,7 +3180,7 @@ async function newShots({ shoot, call, out, home, billing }) {
     }, { init: () => { const ua = navigator.userAgent; Object.defineProperty(navigator, "userAgent", { get: () => `${ua} Electron/38.0.0` }); } });
     await shoot(`new-settings-${theme}`, DESKTOP, theme, async page => {
       await openSettingsAt(page, "display", DESKTOP);
-      const r = page.getByText("New from anywhere", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+      const r = page.getByText("Dispatch from anywhere", { exact: true }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
     });
     // Settings → New work, whole (a tall window, so every section is in one frame), and Agents → New work.
     for (const [device, vp] of [["desktop", { width: 1440, height: 1700 }], ["phone", { width: 390, height: 2300 }]]) {
@@ -3208,11 +3223,48 @@ async function newShots({ shoot, call, out, home, billing }) {
         await page.setViewportSize(device === "phone" ? PHONE : DESKTOP);
         await openSettingsAt(page, "agents", device === "phone" ? PHONE : DESKTOP);
         // The row's title, not the tab of the same name.
-        const r = page.getByText("Starts the work you begin from New", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
+        const r = page.getByText("Starts the work you begin from Dispatch", { exact: false }).filter({ visible: true }).first(); await r.waitFor(); await r.evaluate(el => el.scrollIntoView({ block: "center" }));
         check(`${theme} ${device}: Agents → New work copies the Overseer by default`, await page.getByText("Same as the Overseer").filter({ visible: true }).count() > 0);
       });
     }
     if (project("app")) await call("follow.set-dispatch-settings", { bases: { [project("app").id]: null } });
+  }
+
+  // The sidebar row is optional (new-row-is-optional, docs/dispatch.md#the-sidebar-row-is-optional): its switch and
+  // the Paseo tip in Settings → Dispatch, the sidebar with the row off (Home's + Dispatch still opens
+  // it), and on again. `--shot '^new-row'` runs only these.
+  const rowSwitch = page => page.getByRole("switch", { name: "Dispatch in the sidebar" }).filter({ visible: true }).first();
+  const sideRow = page => page.getByRole("button", { name: "Dispatch", exact: true }).filter({ visible: true });
+  const tip = page => page.getByText(/Paseo's own New workspace row starts an empty workspace/).filter({ visible: true });
+  for (const theme of ["light", "dark"]) {
+    for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      await shoot(`new-row-settings-${device}-${theme}`, vp, theme, async page => {
+        await page.setViewportSize(vp); await openSettingsAt(page, "new", vp);
+        await rowSwitch(page).waitFor();
+        check(`${theme} ${device}: Settings → Dispatch shows the row's switch, on`, await rowSwitch(page).getAttribute("aria-checked") === "true");
+        check(`${theme} ${device}: the tip names where to hide Paseo's New workspace`, await tip(page).count() > 0 && await page.getByText(/Paseo Settings → Sidebar → Header/).filter({ visible: true }).count() > 0);
+        // The section is the tab's last; show it with the Bases above it.
+        await rowSwitch(page).scrollIntoViewIfNeeded();
+      });
+    }
+    await shoot(`new-row-off-${theme}`, DESKTOP, theme, async page => {
+      await openSettingsAt(page, "new", DESKTOP);
+      await rowSwitch(page).click();
+      await page.waitForFunction(() => !document.querySelector('[role="switch"][aria-label="Dispatch in the sidebar"][aria-checked="true"]'));
+      check(`${theme}: off, the tip goes too`, await tip(page).count() === 0);
+      await openHome(page); await openChat(page, billing.title, billing.prompt); await page.waitForTimeout(800);
+      check(`${theme}: off, the sidebar has no Dispatch row`, await sideRow(page).count() === 0);
+      await openHome(page); await page.getByRole("button", { name: /^Dispatch \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor();
+      check(`${theme}: off, Home's + Dispatch still opens Dispatch`, true);
+      await page.keyboard.press("Escape");
+    });
+    await shoot(`new-row-on-${theme}`, DESKTOP, theme, async page => {
+      await openSettingsAt(page, "new", DESKTOP);
+      await rowSwitch(page).click();
+      await page.waitForFunction(() => !!document.querySelector('[role="switch"][aria-label="Dispatch in the sidebar"][aria-checked="true"]'));
+      await openHome(page); await openChat(page, billing.title, billing.prompt); await sideRow(page).first().waitFor();
+      check(`${theme}: on again, one Dispatch row`, await sideRow(page).count() === 1);
+    });
   }
   await fs.writeFile(join(out, "new.json"), JSON.stringify({ checks }, null, 2));
 }
@@ -4336,10 +4388,10 @@ async function compassSuggestShots({ shoot, call, home, seeded }) {
     await head.evaluate(e => e.scrollIntoView({ block: "start" }));
   });
   // New: My issues with OPS-12 moved up with its reason, ACME-177 and ACME-40 joining with the compass glyph.
-  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  const dialog = page => page.locator('[role="dialog"][aria-label="Dispatch"]').filter({ visible: true }).first();
   await each("new", async (page, phone) => {
     await openHome(page);
-    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await page.getByRole("button", { name: /^Dispatch( \(.+\))?$/ }).filter({ visible: true }).last().click();
     await dialog(page).waitFor();
     await dialog(page).getByText("Dana: before the audit").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
     // Desktop: select OPS-12 (an issue the fake Linear has) so the preview shows its actions and {why}.
@@ -4768,8 +4820,8 @@ async function attachImagesShots({ shoot, call }) {
     const name = state => `ai-${state}-${device}-${theme}`;
     await shoot(name("new"), vp, theme, async page => {
       await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
-      await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
-      const dialog = visible(page.locator('[role="dialog"][aria-label="New"]'));
+      await page.getByRole("button", { name: /^Dispatch( \(.+\))?$/ }).filter({ visible: true }).last().click();
+      const dialog = visible(page.locator('[role="dialog"][aria-label="Dispatch"]'));
       await dialog.waitFor();
       check(`${device} ${theme}: New's task field has Add image`, await dialog.getByRole("button", { name: "Add image" }).filter({ visible: true }).count() === 1);
       await page.waitForTimeout(400); await noOverflow(page, name("new"));
@@ -4855,14 +4907,14 @@ async function pasteImagesShots({ shoot, call }) {
 
   // The Overseer, started on the fixture provider: its pane's reply box.
   await call("follow.overseer-start", {});
-  const NEW_FIELD = "Paste a link or describe the task";
+  const NEW_FIELD = "Task";
   for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
     const phone = vp.width < 768;
     const name = state => `pi-${state}-${device}-${theme}`;
     await shoot(name("new"), vp, theme, async page => {
       await openHome(page); if (phone) { await page.setViewportSize(vp); await page.waitForTimeout(300); }
-      await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
-      const dialog = visible(page.locator('[role="dialog"][aria-label="New"]'));
+      await page.getByRole("button", { name: /^Dispatch( \(.+\))?$/ }).filter({ visible: true }).last().click();
+      const dialog = visible(page.locator('[role="dialog"][aria-label="Dispatch"]'));
       await dialog.waitFor();
       const field = visible(dialog.getByRole("textbox", { name: NEW_FIELD }));
       await field.fill("The revenue chart overlaps its legend at narrow widths. Screenshots attached.");

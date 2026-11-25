@@ -7,12 +7,12 @@ queue every workday morning, keeps a snapshot, and says what changed since the d
 Low → High since Friday").
 
 Files: `shared/linear-queue.ts` (pure: the snapshot's schema, the clock, the diff and "since"), `server/linear-queue.ts`
-(`LinearQueue`: the sweep, the store, the views), on top of New's Linear reader (`server/linear-issues.ts`,
+(`LinearQueue`: the sweep, the store, the views), on top of Dispatch's Linear reader (`server/linear-issues.ts`,
 `shared/linear-issues.ts`; one reader, never a second one). Data: `linear-queue.json` ([data-files.md](data-files.md)).
 
 Phases 1 and 2 of the brief's upgrade are here: the queue, and [Settings → Morning brief](#settings) with the weekly
 plan's link. The brief's "Since" block, the queue screen and the Needs-you item for an issue raised with no workspace
-build on New's dialog and actions; every source the proxy can reach and Ask for sources Follow-up doesn't know follow.
+build on Dispatch's dialog and actions; every source the proxy can reach and Ask for sources Follow-up doesn't know follow.
 
 ## The sweep
 
@@ -21,7 +21,7 @@ build on New's dialog and actions; every source the proxy can reach and Ask for 
   cursor until Linear says there is no next page. Pages stay at 25 because mcpproxy cuts replies near 20 k characters.
   A queue of 150 costs about 7 reads. **By creation time, never update time:** an issue updated while the sweep walks
   (raised mid-sweep, the very event the brief is for) would jump to a page already read and be missed. Creation order
-  doesn't move. (New's list keeps `updatedAt`: it reads one page, not a walk.)
+  doesn't move. (Dispatch's list keeps `updatedAt`: it reads one page, not a walk.)
 - **A cut-off page** (`parseIssuePage(...).whole` false: the JSON didn't parse and only whole issues were salvaged) is
   read again with 10, then 5 issues. Still cut off, the sweep is partial: its end can't be trusted.
 - **Bounded:** at most `QUEUE.pagesMax` (40) pages across every state. Past that the sweep is partial ("1000+ issues").
@@ -100,7 +100,7 @@ elsewhere) unless Settings picks the days. The ranker's automatic runs use the s
 - **Agents:** `linear_queue` (read: the queue by priority, filtered all / no-workspace / changed, each issue's workspace
   or none and its change, the changes since, the sweep's health) and `sweep_queue` (planned). The Overseer, untracked
   root agents and main agents get them; contributors, recovery agents and subagents don't (invariant 4).
-- An issue "has a workspace" by New's one predicate (`issueWorkspaces`, `shared/issue-workspace.ts`,
+- An issue "has a workspace" by Dispatch's one predicate (`issueWorkspaces`, `shared/issue-workspace.ts`,
   a-taken-issue-is-not-a-suggestion): an unarchived workspace links it, or tracks a PR whose branch or title names its
   key. A raised issue a tracked PR names is no Needs-you item.
 
@@ -114,19 +114,19 @@ The brief pane (Home with nothing selected, `client/home.tsx` `BriefPane`) draws
   else a date), at most `SINCE_LINES` (5) lines in `changesSince`'s order. New Low and No-priority issues fold into
   one "+N new, Low" line (never on another issue's line, which read as that issue's doing), and issues that left share one line
   ("2 left your queue: ACME-120 done, ACME-131 reassigned to bob"). The rest are counted, and the Changed filter has them.
-  A line for an Urgent or High issue that is new or raised and has no workspace carries New's first two actions,
-  bordered (Catch up stays the one filled button, decision Q9), and ⋯, which opens New on the issue. An action runs
-  `follow.dispatch` for that issue, the same call New makes, and its record (with Undo) shows on Home; a source New
-  can't place alone opens New on it. A line whose issue has a workspace names it and opens it. A raised issue that is in
+  A line for an Urgent or High issue that is new or raised and has no workspace carries Dispatch's first two actions,
+  bordered (Catch up stays the one filled button, decision Q9), and ⋯, which opens Dispatch on the issue. An action runs
+  `follow.dispatch` for that issue, the same call Dispatch makes, and its record (with Undo) shows on Home; a source Dispatch
+  can't place alone opens Dispatch on it. A line whose issue has a workspace names it and opens it. A raised issue that is in
   Needs you keeps its line here without actions: the Needs-you item carries its Start…, one set of actions per issue.
   Buttons keep their whole label and wrap to a second row rather than truncate.
 - **The queue screen** (`?view=queue`, from "47 issues by priority ›"): every issue by Linear priority (Urgent, High,
   Medium, Low, No priority), with All / No workspace / Changed (decision Q10) and each count. A row is the key, title,
   then one quiet line: state, due, and who opened it and when ("Todo · due Wed · opened by Dana · 12 days ago",
-  `openedLine`), the change since (`changeChip`), then the workspace (opens it) or Start…, which opens New on the
+  `openedLine`), the change since (`changeChip`), then the workspace (opens it) or Start…, which opens Dispatch on the
   issue (a quiet ghost button, so the column isn't a wall of bordered ones). Sweep now is `follow.sweep-queue` with `wait: false`: it replies at once and the screen
   reads the view every 3 s while the sweep runs, so a slow Linear never holds the RPC. On
-  phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or New on the issue.
+  phones the row itself is the 44 px+ target: it opens the workspace (named on the meta line) or Dispatch on the issue.
 - **Raised issues in Needs you** (decision Q8): an issue raised to Urgent or High that is still in the queue and has
   no workspace (`raisedNeeds`, over the log window) is a "Nobody's on it" row, first in Home's Needs you group, the same
   row kind as an urgent Compass ask (nobody-s-on-it-is-needs-you, [compass](compass.md#suggestions-issues-nobodys-on)):
@@ -199,7 +199,7 @@ shape and input schema.
 
 | Recipe | Required tools | Adds | Default |
 | --- | --- | --- | --- |
-| Linear | `list_issues`, `get_issue` (plus `get_user`, `list_teams`) | the queue (the sweep), New, the Summary, Linked | on |
+| Linear | `list_issues`, `get_issue` (plus `get_user`, `list_teams`) | the queue (the sweep), Dispatch, the Summary, Linked | on |
 | Chat | a message search taking `filters` and a query (the one that also reaches private channels and DMs, when there are several), a channel search (plus people search, read thread) | DMs and mentions over the chat window; Compass's conversation reader | on |
 | Calendar | an events list taking a time range | today's meetings (or today and tomorrow); a Compass calendar place's next two weeks | on |
 | Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |

@@ -168,6 +168,27 @@ export function utf8Length(text: string): number {
 }
 
 export type RenderValues = Partial<Record<Placeholder, string | null>>;
+/** Placeholders that carry a source's own text, which another of them may hold in full. */
+const TEXT_VALUES = ["title", "words", "body", "why"] as const;
+/** Placeholders that name the work itself on a line. */
+const NAMES_WORK = ["title", "key", "url", "words", "body"] as const;
+/** From this many characters a value is a link or a sentence, said once (a-prompt-says-each-thing-once). */
+const LONG_VALUE = 24;
+const flatText = (s: string) => s.replace(/\s+/g, " ").replace(/…$/, "").trim().toLowerCase();
+/**
+ * a-prompt-says-each-thing-once (invariant 117): a text placeholder whose value another placeholder in the same
+ * template already holds in full (typed words' title is their first sentence; a Linear description may open with its
+ * title) is said once, by the one that holds the most. Equal values keep the later one, where the full text sits.
+ */
+export function repeatedValues(used: readonly string[], value: (name: string) => string | null): Set<string> {
+  const texts = TEXT_VALUES.filter(n => used.includes(n)).map(n => ({ n, v: flatText(value(n) ?? ""), at: used.indexOf(n) })).filter(t => t.v);
+  const out = new Set<string>();
+  for (const a of texts) for (const b of texts) {
+    if (a === b || out.has(b.n) || !b.v.includes(a.v)) continue;
+    if (b.v.length > a.v.length || b.at > a.at) { out.add(a.n); break; }
+  }
+  return out;
+}
 /**
  * The agent's first message: the action's template with each placeholder filled (`{body}` clipped to BODY_MAX_BYTES),
  * plus the developer's note. An empty placeholder renders as nothing; a line whose every placeholder is empty is
@@ -175,19 +196,45 @@ export type RenderValues = Partial<Record<Placeholder, string | null>>;
  * as written (saving refuses them, `validateAction`). One function for the preview, the dry run and the dispatch.
  */
 export function renderAction(action: Pick<DispatchAction, "instructions">, values: RenderValues, note?: string | null): string {
-  const value = (name: string): string | null => {
+  const raw = (name: string): string | null => {
     if (!(PLACEHOLDERS as readonly string[]).includes(name)) return null;
     const v = values[name as Placeholder]?.trim() ?? "";
     return name === "body" ? clipBytes(v, BODY_MAX_BYTES) : v;
   };
+  const used = [...new Set([...action.instructions.matchAll(/\{([^{}\s]{1,40})\}/g)].map(m => m[1]))];
+  const repeated = repeatedValues(used, raw);
+  const value = (name: string): string | null => repeated.has(name) ? "" : raw(name);
   const lines: string[] = [];
+  // A long value (a link, a sentence) is written once: again on its line it's dropped, on a later line it reads "it".
+  // Short ones (an issue key, a branch) repeat as names do.
+  const said = new Set<string>();
+  const once = (v: string, onLine: Set<string>): string => {
+    const k = flatText(v);
+    if (k.length < LONG_VALUE) return v;
+    if (onLine.has(k)) return "";
+    if (said.has(k)) return "it";
+    onLine.add(k);
+    return v;
+  };
   for (const line of action.instructions.split("\n")) {
+    const onLine = new Set<string>();
     const names = [...line.matchAll(/\{([^{}\s]{1,40})\}/g)].map(m => m[1]);
-    const rendered = line.replace(/\{([^{}\s]{1,40})\}/g, (whole, name: string) => value(name) ?? whole);
+    const known = names.filter(n => (PLACEHOLDERS as readonly string[]).includes(n));
+    // A line about text said in full further down (a-prompt-says-each-thing-once) and nothing else points at it
+    // instead: `Work on “{title}”` for typed words becomes "Work on the task below".
+    // A key or a link on the line already names the work; only without one does the line need the pointer.
+    const pointer = known.some(n => repeated.has(n)) && known.every(n => repeated.has(n) || !(NAMES_WORK as readonly string[]).includes(n) || !raw(n));
+    const rendered = line.replace(/(“|")?\{([^{}\s]{1,40})\}(”|")?/g, (whole, open: string | undefined, name: string, close: string | undefined) => {
+      if (pointer && repeated.has(name)) return "the task below";
+      const v = value(name);
+      if (v === null) return whole;
+      const w = v ? once(v, onLine) : v;
+      return w === "it" ? "it" : `${open ?? ""}${w}${close ?? ""}`;
+    });
+    for (const k of onLine) said.add(k);
     // A line whose every placeholder is empty is about a value this source doesn't have: "Read {key} yourself…"
     // goes for typed words, which have no key.
-    const known = names.filter(n => (PLACEHOLDERS as readonly string[]).includes(n));
-    if (names.length > 0 && known.length === names.length && known.every(n => !value(n))) continue;
+    if (!pointer && names.length > 0 && known.length === names.length && known.every(n => !value(n))) continue;
     lines.push(rendered.replace(/\(\s*\)|“\s*”|"\s*"/g, "").replace(/[ \t]{2,}/g, " ").replace(/ +([.,;:])/g, "$1").trimEnd());
   }
   let text = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -268,7 +315,15 @@ export function titleFor(source: Pick<DispatchSource, "kind" | "key" | "title" |
 }
 /** Lower-case words joined by dashes, at most BRANCH_MAX characters. */
 export function slugify(text: string, max = BRANCH_MAX): string {
-  return text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "");
+  return cutAtWord(text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), max);
+}
+/** A dash-joined name cut to `max` on a word boundary (a single word longer than half of `max` is cut where it must). */
+export function cutAtWord(slug: string, max: number): string {
+  if (slug.length <= max) return slug;
+  const cut = slug.slice(0, max);
+  if (slug[max] === "-") return cut.replace(/-+$/, "");
+  const at = cut.lastIndexOf("-");
+  return (at > max / 2 ? cut.slice(0, at) : cut).replace(/-+$/, "");
 }
 /**
  * The branch: Linear's own branch name when the action allows it and Linear gave one, else `<key>-<title slug>`;
@@ -284,7 +339,7 @@ export function branchFor(source: Pick<DispatchSource, "kind" | "key" | "title" 
 export function freeBranch(name: string, taken: Iterable<string>): string {
   const used = new Set([...taken].map(t => t.toLowerCase()));
   if (!used.has(name.toLowerCase())) return name;
-  for (let n = 2; n < 1000; n++) { const next = `${name.slice(0, BRANCH_MAX - String(n).length - 1)}-${n}`; if (!used.has(next.toLowerCase())) return next; }
+  for (let n = 2; n < 1000; n++) { const next = `${cutAtWord(name, BRANCH_MAX - String(n).length - 1)}-${n}`; if (!used.has(next.toLowerCase())) return next; }
   return `${name.slice(0, BRANCH_MAX - 9)}-${Date.now().toString(36).slice(-8)}`;
 }
 

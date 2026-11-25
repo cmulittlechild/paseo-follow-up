@@ -1,5 +1,5 @@
 import { PriorityLine } from "./home-chrome";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, View, useWindowDimensions, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
@@ -21,6 +21,7 @@ import { Spinner } from "./motion";
 import { pushToast } from "./toast-store";
 import { tint, withAlpha, type Colors, type Theme } from "./theme";
 import { createHostSlot } from "./host-slot";
+import { NEW_NAME, NEW_OF, NEW_WORK } from "../shared/new-name";
 
 /**
  * New (docs/dispatch.md): start work from a Linear issue, a GitHub issue or PR, a link or a sentence. One dialog over
@@ -125,7 +126,7 @@ function SourceCard({ plan, c, compact, images = 0 }: { plan: DispatchPlan; c: C
 
 function agentText(plan: DispatchPlan): string {
   const p = plan.agentPick.picked;
-  return p?.mode ? `${plan.agent} · ${p.mode}` : plan.agent || "New's default agent";
+  return p?.mode ? `${plan.agent} · ${p.mode}` : plan.agent || `${NEW_OF} default agent`;
 }
 
 function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loadCatalog, projects, loadProjects, saveBase, instructions, setInstructions, reopen, img }: {
@@ -161,7 +162,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         {plan.where.candidates.length > CHOICES_SHOWN && <Chip c={c} compact={compact} label="Other…" open={open === "project"} accessibilityLabel="Another project" onPress={() => { loadProjects(); toggle("project"); }} />}
       </View>
     </View>
-      : <Field c={c} compact={compact} label="Project" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → New work` : plan.where.reason}</Text>}>
+      : <Field c={c} compact={compact} label="Project" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
         <Chip c={c} compact={compact} icon="Folder" label={plan.where.projectName ?? "Pick"} dashed={plan.where.guess} open={open === "project"} accessibilityLabel={`Project: ${plan.where.projectName}. Change`} onPress={() => { loadProjects(); toggle("project"); }} />
       </Field>}
     {open === "project" && <Choices c={c} compact={compact} items={candidates} onPick={id => { set({ projectId: id }); setOpen(null); }} />}
@@ -268,7 +269,6 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   if (row.kind === "search") return <Pressable accessibilityRole="button" accessibilityLabel={`Search all of Linear for ${row.query}`} onPress={onPress} style={base}>
     <Icon name="Search" size={15} color={c.foregroundMuted} />
     <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 14 : 13, flex: 1 }}>Search all of Linear for “{row.query}”</Text>
-    {!compact && <Kbd c={c} label="⇧↵" />}
   </Pressable>;
   if (row.kind === "words") return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Start from your words: ${row.title}`} onPress={onPress} style={base}>
     <Icon name="Type" size={15} color={c.foregroundMuted} />
@@ -313,30 +313,59 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   </Pressable>;
 }
 
-function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty, img }: {
+/** Task field heights: a real task fits, and it grows with what's written up to `max`, then scrolls. */
+/** What the field takes, under it while empty; the phone's fits one line at 390. */
+const FIELD_HINT = { desktop: "A Linear key or link, a GitHub issue or PR, any link, or a sentence", phone: "A Linear key, an issue or PR, a link or a sentence" };
+const FIELD_LINES = { desktop: { min: 96, max: 176 }, phone: { min: 88, max: 160 } };
+/**
+ * The task field, Dispatch's main element (2026-11-25, the developer: "the main text area … should be bigger … centered
+ * at the top"): multi-line, wide, growing with the words. Desktop: across the top of the dialog, centred, above the
+ * list and the preview. Phones: the top of the list screen. Enter still starts the selected action on desktop (the
+ * dialog's key listener); pasted text keeps its lines.
+ */
+function TaskField({ query, setQuery, img, c, compact }: { query: string; setQuery: (q: string) => void; img: ImageAttachments; c: Colors; compact: boolean }) {
+  // The field opens focused (desktop) and says so: an accent border while it has focus.
+  const [focused, setFocused] = useState(false);
+  const size = compact ? FIELD_LINES.phone : FIELD_LINES.desktop;
+  const [height, setHeight] = useState(size.min);
+  const fit = (h: number) => setHeight(Math.max(size.min, Math.min(size.max, Math.ceil(h))));
+  // Web: react-native-web reports no content size for a textarea, so measure it after each change (shrink to fit, read
+  // its scroll height). Native: onContentSizeChange below.
+  const input = useRef<unknown>(null);
+  useLayoutEffect(() => {
+    const el = input.current as { style?: { height: string }; scrollHeight?: number } | null;
+    if (Platform.OS !== "web" || !el?.style || el.scrollHeight === undefined) return;
+    const was = el.style.height; el.style.height = "0px"; const h = el.scrollHeight; el.style.height = was;
+    fit(h);
+  }, [query, compact]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
+    <View style={{ borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 10, padding: focused ? 0 : 1, backgroundColor: c.surface0 }}>
+      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Describe the task, or paste a link" placeholderTextColor={c.foregroundMuted}
+        accessibilityLabel="Task" accessibilityHint={FIELD_HINT.desktop} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        onContentSizeChange={e => { if (Platform.OS !== "web") fit(e.nativeEvent.contentSize.height + 16); }}
+        style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? (compact ? "" : "⇧↵ new line") : FIELD_HINT[compact ? "phone" : "desktop"]}</Text>
+        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
+        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
+        <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
+        {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
+      </View>
+    </View>
+  </ImageField>;
+}
+
+function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty, img, field = true }: {
+  /** False on desktop, where the task field sits across the top of the dialog instead. */
+  field?: boolean;
   /** The dialog's pasted images: a paste or drop on the task field adds them; their thumbnails show under it. */
   img: ImageAttachments;
   sources: DispatchSources | null; rows: NewRow[]; selected: string | null; query: string; setQuery: (q: string) => void; onRow: (row: NewRow) => void; onRefresh: () => void; empty: string | null;
   c: Colors; compact: boolean; error: string | null; searching: string | null; chevrons: boolean;
 }) {
   const status = sources?.linear.status;
-  // The field opens focused (desktop) and says so: an accent border while it has focus.
-  const [focused, setFocused] = useState(false);
   return <View style={{ flex: 1, minHeight: 0 }}>
-    <View style={{ paddingHorizontal: compact ? 16 : 16, paddingTop: compact ? 12 : 16, paddingBottom: 8 }}>
-      <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 8, paddingLeft: focused ? 9 : 10, paddingRight: focused ? 3 : 4, minHeight: compact ? 48 : 40, backgroundColor: c.surface0 }}>
-        <Icon name="Clipboard" size={16} color={c.foregroundMuted} />
-        <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
-          accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          style={{ flex: 1, color: c.foreground, fontSize: compact ? 16 : 14, paddingVertical: 8, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
-        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
-        <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
-        {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
-      </View>
-      </ImageField>
-    </View>
+    {field && <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={compact} /></View>}
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
       <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? "Start from" : "My issues"}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>{searching ? `· “${searching}”` : status === "missing" ? "· a link or your words" : compact ? "· Linear" : "· Linear · in progress and todo"}</Text>
@@ -359,7 +388,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
         {rows.map((row, i) => <View key={row.id} style={compact && i ? { borderTopWidth: 1, borderTopColor: c.border, marginHorizontal: 16 } : undefined}>
           <View style={compact && i ? { marginHorizontal: -16 } : undefined}><ListRow row={row} selected={row.id === selected} c={c} compact={compact} chevron={chevrons} onPress={() => onRow(row)} /></View>
         </View>)}
-        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>No issues in progress or todo. Paste a link or describe the task.</Text>}
+        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>No issues in progress or todo. Describe the task, or paste a link.</Text>}
         {!!sources?.recent.length && !query && <View style={{ paddingHorizontal: compact ? 16 : 8, paddingTop: 14, gap: 4 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>Started from here</Text>
           {sources.recent.map(r => <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{r.title} · {r.actionName} · {r.state === "created" ? "started" : r.state}</Text>)}
@@ -375,7 +404,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
 function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; rows: NewRow[]; c: Colors }) {
   return <View style={{ padding: 24, gap: 10 }}>
     <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>{row.title}</Text>
-    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so New doesn't suggest them. Pick one to open its workspace.</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so {NEW_NAME} doesn't suggest them. Pick one to open its workspace.</Text>
     {row.open && <View style={{ gap: 4 }}>{rows.filter((r): r is Extract<NewRow, { kind: "issue" }> => r.kind === "issue" && r.taken).map(r =>
       <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}><Text style={{ color: c.foreground }}>{r.key}</Text>  {r.route.text}</Text>)}</View>}
     {Platform.OS === "web" && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Kbd c={c} label="↵" /><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{row.open ? "hides them" : "shows them"}</Text></View>}
@@ -387,6 +416,17 @@ function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; r
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; repeat: boolean; isComposing?: boolean; target: unknown; preventDefault(): void; stopPropagation(): void };
 type Phase = { kind: "edit" } | { kind: "sending" } | { kind: "record"; id: string };
 
+type Shown = { source: string; rowId: string | null; plan: DispatchPlan } | null;
+/** The preview for the selected row: its own, or while its words change, the last one it had. */
+export function steadyPlan(shown: Shown, source: string | null, rowId: string | null): DispatchPlan | null {
+  if (!source || !shown) return null;
+  return shown.source === source || (rowId !== null && shown.rowId === rowId) ? shown.plan : null;
+}
+/** A preview answer that says what's already on screen keeps the old object, so nothing below it re-renders. */
+export function samePlan(prev: Shown, source: string, rowId: string | null, plan: DispatchPlan): Shown {
+  if (prev && prev.rowId === rowId && JSON.stringify(prev.plan) === JSON.stringify(plan)) return prev.source === source ? prev : { ...prev, source };
+  return { source, rowId, plan };
+}
 export function NewDialog({ request, theme, layout, navigation, onClose, openSettings }: { request: NewRequest; theme: Theme; layout: PluginHostProps["layout"]; navigation?: { openWorkspace(i: { workspaceId: string }): void }; onClose: () => void; openSettings?: () => void }) {
   const c = theme.colors; const compact = layout.compact;
   // The callers, kept in a ref: effects below must not re-run (and re-read) because a host hands out new functions.
@@ -407,7 +447,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const [searched, setSearched] = useState<{ query: string; sources: DispatchSources } | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Overrides>({});
-  const [planFor, setPlanFor] = useState<{ source: string; plan: DispatchPlan } | null>(null);
+  const [planFor, setPlanFor] = useState<{ source: string; rowId: string | null; plan: DispatchPlan } | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "edit" });
   const [record, setRecord] = useState<DispatchRecord | null>(null);
@@ -435,8 +475,10 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const selected = picked && rows.some(r => r.id === picked) ? picked : preselected;
   const row = rows.find(r => r.id === selected) ?? null;
   const source = rowSource(row);
-  // A new source starts from its own defaults: the overrides belonged to the last one.
-  useEffect(() => { setOverrides({}); setMore(false); setReopen(null); }, [source]);
+  // A new row starts from its own defaults: the overrides belonged to the last one. Typing more words is the same row
+  // (the preview stays steady), so a picked project, agent or note survives the next keystroke.
+  const rowId = row?.id ?? null;
+  useEffect(() => { setOverrides({}); setMore(false); setReopen(null); }, [rowId]);
   useEffect(() => { setPicked(null); }, [query]);
 
   // One preview per selection or change, the newest winning.
@@ -445,14 +487,15 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     if (!source) return;
     const n = ++seq.current;
     const t = setTimeout(() => {
-      readPreview({ source, ...overrides, note: overrides.note || undefined }).then(p => { if (n === seq.current) { setPlanFor({ source, plan: p as DispatchPlan }); setPlanError(null); } })
+      readPreview({ source, ...overrides, note: overrides.note || undefined }).then(p => { if (n === seq.current) { setPlanFor(prev => samePlan(prev, source, rowId, p as DispatchPlan)); setPlanError(null); } })
         .catch(e => { if (n === seq.current) setPlanError(errorText(e)); });
-    }, planFor?.source === source ? 120 : 0);
+    }, planFor?.source === source || planFor?.rowId === rowId ? 150 : 0);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, JSON.stringify(overrides)]);
-  // The preview on screen is always the selected source's: another row's shows nothing until its own arrives.
-  const planNow = source && planFor?.source === source ? planFor.plan : null;
+  // The preview on screen is the selected row's: another row's shows nothing until its own arrives, and the same row
+  // keeps its last preview while the next one loads (typing never blanks it, preview-stays-while-typing).
+  const planNow = steadyPlan(planFor, source, rowId);
   // Pasted images (every-agent-field-takes-images), one model for the task field and the note: they go with the new
   // agent's first message. Who takes them is the agent this dispatch starts (the Agent chip, else the action's).
   const imageProvider = overrides.agent?.provider ?? planNow?.agentPick.picked?.provider ?? null;
@@ -511,7 +554,8 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       const t = e.target as { tagName?: string; id?: string } | null;
       const tag = (t?.tagName ?? "").toUpperCase();
       const editing = (tag === "TEXTAREA" || tag === "INPUT") && t?.id !== "follow-up-new-field";
-      const k = newKey(e, isMac(), { editing, created: !!live.current.created });
+      const field = t?.id === "follow-up-new-field" ? t as { value?: string } : null;
+      const k = newKey(e, isMac(), { editing, created: !!live.current.created, lines: !!field?.value?.includes("\n") });
       if (!k) return;
       const s = live.current;
       if (k === "close") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
@@ -521,7 +565,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       e.preventDefault(); e.stopPropagation();
       if (k === "down" || k === "up") setPicked(moveSelection(s.rows, s.selected, k === "down" ? 1 : -1));
       else if (k === "instructions") setInstructions(v => !v);
-      else if (k === "search" || (k === "primary" && s.row?.kind === "search")) search();
+      else if (k === "primary" && s.row?.kind === "search") search();
       else if (k === "primary" && s.row?.kind === "fold") setFoldOpen(v => !v);
       else if (k === "primary") { if (s.bar.kind === "existing") openWorkspace(s.bar.workspaceId); else if (s.bar.primary && !s.bar.disabled) void start(s.bar.primary.id); }
       else if (k === "second" && s.bar.kind === "actions" && s.bar.second && !s.bar.disabled) void start(s.bar.second.id);
@@ -547,8 +591,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
     : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
-      <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>Paste a link or describe the task</Text>
-      <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>A Linear key or link, a GitHub issue or pull request, any link, or a sentence. The preview shows here before anything starts.</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Pick an issue or write the task above. What will start shows here first: the project, branch, agent and the agent's first message.</Text>
     </View>;
   const recordBar = phase.kind === "record" && record ? <View style={{ flexDirection: compact ? "column" : "row", gap: 8, alignItems: compact ? "stretch" : "center" }}>
     {created && record.workspaceId && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: "Open workspace", icon: "ExternalLink", key: isMac() ? "⌘↵" : "Ctrl ↵" }} onPress={() => openWorkspace(record.workspaceId!)} />}
@@ -570,9 +613,9 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         {onPreview && phase.kind === "edit" && <Pressable accessibilityRole="button" accessibilityLabel="Back to the list" onPress={() => setScreen("list")} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
           <Icon name="ChevronLeft" size={22} color={c.foreground} />
         </Pressable>}
-        <Text accessibilityRole="header" numberOfLines={1} style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{onPreview && planNow?.source.key ? planNow.source.key : "New"}</Text>
-        {openSettings && <Pressable accessibilityRole="button" accessibilityLabel="New's actions in Settings" onPress={openSettings} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="Settings" size={20} color={c.foreground} /></Pressable>}
-        <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{onPreview && planNow?.source.key ? planNow.source.key : NEW_NAME}</Text>
+        {openSettings && <Pressable accessibilityRole="button" accessibilityLabel={`${NEW_OF} actions in Settings`} onPress={openSettings} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="Settings" size={20} color={c.foreground} /></Pressable>}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Close ${NEW_NAME}`} onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
       </View>
       {onPreview ? <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
         : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons empty={empty} img={img} />}
@@ -591,17 +634,20 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
 
   return <View style={{ flex: 1, minHeight: 0 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 20, paddingRight: 10, height: 52, borderBottomWidth: 1, borderBottomColor: c.border }}>
-      <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>New</Text>
-      {openSettings && <Pressable accessibilityRole="button" accessibilityLabel="New's actions in Settings" onPress={openSettings} style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 32, borderRadius: 6, backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
+      <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{NEW_NAME}</Text>
+      {openSettings && <Pressable accessibilityRole="button" accessibilityLabel={`${NEW_OF} actions in Settings`} onPress={openSettings} style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 32, borderRadius: 6, backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
         <Icon name="Settings" size={15} color={c.foregroundMuted} /><Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Actions</Text>
       </Pressable>}
-      <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={(s: Hover) => ({ width: 32, height: 32, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Close ${NEW_NAME}`} onPress={onClose} style={(s: Hover) => ({ width: 32, height: 32, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
         <Icon name="X" size={17} color={c.foregroundMuted} />
       </Pressable>
     </View>
+    <View style={{ alignItems: "center", paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
+      <View style={{ width: "100%", maxWidth: 760 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={false} /></View>
+    </View>
     <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
-      <View style={{ width: 400, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} img={img} />
+      <View style={{ width: 360, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
+        <SourcesPane field={false} sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} img={img} />
       </View>
       <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
     </View>
@@ -625,9 +671,9 @@ export function NewHost({ theme, layout, navigation, openSettings }: { theme: Th
   if (!request) return anchor;
   const c = theme.colors;
   const dialog = <NewDialog key={request.token} request={request} theme={theme} layout={layout} navigation={navigation} onClose={closeNew} openSettings={openSettings && (() => { closeNew(); openSettings(); })} />;
-  if (layout.compact) return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View></>;
+  if (layout.compact) return <>{anchor}<View role="dialog" aria-modal aria-label={NEW_NAME} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View></>;
   const width = Math.min(1060, win.width - 64), height = Math.min(796, win.height - 64);
-  return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
+  return <>{anchor}<View role="dialog" aria-modal aria-label={NEW_NAME} style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
     <Pressable accessible={false} focusable={false} importantForAccessibility="no" onPress={closeNew} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.42)" }} />
     <View style={{ width, height, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface0, borderWidth: 1, borderColor: c.border, boxShadow: "0px 24px 64px rgba(0,0,0,0.28)" } as ViewStyle}>{dialog}</View>
   </View></>;

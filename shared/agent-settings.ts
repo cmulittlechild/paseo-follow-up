@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { waitStatusSchema } from "./wait";
+import { NEW_NAME, NEW_WORK } from "./new-name";
 
 /**
  * Which agent each of Follow-up's special roles uses (Settings → Agents), kept in `agents.json` next to state.json.
@@ -90,7 +91,7 @@ export const ROLE_INFO: Record<AgentRole, { title: string; does: string }> = {
   overseer: { title: "Overseer", does: "One agent you ask about all your workspaces, from Home's search. Starts only when you click Start on Home." },
   recovery: { title: "Recovery", does: "Rebuilds a workspace's tracking when Follow-up lost track of it. Runs only when you ask." },
   ranker: { title: "AI priority", does: "Sorts Home by what matters most, from the sources you connect (Linear, Slack, GitHub review requests). About hourly on workdays." },
-  dispatch: { title: "New work", does: "Starts the work you begin from New, unless an action picks its own agent." },
+  dispatch: { title: NEW_WORK, does: `Starts the work you begin from ${NEW_NAME}, unless an action picks its own agent.` },
 };
 
 /** Reads the file leniently: anything unreadable becomes empty, each role and field is checked on its own. */
