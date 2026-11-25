@@ -141,6 +141,11 @@ screen, never a hidden one; Report an issue and Rename title with AI use the sam
 `new-reads-nothing-while-closed`: closed, Dispatch makes no request (no feed, no timer). Open, it reads the list once, a
 preview per selection, and one record a second only while a dispatch is starting.
 
+The task field is the dialog's main element (`TaskField`): multi-line, growing with the words (96 to 176 px on
+desktop, 88 to 160 on a phone, then it scrolls). On desktop it sits across the top, centred and at most 760 px wide,
+above the list (360 px) and the preview; on a phone it tops the list screen. Enter still starts the selected action on
+desktop; pasted text keeps its lines.
+
 The preview belongs to the selected row, not to its text (`steadyPlan`, `samePlan` in `client/new.tsx`): while the
 words change, the row keeps its last preview on screen until the next one arrives (asked 150 ms after the last
 keystroke), an answer that says the same thing changes nothing on screen, and a picked project, agent or note stays.

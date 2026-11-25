@@ -314,30 +314,47 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   </Pressable>;
 }
 
-function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty, img }: {
+/** Task field heights: a real task fits, and it grows with what's written up to `max`, then scrolls. */
+const FIELD_LINES = { desktop: { min: 96, max: 176 }, phone: { min: 88, max: 160 } };
+/**
+ * The task field, Dispatch's main element (2026-11-25, the developer: "the main text area … should be bigger … centered
+ * at the top"): multi-line, wide, growing with the words. Desktop: across the top of the dialog, centred, above the
+ * list and the preview. Phones: the top of the list screen. Enter still starts the selected action on desktop (the
+ * dialog's key listener); pasted text keeps its lines.
+ */
+function TaskField({ query, setQuery, img, c, compact }: { query: string; setQuery: (q: string) => void; img: ImageAttachments; c: Colors; compact: boolean }) {
+  // The field opens focused (desktop) and says so: an accent border while it has focus.
+  const [focused, setFocused] = useState(false);
+  const size = compact ? FIELD_LINES.phone : FIELD_LINES.desktop;
+  const [height, setHeight] = useState(size.min);
+  return <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
+    <View style={{ borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 10, padding: focused ? 0 : 1, backgroundColor: c.surface0 }}>
+      <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
+        accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        onContentSizeChange={e => setHeight(Math.max(size.min, Math.min(size.max, Math.ceil(e.nativeEvent.contentSize.height))))}
+        style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: compact ? 22 : 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? "" : "A Linear key or link, a GitHub issue or PR, any link, or a sentence"}</Text>
+        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
+        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
+        <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
+        {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
+      </View>
+    </View>
+  </ImageField>;
+}
+
+function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefresh, c, compact, error, searching, chevrons, empty, img, field = true }: {
+  /** False on desktop, where the task field sits across the top of the dialog instead. */
+  field?: boolean;
   /** The dialog's pasted images: a paste or drop on the task field adds them; their thumbnails show under it. */
   img: ImageAttachments;
   sources: DispatchSources | null; rows: NewRow[]; selected: string | null; query: string; setQuery: (q: string) => void; onRow: (row: NewRow) => void; onRefresh: () => void; empty: string | null;
   c: Colors; compact: boolean; error: string | null; searching: string | null; chevrons: boolean;
 }) {
   const status = sources?.linear.status;
-  // The field opens focused (desktop) and says so: an accent border while it has focus.
-  const [focused, setFocused] = useState(false);
   return <View style={{ flex: 1, minHeight: 0 }}>
-    <View style={{ paddingHorizontal: compact ? 16 : 16, paddingTop: compact ? 12 : 16, paddingBottom: 8 }}>
-      <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 8, paddingLeft: focused ? 9 : 10, paddingRight: focused ? 3 : 4, minHeight: compact ? 48 : 40, backgroundColor: c.surface0 }}>
-        <Icon name="Clipboard" size={16} color={c.foregroundMuted} />
-        <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
-          accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          style={{ flex: 1, color: c.foreground, fontSize: compact ? 16 : 14, paddingVertical: 8, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : {}) }} />
-        {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
-        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
-        <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
-        {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
-      </View>
-      </ImageField>
-    </View>
+    {field && <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={compact} /></View>}
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
       <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? "Start from" : "My issues"}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>{searching ? `· “${searching}”` : status === "missing" ? "· a link or your words" : compact ? "· Linear" : "· Linear · in progress and todo"}</Text>
@@ -562,8 +579,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
     : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
-      <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>Paste a link or describe the task</Text>
-      <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>A Linear key or link, a GitHub issue or pull request, any link, or a sentence. The preview shows here before anything starts.</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Pick an issue or write the task above. What will start shows here first: the project, branch, agent and the agent's first message.</Text>
     </View>;
   const recordBar = phase.kind === "record" && record ? <View style={{ flexDirection: compact ? "column" : "row", gap: 8, alignItems: compact ? "stretch" : "center" }}>
     {created && record.workspaceId && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: "Open workspace", icon: "ExternalLink", key: isMac() ? "⌘↵" : "Ctrl ↵" }} onPress={() => openWorkspace(record.workspaceId!)} />}
@@ -614,9 +630,12 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         <Icon name="X" size={17} color={c.foregroundMuted} />
       </Pressable>
     </View>
+    <View style={{ alignItems: "center", paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
+      <View style={{ width: "100%", maxWidth: 760 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={false} /></View>
+    </View>
     <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
-      <View style={{ width: 400, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
-        <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} img={img} />
+      <View style={{ width: 360, borderRightWidth: 1, borderRightColor: c.border, opacity: busy ? 0.55 : 1 }} pointerEvents={busy ? "none" : "auto"}>
+        <SourcesPane field={false} sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact={false} error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons={false} empty={empty} img={img} />
       </View>
       <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
     </View>
