@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ROLE_INFO, guardedProvider, needsGuard, providerName, type AgentRole } from "./agent-settings";
+import { ROLE_INFO, guardedProvider, needsGuard, providerName, providerSettling as unsettled, type AgentRole } from "./agent-settings";
 import { GITHUB_ADDS, GITHUB_CLI_URL, GITHUB_LOGIN_COMMAND } from "./github-setup";
 
 /**
@@ -255,9 +255,6 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
   if (!ready.length) rows.unshift({ id: "providers", label: "Agents", state: "warn", detail: "Paseo has no agent provider set up yet, so there are no agents to follow and the helper agents can't run.", fix: fix("Set one up in Paseo's settings (Claude Code, Codex or any other provider Paseo runs), then check again.") });
   return rows;
 }
-/** Paseo's reasons for a provider that isn't there at all; any other reason means it's there and hasn't answered. */
-const ABSENT = /not installed|turned off|disabled|not found|doesn't have/i;
-const unsettled = (p: ProviderInfo) => !p.available && (p.reason === "Still loading" || (!!p.reason && !ABSENT.test(p.reason)));
 const GUARDED_TITLES = (Object.keys(ROLE_INFO) as AgentRole[]).filter(needsGuard).map(r => ROLE_INFO[r].title);
 const rank = (id: string) => { const i = KNOWN_PROVIDERS.indexOf(id); return i < 0 ? KNOWN_PROVIDERS.length : i; };
 

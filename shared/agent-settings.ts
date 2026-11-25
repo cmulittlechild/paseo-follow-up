@@ -169,6 +169,13 @@ export function roleSummary(c: RoleConfig, labels?: { provider?: string | null; 
 export type CatalogModel = { id: string; label: string; isDefault: boolean; description?: string; thinking: { id: string; label: string; isDefault: boolean }[] };
 export type CatalogProvider = { id: string; label: string; available: boolean; reason: string | null; models: CatalogModel[]; modes: { id: string; label: string }[]; defaultMode: string | null; acp?: boolean };
 export type Catalog = { providers: CatalogProvider[]; error: string | null; fetchedAt: string | null };
+/** Paseo's reasons for a provider that isn't there at all; any other reason means it's there and hasn't answered yet. */
+const ABSENT = /not installed|turned off|disabled|not found|doesn't have/i;
+/**
+ * A provider Paseo hasn't settled on: still loading, or installed but not answering yet (a slow start, a timeout).
+ * Unknown is not off, so nothing says it's missing while it settles (setup's checks and its Helper agents step alike).
+ */
+export const providerSettling = (p: { available: boolean; reason: string | null }) => !p.available && (p.reason === "Still loading" || (!!p.reason && !ABSENT.test(p.reason)));
 
 export const roleConfigSchema = z.object({
   role: z.enum(AGENT_ROLES), provider: z.string(), model: z.string().nullable(), thinking: z.string().nullable(), mode: z.string().nullable(), same: z.boolean(),

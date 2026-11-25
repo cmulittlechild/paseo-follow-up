@@ -133,3 +133,11 @@ test("a provider Paseo is still loading: no row says it can't run, and the heade
   assert.ok(rows.every(r => !r.notice && !r.blocked), JSON.stringify(rows.map(r => [r.role, r.notice, r.blocked])));
   assert.deepEqual(jobsHeader(rows, cat, false), { text: "Paseo is still checking your providers…", tone: "muted", action: null, differ: 0 });
 });
+
+test("a provider Paseo lists but hasn't reached yet (a timeout) is unknown too: the header offers to check again", () => {
+  const cat = catalog({ ...p("codex", [], false), reason: "Timed out initializing Codex app-server" }, p("claude", [], false));
+  const rows = SETUP_ORDER.map(role => jobRow(view(role), cat));
+  assert.ok(rows.every(r => !r.notice && !r.blocked), JSON.stringify(rows.map(r => [r.role, r.notice, r.blocked])));
+  const header = jobsHeader(rows, cat, false);
+  assert.equal(header.action, "check"); assert.match(header.text, /^Paseo hasn't reached Codex yet/);
+});
