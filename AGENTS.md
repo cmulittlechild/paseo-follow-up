@@ -1047,7 +1047,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Compass) goes
    through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
    `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
-   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
+   even if the list has it. Each call carries only the inputs that tool's schema takes. Two reads don't go through
+   mcpproxy and are reads too: a local file a Compass source names (decision R2: Markdown or text, at most 64 KB, opened
+   in process only when its modified time or size moved, its path never in a log or an error), and a Compass GitHub
+   tracker place's issues (one in-process REST GET, `server/github-api.ts`). Discovery is one call, made
    when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
    the morning run (the-brief-has-one-timer); never on its own timer. **Discovery heals itself**
    (`discovery-heals-itself`): a reader whose recipe no server has asks again first, at most once per
@@ -1232,19 +1235,30 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
    only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`
    (the chat tool's own ids, never a name in code). It reads through `SourceDirectory.call` (`tool-read`, invariant 81),
-   finds the tool by shape (the chat recipe's `history` role, invariant 82), and reads by cursor in time order, never a
-   relevance search for "since": the history read newest page first, else the message search sorted by time, one day at
-   a time, said on the place. Only the source's people reach the model; the developer's replies come along as context
-   and never become a note; anyone else in the place is dropped first. A read that fails keeps the cursor, so a missed
-   read is never "nothing said". It reads once a workday after the sweep time, on Read now and over the last week when
-   a place is added (invariant 78). 2026-11-23, the developer: priorities come from a product lead's DM, so Follow-up
-   ranked work without what decided it. Guarded by `tests/compass-read.test.ts`.
+   finds the tool by shape (the chat recipe's `history` role, the doc recipe's read, the calendar recipe's events,
+   invariant 82), and reads by cursor in time order, never a relevance search for "since": the history read newest
+   page first, else the message search sorted by time, one day at a time, said on the place. Only the source's people
+   reach the model; the developer's replies come along as context and never become a note; anyone else in the place is
+   dropped first. A source of everyone in a place (decision R1) reads at most the newest 40 messages a read in one
+   extraction, says what it skipped, and never runs the day's extractions down. A doc is compared by hash and only its
+   new blocks reach the model; a tracker or a calendar place is read by rule with no model (its notes quote the item's
+   own fields), from the queue's own snapshot, Follow-up's own GitHub read (at most hourly, except Read now) or the
+   calendar tool. A read that fails keeps the cursor, so a missed read is never "nothing said". It reads once a
+   workday after the sweep time, on Read now and over the last week when a place is added (invariant 78); a read
+   someone asked for that arrives while another runs waits and runs after it, never joins it (2026-11-24, Compass PR
+   5's config tests: a source added during another's first read joined that read, which read only the other source, so
+   the new place waited for the next morning). 2026-11-23, the developer: priorities come from a product lead's DM, so
+   Follow-up ranked work without what decided it. Guarded by `tests/compass-read.test.ts` and
+   `tests/compass-configs.test.ts`.
 99. **A workflow lives in config** (`a-workflow-lives-in-config`, widening 82). Readers, roles, presets, default reading
    notes and copy name no tool, server, company, person or workflow; a developer's setup is a `compass` value, and the
-   developer's words are "How to read this". A preset only fills a source's fields, and one whose reader isn't in this
-   release or that no connected tool can serve is listed with one line of why, never offered; a change naming a place
-   kind with no reader is refused, never saved to sit unread. Guarded by `tests/compass-extract.test.ts` (presets) and
-   the name scans (`tests/brief-sources.test.ts`, `tests/no-real-names.test.ts`).
+   developer's words are "How to read this". A preset only fills a source's fields, and one whose reader no connected
+   tool can serve is listed with one line of why, never offered; a change naming a place kind with no reader is
+   refused, never saved to sit unread. Every role and preset works for each of the design's three fictional setups
+   (a product lead's DM and roadmap; a team channel, GitHub labels and milestones and a customer's channel; no chat, a
+   notes file and a calendar), each only a `compass` value and the readers its host has. Guarded by
+   `tests/compass-configs.test.ts` (setups B and C end to end with fake readers), `tests/compass-extract.test.ts`
+   (presets) and the name scans (`tests/brief-sources.test.ts`, `tests/no-real-names.test.ts`).
 100. **Compass instructions only interpret** (`compass-instructions-only-interpret`). "How to read this" (at most 600
    characters a source, 1000 for all) is plain text, control characters stripped, given to the extraction model after
    the rules and before the fenced data. It can't add a place, a tool, an output field or a destination: places are
@@ -1260,7 +1274,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Claude, the read-only sandbox on Codex; with Summaries on any other provider Compass reads nothing at all, not even
    the conversation, and Settings and `compass` say why in one line. The prompt fences the messages as data. The text
    read is never written to disk or a log: `compass.json` keeps a note's quote (at most 280 characters) until 7 days
-   after it ends, and `ai-jobs.jsonl` keeps no text. Guarded by `tests/compass-read.test.ts`.
+   after it ends, and a doc's hash and its blocks' hashes, never their text; `ai-jobs.jsonl` keeps no text. A local
+   file's path stays in the source's settings: it is never a place key, a cursor, a log line or an error. Guarded by
+   `tests/compass-read.test.ts` and `tests/compass-configs.test.ts`.
 103. **A Compass note ends** (`a-compass-note-ends`). Every note has an end: its date plus `graceDays`, `undatedDays`
    after it was last said, a retraction, or a newer note from the same source on the same subject. A note pinned by hand
    ends on its date, or when it is unpinned if it has none (the developer's unpin is its end). An ended note leaves

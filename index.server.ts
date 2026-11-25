@@ -1527,6 +1527,7 @@ export default function contribute(server: PluginServerContext) {
       if (id === "github") { await rankSources.github(); return; }
       if (id === "chat") { await rankSources.slack(Date.now() - 3_600_000); return; }
       if (id === "mail") { const now = Date.now(); await rankSources.mail!(now - 86_400_000, now); return; }
+      if (id === "doc") { const r = await compass?.read("manual"); if (r && !r.ok) throw new Error(r.error ?? "The last read failed."); return; }
       const now = Date.now();
       await rankSources.calendar!({ start: new Date(now).toISOString(), end: new Date(now + 86_400_000).toISOString(), timeZone: (await briefClock()).timeZone });
     },
@@ -1551,8 +1552,18 @@ export default function contribute(server: PluginServerContext) {
         issueWorkspace: key => holders.get(key.toUpperCase())?.workspaceId ?? null,
       };
     },
-    allowed: chatAllowed, tight: () => !governor.allowsBackground(), appOpen: () => appOpen(),
+    // Each reader honours its input's switch in Settings → Compass (a chat, docs or calendar server turned off isn't read).
+    allowed: async recipeId => {
+      if (recipeId === "chat") return chatAllowed();
+      const g = await briefSources!.gate(recipeId);
+      if (!g.on) throw new Error(`${recipeId === "doc" ? "Your docs are" : "Your calendar is"} off in Settings → Compass.`);
+      return g.allowed;
+    },
+    tight: () => !governor.allowsBackground(), appOpen: () => appOpen(),
     issues: async () => (await linearQueue?.needs())?.issues ?? new Map(),
+    // A Linear tracker place reads the sweep's own snapshot; a GitHub one, Follow-up's in-process GitHub reads.
+    queue: async () => (await linearQueue?.snapshotIssues()) ?? [],
+    github: { rest: (repo, path) => githubApi().rest(repo, path) },
     // Tell the agent (compass-reaches-an-agent-only-by-a-click): one queued message to the workspace's main agent.
     tell: async (workspaceId, text, by) => {
       const w = (await store.snapshot()).workspaces.find(x => x.id === workspaceId && !x.archived);

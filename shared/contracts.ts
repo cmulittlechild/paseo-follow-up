@@ -377,10 +377,10 @@ export const setBriefPlanRpc = defineRpc({ name: "follow.set-brief-plan", input:
 // sends it on open).
 export const briefSourcesRpc = defineRpc({ name: "follow.brief-sources", input: z.strictObject({ check: z.boolean().optional() }), output: z.unknown() });
 export const setBriefSourcesRpc = defineRpc({ name: "follow.set-brief-sources", input: sourcesChangeSchema, output: z.unknown() });
-export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
+export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels", "docs", "file", "trackers", "calendars"]), query: z.string().trim().min(1).max(1_000) }), output: z.unknown() });
 // Compass (shared/compass.ts, server/compass.ts, docs/compass.md): the sources that set the developer's priorities.
 export const compassRpc = defineRpc({ name: "follow.compass", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }), output: z.unknown() });
-export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
+export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels", "docs", "file", "trackers", "calendars"]), query: z.string().trim().min(1).max(1_000) }), output: z.unknown() });
 export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassSetSchema, output: z.unknown() });
 export const readCompassRpc = defineRpc({ name: "follow.read-compass", input: z.strictObject({}), output: z.unknown() });
 /** Why it matters' menu and compass_note: pin, edit, unpin a note, or tell its workspace's main agent. */

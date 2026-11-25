@@ -201,8 +201,9 @@ shape and input schema.
 | --- | --- | --- | --- |
 | Linear | `list_issues`, `get_issue` (plus `get_user`, `list_teams`) | the queue (the sweep), New, the Summary, Linked | on |
 | Chat | a message search taking `filters` and a query (the one that also reaches private channels and DMs, when there are several), a channel search (plus people search, read thread) | DMs and mentions over the chat window; Compass's conversation reader | on |
-| Calendar | an events list taking a time range | today's meetings (or today and tomorrow) | on |
+| Calendar | an events list taking a time range | today's meetings (or today and tomorrow); a Compass calendar place's next two weeks | on |
 | Mail | a mail or message search taking a query, described as e-mail or inbox | unread mail to you | off |
+| Docs | a read (`fetch`, `get`, `read` or `retrieve`, optionally `_page`/`_doc`) taking an id or a link, and a search taking a query, both described as about pages or docs | nothing for the brief itself: Compass reads the pages its sources name ([compass.md](compass.md)) | on |
 
 GitHub (every `gh` account's review requests) and Paseo (Follow-up's own state, always on) are built in. A server
 with read tools but no recipe is an [Ask](#ask) source, off until previewed and turned on; one with no read tools at all

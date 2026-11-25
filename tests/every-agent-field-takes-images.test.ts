@@ -22,7 +22,7 @@ const NOT_AGENT_BOUND: Record<string, string> = {
   "linked.tsx|\"Filter, or paste a link or key\"": "a filter and link field for linked items",
   "compass-settings.tsx|\"How to read this source\"": "a setting (the ranker's standing text, not a message)",
   "compass-settings.tsx|\"Source name\"": "a setting",
-  "compass-settings.tsx|{kind === \"people\" ? \"Search people\" : \"Search channels\"}": "a setting's search",
+  "compass-settings.tsx|{copy.label}": "a setting's search (people, channels, docs, a file path, trackers)",
   "compass-settings.tsx|\"How to read your Compass\"": "a setting (the ranker's standing text, not a message)",
   "compass-settings.tsx|\"Word\"": "a setting",
   "compass-settings.tsx|\"Issue key\"": "a setting",

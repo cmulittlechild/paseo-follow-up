@@ -16,14 +16,19 @@ place for everything AI priority reads (invariant 108, `one-place-for-priority-i
 
 - **What sets your priorities:** one list. First the Compass sources (the people and places the developer picked),
   then the built-in inputs, each with its role (`inputLabel`, `inputRole` in `shared/brief-sources.ts`): your Linear
-  queue and review requests (Sets my priorities), your DMs and mentions, your calendar and your mail (Background).
-  Each has its switch and health, and its own setting behind its chevron: the queue's states, the chat window, the
-  calendar's days. Servers no recipe fits follow, for Ask. Paseo's own state is always read and isn't a row.
+  queue and review requests (Sets your priorities), your DMs and mentions, your calendar and your mail (Background),
+  your docs (Compass's doc places: the docs server is read only for the pages a source names). Every row, a source's
+  or a built-in input's, has one style: its name, one line with its role and what it reads, a warning when its last
+  read failed, a chevron for the rest (a source's plan, reading notes, live notes and Edit source; an input's own
+  setting: the queue's states, the chat window, the calendar's days) and its switch. Add a source and Read now sit
+  right under the sources, before the built-in inputs, so a phone never puts them a screen below. Servers no recipe
+  fits follow, for Ask. Paseo's own state is always read and isn't a row.
 - **This week's plan:** Compass, A link, or Off. A source with Posts the plan shows the plan it brought on
   its row ("Shared this week's plan, Week of Nov 23 · Sun 18:05", with Open).
 - **How to read your Compass** and the glossary.
 - **When:** the morning read's time, changes since, the zone and the workdays (`set_brief_settings`).
-- **Connections:** what mcpproxy and GitHub let Follow-up read, what it can't, and Check sources again.
+- **Connections:** what mcpproxy and GitHub let Follow-up read ("6 inputs read · Review requests needs attention above":
+  a row's failure is said once, on its row), the servers it can't read, and Check sources again.
 
 `compass` returns all of it (`plan`, `inputs`, `brief` beside the sources), and `set_compass` changes all of it
 (`plan`, `inputs`, `queue` beside a source's fields). The brief's tools (`brief_plan`, `set_brief_plan`,
@@ -53,7 +58,7 @@ key is its issue, its workspace by the one predicate New reads), and the card co
 
 > Code knows kinds of things. Config names the developer's things. Instructions say what their words mean.
 
-- **Code** ships reader kinds (a conversation now; docs, trackers and calendars later), roles, validation, matching and
+- **Code** ships reader kinds (a conversation, a doc, a tracker scope, a calendar), roles, validation, matching and
   default reading notes, all written about "a person", "a place" and "the developer". It names no tool, server,
   company, person or workflow (invariant 99, widening 82).
 - **Config** (`morning-brief.json` `compass`, edited in Settings and by `set_compass`) decides what is read and where
@@ -68,14 +73,22 @@ key is its issue, its workspace by the one predicate New reads), and the card co
 { id, label, who, places[1-5], roles[], instructions, enable_needs_you, enabled, addedBy, addedAt }
 ```
 
-- **who:** a person, up to 5 people, or the developer's own words (`me`). Everyone in a place (`anyone`) is in the
-  schema and comes in a later release, with its caps (decision R1).
-- **places:** a conversation (DM, group, channel, thread), picked from the chat tool's own search (`compass_find`), so
-  every place carries the tool's own id. Doc, tracker and calendar places are in the schema; a change naming one is
-  refused with one line of why until its reader ships, never saved to sit unread.
+- **who:** a person, up to 5 people, everyone in the place (`anyone`, decision R1: capped, see Reading), or the
+  developer's own words (`me`). A tracker's or a calendar's items are read by rule, so nobody is picked for them.
+- **places,** each picked from what its reader finds (`compass_find`), so every place carries its reader's own id:
+  - a **conversation** (DM, group, channel, thread), from the chat tool's search;
+  - a **doc**: a page a docs tool serves (the doc recipe: a read by id or link plus a search, matched by shape), or a
+    Markdown or text file on this machine (decision R2; `compass_find {kind: "file"}` checks it first: an absolute
+    path, `.md` or `.txt`, at most 64 KB). A file's id is `file-` and a hash of its path; the path stays in the
+    place's own settings and never reaches a key, a log line or an error;
+  - a **tracker** scope: a Linear project or milestone from the queue's own snapshot (`linear:project:<name>`), or a
+    GitHub repository's label or milestone (`github:<owner/repo>:label:<name>`, `…:milestone:<number>`);
+  - a **calendar**: the calendar tool's, with "meetings with guests" or all events.
+  A place no reader here can serve is refused with one line of why (`READER_MISSING`), never saved to sit unread.
 - **roles:** Sets my priorities, Posts the plan, Deadlines, A customer's voice, My own notes, Background. Each ships
   generic reading notes (`ROLE_INFO`). Background makes no notes.
-- **Presets** (`PRESETS`) only fill a new source's fields. One whose reader isn't here is listed with its why.
+- **Presets** (`PRESETS`) only fill a new source's fields. One whose reader isn't here (no chat tool, no tracker, no
+  calendar) is listed with its why; a doc preset is always offered, since a local file needs no tool.
 - **Glossary:** the developer's words → an issue key (or workspace or account), checked when saved, read by matching
   before anything else.
 - **expiry** (undated days 7, grace 1, decay 3 workdays) is editable. **routing** (where suggestions go: urgent ones to
@@ -96,9 +109,32 @@ key is its issue, its workspace by the one predicate New reads), and the card co
   keeps the cursor, so the next read covers the gap. Thread replies are read with their parent's thread in a later
   release.
 - **Whose words:** only the source's people reach the model; the developer's own replies come along marked as context
-  (for "never mind") and can never become a note; anyone else in the place is dropped before the model.
+  (for "never mind") and can never become a note; anyone else in the place is dropped before the model. With
+  **everyone** (`anyone`), one read takes the place's newest 40 messages in one extraction and skips the older ones,
+  and the place says so ("A busy place: this read took its newest 40 messages and skipped 12 older"); the source's
+  reading notes narrow it ("only the leads").
+- **A doc** is read whole each time (one call to the docs tool, or a stat of the file, which is opened only when its
+  modified time or size moved) and compared by hash: an unchanged doc makes no model call. A changed one is split into
+  blocks (paragraphs and list runs, each with the heading above it), and only blocks not read before (`seen`, by hash)
+  go to the extraction. A Posts the plan doc's claude.ai artifact link becomes the plan, as in a conversation.
+- **A tracker** place is read by rule, with no model: each open issue in scope (most urgent first, at most 15) is a
+  note quoting its own fields ("ACME-177 Webhook retries · due 2026-11-26 · Urgent · Todo"), its strength from its
+  priority (Urgent and High high, Medium normal, Low low; a GitHub label the developer named is high, a milestone
+  normal; under Posts the plan, low), its date the issue's or the milestone's due date. An issue that leaves the scope
+  ends its note. Linear's come from the sweep's snapshot (no read of their own; the queue is the developer's assigned
+  issues); GitHub's from one in-process REST read, at most once an hour per place except on Read now. A tracker or doc
+  under Posts the plan makes plan notes AI priority ranks like plan items; the plan card itself stays the newest
+  artifact or a pasted link.
+- **A calendar** place is read by rule too: the calendar tool's events over the next 14 days. An event lends its date
+  to the work it matches (the glossary, an issue key in its title, then the title score); one that matches nothing
+  isn't kept, so meetings never crowd the notes (at most 10). "Meetings with guests" skips an event whose reply says
+  it has none.
+- **A read someone asked for waits its turn:** a new place's first read, Read now and `read_compass` arriving while
+  another read runs, run once after it, so a source added during another's first read still gets its own (a
+  scheduled read joins the one going).
 - **Caps** (`COMPASS`): 8 sources, 5 places each, 25 model calls a day for all of Compass, 40 messages and 8 k
-  characters a call, 60 live notes. A cap reached says so on the place ("Paused until tomorrow"), never silently.
+  characters a call, 60 live notes, 64 KB a doc, 15 notes a tracker place and 10 a calendar. A cap reached says so on
+  the place ("Paused until tomorrow"), never silently.
 
 ## Extraction
 
@@ -193,7 +229,7 @@ reads a source. Why it matters' Ask the Overseer puts a question about a note in
 | Tool | Kind | Does |
 | --- | --- | --- |
 | `compass` | read | Sources, glossary, presets, each place's last read, live notes (optionally one workspace's) with the titles of the workspaces they went to, `blocked`, and (without `workspace`) `plan`, `inputs` and `brief`: every priority input. |
-| `compass_find` | read | People or channels from the chat tool's own search, each with the place `set_compass` takes. |
+| `compass_find` | read | A place for a source, each with the place `set_compass` takes: `people`, `channels` (the chat's search), `docs` (the docs tool's search), `file` (a local path, checked), `trackers` (the queue's Linear projects and milestones, or `owner/repo [words]`: its GitHub labels and milestones), `calendars`. |
 | `set_compass` | planned | Add, edit or remove a source; reading notes; glossary; expiry; `routing`; `cadence`; `plan` (mode, link, replaceWhenNewer, find), `inputs` (on, retry, check, preview) and `queue` (states, chat and calendar windows). |
 | `read_compass` | planned | Read now; waits up to 30 s, then `running`. |
 | `compass_note` | planned | Pin (a workspace, what, optional until and strength), edit, unpin, or tell (one message to the workspace's main agent, only on the developer's ask). Audited as `agent:<id>`. |

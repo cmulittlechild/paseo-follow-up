@@ -127,7 +127,8 @@ function ConnectionsSection({ sources, theme, compact }: { sources: SourcesState
   const notRead = data.sources.filter(r => r.kind === "skipped");
   const checking = !!data.checking || !!(change.isPending && change.variables?.check);
   return <SettingsSection title="Connections" info="What mcpproxy and GitHub let Follow-up read. Each source is found by the tools mcpproxy offers, never by its name, and only its read-only tools are ever called.">
-    {data.error || data.line.tone === "warn" ? <Warning text={data.error ?? data.line.text} theme={theme} compact={compact} /> : <Text style={t.meta}>{data.line.text}</Text>}
+    {/* Each input's own failure is on its row above; Connections says only what no row can: mcpproxy itself failing. */}
+    {data.error ? <Warning text={data.error} theme={theme} compact={compact} /> : <Text style={t.meta}>{connectionsLine(data.sources)}</Text>}
     {notRead.length > 0 && <View style={{ gap: 6 }}>
       <Pressable accessibilityRole="button" aria-expanded={showNotRead} accessibilityState={{ expanded: showNotRead }} onPress={() => setShowNotRead(v => !v)}
         style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 24 }}>
@@ -144,6 +145,15 @@ function ConnectionsSection({ sources, theme, compact }: { sources: SourcesState
       {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${clock(data.checkedAt)}`}</Text>}
     </View>
   </SettingsSection>;
+}
+
+/** "6 inputs read", or "6 inputs read · 2 need attention above": the count, never each row's failure again. */
+function connectionsLine(rows: readonly BriefSource[]): string {
+  const used = rows.filter(r => r.on && r.kind !== "skipped");
+  // Names, not the failures: each row above already says what's wrong and how to fix it.
+  const bad = used.filter(r => r.health === "failed" || r.health === "sign-in").map(r => inputLabel(r));
+  const names = bad.length > 2 ? `${bad.slice(0, 2).join(", ")} and ${bad.length - 2} more` : bad.join(" and ");
+  return `${used.length} input${used.length === 1 ? "" : "s"} read${bad.length ? ` · ${names} need${bad.length === 1 ? "s" : ""} attention above` : ""}`;
 }
 
 const MONO = { fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11 } as const;

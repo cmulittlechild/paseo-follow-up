@@ -258,6 +258,7 @@ const FIXED_CAPS: Record<string, string> = {
   "shared/compass.ts:removed:COMPASS.removed": "suggestions the developer removed, trimmed to the newest 200 on every write",
   "shared/compass.ts:notes:40": "one extraction reply's notes (model output; validation keeps notesPerRead)",
   "shared/compass.ts:retracts:20": "one extraction reply's retractions (model output)",
+  "shared/compass.ts:seen:COMPASS.docBlocks": "one doc place's read block hashes: a doc is at most 64 KB, and the cursor keeps the newest 400",
   "shared/scale.ts::max": "the truncated() helper itself: its callers pass a SCALE bound",
 };
 const NAMED = /^(SCALE\.\w+|BROWSER_BATCH|[A-Z][A-Z0-9_]*_MAX|MAX_[A-Z0-9_]+)$/;
