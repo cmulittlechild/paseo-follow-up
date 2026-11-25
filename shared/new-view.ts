@@ -1,6 +1,7 @@
 import type { CompassPick } from "./dispatch";
 import { KIND_WORD, UNDO_WINDOW_MS, parseSource, undoable, type DispatchPlan, type DispatchRecord, type DispatchSources, type SourceKind, type SourceRoute } from "./dispatch";
 import type { LinearIssue } from "./linear-issues";
+import { NEW_WORK } from "./new-name";
 
 /**
  * New's dialog, as pure data (client/new.tsx draws it; tests/new-view.test.ts pins it): the left list (My issues, a
@@ -132,7 +133,7 @@ export function newRows(sources: Pick<DispatchSources, "linear" | "routes" | "co
   const { free: matches, taken } = split(issues.filter(i => matchesQuery(i, q)));
   const words: NewRow = { kind: "words", id: "words", title: parsed.title, raw: q };
   const search: NewRow = { kind: "search", id: "search", query: q };
-  // Search all of Linear (⇧↵) stays above the fold, so opening it never pushes the search down.
+  // Search all of Linear stays above the fold, so opening it never pushes the search down.
   const rows = withFold(matches.length ? [matches[0], words, ...matches.slice(1), search] : [words, search], taken, foldOpen);
   return { rows, selected: rows[0].id, empty: null };
 }
@@ -262,15 +263,16 @@ export const UNDO_MINUTES = UNDO_WINDOW_MS / 60_000;
 
 // ---------- keys (desktop web) ----------
 
-export type NewKey = "up" | "down" | "primary" | "second" | "search" | "instructions" | "close" | "open" | "undo";
+export type NewKey = "up" | "down" | "primary" | "second" | "instructions" | "close" | "open" | "undo";
 type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; repeat?: boolean; isComposing?: boolean };
 
 /**
- * New's keys. ↵ starts the first action (⌥↵ the second, ⇧↵ searches all of Linear), ↑↓ move the list from the field,
- * ⌘I shows the instructions, Esc closes; once created, ⌘↵ opens the workspace and ⌘Z undoes. Inside the note or an
- * edit field (`editing`) only Esc and ⌘-chords count, so Enter types and arrows move the caret.
+ * Dispatch's keys. ↵ starts the first action (⌥↵ the second), ⇧↵ is a new line in the task field, ↑↓ move the list
+ * from the field until the task has more than one line (`lines`), then they move the caret. ⌘I shows the instructions,
+ * Esc closes; once created, ⌘↵ opens the workspace and ⌘Z undoes. Inside the note or an edit field (`editing`) only
+ * Esc and ⌘-chords count, so Enter types and arrows move the caret.
  */
-export function newKey(e: KeyLike, mac: boolean, o: { editing: boolean; created: boolean }): NewKey | null {
+export function newKey(e: KeyLike, mac: boolean, o: { editing: boolean; created: boolean; lines?: boolean }): NewKey | null {
   if (e.isComposing) return null;
   const mod = mac ? e.metaKey : e.ctrlKey;
   if (e.key === "Escape") return "close";
@@ -281,9 +283,10 @@ export function newKey(e: KeyLike, mac: boolean, o: { editing: boolean; created:
   }
   if (mod && e.key.toLowerCase() === "i") return "instructions";
   if (o.editing || e.repeat && e.key === "Enter") return null;
+  if (e.key.startsWith("Arrow") && o.lines) return null;
   if (e.key === "ArrowDown" && !mod) return "down";
   if (e.key === "ArrowUp" && !mod) return "up";
-  if (e.key === "Enter" && !mod && !e.metaKey && !e.ctrlKey) return e.altKey ? "second" : e.shiftKey ? "search" : "primary";
+  if (e.key === "Enter" && !mod && !e.metaKey && !e.ctrlKey && !e.shiftKey) return e.altKey ? "second" : "primary";
   return null;
 }
 
@@ -299,6 +302,6 @@ export function ambiguousNote(team: string | null | undefined, reason: string | 
   let said = (reason ?? "").trim();
   for (const q of [ask, "Which project?"]) if (said.startsWith(q)) said = said.slice(q.length).trim();
   if (!team) return { ask, note: said };
-  const where = "Change it in Settings → New work.";
+  const where = `Change it in Settings → ${NEW_WORK}.`;
   return { ask, note: /saved for /.test(said) ? `${said} ${where}` : [said, `Your pick is saved for ${team}.`, where].filter(Boolean).join(" ") };
 }

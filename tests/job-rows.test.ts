@@ -117,7 +117,7 @@ test("Reset to defaults never leaves a job that won't run: without Claude it res
 test("New work copies the Overseer by default and says so; a pick of its own is a normal job row", () => {
   const cat = catalog(CLAUDE, CODEX);
   const d = jobRow(view("dispatch"), cat);
-  assert.equal(d.title, "New work");
+  assert.equal(d.title, "Dispatch");
   assert.equal(d.pick, "Same as the Overseer");
   assert.ok(d.recommended && !d.notice, JSON.stringify(d));
   // Codex-only host: New work still copies the Overseer, so it never adds a warning of its own.

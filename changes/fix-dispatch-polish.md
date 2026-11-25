@@ -1,0 +1,4 @@
+- Dispatch's first message to the agent no longer repeats your words, and branch names end on a whole word.
+- Typing in Dispatch no longer makes the preview flicker, and a project or agent you picked stays while you type.
+- Dispatch's text box is the main element now: wide, at the top, and it grows as you write.
+- In Dispatch's text box, Shift+Enter starts a new line, and the arrow keys move through a task of more than one line. Search all of Linear runs from its row.

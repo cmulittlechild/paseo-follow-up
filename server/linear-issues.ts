@@ -16,6 +16,7 @@ export const PAGES_MAX = 40;
 export const OPEN_PAGES_PER_LIMIT = 3;
 
 import type { LinearList } from "../shared/linear-issues";
+import { NEW_NAME } from "../shared/new-name";
 export type { LinearList };
 
 /** "Linear isn't connected": mcpproxy isn't installed, or it has no Linear server or tool. Anything else is a read error. */
@@ -84,7 +85,7 @@ export class LinearIssues {
       // open issues, at most OPEN_PAGES_PER_LIMIT pages per page wanted (and PAGES_MAX in all).
       const pages = Math.min(PAGES_MAX, Math.ceil(limit / PAGE_SIZE) * OPEN_PAGES_PER_LIMIT);
       for (let page = 0; page < pages && openIssues(issues).length < limit; page++) {
-        const r = parseIssuePage(await this.call("list_issues", { assignee: "me", orderBy: "updatedAt", limit: PAGE_SIZE, fields: LIST_FIELDS, ...(cursor ? { cursor } : {}) }, "your Linear issues for New"), true);
+        const r = parseIssuePage(await this.call("list_issues", { assignee: "me", orderBy: "updatedAt", limit: PAGE_SIZE, fields: LIST_FIELDS, ...(cursor ? { cursor } : {}) }, `your Linear issues for ${NEW_NAME}`), true);
         if (!r.readable && page === 0) throw new Error("Linear's reply couldn't be read.");
         issues.push(...r.issues);
         cursor = r.next;
@@ -99,7 +100,7 @@ export class LinearIssues {
   async search(query: string, limit = PAGE_SIZE): Promise<LinearList> {
     const at = this.now();
     try {
-      const r = parseIssuePage(await this.call("list_issues", { query: query.slice(0, 200), orderBy: "updatedAt", limit: Math.min(limit, PAGE_SIZE), fields: LIST_FIELDS }, "search Linear for New"), null);
+      const r = parseIssuePage(await this.call("list_issues", { query: query.slice(0, 200), orderBy: "updatedAt", limit: Math.min(limit, PAGE_SIZE), fields: LIST_FIELDS }, `search Linear for ${NEW_NAME}`), null);
       return { status: "ok", issues: r.issues, at, more: !!r.next };
     } catch (error) {
       return { status: linearMissing(error) ? "missing" : "error", issues: [], at, error: readError(error), more: false };
@@ -107,7 +108,7 @@ export class LinearIssues {
   }
   /** One issue with its description; null when Linear says there's no such issue. Throws when it couldn't be read. */
   async get(key: string): Promise<LinearIssue | null> {
-    return parseIssue(await this.call("get_issue", { id: key, fields: ISSUE_FIELDS }, "the issue pasted into New"));
+    return parseIssue(await this.call("get_issue", { id: key, fields: ISSUE_FIELDS }, `the issue pasted into ${NEW_NAME}`));
   }
 }
 

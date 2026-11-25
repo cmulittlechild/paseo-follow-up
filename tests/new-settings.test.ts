@@ -79,7 +79,7 @@ test("the screen on a phone: reads New's own settings only, and Hide, Move and A
   } finally { console.error = orig; }
   assert.deepEqual([...new Set(rpcCalls.map(c => c.name))].sort(), ["follow.dispatch-actions", "follow.dispatch-settings"], "opening reads New's settings, never Linear");
   rpcCalls.length = 0;
-  const show = byLabel(r, "Show Plan as artifact in New")[0];
+  const show = byLabel(r, "Show Plan as artifact in Dispatch")[0];
   await act(async () => { (show.props.onValueChange as ((v: boolean) => void) | undefined)?.(false) ?? (show.props.onPress as () => void)(); }); await tick();
   assert.deepEqual(rpcCalls.at(-1), { name: "follow.set-dispatch-actions", input: { change: { op: "hide", id: "plan", hidden: true } } });
   await act(async () => { (byLabel(r, "Move Investigate up")[0].props.onPress as () => void)(); }); await tick();
