@@ -95,7 +95,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
 | Self-update (check, install, watchdog, rollback), 2.0's move from 1.x | `server/plugin-move.ts`, `server/data-move.ts`, `shared/plugin-move.ts`, `shared/legacy.ts`, `server/updater.ts`, `server/update-registry.ts`, `server/update-provenance.ts`, `server/update-watchdog.mjs`, `server/updates.ts`, `shared/updates.ts`, `shared/update-policy.ts`, `client/updates.tsx` | [updates](docs/updates.md) |
 | Resource governor, never waking agents, worker memory, usage meters | `server/governor.ts`, `server/memory.ts`, `server/agent-load.ts`, `server/usage.ts`, `shared/agent-load.ts`, `shared/resources.ts`, `shared/usage.ts` | [resources](docs/resources.md) |
-| UI | `index.client.tsx`, `client/`, `client/row-badges.tsx`, `shared/row-badges.ts`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
+| UI | `index.client.tsx`, `client/`, `client/row-badges.tsx`, `shared/row-badges.ts`, `client/host-slot.tsx`, `client/scroll-allowlist.ts`, `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts`, `client/search-key.ts`, `shared/search-key.ts`, `client/search-focus.ts`, `shared/search-focus.ts`, `shared/home-keys.ts` | [client](docs/client.md) |
 | Chat card for agents and workspaces an agent creates | `shared/created.ts`, `server/created-items.ts`, `client/created.tsx` | [client](docs/client.md#created-agent-and-workspace-cards) |
 | Pasted images in every field whose words reach an agent (caps, the store, who takes them, the one component) | `shared/images.ts`, `server/image-store.ts`, `server/image-support.ts`, `client/image-attach.tsx`, `client/unsent-images.ts` | [client](docs/client.md#pasted-images), [rpcs-and-tools](docs/rpcs-and-tools.md#pasted-images) |
 | Shared copy and errors, scale bounds | `shared/presentation.ts`, `shared/errors.ts`, `shared/tool-result.ts`, `shared/scale.ts` | [client](docs/client.md) |
@@ -523,8 +523,7 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    `search_shortcut` (⌘⇧K by default): it opens Home with the cursor in its search from any screen, even mid-message,
    and on Home only moves the cursor (`client/search-key.ts`); inside a code editor (Paseo 0.16's CodeMirror binds
    Mod-/) the editor keeps the key. The ⌘K "Follow-up: Search" row and Home's search
-   chip name the chosen key. A focus request made before Home mounts is kept until Home's search takes it
-   (`takeFocus`), never lost to a timer. Guarded by `tests/search-shortcut.test.ts`, `tests/agent-parity.test.ts` and
+   chip name the chosen key. Where the caret lands is invariant 116. Guarded by `tests/search-shortcut.test.ts`, `tests/agent-parity.test.ts` and
    `scripts/screenshots.mjs --only shortcut` (the key from a chat's composer, on Home, with the sidebar collapsed,
    None, another preset, after a reload; writes `shortcut.json`).
 34. **Row chips never cover the time** (`row-chips-never-cover-the-time`). A desktop Home row's badges and PR chip
@@ -1367,6 +1366,31 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    live store the pill and Home already share, so it adds no poll, no request and no daemon write. Trade-off: an app
    older than 0.17.1 on a newer daemon shows neither. Guarded by `tests/row-badges.test.ts` and
    `tests/row-badges-client.test.ts`.
+
+116. **Every search request lands in the visible search** (`every-search-request-lands-in-the-visible-search`). Every
+   way to ask for Home's search (the search key, ⌘K "Follow-up: Search", `/`) ends with the caret in the Home search
+   field on screen, whatever was mounted, loading or focused before. One owner holds the request
+   (`createSearchFocus`, `shared/search-focus.ts`; the web adapter `client/search-focus.ts`): a request is held until
+   the developer acts (a key, pointer, click, wheel, touch or typed input, heard on the window before the request's own
+   key), and while it holds the newest search field that is on screen (`surfaceVisible`) takes the caret, selecting
+   its query: at once, when a field mounts, when one lays out (a Home kept mounted behind comes forward, the field
+   remounts when the Overseer's status arrives) and when focus moves without the developer (`focusMoved`). It never
+   fights a dialog: under a menu or modal dialog (`overlayOver`) it waits, and goes on when the dialog hands focus back.
+   Once the caret has landed a focus move away is taken back at most once, so a screen reader's cursor or voice control
+   is never stuck in the search; a touch screen gets no unasked focus(), and on native the first field after a request
+   ends it. No timer and no retry loop. The key and ⌘K
+   open Home's list unless a Home search is on screen (`requestSearch`); the route never decides, since Catch up, PR
+   stats, the queue and the log share Home's route and a phone's Home route can show a row's detail, none with the
+   search drawn. `/` asks only while a Home search is on screen, so a Home kept behind neither takes the key nor
+   focuses a hidden field. 2026-11-25, the developer:
+   "sometimes cmd+shift+k goes to the follow up homepage but not the search bar, make sure it always goes to the
+   search bar". Main kept one global flag the first mounted field took: Paseo keeps an earlier Home mounted behind a
+   chat (Home opened again from the sidebar's Follow-up row), so that one took it and focused a hidden input while focus
+   stayed on the row or button; on Catch up, the other views and a phone's row detail the key only set the flag.
+   Guarded by `tests/search-focus.test.ts` and `scripts/screenshots.mjs --only search-focus` (the key from a chat with
+   Home never opened and with Home in the history, a second press, on Home with a row, a button or a text box focused,
+   Home loading, Catch up, PR stats, the queue, the log, Settings, ⌘K and `/`, desktop and 390×844, and with Home as
+   the sidebar view; writes `search-focus.json`).
 
 ## Bugs
 
