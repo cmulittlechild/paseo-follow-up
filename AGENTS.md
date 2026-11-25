@@ -86,7 +86,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Compass: the one place for priority inputs (Settings → Compass: its sources and the built-in inputs, each with a role), the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching, plans on arrival; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
-| PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts`, `shared/reviewers-click.ts`, `shared/keep-in-place.ts`, `client/reviewers-button.tsx` | [prs](docs/prs.md) |
+| PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts`, `shared/reviewers-click.ts`, `shared/keep-in-place.ts`, `client/reviewers-button.tsx`, `server/github-setup.ts`, `shared/github-setup.ts` | [prs](docs/prs.md) |
 | PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks, static text in the system prompt | `server/agent-hooks.ts`, `server/agent-hook.mjs`, `server/session-prompt.ts` | [hooks](docs/hooks.md) |
@@ -1361,6 +1361,22 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    run then confirm). Design §15: running reads on the Overseer would cost a full turn every 2 h, grow its
    conversation and make Compass depend on it. Guarded by `tests/compass-overseer.test.ts`.
 
+110. **Follow-up works without GitHub** (`works-without-github`). GitHub is an optional integration. On a host with no
+   GitHub CLI, or with it signed out, everything that isn't about GitHub works as with it (workspaces, Needs you,
+   questions, briefs, Catch up, the Overseer, tasks, Compass), and setup lists GitHub as optional (an `off` row with
+   the install link and `gh auth login`), never a failure. Every GitHub surface and agent tool (PR status, repairs,
+   Merge, reviewers, `wait_for_checks`, PR stats, deploy checks, the brief's review requests) says in one line what's
+   missing and how to turn it on (`githubOffText`, `shared/github-setup.ts`), never an error that points at Refresh,
+   and never a promise it can't keep (a check watch that can never answer). While GitHub is off nothing runs `gh`,
+   requests GitHub, retries or logs on a timer: one `GithubSetup` (`server/github-setup.ts`) answers every path, looks
+   again only with stat calls, and checks again only when gh, its `hosts.yml` or a token variable changed, so turning
+   it on is picked up without a restart. 2026-11-25, the developer: "it shouldn't be a requirement for the plugin, it
+   should be part of the plugin onboarding to check for that and prompt the user to install if he wants that
+   integration". Harness runs without gh found setup's GitHub row red, PRs reading "check gh authentication", Merge
+   and Add reviewers asking for a Refresh that couldn't help, `wait_for_checks` promising a message it could never
+   send, and, signed out, `gh auth token` spawned 8 times in 90 s. Guarded by `tests/works-without-github.test.ts`,
+   `tests/works-without-github-worker.test.ts` (the real worker, no gh on the host) and `npm run test:no-gh`
+   ([docs/prs.md](docs/prs.md#without-github-optional-integration)).
 113. **Row badges replace sidebar labels** (`row-badges-replace-sidebar-labels`). On a Paseo that draws plugin badges
    on sidebar workspace rows (0.17.1 or later, read once from server_info's version: `hostAtLeast` in
    `server/host-features.ts`), Follow-up writes no workspace label: Done is the client's row badge (`client/row-badges.tsx`,

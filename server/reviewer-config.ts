@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { githubOffText, isGithubOff } from "../shared/github-setup";
 import { join } from "node:path";
 import { WriteBehind } from "./write-behind";
 import type { State } from "../shared/model";
@@ -116,7 +117,8 @@ export class ReviewerSuggestions {
     // Teams only exist on organization repositories; a personal repository answers 404, which isn't an error here.
     if (teams.status === "fulfilled" && Array.isArray(teams.value))
       for (const t of teams.value as { slug?: unknown; name?: unknown }[]) if (typeof t?.slug === "string") suggestions.push({ login: `${owner}/${t.slug}`, name: typeof t.name === "string" ? t.name : null, kind: "team" });
-    const error = people.status === "rejected" ? "Couldn't read this repository's collaborators from GitHub. Type a login or org/team instead." : null;
+    // GitHub off (works-without-github): say what's missing; the names can still be typed and saved.
+    const error = people.status === "rejected" ? isGithubOff(people.reason) ? `${githubOffText(people.reason.off, "Suggesting reviewers")} Until then, type a login or org/team.` : "Couldn't read this repository's collaborators from GitHub. Type a login or org/team instead." : null;
     return { suggestions, error };
   }
 }
