@@ -1,0 +1,2 @@
+- Follow-up now works when your agents run on OpenCode, Pi, Copilot, Cursor or any other provider Paseo supports, not only Claude Code and Codex: they get Follow-up's tools, the Needs you call and, on Paseo 0.17, its instructions.
+- Helper agents never default to a provider you don't have: with no Claude installed, summaries, AI priority and the Overseer run on what Paseo has. Settings → Agents says in one line what agents on other providers don't get.

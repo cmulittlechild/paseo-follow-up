@@ -16,9 +16,13 @@ test("session MCP preserves other contributions and binds current caller and rec
   const recoveryMcp = recovery.mcpServers["follow-up"];
   assert.ok(recoveryMcp.type === "stdio");
   assert.equal(recoveryMcp.env?.FOLLOW_UP_RECOVERY, "1");
-  for (const patch of [{ purpose: "history" }, { provider: "unsupported" }, { labels: { "plugin-tools/enabled": "false" } }]) {
+  for (const patch of [{ purpose: "history" }, { labels: { "plugin-tools/enabled": "false" } }]) {
     const input = { ...request, ...patch } as PluginSessionOpenRequest;
     assert.equal(withSessionMcp(input, "/fixture/plugin", "/fixture/client.js", "/fixture/home", false, {}), input);
   }
+  // an-agent-on-any-provider-gets-follow-up: any provider gets the bridge; only the harness's list narrows it.
+  assert.ok(withSessionMcp({ ...request, provider: "opencode" } as PluginSessionOpenRequest, "/fixture/plugin", "/fixture/client.js", "/fixture/home", false, {}).mcpServers["follow-up"]);
+  const narrowed = { ...request, provider: "opencode" } as PluginSessionOpenRequest;
+  assert.equal(withSessionMcp(narrowed, "/fixture/plugin", "/fixture/client.js", "/fixture/home", false, {}, null, false, false, ["claude"]), narrowed);
   assert.deepEqual(Object.keys(request.mcpServers), ["other"]);
 });

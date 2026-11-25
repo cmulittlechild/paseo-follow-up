@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WriteBehind } from "./write-behind";
 import {
-  AGENT_ROLES, EMPTY_AGENT_SETTINGS, hasSame, isJobRole, parseAgentSettings, resolveAll, resolveRole,
+  AGENT_ROLES, EMPTY_AGENT_SETTINGS, hasSame, isJobRole, parseAgentSettings, resolveRole,
   type AgentRole, type AgentSettingsFile, type Catalog, type CatalogProvider, type RoleConfig, type SavedRole,
 } from "../shared/agent-settings";
+import { runnableRole } from "../shared/job-rows";
 
 /**
  * The role settings file (`agents.json`), its own small file next to state.json. Read once and cached; changes are
@@ -28,8 +29,23 @@ export class AgentSettingsStore {
     this.cached = raw === null ? { file: structuredClone(EMPTY_AGENT_SETTINGS), invalid: [] } : parseAgentSettings(raw);
     return this.cached;
   }
-  async role(role: AgentRole): Promise<RoleConfig> { return resolveRole((await this.load()).file, role); }
-  async all(): Promise<Record<AgentRole, RoleConfig>> { return resolveAll((await this.load()).file); }
+  /**
+   * Paseo's provider catalog, for roles left on their default (shared/job-rows.ts runnableRole). Set once the worker has
+   * one; null keeps the declared defaults.
+   */
+  catalog: (() => Promise<Catalog | null>) | null = null;
+  private async runnable(file: AgentSettingsFile, roles: AgentRole[]): Promise<RoleConfig[]> {
+    const resolved = roles.map(r => resolveRole(file, r));
+    const needs = resolved.some(r => file.roles[r.role]?.provider === undefined);
+    const catalog = needs && this.catalog ? await this.catalog().catch(() => null) : null;
+    return resolved.map(r => runnableRole(r, file.roles[r.role], catalog));
+  }
+  /** The role as it runs: the saved pick, or the default on a provider Paseo has. */
+  async role(role: AgentRole): Promise<RoleConfig> { return (await this.runnable((await this.load()).file, [role]))[0]!; }
+  async all(): Promise<Record<AgentRole, RoleConfig>> {
+    const list = await this.runnable((await this.load()).file, [...AGENT_ROLES]);
+    return Object.fromEntries(list.map(r => [r.role, r])) as Record<AgentRole, RoleConfig>;
+  }
 
   /** Replace one role's saved entry; null resets it to the default. */
   save(role: AgentRole, entry: SavedRole | null): Promise<AgentSettingsFile> {
