@@ -1,3 +1,4 @@
+import { NEW_NAME } from "./new-name";
 /**
  * Follow-up's global keys (every-shortcut-is-configurable-and-never-paseo-s). Each one is a Display setting with a
  * None choice, matched with exact modifiers, and never a combo Paseo's web app binds (PASEO_BOUND, pinned from its
@@ -41,8 +42,8 @@ export function newShortcutPreset(value: unknown, desktop: boolean): NewShortcut
 /** The Settings → Display choices for New from anywhere. */
 /** The setting's hint: what the key opens, and why a browser tab defaults to ⌘⇧O. */
 export function newShortcutHint(desktop: boolean, mac: boolean): string {
-  return desktop ? "Opens New from any screen, even mid-message."
-    : `Opens New from any screen. In a browser tab, Chrome keeps ${shortcutLabel("mod-shift-n", mac)} for a new incognito window, so ${shortcutLabel("mod-shift-o", mac)} is the default here.`;
+  return desktop ? `Opens ${NEW_NAME} from any screen, even mid-message.`
+    : `Opens ${NEW_NAME} from any screen. In a browser tab, Chrome keeps ${shortcutLabel("mod-shift-n", mac)} for a new incognito window, so ${shortcutLabel("mod-shift-o", mac)} is the default here.`;
 }
 export function newShortcutOptions(mac: boolean): { label: string; value: NewShortcut }[] {
   return NEW_SHORTCUTS.map(value => ({ value, label: shortcutLabel(value, mac) ?? "None" }));

@@ -48,7 +48,10 @@ export const displayPreferences = defineSettings({
     // The retired preset must not invalidate the entire saved Display document.
     search_shortcut: z.preprocess(value => value === "mod-slash" ? DEFAULT_SEARCH_SHORTCUT : value, z.enum(SEARCH_SHORTCUTS).optional()),
     /** New from anywhere (docs/dispatch.md); absent: ⌘⇧N in Paseo's desktop app, ⌘⇧O in a browser tab. */
-    new_shortcut: z.enum(NEW_SHORTCUTS).optional() }),
+    new_shortcut: z.enum(NEW_SHORTCUTS).optional(),
+    // 2.4: the sidebar's New row (client/new-entry.tsx). Off removes the row; New stays on Home, in ⌘K and on its key
+    // (new-row-is-optional). Settings → New work and setup's tour show it; set_display sets it.
+    enable_new_sidebar_row: z.boolean().default(true) }),
 });
 
 /** Every Display key, set or not: what set_display accepts. */

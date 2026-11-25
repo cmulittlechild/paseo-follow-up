@@ -110,7 +110,7 @@ Nothing polls while the app is hidden.
 | `shared/notes-scrollbar.ts` | The notes' scrollbar style: always visible while they overflow (macOS hides overlay scrollbars otherwise), scoped to the notes' scroll container. |
 | `client/docked-pane.tsx`, `client/dock.ts` | `DockedPane`: a scrolling pane with a bar docked under it (Home's detail pane, the Overseer's pane, setup, Catch up's card). On a phone, while a field in the pane has focus or the keyboard is up, the dock drops its extras (`dockYields`), the pane stops above a keyboard that overlays the page (`keyboardOverlap`), and the focused field's primary form, the field with its Send marked `PRIMARY_FORM`, scrolls into view (`revealFocused`), again when the keyboard or the dock changes size. Native scrolls the focused input clear of the keyboard with room for its Send. Invariant `a-focused-field-and-its-send-stay-in-view`, `tests/dock-in-view.test.ts`. |
 | `client/split.tsx`, `shared/split.ts`, `client/pane-allowlist.ts` | `ResizableSplit`: a pane beside a flexible side with a draggable divider (11 px hit area, col-resize cursor, hover and drag highlight, a grip), keyboard moves (arrows 2 %, Shift 10 %, Home and End to the ends, Enter or double-click resets) and a separator role; the width updates locally per frame and commits once on release. `shared/split.ts` holds its clamping. Home's list and right pane use it, saving `home_detail_fraction`. Phones keep their stacked layout. Layouts allowed to stay fixed are in `client/pane-allowlist.ts` with a reason (invariant `side-panes-are-resizable`, `tests/side-panes.test.ts`). |
-| `client/search-key.ts`, `shared/search-key.ts` | Search from anywhere: one capture-phase `keydown` listener (web and desktop) that opens Home with the cursor in its search, or only moves the cursor when Home is on screen; the key (⌘⇧K / Ctrl+Shift+K by default) is the Display field `search_shortcut`, read at start and from the Display feed. `shared/search-key.ts` holds the presets, the exact-modifier matcher, the labels each platform prints and `PASEO_BOUND`, Paseo's own combos, which no preset may take. The ⌘K "Follow-up: Search" row and Home's search chip name the key (`createSearchKey`). Home's search takes a focus request made before it mounted (`takeFocus` in `client/home-view.ts`). New from anywhere (`new_shortcut`, `createNewKey`) is matched by the same listener ([dispatch.md](dispatch.md#the-dialog)). |
+| `client/search-key.ts`, `shared/search-key.ts` | Search from anywhere: one capture-phase `keydown` listener (web and desktop) that opens Home with the cursor in its search, or only moves the cursor when Home is on screen; the key (⌘⇧K / Ctrl+Shift+K by default) is the Display field `search_shortcut`, read at start and from the Display feed. `shared/search-key.ts` holds the presets, the exact-modifier matcher, the labels each platform prints and `PASEO_BOUND`, Paseo's own combos, which no preset may take. The ⌘K "Follow-up: Search" row and Home's search chip name the key (`createSearchKey`). Home's search takes a focus request made before it mounted (`takeFocus` in `client/home-view.ts`). Dispatch from anywhere (`new_shortcut`, `createNewKey`) is matched by the same listener ([dispatch.md](dispatch.md#the-dialog)). |
 | `client/scroll-allowlist.ts` | The React Native ScrollView/FlatList imports allowed to stay native, each with why it never renders inside a host sheet or popover; every other scroll view is the kit's (invariant `sheet-content-scrolls-with-the-sheet`, `tests/sheet-scroll.test.ts`). |
 | `client/kit.tsx`, `client/motion.tsx`, `shared/motion.ts`, `client/theme.ts`, `client/keys.ts` | The type scale, motion (and the first-render reduced-motion read), theme helpers and query keys. |
 | `client/rich-text.tsx`, `shared/links.ts` | The one renderer for agent-written text, and the linkifier behind it. |
@@ -313,7 +313,7 @@ group no longer counts it, the same as the Done card (a transform can only repla
 ## Pasted images
 
 Every field whose words reach an agent takes pasted images through one component, `client/image-attach.tsx`
-(invariant 97, `every-agent-field-takes-images`): New's task field and its note, the Overseer's reply box (Home's pane),
+(invariant 97, `every-agent-field-takes-images`): Dispatch's task field and its note, the Overseer's reply box (Home's pane),
 Home's search when it asks the Overseer, an agent's reply box in Home's detail pane, More context's ask (`MorePanel`),
 a question's answer or note (`QuestionBody`), the brief card's answer and note, and Catch up's note to the card's
 agent. Catch up's question and More context fields are `QuestionBody` and `MorePanel` themselves.
@@ -326,7 +326,7 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
 - **Add image** (`AttachImageButton`): every field that takes images has one, from the same component. It opens the
   system file picker for the caps' types, several at once, the way Paseo's composer does on web (a hidden file input;
   Paseo's desktop app opens its system dialog for it). A one-line field or a reply box draws it among its own controls
-  (`ImageField` `attach="inline"`: before New's ⌘V, beside a reply box's Send, at the end of Home's search while it
+  (`ImageField` `attach="inline"`: before Dispatch's ⌘V, beside a reply box's Send, at the end of Home's search while it
   asks the Overseer, named "Add image for the Overseer"); every other field gets a quiet "Add image" line under it and
   its thumbnails. At the cap a press opens nothing and says why on the field's line, as a refused paste does. No
   picker, no button: the phone app draws none (`PICKER_ON`).
@@ -338,7 +338,7 @@ agent. Catch up's question and More context fields are `QuestionBody` and `MoreP
   images; remove them to send.") and Send waits until they are removed. Never after Send.
 - **Home's search** stays one line: a paste or drop on it while the Overseer is on adds images, drawn on their own line
   under the search row with "Sent with your ask to the Overseer."
-- **New** keeps one set for the task field and the note; the thumbnails sit under the task field on desktop, and under
+- **Dispatch** keeps one set for the task field and the note; the thumbnails sit under the task field on desktop, and under
   the note on a phone-width web window, where the note's screen is the one showing.
   The source card ("Your words · 2 images") and the phone bar's line count them, so what goes is on screen before the click.
 - **A failed send keeps them** (`client/unsent-images.ts`): a field that sends puts its images (and a reply box its

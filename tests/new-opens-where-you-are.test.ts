@@ -38,7 +38,7 @@ async function mountHost(shown: { on: boolean }, Host: unknown = NewHost, props:
   } finally { console.error = orig; }
   return r!;
 }
-const dialogs = (r: Root) => r.root.findAll(n => typeof n.type === "string" && n.props.role === "dialog" && n.props["aria-label"] === "New").length;
+const dialogs = (r: Root) => r.root.findAll(n => typeof n.type === "string" && n.props.role === "dialog" && n.props["aria-label"] === "Dispatch").length;
 
 test("a Home kept mounted behind never takes New: the Home on screen shows it", async () => {
   closeNew();

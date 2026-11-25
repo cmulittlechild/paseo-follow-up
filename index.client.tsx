@@ -1,7 +1,8 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
 import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
-import { NewSidebarRow } from "./client/new-entry";
+import { contributeNewRow } from "./client/new-entry";
+import { NEW_NAME, OLD_NAMES } from "./shared/new-name";
 import { closeNew, newShowing, openNew, setNewFallback, type NewRequest } from "./client/new";
 import { withButtonVisibility } from "./client/button-visibility";
 import { openExternalUrl, type PluginClientContext, type PluginButtonRegistration, type PluginScreenProps, type PluginSurfaceProps, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
@@ -187,13 +188,14 @@ export default function contribute(host: PluginClientContext) {
   const syncNew = () => {
     void removeNew?.();
     const label = newKey.label();
-    removeNew = client.addCommandCenterItem({ id: "follow-up-new", title: label ? `Follow-up: New… (${label})` : "Follow-up: New…", icon: "Plus", keywords: ["new", "dispatch", "start", "workspace", "issue", "linear", "task", "create"], context: "global",
+    removeNew = client.addCommandCenterItem({ id: "follow-up-new", title: label ? `Follow-up: ${NEW_NAME}… (${label})` : `Follow-up: ${NEW_NAME}…`, icon: "Plus", keywords: [...OLD_NAMES, "dispatch", "start", "workspace", "issue", "linear", "task", "create"], context: "global",
       onSelect({ openScreen }) { enterNew(openScreen); } });
   };
   syncNew();
   removers.push(newKey.subscribe(syncNew), () => removeNew?.());
-  // The sidebar's New row (Paseo lists it as "New" in Settings → Sidebar → Header, beside its own "New workspace").
-  removers.push(client.addSidebarHeaderItem({ id: "new", title: "New", Component: NewSidebarRow(newKey, enterNew) }));
+  // The sidebar's New row, optional (its Display switch, new-row-is-optional). Paseo also lists it under its title in Settings →
+  // Sidebar → Header, beside its own "New workspace".
+  removers.push(contributeNewRow(client, newKey, enterNew));
   removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: () => extras.focusSearch() }, { key: newKey, open: openNewAnywhere }));
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);

@@ -21,6 +21,7 @@ import { Spinner } from "./motion";
 import { pushToast } from "./toast-store";
 import { tint, withAlpha, type Colors, type Theme } from "./theme";
 import { createHostSlot } from "./host-slot";
+import { NEW_NAME, NEW_OF, NEW_WORK } from "../shared/new-name";
 
 /**
  * New (docs/dispatch.md): start work from a Linear issue, a GitHub issue or PR, a link or a sentence. One dialog over
@@ -125,7 +126,7 @@ function SourceCard({ plan, c, compact, images = 0 }: { plan: DispatchPlan; c: C
 
 function agentText(plan: DispatchPlan): string {
   const p = plan.agentPick.picked;
-  return p?.mode ? `${plan.agent} · ${p.mode}` : plan.agent || "New's default agent";
+  return p?.mode ? `${plan.agent} · ${p.mode}` : plan.agent || `${NEW_OF} default agent`;
 }
 
 function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loadCatalog, projects, loadProjects, saveBase, instructions, setInstructions, reopen, img }: {
@@ -161,7 +162,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         {plan.where.candidates.length > CHOICES_SHOWN && <Chip c={c} compact={compact} label="Other…" open={open === "project"} accessibilityLabel="Another project" onPress={() => { loadProjects(); toggle("project"); }} />}
       </View>
     </View>
-      : <Field c={c} compact={compact} label="Project" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → New work` : plan.where.reason}</Text>}>
+      : <Field c={c} compact={compact} label="Project" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
         <Chip c={c} compact={compact} icon="Folder" label={plan.where.projectName ?? "Pick"} dashed={plan.where.guess} open={open === "project"} accessibilityLabel={`Project: ${plan.where.projectName}. Change`} onPress={() => { loadProjects(); toggle("project"); }} />
       </Field>}
     {open === "project" && <Choices c={c} compact={compact} items={candidates} onPick={id => { set({ projectId: id }); setOpen(null); }} />}
@@ -570,9 +571,9 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
         {onPreview && phase.kind === "edit" && <Pressable accessibilityRole="button" accessibilityLabel="Back to the list" onPress={() => setScreen("list")} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
           <Icon name="ChevronLeft" size={22} color={c.foreground} />
         </Pressable>}
-        <Text accessibilityRole="header" numberOfLines={1} style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{onPreview && planNow?.source.key ? planNow.source.key : "New"}</Text>
-        {openSettings && <Pressable accessibilityRole="button" accessibilityLabel="New's actions in Settings" onPress={openSettings} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="Settings" size={20} color={c.foreground} /></Pressable>}
-        <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{onPreview && planNow?.source.key ? planNow.source.key : NEW_NAME}</Text>
+        {openSettings && <Pressable accessibilityRole="button" accessibilityLabel={`${NEW_OF} actions in Settings`} onPress={openSettings} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="Settings" size={20} color={c.foreground} /></Pressable>}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Close ${NEW_NAME}`} onPress={onClose} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={20} color={c.foreground} /></Pressable>
       </View>
       {onPreview ? <ScrollView ref={pane as never} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">{right}{errorLine}</ScrollView>
         : <SourcesPane sources={shown} rows={rows} selected={selected} query={query} setQuery={setQuery} onRow={onRow} onRefresh={() => load(true)} c={c} compact error={listError} searching={searched && searched.query === query.trim() ? searched.query : null} chevrons empty={empty} img={img} />}
@@ -591,11 +592,11 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
 
   return <View style={{ flex: 1, minHeight: 0 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 20, paddingRight: 10, height: 52, borderBottomWidth: 1, borderBottomColor: c.border }}>
-      <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>New</Text>
-      {openSettings && <Pressable accessibilityRole="button" accessibilityLabel="New's actions in Settings" onPress={openSettings} style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 32, borderRadius: 6, backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
+      <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{NEW_NAME}</Text>
+      {openSettings && <Pressable accessibilityRole="button" accessibilityLabel={`${NEW_OF} actions in Settings`} onPress={openSettings} style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 32, borderRadius: 6, backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
         <Icon name="Settings" size={15} color={c.foregroundMuted} /><Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Actions</Text>
       </Pressable>}
-      <Pressable accessibilityRole="button" accessibilityLabel="Close New" onPress={onClose} style={(s: Hover) => ({ width: 32, height: 32, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Close ${NEW_NAME}`} onPress={onClose} style={(s: Hover) => ({ width: 32, height: 32, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
         <Icon name="X" size={17} color={c.foregroundMuted} />
       </Pressable>
     </View>
@@ -625,9 +626,9 @@ export function NewHost({ theme, layout, navigation, openSettings }: { theme: Th
   if (!request) return anchor;
   const c = theme.colors;
   const dialog = <NewDialog key={request.token} request={request} theme={theme} layout={layout} navigation={navigation} onClose={closeNew} openSettings={openSettings && (() => { closeNew(); openSettings(); })} />;
-  if (layout.compact) return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View></>;
+  if (layout.compact) return <>{anchor}<View role="dialog" aria-modal aria-label={NEW_NAME} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: c.surface0 }}>{dialog}</View></>;
   const width = Math.min(1060, win.width - 64), height = Math.min(796, win.height - 64);
-  return <>{anchor}<View role="dialog" aria-modal aria-label="New" style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
+  return <>{anchor}<View role="dialog" aria-modal aria-label={NEW_NAME} style={{ position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"], top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: "center", justifyContent: "center" }}>
     <Pressable accessible={false} focusable={false} importantForAccessibility="no" onPress={closeNew} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.42)" }} />
     <View style={{ width, height, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface0, borderWidth: 1, borderColor: c.border, boxShadow: "0px 24px 64px rgba(0,0,0,0.28)" } as ViewStyle}>{dialog}</View>
   </View></>;

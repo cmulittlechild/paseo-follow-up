@@ -1,6 +1,7 @@
 import type { CompassPick } from "./dispatch";
 import { KIND_WORD, UNDO_WINDOW_MS, parseSource, undoable, type DispatchPlan, type DispatchRecord, type DispatchSources, type SourceKind, type SourceRoute } from "./dispatch";
 import type { LinearIssue } from "./linear-issues";
+import { NEW_WORK } from "./new-name";
 
 /**
  * New's dialog, as pure data (client/new.tsx draws it; tests/new-view.test.ts pins it): the left list (My issues, a
@@ -299,6 +300,6 @@ export function ambiguousNote(team: string | null | undefined, reason: string | 
   let said = (reason ?? "").trim();
   for (const q of [ask, "Which project?"]) if (said.startsWith(q)) said = said.slice(q.length).trim();
   if (!team) return { ask, note: said };
-  const where = "Change it in Settings → New work.";
+  const where = `Change it in Settings → ${NEW_WORK}.`;
   return { ask, note: /saved for /.test(said) ? `${said} ${where}` : [said, `Your pick is saved for ${team}.`, where].filter(Boolean).join(" ") };
 }

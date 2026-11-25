@@ -151,11 +151,11 @@ Settings (the gear on Home, or ⌘K → **Follow-up: settings**) has seven categ
 - Following: which projects and workspaces Follow-up follows, auto-send, how each repository ships PRs (GitHub or
   Graphite, the merge method, how agents handle review comments), and Trust bypass for permission prompts.
 - Reviewers: who **Add reviewers** asks, with a default for every repository and a list per repository.
-- Agents: the helper agents and their models (New work is the agent New starts), what agents do while a question
+- Agents: the helper agents and their models (Dispatch is the role that starts Dispatch's work), what agents do while a question
   waits, and, on Paseo 0.15, Wait for background jobs.
-- New work: the actions New offers (order, show or hide, reset to built-in), which project each Linear team's work
+- Dispatch: Dispatch in the sidebar, the actions it offers (order, show or hide, reset to built-in), which project each Linear team's work
   goes to, and the base branch per project.
-- Inbox & display: the Needs-you inbox, the sidebar badge, the pills and the New-from-anywhere key.
+- Inbox & display: the Needs-you inbox, the sidebar badge, the pills and the Dispatch-from-anywhere key.
 - Morning brief: this week's plan, its sources and the Linear queue.
 
 ## Report a bug or request a feature

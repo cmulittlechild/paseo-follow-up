@@ -1,4 +1,5 @@
 import { reviewerLabel, type ReviewerConfig, type ReviewerEntry } from "./reviewers";
+import { NEW_OF, NEW_WORK } from "./new-name";
 
 /**
  * The settings screen's categories, summaries and saved view state. Pure, so grouping, summaries and persistence are
@@ -11,7 +12,7 @@ export const SETTINGS_CATEGORIES = [
   { id: "following", title: "Following", icon: "Radar", blurb: "Projects, workspaces, auto-send" },
   { id: "reviewers", title: "Reviewers", icon: "UserCheck", blurb: "Default and per-repo lists" },
   { id: "agents", title: "Agents", icon: "Bot", blurb: "Questions, Overseer, models" },
-  { id: "new", title: "New work", icon: "SquarePlus", blurb: "New's actions, where work goes, bases" },
+  { id: "new", title: NEW_WORK, icon: "SquarePlus", blurb: `${NEW_OF} actions, where work goes, bases` },
   { id: "display", title: "Inbox & display", icon: "Inbox", blurb: "Sidebar, pills, Needs-you inbox" },
   // Was Morning brief: the one place for what sets the developer's priorities (one-place-for-priority-inputs). The id
   // stays, so saved links and screen ids land here.

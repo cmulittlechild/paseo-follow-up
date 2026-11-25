@@ -17,6 +17,7 @@ import { DismissX, RevealScope, useDismiss } from "./dismiss";
 import { Button, text, type Theme } from "./kit";
 import { openNew } from "./new";
 import { withAlpha, type Colors } from "./theme";
+import { NEW_NAME } from "../shared/new-name";
 
 /**
  * The Morning brief's Linear queue on screen (docs/morning-brief.md#in-the-brief): the "Since" block in the brief pane,
@@ -87,7 +88,7 @@ function LineActions({ source, actions, c, compact, onStarted }: { source: strin
   // Each button keeps its whole label (never squeezed to "Plan as ar…"): a row that doesn't fit wraps instead.
   return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
     {actions.slice(0, 2).map(a => <BarBtn key={a.id} c={c} compact={compact} small primary={false} disabled={!!busy} b={{ name: busy === a.id ? `${a.name}…` : a.name, icon: actionIcon(a.icon), key: null }} onPress={() => void start(a)} />)}
-    <Pressable accessibilityRole="button" accessibilityLabel={`More ways to start ${source} in New`} onPress={() => openNew({ source })}
+    <Pressable accessibilityRole="button" accessibilityLabel={`More ways to start ${source} in ${NEW_NAME}`} onPress={() => openNew({ source })}
       style={(s: Hover) => ({ minHeight: compact ? 44 : 32, minWidth: compact ? 44 : 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: s.pressed ? c.surface2 : s.hovered ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
       <Icon name="Ellipsis" size={16} color={c.foreground} />
     </Pressable>
@@ -188,7 +189,7 @@ function QueueRow({ i, change, c, compact, timeZone, navigation }: { i: QueueIss
     </View>
   </View>;
   // Phones: the row is the target (44px+), opening the workspace or New on the issue; no column of identical buttons.
-  if (compact) return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={ws ? `Opens ${ws.title}` : "Opens New on this issue"} disabled={!!ws && !navigation} onPress={open}
+  if (compact) return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={ws ? `Opens ${ws.title}` : `Opens ${NEW_NAME} on this issue`} disabled={!!ws && !navigation} onPress={open}
     style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 56, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: withAlpha(c.border, 0.6), backgroundColor: s.pressed ? c.surface2 : "transparent", ...focusRing(c, s.focused) })}>
     {body}
     <Icon name={ws ? "ChevronRight" : "Play"} size={15} color={c.foregroundMuted} />
@@ -202,7 +203,7 @@ function QueueRow({ i, change, c, compact, timeZone, navigation }: { i: QueueIss
       <Text numberOfLines={1} style={[t.small, { fontSize: 12, color: c.foreground, flexShrink: 1 }]}>{ws.title}</Text>
       <Icon name="ChevronRight" size={14} color={c.foregroundMuted} />
     </Pressable>
-    : <Pressable accessibilityRole="button" accessibilityLabel={`Start ${i.key} in New`} onPress={open}
+    : <Pressable accessibilityRole="button" accessibilityLabel={`Start ${i.key} in ${NEW_NAME}`} onPress={open}
       style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: s.pressed ? c.surface2 : s.hovered ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
       <Icon name="Play" size={13} color={c.foregroundMuted} />
       <Text style={[t.small, { fontSize: 12, color: c.foreground, fontWeight: "500" }]}>Start…</Text>

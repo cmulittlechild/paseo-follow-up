@@ -122,9 +122,9 @@ test("ages and routes", () => {
 
 test("the which-project note never says the heading or the saved line twice", () => {
   assert.deepEqual(ambiguousNote(null, "Which project?"), { ask: "Which project?", note: "" });
-  assert.deepEqual(ambiguousNote("OPS", "Which project for OPS? Your pick is saved for OPS."), { ask: "Which project for OPS?", note: "Your pick is saved for OPS. Change it in Settings → New work." });
-  assert.deepEqual(ambiguousNote("OPS", "The project saved for OPS isn't in Paseo any more. Pick one; it's saved for OPS."), { ask: "Which project for OPS?", note: "The project saved for OPS isn't in Paseo any more. Pick one; it's saved for OPS. Change it in Settings → New work." });
-  assert.deepEqual(ambiguousNote("OPS", null), { ask: "Which project for OPS?", note: "Your pick is saved for OPS. Change it in Settings → New work." });
+  assert.deepEqual(ambiguousNote("OPS", "Which project for OPS? Your pick is saved for OPS."), { ask: "Which project for OPS?", note: "Your pick is saved for OPS. Change it in Settings → Dispatch." });
+  assert.deepEqual(ambiguousNote("OPS", "The project saved for OPS isn't in Paseo any more. Pick one; it's saved for OPS."), { ask: "Which project for OPS?", note: "The project saved for OPS isn't in Paseo any more. Pick one; it's saved for OPS. Change it in Settings → Dispatch." });
+  assert.deepEqual(ambiguousNote("OPS", null), { ask: "Which project for OPS?", note: "Your pick is saved for OPS. Change it in Settings → Dispatch." });
 });
 
 test("a failure offers the field that fixes it: the agent after a workspace was made, the base for a new worktree", () => {

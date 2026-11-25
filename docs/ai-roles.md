@@ -4,7 +4,7 @@
 
 - **Roles.** `shared/agent-settings.ts` defines the roles (`AGENT_ROLES`: `about`, `overseer`, `recovery`,
   `ranker`, `dispatch`), their defaults (`ROLE_DEFAULTS`) and lenient parsing. A missing or invalid entry means the
-  default. `dispatch` is Settings → Agents → New work, the agent New starts for an action without its own
+  default. `dispatch` is Settings → Agents → Dispatch, the agent Dispatch starts for an action without its own
   ([dispatch.md](dispatch.md#settings)); like recovery it has `same` (`hasSame`), here "Same as the Overseer", its
   default. It's in Settings only, not setup's Helper agents step.
   The file also holds `enable_wait` ([wait.md](wait.md)).
@@ -29,7 +29,7 @@
 - **Names.** `ROLE_INFO` holds each role's title and what it does, the one copy both surfaces use. The ranker is
   **AI priority** in all user-facing copy; code and files keep `ranker`.
 - **Recommendations** (`shared/recommend.ts`). `ROLE_TIER` says what size of model each job needs (Summary small,
-  AI priority mid, the Overseer strong, recovery the same as the main agent, New work the same as the Overseer) and `ROLE_NEED` says it in one line.
+  AI priority mid, the Overseer strong, recovery the same as the main agent, Dispatch the same as the Overseer) and `ROLE_NEED` says it in one line.
   `recommend(role, catalog)` picks:
   - with Claude available, the declared `ROLE_DEFAULTS`;
   - otherwise the first ready provider (Claude, then Codex, then the rest), and in it the model whose description
@@ -157,7 +157,7 @@ One long-lived agent the developer talks to about all workspaces. It routes asks
   while background work is paused. The hook injects it at each UserPromptSubmit.
 - **Its tools** come through `follow.overseer-act`: `workstreams`, `agent_digest` (the transcript on disk for an
   unloaded agent, never its timeline), `route_candidates`, `send_to_agent`, `start_workspace` (dry run, then
-  confirm; it runs as New's Create PR, [dispatch.md](dispatch.md)) and `rerank`.
+  confirm; it runs as Dispatch's Create PR, [dispatch.md](dispatch.md)) and `rerank`.
 - **What it can't do:** merge, archive or post anywhere.
 - **Overrides.** `FOLLOW_UP_OVERSEER_PROVIDER` overrides the model, for isolated test daemons only.
 - **UI.** Home's Overseer card (`client/home.tsx`) and the Command Center item "Ask the Overseer"
