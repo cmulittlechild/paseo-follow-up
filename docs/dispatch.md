@@ -141,6 +141,12 @@ screen, never a hidden one; Report an issue and Rename title with AI use the sam
 `new-reads-nothing-while-closed`: closed, Dispatch makes no request (no feed, no timer). Open, it reads the list once, a
 preview per selection, and one record a second only while a dispatch is starting.
 
+The preview belongs to the selected row, not to its text (`steadyPlan`, `samePlan` in `client/new.tsx`): while the
+words change, the row keeps its last preview on screen until the next one arrives (asked 150 ms after the last
+keystroke), an answer that says the same thing changes nothing on screen, and a picked project, agent or note stays.
+Only picking another row clears it. 2026-11-25: every keystroke blanked the right side to "Reading the source" and
+reset the overrides. Guarded by `tests/new-dialog.test.ts`.
+
 ## Settings
 
 Settings → Dispatch has four sections. It reads `follow.dispatch-actions` and `follow.dispatch-settings` when the tab

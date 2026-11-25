@@ -388,6 +388,17 @@ function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; r
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; repeat: boolean; isComposing?: boolean; target: unknown; preventDefault(): void; stopPropagation(): void };
 type Phase = { kind: "edit" } | { kind: "sending" } | { kind: "record"; id: string };
 
+type Shown = { source: string; rowId: string | null; plan: DispatchPlan } | null;
+/** The preview for the selected row: its own, or while its words change, the last one it had. */
+export function steadyPlan(shown: Shown, source: string | null, rowId: string | null): DispatchPlan | null {
+  if (!source || !shown) return null;
+  return shown.source === source || (rowId !== null && shown.rowId === rowId) ? shown.plan : null;
+}
+/** A preview answer that says what's already on screen keeps the old object, so nothing below it re-renders. */
+export function samePlan(prev: Shown, source: string, rowId: string | null, plan: DispatchPlan): Shown {
+  if (prev && prev.rowId === rowId && JSON.stringify(prev.plan) === JSON.stringify(plan)) return prev.source === source ? prev : { ...prev, source };
+  return { source, rowId, plan };
+}
 export function NewDialog({ request, theme, layout, navigation, onClose, openSettings }: { request: NewRequest; theme: Theme; layout: PluginHostProps["layout"]; navigation?: { openWorkspace(i: { workspaceId: string }): void }; onClose: () => void; openSettings?: () => void }) {
   const c = theme.colors; const compact = layout.compact;
   // The callers, kept in a ref: effects below must not re-run (and re-read) because a host hands out new functions.
@@ -408,7 +419,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const [searched, setSearched] = useState<{ query: string; sources: DispatchSources } | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Overrides>({});
-  const [planFor, setPlanFor] = useState<{ source: string; plan: DispatchPlan } | null>(null);
+  const [planFor, setPlanFor] = useState<{ source: string; rowId: string | null; plan: DispatchPlan } | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "edit" });
   const [record, setRecord] = useState<DispatchRecord | null>(null);
@@ -436,8 +447,10 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
   const selected = picked && rows.some(r => r.id === picked) ? picked : preselected;
   const row = rows.find(r => r.id === selected) ?? null;
   const source = rowSource(row);
-  // A new source starts from its own defaults: the overrides belonged to the last one.
-  useEffect(() => { setOverrides({}); setMore(false); setReopen(null); }, [source]);
+  // A new row starts from its own defaults: the overrides belonged to the last one. Typing more words is the same row
+  // (the preview stays steady), so a picked project, agent or note survives the next keystroke.
+  const rowId = row?.id ?? null;
+  useEffect(() => { setOverrides({}); setMore(false); setReopen(null); }, [rowId]);
   useEffect(() => { setPicked(null); }, [query]);
 
   // One preview per selection or change, the newest winning.
@@ -446,14 +459,15 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     if (!source) return;
     const n = ++seq.current;
     const t = setTimeout(() => {
-      readPreview({ source, ...overrides, note: overrides.note || undefined }).then(p => { if (n === seq.current) { setPlanFor({ source, plan: p as DispatchPlan }); setPlanError(null); } })
+      readPreview({ source, ...overrides, note: overrides.note || undefined }).then(p => { if (n === seq.current) { setPlanFor(prev => samePlan(prev, source, rowId, p as DispatchPlan)); setPlanError(null); } })
         .catch(e => { if (n === seq.current) setPlanError(errorText(e)); });
-    }, planFor?.source === source ? 120 : 0);
+    }, planFor?.source === source || planFor?.rowId === rowId ? 150 : 0);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, JSON.stringify(overrides)]);
-  // The preview on screen is always the selected source's: another row's shows nothing until its own arrives.
-  const planNow = source && planFor?.source === source ? planFor.plan : null;
+  // The preview on screen is the selected row's: another row's shows nothing until its own arrives, and the same row
+  // keeps its last preview while the next one loads (typing never blanks it, preview-stays-while-typing).
+  const planNow = steadyPlan(planFor, source, rowId);
   // Pasted images (every-agent-field-takes-images), one model for the task field and the note: they go with the new
   // agent's first message. Who takes them is the agent this dispatch starts (the Agent chip, else the action's).
   const imageProvider = overrides.agent?.provider ?? planNow?.agentPick.picked?.provider ?? null;

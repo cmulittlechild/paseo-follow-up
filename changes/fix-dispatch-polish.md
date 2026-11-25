@@ -1,1 +1,2 @@
 - Dispatch's first message to the agent no longer repeats your words, and branch names end on a whole word.
+- Typing in Dispatch no longer makes the preview flicker, and a project or agent you picked stays while you type.
