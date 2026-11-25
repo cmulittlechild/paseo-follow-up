@@ -81,15 +81,16 @@ export function harnessEnv(root, { home = join(root, "home"), paseoHome = home, 
  * The one config.json for every harness daemon (scripts/check-*.mjs, screenshots, scale, poll-cost, preview): local
  * listen, no relay or browser tools, and every provider whose tool is stubbed turned off. Pass the same `real` as to
  * harnessEnv (check-wait keeps claude, so its provider stays on). `mcp` injects Paseo's agent MCP; `webUi` serves the
- * web app; `extra` adds top-level keys (plugins…). tests/harness-env.test.ts fails when a script writes its own.
+ * web app; `providers` adds provider entries (a generic ACP agent…) beside the stubbed ones turned off; `extra` adds
+ * top-level keys (plugins…). tests/harness-env.test.ts fails when a script writes its own.
  */
-export function harnessConfig({ port, mcp = false, webUi = false, real = [], extra = {} }) {
+export function harnessConfig({ port, mcp = false, webUi = false, real = [], providers = {}, extra = {} }) {
   const off = stubbedTools(real).filter(t => t in PROVIDER_TOOLS).map(t => [PROVIDER_TOOLS[t], { enabled: false }]);
   return {
     pluginsEnabled: true,
     daemon: { listen: `127.0.0.1:${port}`, relay: { enabled: false }, mcp: mcp ? { enabled: true, injectIntoAgents: true } : { enabled: false }, browserTools: { enabled: false } },
     ...(webUi ? { features: { webUi: { enabled: true } } } : {}),
-    agents: { providers: Object.fromEntries(off) },
+    agents: { providers: { ...providers, ...Object.fromEntries(off) } },
     ...extra,
   };
 }

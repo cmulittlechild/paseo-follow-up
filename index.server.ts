@@ -104,6 +104,7 @@ import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostAtLeast, hostFeature, ROW_BADGES_SINCE, type ServerInfo } from "./server/host-features";
 import { CODEX_PROMPT_MIN, atLeast, codexVersion, withSystemPrompt, type BridgeTexts, type PromptDeps } from "./server/session-prompt";
+import { isAcp } from "./shared/provider-support";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
@@ -300,8 +301,12 @@ export default function contribute(server: PluginServerContext) {
     if (!api) { unsent.set(`${agentId}|${brief.id}`, { agentId, brief }); return; }
     await api.agents.ref(agentId).timeline.append({ type: "plugin", id: brief.id, kind: BRIEF_KIND, version: BRIEF_VERSION, data: brief });
   };
+  let catalogKicked = false;
   const seen = (paseo: PaseoApi) => {
     api = paseo;
+    // The first Paseo handle: read the provider catalog once in the background, so a helper left on its default runs
+    // on a provider Paseo has from its first job (runnableRole), without any RPC waiting on it.
+    if (!catalogKicked) { catalogKicked = true; queueMicrotask(() => void providerCatalog.read().catch(() => undefined)); }
     for (const [key, row] of unsent) { unsent.delete(key); void append(row.agentId, row.brief).catch(() => undefined); }
   };
   const needsYouPath = (agentId: string) => join(directory, "hook-state", `needs-you-${agentId}.json`);
@@ -618,8 +623,10 @@ export default function contribute(server: PluginServerContext) {
   };
   const withTools = async <R extends Parameters<typeof withSessionMcp>[0]>(request: R, recovery: boolean, brief: string | null, root: boolean, overseer = false): Promise<R> => {
     // FOLLOW_UP_TOOL_PROVIDERS / FOLLOW_UP_FORCE_STDIO exist for the isolated harness (scripts/check-native-tools.mjs).
-    const providers = (process.env.FOLLOW_UP_TOOL_PROVIDERS ?? "claude,codex").split(",");
-    if (request.purpose !== "interactive" || !providers.includes(request.provider) || request.labels["plugin-tools/enabled"] === "false") return request;
+    // Every provider gets the tools (an-agent-on-any-provider-gets-follow-up): Paseo serves them through its agent MCP to
+    // any provider that takes MCP servers. FOLLOW_UP_TOOL_PROVIDERS narrows it for the isolated harness only.
+    const providers = process.env.FOLLOW_UP_TOOL_PROVIDERS ? process.env.FOLLOW_UP_TOOL_PROVIDERS.split(",") : null;
+    if (request.purpose !== "interactive" || (providers && !providers.includes(request.provider)) || request.labels["plugin-tools/enabled"] === "false") return request;
     if (process.env.FOLLOW_UP_FORCE_STDIO !== "1" && nativeToolsAvailable(request, await paseoConfig())) {
       toolTransport = "native (Paseo's agent MCP)";
       const flags = { recovery, brief: !!brief && !recovery, root: root && !recovery, overseer: overseer && !recovery };
@@ -1198,10 +1205,18 @@ export default function contribute(server: PluginServerContext) {
     if (!snapshot.entries?.some(e => e.status === "loading")) return snapshot as Awaited<ReturnType<CatalogSource>>;
     return await paseo.providers.waitForReady({ timeoutMs: 8000 }).catch(() => snapshot) as unknown as Awaited<ReturnType<CatalogSource>>;
   });
+  // A helper left on its default runs on a provider Paseo has (shared/job-rows.ts runnableRole): the last catalog read.
+  // Reading a role never waits on Paseo (an-ack-never-waits-on-the-disk's rule for RPCs: overseer-status, Compass): with
+  // no catalog yet it starts one read in the background (cached ten minutes) and keeps the default meanwhile. Never polled.
+  agentSettings.catalog = async () => { const last = providerCatalog.peek(); if (!last && api) void providerCatalog.read().catch(() => undefined); return last; };
   const agentSettingsView = async (catalog: boolean, fresh = false): Promise<AgentSettingsView> => {
-    const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
+    // The catalog first, so the roles show what runs (a default on a provider Paseo lacks moves: runnableRole).
     const cat = catalog ? await providerCatalog.read(fresh) : null;
-    return { roles: Object.values(roles).map(r => ({ ...r, summary: roleSummary(r, labelsFor(r, cat)) })), invalid, catalog: cat, wait: await currentWait() };
+    const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
+    // Which providers are ACP comes from Paseo's config (a generic ACP agent has the developer's own id): Settings' line.
+    const config = cat ? await paseoConfig() as Parameters<typeof isAcp>[1] : null;
+    const shown = cat ? { ...cat, providers: cat.providers.map(p => ({ ...p, acp: isAcp(p.id, config) })) } : null;
+    return { roles: Object.values(roles).map(r => ({ ...r, summary: roleSummary(r, labelsFor(r, cat)) })), invalid, catalog: shown, wait: await currentWait() };
   };
   // What's new and Settings → General. Follow-up's own install comes from Paseo's plugin list, read once per worker.
   const versions = new VersionsStore(directory);
@@ -2060,9 +2075,19 @@ export default function contribute(server: PluginServerContext) {
   const hostPrompt = hostFeature("checkoutWorktreeList", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   let codexPrompt: Promise<boolean> | null = null;
   const promptDeps: PromptDeps = {
+    acp: async provider => isAcp(provider, await paseoConfig() as Parameters<typeof isAcp>[1]),
     hostSupports: hostPrompt,
     providerSupports: async provider => provider === "claude" || provider === "codex" && await (codexPrompt ??= codexVersion().then(v => atLeast(v, CODEX_PROMPT_MIN))),
     bridge: async () => await import(pathToFileURL(join(directory, "mcp.mjs")).href) as BridgeTexts,
+    // A provider without Follow-up's hook gets the tracked workspace's instructions in its system prompt: the hook's own
+    // text (agent-hook.mjs workspaceInstructions), for this agent's role in the store as it is now.
+    workspace: async (agentId, native) => {
+      const entry = scopes(await store.snapshot(), w => prWorkflow.agentWorkflow(workspaceRepo(w), touchedRepos(w)))[agentId];
+      if (!entry || entry.role === "recovery") return null;
+      (globalThis as { followUpHookLibrary?: boolean }).followUpHookLibrary = true;
+      const hook = await import(pathToFileURL(join(directory, "agent-hook.mjs")).href) as { workspaceInstructions?: (o: Record<string, unknown>) => string };
+      return hook.workspaceInstructions?.({ contributor: entry.role === "contributor", workflow: entry.workflow, native, clientEntry: clientEntry() }) ?? null;
+    },
   };
   const withWait = (handler: SessionOpen): SessionOpen => async (input, context) => {
     const background = await isBackground(input.request.agentId, context.paseo);
@@ -2119,7 +2144,7 @@ export default function contribute(server: PluginServerContext) {
       // background recovery agent loses its tools on its second session (resume, reload, plugin update).
       if (await isBackground(request.agentId, paseo) && !recordedRecoveryAgent(await store.snapshot(), request.agentId)) return request;
       // The Overseer: needs_you (no Stop-hook nudge), the action tools and its routing tools. Never tracked.
-      if (request.labels[OVERSEER_LABEL] === "1" && ["claude", "codex"].includes(request.provider)) {
+      if (request.labels[OVERSEER_LABEL] === "1") {
         const env = { ...request.env, FOLLOW_UP_OVERSEER: "1", FOLLOW_UP_BRIEF: request.provider };
         return withTools({ ...request, env }, false, request.provider, true, true);
       }
@@ -2138,7 +2163,7 @@ export default function contribute(server: PluginServerContext) {
       }
       const root = !!request.workspaceId && !isRecovery(request.labels) && await isWorkspaceRoot({ id: request.agentId, workspaceId: request.workspaceId, labels: request.labels }, async id => (await paseo.agents.ref(id).refresh())?.agent);
       // F2: needs_you and the Stop-hook nudge reach every root agent while the inbox is on, tracked or not.
-      const brief = (await inboxSettings()).enable_inbox && ["claude", "codex"].includes(request.provider) ? request.provider : null;
+      const brief = (await inboxSettings()).enable_inbox ? request.provider : null;
       if (!w && root) {
         w = await store.mutate(state => {
           const workspace = state.workspaces.find(w => w.id === request.workspaceId && w.enable_tracking && !w.archived);

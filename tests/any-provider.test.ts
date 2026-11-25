@@ -127,10 +127,11 @@ test("recommendations: OpenCode and Copilot go by the catalog's own wording firs
   const recs = recommendAll([COPILOT, OPENCODE]);
   assert.deepEqual([recs.about.provider, recs.about.model, recs.about.source], ["opencode", "qwen3-coder", "metadata"]);
   assert.deepEqual([recs.overseer.provider, recs.overseer.model, recs.overseer.source], ["opencode", "kimi-k2", "metadata"]);
-  assert.deepEqual([recs.ranker.provider, recs.ranker.model, recs.ranker.source], ["opencode", "glm-4.6", "metadata"]);
+  // AI priority reads what other people wrote: never recommended off Claude and Codex (sources-are-read-only).
+  assert.deepEqual([recs.ranker.provider, recs.ranker.source], [null, "none"]);
   // Copilot alone: names only; "gemini" is not "mini".
   const copilot = recommendAll([COPILOT]);
-  assert.deepEqual([copilot.about.model, copilot.overseer.model, copilot.ranker.model], ["gemini-2.5-flash", "gemini-2.5-pro", "gpt-4.1"]);
+  assert.deepEqual([copilot.about.model, copilot.overseer.model, copilot.ranker.provider], ["gemini-2.5-flash", "gemini-2.5-pro", null]);
   assert.equal(modelTier({ id: "gemini-2.5", label: "Gemini 2.5" }), null);
 });
 

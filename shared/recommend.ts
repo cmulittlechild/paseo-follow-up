@@ -1,4 +1,4 @@
-import { ROLE_DEFAULTS, type AgentRole, type CatalogModel, type CatalogProvider, type RoleConfig } from "./agent-settings";
+import { ROLE_DEFAULTS, guardedProvider, needsGuard, type AgentRole, type CatalogModel, type CatalogProvider, type RoleConfig } from "./agent-settings";
 
 /**
  * Which model each helper job should use, from whatever providers Paseo has. Setup's "Helper agents" step and
@@ -65,7 +65,8 @@ const lowEffort = (m: CatalogModel) => m.thinking.find(t => /^(minimal|low)$/i.t
 export function recommend(role: AgentRole, catalog: readonly CatalogProvider[]): Recommendation {
   const tier = ROLE_TIER[role];
   if (tier === "same") return { role, same: true, provider: ROLE_DEFAULTS[role].provider, model: null, thinking: null, source: "same", hint: null };
-  const providers = order(catalog);
+  // Never recommend a provider a job can't run on: AI priority only on Claude or Codex (sources-are-read-only).
+  const providers = order(catalog).filter(p => !needsGuard(role) || guardedProvider(p.id));
   if (!providers.length) return { role, same: false, provider: null, model: null, thinking: null, source: "none", hint: null };
   if (providers[0].id === "claude") { const d = ROLE_DEFAULTS[role]; return { role, same: false, provider: d.provider, model: d.model, thinking: d.thinking, source: "default", hint: null }; }
   for (const want of ["metadata", "name"] as const) {

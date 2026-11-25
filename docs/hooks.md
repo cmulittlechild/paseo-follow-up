@@ -56,6 +56,26 @@ hook leaves exactly those out, so the agent reads each once (`inPrompt`).
   at the session's next open.
 - On an older host or provider, nothing changes: no `appendSystemPrompt`, no flag, the hook adds it all.
 
+## Other providers
+
+Paseo runs agents on more than Claude Code and Codex (OpenCode, Pi, Copilot, Cursor, Kimi, Kiro, any ACP agent), and
+Follow-up's hook lives only in those two. What an agent on any other provider gets
+(`shared/provider-support.ts`, an-agent-on-any-provider-gets-follow-up):
+
+- **Tools and `needs_you`**: the same as on Claude or Codex, native through Paseo's agent MCP (or the bridge).
+- **Instructions**: on Paseo 0.17 `withSystemPrompt` puts all of what the hook's SessionStart would add in the system
+  prompt (`hooklessParts`): the tracked workspace's instructions (`workspaceInstructions`, exported from the hook, which
+  the worker imports with `globalThis.followUpHookLibrary` set so its `main()` doesn't run), the role texts and the
+  checks line. `tests/session-prompt.test.ts` checks, for every role, that the prompt equals what the hook alone adds
+  on Claude. Paseo passes it to OpenCode, Pi and plugin providers; ACP agents don't take a plugin's system prompt yet,
+  so they get the tools and their descriptions only, and Follow-up sends them none (no `FOLLOW_UP_SYSTEM_PROMPT`
+  claim). Which providers are ACP comes from Paseo's config (`isAcp`): a built-in ACP id, or any provider whose
+  `extends` chain reaches one, so a generic ACP agent under the developer's own id counts.
+- **Not there**: the Stop checks (sync, `needs_you`, due tasks), the per-turn context, the polling nudge and Wait, all
+  hooks. `providerNotes` says so in Settings → Agents' one block under the helper rows, at most two short lines: what
+  works on those providers, then what needs Claude Code or Codex and the one thing to do (`guardAction`: use, turn on
+  or install, never a pick the developer can't make).
+
 ## Env flags
 
 The worker sets these at `agent.session_open`:
