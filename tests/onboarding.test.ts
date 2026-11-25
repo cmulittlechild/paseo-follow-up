@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount, type CheckDeps } from "../server/onboarding";
-import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, providerChecks, setupSteps, shownStep, initialOnboarding, OFFER_MS, sentenceStart, type Check, type GhResult } from "../shared/onboarding";
+import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, providerChecks, providersReady, setupSteps, shownStep, initialOnboarding, OFFER_MS, sentenceStart, type Check, type GhResult } from "../shared/onboarding";
 import { reviewerSettingsRpc, saveReviewersRpc, setFollowSettingsRpc, followSettingsRpc, prWorkflowRpc, setPrWorkflowRpc, setUpdatesRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
 
@@ -186,8 +186,9 @@ test("checks: a provider a helper uses is a failure; an unused one is optional; 
   checks = (await new ReadinessChecks(deps({ catalog: async () => catalog(false, false), use: async () => ({ claude: ["the Overseer"], codex: ["AI priority"] }) })).run()).checks;
   // No provider at all is Paseo's next step, not Follow-up failing: a note that says what to set up.
   assert.equal(byId(checks, "providers").state, "warn"); assert.match(byId(checks, "providers").fix?.text ?? "", /Set one up in Paseo's settings/);
-  assert.equal(byId(checks, "provider-codex").state, "fail"); assert.equal(byId(checks, "provider-codex").fix?.command, "codex login");
-  assert.equal(byId(checks, "provider-claude").fix?.settings, null, "nothing to switch to");
+  // The one Agents row says what to set up; each provider row only says what it is, never a second alarm.
+  assert.equal(byId(checks, "provider-codex").state, "off"); assert.equal(byId(checks, "provider-codex").fix, null);
+  assert.equal(checks.filter(c => c.state === "fail").length, 0);
 
   checks = (await new ReadinessChecks(deps({ catalog: async () => catalog("Still loading", true) })).run()).checks;
   assert.equal(byId(checks, "provider-claude").state, "pending");
@@ -366,6 +367,11 @@ test("every setup step has something to do: GitHub-only steps go without the Git
   const steps = setupSteps({ github: false, repos: null, npm: false });
   assert.equal(shownStep("shipping", steps), "helpers");
   assert.equal(shownStep("defaults", steps), "defaults");
+  // No provider in Paseo: no helper to pick a model for.
+  assert.deepEqual(setupSteps({ github: false, repos: null, npm: false, providers: false }), ["intro", "checks", "defaults", "tour"]);
+  assert.equal(providersReady([{ id: "providers", label: "Agents", state: "warn", detail: "", fix: null }]), false);
+  assert.equal(providersReady([{ id: "provider-codex", label: "Codex", state: "pending", detail: "", fix: null }]), null);
+  assert.equal(providersReady([{ id: "provider-codex", label: "Codex", state: "ok", detail: "", fix: null }]), true);
 });
 
 test("checks: a provider Paseo is still loading is never \"no provider ready\"", () => {

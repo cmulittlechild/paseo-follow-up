@@ -6,7 +6,7 @@ import { Icon, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { followSettingsRpc, onboardingChecksRpc, onboardingRpc, prWorkflowRpc, setFollowSettingsRpc, setOnboardingRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
-import { autoSendWrites, checksSummary, setupSteps, shownStep, type Check, type Checks, type OnboardingStep, type OnboardingView } from "../shared/onboarding";
+import { autoSendWrites, checksSummary, providersReady, setupSteps, shownStep, type Check, type Checks, type OnboardingStep, type OnboardingView } from "../shared/onboarding";
 import { Button, IconButton, errorText, text, type Theme } from "./kit";
 import { ReviewerSettings } from "./reviewers";
 import { JobRows } from "./job-rows";
@@ -75,7 +75,8 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     github: !gh ? null : gh.state === "ok" ? true : gh.state === "off" ? false : null,
     repos: shipping.data ? shipping.data.repos.length : null,
     npm: updates.data ? updates.data.installKind === "npm" : null,
-  }), [gh?.state, shipping.data?.repos.length, updates.data?.installKind]);
+    providers: providersReady(checks.data?.checks),
+  }), [gh?.state, shipping.data?.repos.length, updates.data?.installKind, providersReady(checks.data?.checks)]);
   const step = shownStep(saved, steps);
   const index = steps.indexOf(step);
   const move = useMutation({

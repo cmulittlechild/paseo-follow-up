@@ -2937,7 +2937,8 @@ async function shootOnboarding({ shoot, call }) {
   const repos = (await call("follow.pr-workflow", {})).repos.length;
   const npm = (await call("follow.updates", {})).installKind === "npm";
   const github = ghRow?.state === "ok" ? true : ghRow?.state === "off" ? false : null;
-  const steps = ONBOARDING_STEPS.filter(step => step === "shipping" ? github !== false && repos !== 0 : step === "reviewers" ? github !== false : step === "updates" ? npm : true);
+  const noProvider = host.checks.some(r => r.id === "providers");
+  const steps = ONBOARDING_STEPS.filter(step => step === "shipping" ? github !== false && repos !== 0 : step === "reviewers" ? github !== false : step === "updates" ? npm : step === "helpers" ? !noProvider : true);
   log("onboarding steps:", steps.join(" "));
   checks.push({ name: "steps", ok: true, steps });
   const BROKEN = /undefined|NaN|\[object|null\b|Error:|TypeError|Something went wrong|Couldn't read Paseo/;
@@ -5443,7 +5444,7 @@ try {
     await fs.rename(join(bin, "gh"), join(bin, "gh-fixture"));
     await fs.writeFile(join(bin, "gh"), `#!/bin/sh\nif [ "$1" = api ] && [ "$2" = user ]; then echo '{"login":"alice-example"}'; exit 0; fi\nexec ${JSON.stringify(join(bin, "gh-fixture"))} "$@"\n`); await fs.chmod(join(bin, "gh"), 0o700);
   }
-  github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
+  github = await fakeGithub({ dir: root, gh: join(bin, "gh"), ...(variant?.gh ? { handle: ({ path }) => path === "user" ? { status: 200, body: { login: "alice-example" } } : null } : {}) });
   if (variant?.gh) await fs.writeFile(join(root, "gh-auth"), `#!/bin/sh\n[ "$1" = auth ] && [ "$2" = token ] && echo fixture-token-example && exit 0\nexit 1\n`);
   // No mcpproxy for a stranger: harnessEnv's stub, which exits like a missing tool.
   const noMcpproxy = !!variant;

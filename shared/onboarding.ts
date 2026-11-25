@@ -18,20 +18,28 @@ export const isStep = (v: unknown): v is OnboardingStep => typeof v === "string"
  * What this host has, for the steps that only mean something with it. `null` is not known yet, which keeps the step
  * (unknown is not off, invariant 7).
  */
-export type StepFacts = { github: boolean | null; repos: number | null; npm: boolean | null };
+export type StepFacts = { github: boolean | null; repos: number | null; npm: boolean | null; providers?: boolean | null };
 /**
  * The steps a developer walks on this host (every-setup-step-has-something-to-do): without the GitHub CLI signed in
  * there's no PR to ship or review, so Shipping and Reviewers go; with no repository seen yet Shipping has nothing to
- * pick; a copy not installed from npm updates from its checkout, so Updates goes. Everything a skipped step sets stays
- * in Settings.
+ * pick; a copy not installed from npm updates from its checkout, so Updates goes; with no provider in Paseo there's no
+ * helper to pick a model for, so Helper agents goes (the checks step says what to set up). Everything a skipped step
+ * sets stays in Settings.
  */
 export function setupSteps(facts: StepFacts): OnboardingStep[] {
   return ONBOARDING_STEPS.filter(step => {
     if (step === "shipping") return facts.github !== false && facts.repos !== 0;
     if (step === "reviewers") return facts.github !== false;
     if (step === "updates") return facts.npm !== false;
+    if (step === "helpers") return facts.providers !== false;
     return true;
   });
+}
+/** Whether Paseo has a provider ready, from the checks: the "Agents" row means none; any ready provider means yes. */
+export function providersReady(checks: readonly Check[] | null | undefined): boolean | null {
+  if (!checks) return null;
+  if (checks.some(c => c.id === "providers" && c.state !== "pending")) return false;
+  return checks.some(c => c.id.startsWith("provider-") && c.state === "ok") ? true : null;
 }
 /** Where a resumed or Back-ed flow lands when its saved step isn't shown here: the next one that is. */
 export function shownStep(step: OnboardingStep, steps: readonly OnboardingStep[]): OnboardingStep {
@@ -212,6 +220,7 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
   const ready = catalog.providers.filter(p => p.available).map(p => p.id).sort((x, y) => rank(x) - rank(y));
   const ids = [...new Set([...KNOWN_PROVIDERS.filter(id => use[id]?.length || catalog.providers.some(p => p.id === id)), ...Object.keys(use).filter(id => use[id]?.length), ...ready])];
   const rows: Check[] = [];
+  const pendingAny = catalog.providers.some(p => !p.available && p.reason === "Still loading");
   for (const id of ids) {
     const p = catalog.providers.find(x => x.id === id);
     const label = nameOf(catalog, id);
@@ -219,11 +228,14 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
     const usedBy = users.length ? `Used by ${joinNames(users)}.` : "Not used by any helper right now.";
     if (p?.available) { rows.push({ id: `provider-${id}`, label, state: "ok", detail: `Available. ${usedBy}`, fix: null }); continue; }
     if (p?.reason === "Still loading") { rows.push({ id: `provider-${id}`, label, state: "pending", detail: "Paseo is still checking this provider.", fix: fix("Check again in a few seconds.") }); continue; }
-    const why = p?.reason ? ` (${p.reason})` : p ? "" : " (Paseo doesn't have it)";
-    if (!users.length) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `Not available${why}. Optional: no helper uses it.`, fix: null }); continue; }
+    // Paseo's own reason when it gives one ("Not installed", "Turned off in Paseo"), said as the sentence it is.
+    const why = p?.reason ? sentenceStart(p.reason) : p ? "Not available" : "Paseo doesn't have it";
+    if (!users.length) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `${why}. Optional: no helper uses it.`, fix: null }); continue; }
+    // No provider at all: the one row above says what to set up, so this one only says what it is (never a second alarm).
+    if (!ready.length && !pendingAny) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `${why}.`, fix: null }); continue; }
     const setup = PROVIDER_FIX[id] ?? { text: `Set up ${label} on the computer running Paseo, then check again.`, command: null };
     const other = ready.find(x => x !== id);
-    rows.push({ id: `provider-${id}`, label, state: "fail", detail: `Not available${why}. ${sentenceStart(joinNames(users))} won't run until it is.`,
+    rows.push({ id: `provider-${id}`, label, state: "fail", detail: `${why}. ${sentenceStart(joinNames(users))} won't run until it is.`,
       fix: other ? fix(`${setup.text} Or switch those helpers to ${nameOf(catalog, other)} in Settings → Agents.`, setup.command, "agents") : fix(setup.text, setup.command) });
   }
   // A provider Paseo is still loading isn't missing: the rows say "still checking" and the step checks again.
