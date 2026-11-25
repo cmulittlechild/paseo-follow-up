@@ -192,7 +192,8 @@ export function JobLine({ row, r, catalog, loading, theme, compact, busy, open, 
   </Pressable>;
   const model = <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0, opacity: off ? 0.6 : 1 }}>
     {loading && <Spinner color={c.foregroundMuted} size={12} />}
-    <Text numberOfLines={1} style={[t.meta, { flex: 1 }]}>{pick}</Text>
+    {/* Wraps, never cut: "Recommended" is what this line is for (Q161), and a provider's name can be long. */}
+    <Text numberOfLines={2} style={[t.meta, { flex: 1 }]}>{pick}</Text>
     {change}
   </View>;
   return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: compact ? 14 : 16, paddingVertical: compact ? 6 : 12, gap: compact ? 0 : 6 }}>
