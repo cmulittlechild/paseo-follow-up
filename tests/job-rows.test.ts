@@ -125,3 +125,11 @@ test("New work copies the Overseer by default and says so; a pick of its own is 
   assert.equal(jobRow(view("dispatch"), codex).notice, null);
 });
 
+
+test("a provider Paseo is still loading: no row says it can't run, and the header says Paseo is still checking", () => {
+  const loading = (id: string) => ({ ...p(id, [], false), reason: "Still loading" });
+  const cat = catalog(loading("claude"), loading("codex"));
+  const rows = SETUP_ORDER.map(role => jobRow(view(role), cat));
+  assert.ok(rows.every(r => !r.notice && !r.blocked), JSON.stringify(rows.map(r => [r.role, r.notice, r.blocked])));
+  assert.deepEqual(jobsHeader(rows, cat, false), { text: "Paseo is still checking your providers…", tone: "muted", action: null, differ: 0 });
+});
