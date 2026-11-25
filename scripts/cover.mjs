@@ -4,7 +4,8 @@
 // accent #B79CF0): a pale lilac paper ground, Follow-up's icon and name centred at the top, a one-line serif headline
 // (Instrument Serif, its second part in a deeper lilac italic) over one plain line, and a real screen on a white sheet
 // below them that runs off the bottom edge.
-//   - follow-up-slide-1-cover.png: the headline and the purpose line over Home, at its full size.
+//   - follow-up-slide-1-cover.png: the headline and the purpose line over Home's Follow-up pane, enlarged on a wider
+//     sheet so its rows still read at a README column's width, and kept lossless (no pngquant).
 //   - follow-up-slide-2…6: one feature each, a short headline and one plain line saying what it does for you, over that
 //     feature's real element filling the sheet's width, cropped from an 8× render. Slide 6 is a phone screen, on a
 //     narrower sheet with phone corners.
@@ -56,7 +57,8 @@ const icon = `data:image/svg+xml;base64,${readFileSync(new URL("../assets/icon.s
 // One line: "First part|Second part" sets the second part in the accent italic.
 const headline = h => { const [a, b = ""] = h.split("|"); return `<h1>${esc(a)}${b ? ` <em>${esc(b)}</em>` : ""}</h1>`; };
 
-const SHEET = 1440; // CSS px: the widest sheet, Home's own width at 1:1
+const SHEET = 1440; // CSS px: the feature slides' sheet
+const COVER_SHEET = 1600; // CSS px: the cover's sheet, Home's Follow-up pane (960 px wide) shown at 5/3
 const PHONE_SHEET = 760;
 const STRETCH = 1.15; // the most a source is enlarged past its own pixels
 const SIDE = 80; // the headline keeps this clear of each edge
@@ -86,7 +88,7 @@ function page(s) {
   // stretched at most STRETCH past its own pixels (the slide renders at 2×, so an image of w device pixels shows crisp
   // up to w/2 CSS pixels). A tall element runs off the slide's bottom; a short one ends its sheet just below it.
   const { w } = size(s.src);
-  const width = s.phone ? PHONE_SHEET : SHEET;
+  const width = s.phone ? PHONE_SHEET : s.kind === "cover" ? COVER_SHEET : SHEET;
   if (width > w / 2 * STRETCH) fail(`${s.name}: follow-up-${s.src}.png is ${w} px wide, too small for a ${width} px sheet; shoot it at a higher scale`);
   const words = s.kind === "cover" ? s.subline : s.line;
   return `<body class="${s.kind === "cover" ? "cover" : "slide"}">${brand}${headline(s.headline)}<p class="line">${esc(words)}</p>
@@ -121,7 +123,8 @@ try {
       const out = resolve(outDir, `follow-up-slide-${s.name}.png`);
       await p.screenshot({ path: out });
       await p.close();
-      await exec("pngquant", ["--force", "--skip-if-larger", "--quality", "70-95", "--strip", "--output", out, out]).catch(() => {});
+      // The cover stays lossless: pngquant's dithering speckles Home's small text once the cover is scaled down.
+      if (s.kind !== "cover") await exec("pngquant", ["--force", "--skip-if-larger", "--quality", "70-95", "--strip", "--output", out, out]).catch(() => {});
       console.log(`cover: ${out}`);
     }
   } finally { await browser.close(); }
