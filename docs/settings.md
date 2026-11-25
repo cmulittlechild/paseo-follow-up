@@ -105,7 +105,9 @@ First, pick where it lives:
 - **An unreadable file counts as finished**, so setup is never forced. While setup is open on a fresh install,
   auto-sends are held (`holdsAutoSends`).
 - **Readiness checks** run on demand, cached a minute (`fresh` re-runs them):
-  - `gh api user`;
+  - GitHub (optional, `works-without-github`): `GithubSetup.check()` (`server/github-setup.ts`), then the signed-in
+    login over the in-process client (`restAs(null, "user")`). Missing or signed out is an `off` row with the install
+    link (`fix.url`, drawn as Get the GitHub CLI) and `gh auth login` to copy, never a failure;
   - the provider snapshot;
   - Paseo's `config.json`;
   - the count of `hook-state/native-*.json`.

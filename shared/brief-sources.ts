@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { githubOffText, type GithubOff } from "./github-setup";
 import { ASK, askItemSchema, type AskCall, type AskItem } from "./ask";
 
 /**
@@ -304,7 +305,7 @@ export function upstreamHealth(u: Upstream | undefined): { health: SourceHealthS
  */
 export function briefSources(input: {
   upstreams: readonly Upstream[]; matched: readonly Matched[]; on: Readonly<Record<string, boolean>>;
-  reads: Readonly<Record<string, SourceRead | undefined>>; github: { accounts: number | null };
+  reads: Readonly<Record<string, SourceRead | undefined>>; github: { accounts: number | null; off?: GithubOff | null };
   asked?: Readonly<Record<string, AskedEntry | undefined>>;
   /** The worker's clock: whether a preview is fresh enough to turn Ask on. */
   now?: number;
@@ -350,8 +351,8 @@ export function briefSources(input: {
     adds: (input.github.accounts ?? 0) > 1 ? `Review requests on your ${input.github.accounts} gh accounts` : "Review requests for you", cost: (input.github.accounts ?? 0) > 1 ? "1 lookup per account" : "1 lookup",
     on: ghOn, canToggle: true,
     // accounts null: gh didn't answer in time; the last read decides.
-    health: !ghOn ? "off" : input.github.accounts === 0 ? "sign-in" : gh && !gh.ok ? "failed" : "ok",
-    detail: !ghOn ? "Off in the brief." : input.github.accounts === 0 ? "Needs a sign-in to the GitHub CLI." : gh && !gh.ok ? gh.error : null,
+    health: !ghOn ? "off" : input.github.off || input.github.accounts === 0 ? "sign-in" : gh && !gh.ok ? "failed" : "ok",
+    detail: !ghOn ? "Off in the brief." : input.github.off ? githubOffText(input.github.off, "Review requests") : input.github.accounts === 0 ? "Needs a sign-in to the GitHub CLI." : gh && !gh.ok ? gh.error : null,
     command: ghOn && input.github.accounts === 0 ? "gh auth login" : null,
     readAt: gh?.at ?? null, readTools: 0,
   });

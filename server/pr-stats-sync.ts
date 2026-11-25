@@ -1,4 +1,5 @@
 import { FLAG, PAGE_COMMENTS, PAGE_REVIEWS, PAGE_TIMELINE, parseStatsRecord, STATS_PAGE_MIN, STATS_PAGE_SIZE, withAllReviews, type StatsRecord } from "../shared/pr-stats-records";
+import { githubOffText, isGithubOff } from "../shared/github-setup";
 import type { GithubApi } from "./github-api";
 import type { GateReason, RateLimit, ReadOrigin, StatsGate } from "./pr-stats-gate";
 import { STATS_RECORDS_MAX, type RepoStats, type StatsStore } from "./pr-stats-store";
@@ -220,9 +221,10 @@ export class StatsSync {
   private fail(stats: RepoStats, error: unknown, result: SyncResult): void {
     const e = error as { message?: string; rateLimited?: boolean; resetAt?: number };
     if (e?.rateLimited) { result.waiting = { reason: "budget", until: e.resetAt ?? null }; return; }
-    const message = e?.message ?? String(error);
+    // GitHub off (works-without-github): the page says what's missing in one line; nothing is logged.
+    const message = isGithubOff(error) ? githubOffText(error.off, "PR statistics") : e?.message ?? String(error);
     result.error = message;
     stats.meta = { ...stats.meta, error: { message, status: status(error), at: Math.floor(this.now() / 1000) } };
-    (this.o.log ?? console.warn)(`[follow-up] PR stats: reading ${stats.meta.repo} failed: ${message}`);
+    if (!isGithubOff(error)) (this.o.log ?? console.warn)(`[follow-up] PR stats: reading ${stats.meta.repo} failed: ${message}`);
   }
 }

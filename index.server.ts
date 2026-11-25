@@ -32,6 +32,8 @@ import * as rpc from "./shared/contracts";
 import { LogRing } from "./server/report-issue/diagnostics";
 import { followUpReporter } from "./server/report-issue-adapter";
 import { githubApi } from "./server/github-api";
+import { githubSetup } from "./server/github-setup";
+import { GithubOffError, githubOffText } from "./shared/github-setup";
 import { browserRepositories, browserWorkspaces, prClaims, prOwner } from "./server/pr-owner";
 import { type Workspace } from "./shared/model";
 import { createdItems } from "./server/created-items";
@@ -106,7 +108,7 @@ import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/re
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
 import { CheckWatches } from "./server/check-watches";
-import { waitForChecksAnswer } from "./server/wait-for-checks";
+import { githubOffChecksAnswer, waitForChecksAnswer } from "./server/wait-for-checks";
 import { jobAgentRunner, type JobPaseo } from "./server/job-agent";
 import { AiJobs } from "./server/ai-jobs";
 import { liveRankSources, Ranker, RANKER_ROLE_DEFAULT } from "./server/ranker";
@@ -126,7 +128,7 @@ import { AgentSettingsStore, ProviderCatalog, type CatalogSource } from "./serve
 import { labelsFor, providerName, resolveRole, roleSummary, type AgentSettingsView } from "./shared/agent-settings";
 import type { LoadSignals } from "./shared/agent-load";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount } from "./server/onboarding";
-import { updatesConsent } from "./shared/onboarding";
+import { updatesConsent, type GhResult } from "./shared/onboarding";
 import { execFile, spawn } from "node:child_process";
 import { compactHeap, watchMemory } from "./server/memory";
 import { UpdatesStore } from "./server/updates";
@@ -281,7 +283,7 @@ export default function contribute(server: PluginServerContext) {
   const listCache = new ListCache();
   engine.paused = () => !governor.allowsBackground();
   // PR statistics (docs/pr-stats.md): every request through the stats gate, which reads and feeds the PR poller's budget.
-  const prStats = new PrStats({ directory, api: githubApi(), clientTimeZone: () => clientTimeZone, graphite: repo => prWorkflow.cachedWorkflow(repo) === "graphite",
+  const prStats = new PrStats({ directory, api: githubApi(), githubOff: () => github.off(), clientTimeZone: () => clientTimeZone, graphite: repo => prWorkflow.cachedWorkflow(repo) === "graphite",
     gate: { budget: owner => github.budget(owner), noteRateLimit: (owner, rate) => github.noteRateLimit(owner, rate), noteLimited: (owner, at) => github.noteLimited(owner, at), allowsBackground: () => governor.allowsBackground() } });
   engine.autoSendsHeld = () => onboarding.holdsAutoSends();
   const archive = batchArchive(directory);
@@ -980,10 +982,14 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.browserStatusRpc, async () => { await requireReady(); return browser.status(); });
   handle(rpc.browserExchangeRpc, async ({ clientId, ready: browserReady, acceptJobs, results, repositories }) => { await requireReady(); return { ...browser.exchange(clientId, browserReady, results, acceptJobs, repositories), repositories: browserRepositories(await store.snapshot()) }; });
   handle(rpc.prControlStatusRpc, async ({ workspaceId, prKey }) => { await requireReady(); return actions.status(workspaceId, prKey); });
-  handle(rpc.preparePrActionRpc, async ({ workspaceId, prKey, kind }) => { await requireReady(); return actions.prepare(workspaceId, prKey, kind); });
-  handle(rpc.confirmPrActionRpc, async ({ planId, scope }) => { await requireReady(); const result = await actions.confirm(planId, scope); void engine.nudge(); return result; });
+  // GitHub off (works-without-github): GitHub's own actions answer in one line at once, without waiting on the worker.
+  const githubFirst = async (what: string) => { const off = await github.off(); if (off) throw new GithubOffError(off, what); };
+  handle(rpc.preparePrActionRpc, async ({ workspaceId, prKey, kind }) => { await githubFirst(kind === "merge" ? "Merging" : "Merge when ready"); await requireReady(); return actions.prepare(workspaceId, prKey, kind); });
+  handle(rpc.confirmPrActionRpc, async ({ planId, scope }) => { await githubFirst("Merging"); await requireReady(); const result = await actions.confirm(planId, scope); void engine.nudge(); return result; });
   handle(rpc.checkPrActionRpc, async ({ workspaceId, actionId }) => { await requireReady(); return actions.check(workspaceId, actionId); });
   handle(rpc.requestReviewersRpc, async ({ workspaceId, prKey, reviewers, remember }) => {
+    // Remember still saves while GitHub is off: the developer's choice, for when it's on.
+    if (await github.off()) { if (reviewers && remember) await reviewerStore.save(prKey.split("#")[0], reviewers); await githubFirst("Adding reviewers"); }
     await requireReady();
     // "Remember for <repo>" saves first: it's the developer's choice whatever GitHub answers.
     if (reviewers && remember) await reviewerStore.save(prKey.split("#")[0], reviewers);
@@ -1054,7 +1060,7 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.reviewerSettingsRpc, async () => { await requireReady(); return reviewerSettings(); });
   handle(rpc.saveReviewersRpc, async ({ repo, reviewers }) => { await requireReady(); await reviewerStore.save(repo, reviewers); return reviewerSettings(); });
-  handle(rpc.reviewerSuggestionsRpc, async ({ repo }) => { await requireReady(); return reviewerSuggestions.suggest(repo); });
+  handle(rpc.reviewerSuggestionsRpc, async ({ repo }) => { const off = await github.off(); if (off) return { suggestions: [], error: `${githubOffText(off, "Suggesting reviewers")} Until then, type a login or org/team.` }; await requireReady(); return reviewerSuggestions.suggest(repo); });
 
   const priorityStore = new PriorityStore(directory);
   // Paseo's workspace descriptors for the Overseer (name, project, branch), from the shared directory.
@@ -1157,9 +1163,10 @@ export default function contribute(server: PluginServerContext) {
   // it's there; server_info's version does, read from the connection's last hello (no request).
   const hostVersion = async () => { try { return String(((await withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.())) as { version?: unknown } | null)?.version ?? ""); } catch { return ""; } };
   handle(rpc.waitForChecksRpc, async (input, { paseo }) => {
+    if (!input.cancel) { const off = await github.off(); if (off) return githubOffChecksAnswer(off, input.prs); }
     await requireReady();
     return waitForChecksAnswer(input, {
-      state: () => store.snapshot(), watches: checkWatches, nudge: id => engine.nudge(id), hostVersion,
+      state: () => store.snapshot(), watches: checkWatches, nudge: id => engine.nudge(id), hostVersion, githubOff: () => github.off(),
       register: (repo, number) => handlers.get(rpc.registerPrRpc.name)!.run({ agentId: input.agentId, repo, number, stack: `${repo}#${number}` }, { paseo } as PluginHandlerContext) as Promise<unknown>,
     });
   });
@@ -2002,7 +2009,14 @@ export default function contribute(server: PluginServerContext) {
   });
   // Readiness checks for the setup flow: gh, the helper providers and whether tools attach. On demand only, cached.
   const readiness = new ReadinessChecks({
-    gh: () => new Promise((resolve, reject) => execFile("gh", ["api", "user", "--jq", ".login"], { timeout: 10_000 }, (error, stdout, stderr) => error ? reject(Object.assign(error, { stderr })) : resolve(stdout))),
+    // GitHub is optional (works-without-github): the setup's own check, then the signed-in login over the same
+    // in-process client every read uses. Check again re-checks, so a gh installed meanwhile is picked up.
+    gh: async (): Promise<GhResult> => {
+      const state = await githubSetup().check();
+      if (!state.on) return { error: state.off, message: "" };
+      const user = await githubApi().restAs(null, "user") as { login?: unknown } | null;
+      return { login: typeof user?.login === "string" ? user.login : "" };
+    },
     catalog: () => providerCatalog.read(),
     use: async () => {
       const on = await inboxSettings();

@@ -7,6 +7,8 @@ import type { Deployments } from "./deployments";
 import { notSetUpEvidence } from "../shared/task-trigger";
 import { budgetTier, cadence, dueForRead, probeVerdict, SAFETY_READ_MS, type Budget, type Fingerprint } from "../shared/poll";
 import { cliApi, githubApi, type GithubApi } from "./github-api";
+import { githubSetup, type GithubSetup } from "./github-setup";
+import { githubOffText, type GithubOff } from "../shared/github-setup";
 import { splitReviewers, TEAM_SLUG, USER_LOGIN } from "../shared/reviewers";
 const exec = promisify(execFile);
 type Node = Record<string, any>;
@@ -182,7 +184,14 @@ export class Github {
   constructor(run?: (args: string[], repo: string) => Promise<string>, private graphite?: Pick<Graphite, "observe" | "status">, private deployments?: Pick<Deployments, "observe">, api?: GithubApi, private now = Date.now) {
     this.run = run ?? (async (args, repo) => (await exec("gh", args, { env: ghEnvironment(repo), timeout: 25_000, maxBuffer: 4 * 1024 * 1024 })).stdout);
     this.api = api ?? (run ? cliApi(run) : githubApi());
+    this.setup = api || run ? null : githubSetup();
   }
+  /** Whether GitHub is on for the host (works-without-github); null in tests that inject their own GitHub. */
+  setup: Pick<GithubSetup, "current" | "writeOff"> | null;
+  /** Why GitHub is off right now, or null: what every PR surface and agent tool says instead of reading. */
+  async off(): Promise<GithubOff | null> { if (!this.setup) return null; const state = await this.setup.current(); return state.on ? null : state.off; }
+  /** Why a write can't run (no GitHub, or no gh to run it), or null. */
+  async writeOff(): Promise<GithubOff | null> { return this.setup ? this.setup.writeOff() : null; }
   async requestReviewers(pr: Pr, reviewers: string[]): Promise<void> {
     if (!reviewers.length || reviewers.some(login => !USER_LOGIN.test(login) && !TEAM_SLUG.test(login))) throw new Error("No eligible reviewers selected.");
     // People go in reviewers[], teams (org/slug) in team_reviewers[] by slug; GitHub resolves the slug in the repository's org.
@@ -270,6 +279,13 @@ export class Github {
    */
   async observe(prs: Pr[], o: { background?: boolean; fresh?: Set<string>; hot?: Set<string>; watched?: ReadonlyMap<string, number> } = {}): Promise<Map<string, Observation>> {
     const result = new Map<string, Observation>();
+    // GitHub off (works-without-github): nothing is read. A PR keeps what is known; the workspace says why in one line.
+    const off = await this.off();
+    if (off) {
+      const why = githubOffText(off, "PR status");
+      for (const p of prs) { const known = this.standIn(p, p.repo.split("/")[0], why); result.set(p.key, known.snapshot ? { ...known, error: why } : known); }
+      return result;
+    }
     const repositories = [...new Set(prs.map(p => p.repo))];
     const modes = new Map<string, PrWorkflow>();
     for (const repo of repositories) modes.set(repo, this.workflow ? await this.workflow(repo).catch((): PrWorkflow => "github") : "graphite");

@@ -137,7 +137,7 @@ const catalog = (claude: boolean | string, codex: boolean | string) => ({ error:
   { id: "codex", label: "Codex", available: codex === true, reason: codex === true ? null : typeof codex === "string" ? codex : "Not installed" },
 ] });
 const deps = (patch: Partial<CheckDeps> = {}): CheckDeps => ({
-  gh: async () => "demo-dev\n",
+  gh: async () => ({ login: "demo-dev" }),
   catalog: async () => catalog(true, true),
   use: async () => ({ claude: ["the Overseer", "Summaries", "AI priority"] }),
   tools: async () => ({ config: { daemon: { mcp: { enabled: true } } }, nativeAgents: 3, hookError: null }),
@@ -154,25 +154,24 @@ test("checks: everything ready", async () => {
   assert.equal(checksSummary(checks).line, "All set");
 });
 
-test("checks: gh missing, signed out and unreachable each say how to fix it", async () => {
-  const missing = Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" });
-  let gh = byId((await new ReadinessChecks(deps({ gh: async () => { throw missing; } })).run()).checks, "gh");
-  assert.equal(gh.state, "fail"); assert.match(gh.detail, /isn't installed/); assert.equal(gh.fix?.command, "gh auth login"); assert.match(gh.fix!.text, /cli\.github\.com/);
+test("checks: GitHub is optional (works-without-github): missing or signed out is off, never a failure, and says how to turn it on", async () => {
+  let gh = byId((await new ReadinessChecks(deps({ gh: async () => ({ error: "missing", message: "" }) })).run()).checks, "gh");
+  assert.equal(gh.state, "off"); assert.match(gh.detail, /isn't installed/); assert.match(gh.detail, /Optional/); assert.match(gh.detail, /Needs you/);
+  assert.equal(gh.fix?.command, "gh auth login"); assert.equal(gh.fix?.url, "https://cli.github.com"); assert.match(gh.fix!.text, /picks it up on its own/);
 
-  const out = Object.assign(new Error("exit 4"), { code: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login" });
-  gh = byId((await new ReadinessChecks(deps({ gh: async () => { throw out; } })).run()).checks, "gh");
-  assert.equal(gh.state, "fail"); assert.match(gh.detail, /isn't signed in/); assert.equal(gh.fix?.command, "gh auth login");
+  gh = byId((await new ReadinessChecks(deps({ gh: async () => ({ error: "signed-out", message: "" }) })).run()).checks, "gh");
+  assert.equal(gh.state, "off"); assert.match(gh.detail, /isn't signed in/); assert.equal(gh.fix?.command, "gh auth login"); assert.equal(gh.fix?.url, undefined);
 
-  const bad = Object.assign(new Error("exit 1"), { code: 1, stderr: "HTTP 401: Bad credentials (https://api.github.com/user)" });
+  const bad = Object.assign(new Error("GitHub refused the token (HTTP 401)"), { status: 401 });
   gh = byId((await new ReadinessChecks(deps({ gh: async () => { throw bad; } })).run()).checks, "gh");
-  assert.equal(gh.state, "fail", "an expired token is signed out");
+  assert.equal(gh.state, "off", "an expired token is signed out");
 
-  const net = Object.assign(new Error("exit 1"), { code: 1, stderr: "dial tcp: lookup api.github.com: no such host" });
+  const net = Object.assign(new Error("fetch failed"), { stderr: "dial tcp: lookup api.github.com: no such host" });
   gh = byId((await new ReadinessChecks(deps({ gh: async () => { throw net; } })).run()).checks, "gh");
   assert.equal(gh.state, "warn"); assert.match(gh.detail, /Couldn't reach GitHub/); assert.match(gh.fix!.text, /network/);
 
-  gh = byId((await new ReadinessChecks(deps({ gh: async () => "  \n" })).run()).checks, "gh");
-  assert.equal(gh.state, "fail", "no login printed is not signed in");
+  const off = (await new ReadinessChecks(deps({ gh: async () => ({ error: "missing", message: "" }) })).run()).checks;
+  assert.equal(checksSummary(off).state, "ok", "no GitHub alone leaves setup all set");
 });
 
 test("checks: a provider a helper uses is a failure; an unused one is optional; both missing says what still works", async () => {
@@ -213,7 +212,7 @@ test("checks: tools through the bridge, blocked by config, not seen yet, and hoo
 
 test("checks: cached for a minute and run on demand only; Check again skips the cache", async () => {
   let calls = 0; let now = 1_000_000;
-  const checks = new ReadinessChecks(deps({ gh: async () => { calls++; return "demo-dev"; }, now: () => now }));
+  const checks = new ReadinessChecks(deps({ gh: async () => { calls++; return { login: "demo-dev" }; }, now: () => now }));
   await checks.run(); await checks.run();
   assert.equal(calls, 1);
   await checks.run(true);

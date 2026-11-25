@@ -17,7 +17,7 @@ One list shows which agents are waiting on you and why.
 paseo plugin install npm:paseo-follow-up
 ```
 
-You need Paseo 0.15 or later, Node 22+ and a signed-in GitHub CLI (`gh`) on the machine Paseo runs on. Then open
+You need Paseo 0.15 or later and Node 22+ on the machine Paseo runs on; a signed-in GitHub CLI (`gh`) there is optional and turns on PR tracking. Then open
 Follow-up in Paseo's sidebar. A two-minute setup walks you through the rest.
 
 ## What you get

@@ -59,7 +59,8 @@ export class OnboardingStore {
 
 export type CheckDeps = {
   /** `gh api user --jq .login` on the daemon host. */
-  gh: () => Promise<string>;
+  /** GitHub on the host: the signed-in login, or why it is off (optional; never a failure). */
+  gh: () => Promise<GhResult>;
   catalog: () => Promise<{ providers: ProviderInfo[]; error: string | null } | null>;
   /** Which helper roles use which provider right now. */
   use: () => Promise<ProviderUse>;
@@ -84,7 +85,7 @@ export class ReadinessChecks {
   private async collect(now: number): Promise<Checks> {
     const gh = async (): Promise<Check[]> => {
       let result: GhResult;
-      try { const login = (await this.deps.gh()).trim(); result = login ? { login } : { error: "signed-out", message: "" }; }
+      try { result = await this.deps.gh(); }
       catch (error) { result = classifyGhError(error); }
       return [ghCheck(result)];
     };

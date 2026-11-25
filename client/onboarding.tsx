@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Platform, View, type ViewStyle, type ScrollView as NativeScrollView } from "react-native";
 import { Pressable, Text } from "./text";
-import { useRpc, useSettings } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { followSettingsRpc, onboardingChecksRpc, onboardingRpc, setFollowSettingsRpc, setOnboardingRpc } from "../shared/contracts";
@@ -277,6 +277,7 @@ function CheckRow({ theme, compact, row, first, checking, deps }: { theme: Theme
           <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: Platform.OS === "ios" ? "Menlo" : "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{row.fix.command}</Text>
           <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.fix.command}`} onPress={() => { void copyText(row.fix!.command!).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />
         </View>}
+        {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title="Get the GitHub CLI" accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error("Couldn't open the link here")); }} />}
         {row.fix.settings && <Button theme={theme} compact={compact} kind="ghost" icon="Settings" title="Open Settings → Agents" onPress={() => deps.openSettings(row.fix!.settings!)} />}
       </View>}
     </View>

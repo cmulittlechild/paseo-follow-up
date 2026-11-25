@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isGithubOff } from "../shared/github-setup";
 import { guardedProvider } from "../shared/agent-settings";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -208,7 +209,9 @@ export async function enrichLinks(links: AboutLink[], sources: AboutSources): Pr
         prBodies.push({ key: l.key, title: pr.title, body: pr.body });
         return { ...l, title: pr.title.slice(0, 300), state: pr.state ? pr.state.charAt(0) + pr.state.slice(1).toLowerCase() : l.state };
       }
-    } catch {
+    } catch (error) {
+      // GitHub off (works-without-github) isn't a failed read: the Summary runs on what it has and says nothing.
+      if (isGithubOff(error)) return l;
       failed.add(l.kind === "linear" ? "Linear" : l.kind === "slack" ? "Slack" : "GitHub");
     }
     return l;

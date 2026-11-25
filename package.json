@@ -33,6 +33,7 @@
     "test:move": "tsx scripts/check-move.mjs",
     "test:move:registry": "tsx scripts/check-move.mjs --registry",
     "test:github-mode": "node scripts/check-github-mode.mjs",
+    "test:no-gh": "node scripts/check-no-gh.mjs && node scripts/check-no-gh.mjs --signed-out",
     "test:native": "node scripts/check-native-tools.mjs --agents 10",
     "prepare": "node scripts/build.mjs",
     "test:scale": "node scripts/scale-check.mjs --workspaces 140 --awake 5 --idle 90 --realistic --rss-budget realistic --idle-rss-budget realistic --cpu-budget 3 --request-budget 2",

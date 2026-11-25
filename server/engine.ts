@@ -132,7 +132,7 @@ export class Engine {
   statusCheck: (w: Workspace, now: number, inputs?: string) => Promise<void> = async () => {};
   /** Background refreshes skipped while paused, for tests and the resource check. */
   skipped = 0;
-  constructor(readonly store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "waitUntil">>, private gateway: Gateway, private now = Date.now, private settleMs = 60_000, private nudgeMs = NUDGE_MS) {}
+  constructor(readonly store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "waitUntil" | "off">>, private gateway: Gateway, private now = Date.now, private settleMs = 60_000, private nudgeMs = NUDGE_MS) {}
   async recover(): Promise<void> {
     await this.store.mutate(state => {
       for (const w of state.workspaces) {
@@ -199,6 +199,8 @@ export class Engine {
   }
   /** Reads one workspace's PRs fresh and records what came back, nothing else (a Refresh of a dormant workspace). */
   private async refreshPrs(w: Workspace): Promise<void> {
+    // GitHub off (works-without-github) is one fact for the host; observe reads nothing then.
+    const off = (await this.github.off?.().catch(() => null)) ?? null;
     const observations = await this.github.observe(w.prs, { background: true, fresh: new Set(w.prs.map(p => p.key)) });
     await this.store.mutateWorkspace(w.id, current => {
       for (const p of current.prs) {
@@ -270,6 +272,8 @@ export class Engine {
     const keys = (ws: Workspace[]) => new Set(ws.flatMap(w => w.prs.map(p => p.key)));
     const hot = keys(active.filter(isHot));
     const read = o.affected ? active.filter(w => o.affected!.has(w.id)) : active;
+    // GitHub off (works-without-github) is one fact for the host; observe reads nothing then.
+    const off = (await this.github.off?.().catch(() => null)) ?? null;
     const observations = await this.github.observe(read.flatMap(w => w.prs), o.background || o.workspaceId ? { background: true, hot, fresh: keys(active.filter(w => w.id === o.workspaceId)), watched: this.checkWatches?.watched() } : {});
     // A nudge observes only its workspaces (a-nudge-costs-its-workspace); the timer's tick observes every active one.
     for (const original of o.affected ? read : active) {
@@ -281,9 +285,10 @@ export class Engine {
       // rules, like the 120 s acknowledgement, run on that pass). The checks cost a ~200-byte JSON and a shallow compare per PR.
       const runtimeKey = JSON.stringify(runtime);
       const githubWait = this.githubWait(original);
+      const githubOff = original.prs.length ? off : null;
       const last = this.observedPass.get(original.id);
       // A scheduled task due since the last pass makes it a full pass, so a trigger fires at its time, not up to a minute late.
-      const untouched = (original.githubWait?.until ?? null) === githubWait && !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && this.now() < last.dueAt && o.workspaceId !== original.id &&
+      const untouched = (original.githubWait?.until ?? null) === githubWait && (original.githubOff ?? null) === githubOff && !!last && last.w === original && last.runtime === runtimeKey && this.now() - last.at < OBSERVE_FULL_MS && this.now() < last.dueAt && o.workspaceId !== original.id &&
         original.prs.every(p => { const seen = observations.get(p.key); return !seen || seen.error === p.error && sameSnapshot(seen.snapshot, p.snapshot, !isHot(original) && !awaitsRead(original)); });
       if (!untouched) this.observationWrites++;
       if (!untouched) await this.store.mutateWorkspace(original.id, w => {
@@ -291,6 +296,7 @@ export class Engine {
         w.backgroundBusy = runtime.backgroundBusy ?? false;
         w.mainBusy = repairWait(runtime);
         if ((w.githubWait?.until ?? null) !== githubWait) w.githubWait = githubWait ? { until: githubWait } : null;
+        if ((w.githubOff ?? null) !== githubOff) w.githubOff = githubOff;
         if (runtime.mainTitle !== undefined && (w.mainAgentTitle ?? null) !== runtime.mainTitle) w.mainAgentTitle = runtime.mainTitle;
         if (runtime.gone && w.goneAgent?.agentId !== w.mainAgentId) w.goneAgent = { agentId: w.mainAgentId, at: new Date(this.now()).toISOString(), reason: runtime.gone };
         if (w.goneAgent?.agentId === w.mainAgentId) w.runtimeReason = GONE_REASON;

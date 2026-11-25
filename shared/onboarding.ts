@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { providerName } from "./agent-settings";
+import { GITHUB_ADDS, GITHUB_CLI_URL, GITHUB_LOGIN_COMMAND } from "./github-setup";
 
 /**
  * Getting started (1.4.0-beta.10). A first-run setup that takes a fresh install from "what is this?" to a configured
@@ -88,7 +89,7 @@ export function offerVisible(file: OnboardingFile, now: number): boolean {
  * says and does for where setup stands. `resume` opens the flow where it was left instead of from the top.
  */
 export type SetupEntry = { label: string; hint: string; line: string; action: string; resume: boolean };
-const SETUP_WHAT = "Checks GitHub and the helper agents, and shows what Follow-up does on its own. About two minutes.";
+const SETUP_WHAT = "Checks the helper agents and GitHub (optional), and shows what Follow-up does on its own. About two minutes.";
 export function setupEntry(view: Pick<OnboardingView, "status" | "step"> | null | undefined): SetupEntry {
   const label = "Set up Follow-up again";
   switch (view?.status) {
@@ -134,12 +135,12 @@ export const checkSchema = z.object({
   state: z.enum(CHECK_STATES),
   detail: z.string(),
   /** How to fix it: a sentence, an optional command to copy, an optional Settings category to open. */
-  fix: z.object({ text: z.string(), command: z.string().nullable(), settings: z.string().nullable() }).nullable(),
+  fix: z.object({ text: z.string(), command: z.string().nullable(), settings: z.string().nullable(), url: z.string().nullable().optional() }).nullable(),
 });
 export type Check = z.infer<typeof checkSchema>;
 export const checksSchema = z.object({ checks: z.array(checkSchema), checkedAt: z.string() });
 export type Checks = z.infer<typeof checksSchema>;
-const fix = (text: string, command: string | null = null, settings: string | null = null) => ({ text, command, settings });
+const fix = (text: string, command: string | null = null, settings: string | null = null, url: string | null = null) => ({ text, command, settings, ...(url ? { url } : {}) });
 
 /** `gh api user` on the daemon host: its login, or how it failed. */
 export type GhResult = { login: string } | { error: "missing" | "signed-out" | "network"; message: string };
@@ -152,9 +153,11 @@ export function classifyGhError(error: unknown): GhResult {
 }
 export function ghCheck(r: GhResult): Check {
   const label = "GitHub";
-  if ("login" in r) return { id: "gh", label, state: "ok", detail: `Signed in as ${r.login}`, fix: null };
-  if (r.error === "missing") return { id: "gh", label, state: "fail", detail: "The GitHub CLI isn't installed on the computer running Paseo. Follow-up reads PRs and checks with it.", fix: fix("Install it from cli.github.com, then sign in.", "gh auth login") };
-  if (r.error === "signed-out") return { id: "gh", label, state: "fail", detail: "The GitHub CLI isn't signed in, so Follow-up can't read your PRs.", fix: fix("Sign in on the computer running Paseo, then check again.", "gh auth login") };
+  if ("login" in r) return { id: "gh", label, state: "ok", detail: r.login ? `Signed in as ${r.login}` : "Signed in", fix: null };
+  // Optional (works-without-github): never a failure. Without it, everything but GitHub's own parts works.
+  const optional = `Optional. Without it, workspaces, Needs you, questions, briefs, Catch up, the Overseer, tasks and Compass all work. With it: ${GITHUB_ADDS}.`;
+  if (r.error === "missing") return { id: "gh", label, state: "off", detail: `The GitHub CLI isn't installed. ${optional}`, fix: fix("To turn it on, install the GitHub CLI on the computer running Paseo, then sign in there. Follow-up picks it up on its own.", GITHUB_LOGIN_COMMAND, null, GITHUB_CLI_URL) };
+  if (r.error === "signed-out") return { id: "gh", label, state: "off", detail: `The GitHub CLI isn't signed in. ${optional}`, fix: fix("To turn it on, sign in on the computer running Paseo. Follow-up picks it up on its own.", GITHUB_LOGIN_COMMAND) };
   return { id: "gh", label, state: "warn", detail: `Couldn't reach GitHub${r.message ? `: ${r.message}` : "."}`, fix: fix("Check that computer's network, then check again.") };
 }
 

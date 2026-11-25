@@ -21,9 +21,16 @@ The first time you open Follow-up from the sidebar, a short setup takes Home's p
 
 <img alt="Follow-up's setup, first step: an example PR going from failed checks to a fix sent to its agent to a merge only you can approve" src="screenshots/follow-up-setup.png">
 
-It shows what Follow-up does, checks GitHub and the helper agents (with the fix to copy for anything missing), and asks
+It shows what Follow-up does, checks the helper agents and GitHub (with the fix to copy for anything missing), and asks
 what Follow-up may do without asking you, how you ship PRs, who reviews, how it updates and which helpers to turn on.
 Every switch is the same one Settings shows. Run it again from Settings → General → **Set up Follow-up again**.
+
+GitHub is optional. Without the GitHub CLI (`gh`), or with it signed out, setup lists GitHub as optional with a link to
+install it and `gh auth login` to copy, and everything that isn't about GitHub works: workspaces, Needs you, questions,
+briefs, Catch up, the Overseer, tasks and Compass. What GitHub adds (PR status, repairs from review threads and failed
+checks, Merge, reviewers, Wait for checks, deploy checks and PR stats) each says in one line what's missing and how to
+turn it on, and Follow-up makes no GitHub request meanwhile. Install `gh` and sign in on the computer running Paseo
+whenever you like; Follow-up notices within a minute, no restart.
 
 ## Using it
 
