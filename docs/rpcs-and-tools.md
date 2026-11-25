@@ -107,7 +107,7 @@ the developer's; it never clears a Needs-you flag and never passes the Overseer'
 | `set_workspace_spec` | `follow.workspace-spec` | planned |
 | `set_task_trigger` | `follow.set-task-trigger` | planned |
 | `ai_rename` | `follow.rename-status` (the dry run: name now, suggestion, undoable rename), `follow.rename-workspace` (rename or `undo`) | planned. `title` skips the model; `undo=true` restores the name before the last rename for 24 h. |
-| `dispatch` | `follow.dispatch-preview` (the dry run: source, action, project and why, base, branch, agent, the exact instructions), `follow.dispatch` (confirm) | planned. New's start from a Linear key or link, a GitHub issue or PR link, another link or words; confirm is refused when the instructions changed since the dry run ([dispatch.md](dispatch.md)). |
+| `dispatch` | `follow.dispatch-preview` (the dry run: source, action, project and why, base, branch, agent, the exact instructions), `follow.dispatch` (confirm) | planned. Dispatch's start from a Linear key or link, a GitHub issue or PR link, another link or words; confirm is refused when the instructions changed since the dry run ([dispatch.md](dispatch.md)). |
 | `dispatch_sources`, `dispatch_records` | `follow.dispatch-sources` (open Linear issues, or `query` to search, plus the latest starts), `follow.dispatch-records` (the last 50) | read |
 | `dispatch_undo` | `follow.dispatch-undo` | planned. Cancels a start still waiting for Paseo, or archives what it created within 10 minutes. |
 | `dispatch_actions`, `set_dispatch_actions` | `follow.dispatch-actions`, `follow.set-dispatch-actions` (upsert, move, hide, reset, delete, reset-all) | read / planned |
@@ -156,7 +156,7 @@ Only in the Overseer's session, through `follow.overseer-act` (`server/overseer.
 | `agent_digest` | One agent's last steps. Reads the transcript on disk when the agent isn't loaded. |
 | `route_candidates` | Scores workspaces for an ask. |
 | `send_to_agent` | Forwards the developer's words to the agent that owns the work. |
-| `start_workspace` | Starts a new workspace as New's Create PR (an alias of `dispatch`, with the Overseer's new-workspace gate). Dry run, then confirm. |
+| `start_workspace` | Starts a new workspace as Dispatch's Create PR (an alias of `dispatch`, with the Overseer's new-workspace gate). Dry run, then confirm. |
 | `rerank` | Re-ranks Home's Priority sort. |
 
 ## Wait tools
@@ -221,7 +221,7 @@ side is [client.md](client.md#pasted-images)). The RPCs behind them take an opti
 | `follow.dispatch` | With the new agent's first message (`agents.create({ ..., images })`). Kept as files with the dispatch record until the agent is created or the dispatch fails. |
 | `follow.answer-question`, `follow.brief-action`, `follow.context-ask` | On the queued message (`queue.json` keeps refs only, `images/` the files); every resend reads the same files; removed once delivered or cancelled. `answer-question` takes them only with `action: "send"`. |
 | `follow.overseer-ask` | Straight to the Overseer with the words (the ask isn't queued); never stored. |
-| `follow.image-support` | Input `{ target }`: an agent, a workspace (its main agent), the Overseer, or a provider (New's pick). Output `{ ok, provider, reason }` from `imageSupport` (`server/image-support.ts`), the one rule. |
+| `follow.image-support` | Input `{ target }`: an agent, a workspace (its main agent), the Overseer, or a provider (Dispatch's pick). Output `{ ok, provider, reason }` from `imageSupport` (`server/image-support.ts`), the one rule. |
 
 Agent tools take `images: [<local file path>]` on `dispatch`, `overseer_ask`, `ask_context`, `brief_action` and
 `answer_question`. Each path must be a readable regular file (a symlink isn't followed), an image by its first bytes,

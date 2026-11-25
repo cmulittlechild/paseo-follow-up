@@ -16,6 +16,7 @@ import type { LinearIssue } from "../shared/linear-issues";
 import { holderOf } from "../shared/issue-workspace";
 export type { DispatchPlan, ExistingWorkspace, SourceRoute } from "../shared/dispatch";
 import type { LinearList } from "./linear-issues";
+import { NEW_OF, NEW_WORK } from "../shared/new-name";
 
 /**
  * New's worker side (docs/dispatch.md): the dispatch store (`dispatch.json`), reading a source, the preview every
@@ -197,7 +198,7 @@ export class DispatchService {
     const action = input.actionId ? effectiveActions(file.actions).find(a => a.id === input.actionId) ?? null : offered[0] ?? null;
     if (input.actionId && !action) blockers.push(`No action "${input.actionId}". dispatch_actions lists them.`);
     else if (action && !action.appliesTo.includes(source.kind === "pr" ? "pr" : "issue")) blockers.push(`${action.name} isn't offered for a ${KIND_WORD[source.kind]}.`);
-    else if (!action) blockers.push("No action is shown. Turn one on in Settings → New work.");
+    else if (!action) blockers.push(`No action is shown. Turn one on in Settings → ${NEW_WORK}.`);
     const existing = await this.d.existing(source).catch(() => null);
     const where = resolveWhere({ source, projects, picked: input.projectId ?? null, rules: file.rules, learned: await this.d.learned().catch(() => ({})), lastProjectId: file.lastProjectId, workspaceProjectId: existing?.projectId ?? null, noTeam: file.noTeam });
     if (!where.projectId) blockers.push(`${where.reason}${where.candidates.length ? ` Projects: ${where.candidates.slice(0, 8).map(c => `${c.name} (${c.id})`).join(", ")}.` : ""}`);
@@ -220,7 +221,7 @@ export class DispatchService {
     }, input.note) : "";
     const gate = await this.d.gate?.(actor, source.kind === "linear" ? source.key ?? null : null).catch(() => null);
     if (gate) blockers.push(gate);
-    const agent: AgentChoice = action ? await this.d.agent(withAgent(action, input.agent)).catch(() => ({ label: "New's default agent", config: {} })) : { label: "", config: {} };
+    const agent: AgentChoice = action ? await this.d.agent(withAgent(action, input.agent)).catch(() => ({ label: `${NEW_OF} default agent`, config: {} })) : { label: "", config: {} };
     return {
       source, action: action ? { id: action.id, name: action.name } : null,
       actions: offered.map(a => ({ id: a.id, name: a.name, icon: a.icon, description: a.description })),

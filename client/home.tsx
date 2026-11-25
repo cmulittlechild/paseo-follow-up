@@ -61,6 +61,7 @@ import { PrLinksProvider, RichText } from "./rich-text";
 import { TOAST_ANCHOR, ToastHost, useQuestionOpener } from "./toasts";
 import { openRowCopy, useDetailGate, useWorkspace } from "./workspace-data";
 import type { ListWorkspace } from "../shared/list";
+import { NEW_NAME } from "../shared/new-name";
 
 /** Home without a search key (tests, older wiring): no subscription, no label. */
 const noSubscribe = () => () => undefined;
@@ -295,7 +296,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
           strip and meters below if this row sits above them. */}
       <View style={{ zIndex: 2, flexDirection: "row", alignItems: "center", gap: compact ? 2 : 6, paddingLeft: compact ? 16 : 16, paddingRight: compact ? 6 : 16 }}>
         <SearchField theme={theme} omnibox={omnibox} dense={compact} onEnter={item => void pick(item)} anywhereKey={anywhereKey} />
-        {compact && <IconButton theme={theme} compact icon="Plus" label="New" onPress={() => openNew()} />}
+        {compact && <IconButton theme={theme} compact icon="Plus" label={NEW_NAME} onPress={() => openNew()} />}
         {!(compact && nothing) && <SortMenu theme={theme} mode={model.sort} onChange={deps.sources.extras.setSort} rankedAt={model.rankedAt} touch={compact} rank={rank} onRerank={deps.sources.extras.rankNow} />}
         {compact && openStats && <IconButton theme={theme} compact icon="ChartNoAxesColumn" label="PR stats" onPress={openStats} />}
         {compact && <IconButton theme={theme} compact icon="Settings" label="Follow-up settings" onPress={deps.openSettings} />}
@@ -389,7 +390,7 @@ function ListHeader({ theme, compact, onSettings, onKeys, onStats, onNew, newLab
       <VersionMark theme={theme} touch={compact} openSettings={onSettings} />
     </View>
     {/* New first, then the other header controls. */}
-    {onNew && <Button theme={theme} compact={compact} kind="secondary" icon="Plus" title="New" keyHint={newLabel ?? undefined} accessibilityLabel={newLabel ? `New (${newLabel})` : "New"} onPress={onNew} />}
+    {onNew && <Button theme={theme} compact={compact} kind="secondary" icon="Plus" title={NEW_NAME} keyHint={newLabel ?? undefined} accessibilityLabel={newLabel ? `${NEW_NAME} (${newLabel})` : `${NEW_NAME}`} onPress={onNew} />}
     {/* The keys sheet's way in for the mouse (S from the keyboard); desktop web, where the keys are. */}
     {onKeys && Platform.OS === "web" && <IconButton theme={theme} compact={compact} icon="Keyboard" label="Keys (S)" tooltip onPress={onKeys} />}
     {/* Shown once a repository has PR statistics (docs/pr-stats.md#where-it-opens-from). */}

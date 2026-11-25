@@ -128,3 +128,25 @@ test("on a phone an action's name is never cut: the alternates' rows wrap and no
     r.unmount();
   }
 });
+
+test("typing never blanks the preview: the last one stays until the next arrives, and nothing re-mounts per keystroke", async t => {
+  rpcCalls.length = 0;
+  const desktop = { compact: false } as never;
+  const { r, error } = await render(createElement(NewDialog, { request: { token: 1, source: null }, theme, layout: desktop, onClose: () => undefined }));
+  t.after(() => r.unmount());
+  assert.equal(error, null);
+  const field = () => r.root.findAll(n => typeof n.type === "string" && n.props.accessibilityLabel === "Task" && typeof n.props.onChangeText === "function")[0];
+  const type = async (text: string, wait: number) => { await act(async () => { (field().props.onChangeText as (v: string) => void)(text); await new Promise(res => setTimeout(res, wait)); }); };
+  await type("Make the invoice page faster", 300); await act(async () => { await new Promise(res => setTimeout(res, 300)); });
+  assert.ok(byLabel(r, /^Project: acme\/web/).length, "the first preview is up");
+  const words = " for accounts with many invoices";
+  let blank = 0;
+  for (let i = 1; i <= words.length; i += 4) {
+    await type("Make the invoice page faster" + words.slice(0, i), 15);
+    if (!byLabel(r, /^Project: acme\/web/).length || byLabel(r, "Reading the source").length) blank++;
+  }
+  assert.equal(blank, 0, "every keystroke kept the preview on screen");
+  await act(async () => { await new Promise(res => setTimeout(res, 400)); });
+  const previews = rpcCalls.filter(c => c.name === "follow.dispatch-preview").length;
+  assert.ok(previews <= 3, `typing asks for the preview once it settles, not per keystroke (${previews})`);
+});
