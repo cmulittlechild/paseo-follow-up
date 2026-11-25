@@ -1,3 +1,5 @@
 - Setup shows only the steps that have something to set on your machine: no GitHub steps without the GitHub CLI, no Updates step for a copy you build yourself, and no Helper agents step until Paseo has a provider.
 - Setup's checks say Follow-up works with every agent Paseo runs, wait for a provider Paseo is still loading instead of calling it missing, and with no provider at all show one note on what to set up.
 - Setup's tour shows Dispatch, with the switch for its sidebar row.
+- Helper agents (setup and Settings → Agents) no longer say a provider is missing while Paseo is still reaching it, and a missing Claude Code that only AI priority uses reads as optional when another provider runs the rest.
+- Home with nothing followed offers Dispatch on desktop too.
