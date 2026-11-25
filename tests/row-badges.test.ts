@@ -3,10 +3,10 @@
 // before; on an older Paseo, or one whose version it can't read, the Done label stays as it was.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { testStore } from "./support/store-temp-dir";
+import { testStore, rm } from "./support/store-temp-dir";
 import { queueEngine } from "./support/queue";
 import { Engine, type Gateway, type Runtime } from "../server/engine";
 import { Store } from "../server/store";
