@@ -2913,7 +2913,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   await call("follow.set-dispatch-actions", { change: { op: "upsert", action: { id: "elsewhere", name: "Try elsewhere", icon: "play", description: "On a provider this host lacks",
     instructions: "Work on {title}.", agent: { provider: "no-such-provider" }, workspace: "worktree", branch: "title", follow: { goalFromSource: false, specFromArtifact: false, askWhenPlanReady: false }, appliesTo: ["issue"], hidden: false } } });
 
-  const FIELD = "Paste a link or describe the task";
+  const FIELD = "Task";
   const dialog = page => page.locator('[role="dialog"][aria-label="Dispatch"]').filter({ visible: true }).first();
   const row = (page, name) => dialog(page).getByRole("button", { name }).filter({ visible: true }).first();
   // A preview is up: its instructions toggle, or (project still to pick) the line standing in for the fields.
@@ -3133,7 +3133,7 @@ async function newShots({ shoot, call, out, home, billing }) {
   // it), and on again. `--shot '^new-row'` runs only these.
   const rowSwitch = page => page.getByRole("switch", { name: "Dispatch in the sidebar" }).filter({ visible: true }).first();
   const sideRow = page => page.getByRole("button", { name: "Dispatch", exact: true }).filter({ visible: true });
-  const tip = page => page.getByText(/Tip: hide Paseo's own New workspace row/).filter({ visible: true });
+  const tip = page => page.getByText(/Paseo's own New workspace row starts an empty workspace/).filter({ visible: true });
   for (const theme of ["light", "dark"]) {
     for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
       await shoot(`new-row-settings-${device}-${theme}`, vp, theme, async page => {
@@ -3141,7 +3141,8 @@ async function newShots({ shoot, call, out, home, billing }) {
         await rowSwitch(page).waitFor();
         check(`${theme} ${device}: Settings → Dispatch shows the row's switch, on`, await rowSwitch(page).getAttribute("aria-checked") === "true");
         check(`${theme} ${device}: the tip names where to hide Paseo's New workspace`, await tip(page).count() > 0 && await page.getByText(/Paseo Settings → Sidebar → Header/).filter({ visible: true }).count() > 0);
-        await page.evaluate(() => window.scrollTo(0, 0));
+        // The section is the tab's last; show it with the Bases above it.
+        await rowSwitch(page).scrollIntoViewIfNeeded();
       });
     }
     await shoot(`new-row-off-${theme}`, DESKTOP, theme, async page => {
@@ -4703,7 +4704,7 @@ async function pasteImagesShots({ shoot, call }) {
 
   // The Overseer, started on the fixture provider: its pane's reply box.
   await call("follow.overseer-start", {});
-  const NEW_FIELD = "Paste a link or describe the task";
+  const NEW_FIELD = "Task";
   for (const theme of ["light", "dark"]) for (const [device, vp] of [["desktop", DESKTOP], ["phone", PHONE]]) {
     const phone = vp.width < 768;
     const name = state => `pi-${state}-${device}-${theme}`;

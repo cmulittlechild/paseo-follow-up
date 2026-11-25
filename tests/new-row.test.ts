@@ -71,7 +71,7 @@ test("off still leaves Dispatch reachable: Home's + New, ⌘K and the key open i
  * rename is one line. A string literal or JSX text saying "Dispatch", or the old "New", is refused unless it is
  * another thing's name.
  */
-const OTHER_NEWS = /\bNew (worktree|agent|workspace|name|and existing|versions|features|work"|\$\{project)/;
+const OTHER_NEWS = /\bNew (source|worktree|agent|workspace|name|and existing|versions|features|work"|\$\{project)/;
 const ALLOWED: Record<string, RegExp> = {
   // A queue row's change chip ("new in your queue"), not New.
   "shared/brief-since.ts": /text: "New", warn/,
@@ -82,7 +82,7 @@ test("every user-facing name is built from the name module", async () => {
   const files = ["index.client.tsx", "server/dispatch.ts", "server/linear-issues.ts",
     ...(await readdir(join(root, "client"))).filter(f => /\.tsx?$/.test(f)).map(f => `client/${f}`),
     ...(await readdir(join(root, "shared"))).filter(f => /\.ts$/.test(f) && f !== "new-name.ts").map(f => `shared/${f}`)];
-  const literal = /(["`])((?:(?!\1)[^\\\n]|\\.)*?\b(?:New|Dispatch)\b(?:(?!\1)[^\\\n]|\\.)*?)\1|>\s*(?:New|Dispatch)\s*</g;
+  const literal = /(["`])((?:(?!\1)[^\\\n]|\\.)*?\b(?:New|Dispatch)\b(?:(?!\1)[^\\\n]|\\.)*?)\1|>([^<>{}]*\b(?:New|Dispatch)\b[^<>{}]*)</g;
   const bad: string[] = [];
   for (const f of files) {
     const lines = (await readFile(join(root, f), "utf8")).split("\n");

@@ -14,7 +14,7 @@ import { dispatchActionsRpc, dispatchSettingsRpc, setDispatchActionsRpc, setDisp
 import type { z } from "zod";
 import type { DispatchAction, actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { actionRows, learnedTeams, teamKey, type ActionRowModel, type SettingsView } from "../shared/new-settings";
-import { NEW_NAME, NEW_OF } from "../shared/new-name";
+import { NEW_NAME, NEW_OF, NEW_WORK } from "../shared/new-name";
 
 export const newActionsKey = ["follow-up", "dispatch-actions"];
 export const newSettingsKey = ["follow-up", "dispatch-settings"];
@@ -32,12 +32,12 @@ const RESET_ALL = "__reset-all";
 export function NewWorkCategory({ theme, compact, openAgents }: { theme: Theme; compact: boolean; openAgents?: () => void }) {
   const t = text(theme.colors, compact);
   return <>
-    <SidebarSection theme={theme} compact={compact} />
     <ActionsSection theme={theme} compact={compact} />
     <WhereSection theme={theme} compact={compact} />
     <BasesSection theme={theme} compact={compact} />
+    <SidebarSection theme={theme} compact={compact} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 4, paddingHorizontal: 4 }}>
-      <Text style={t.meta}>New's agent is set in Agents → New work.</Text>
+      <Text style={t.meta}>{`${NEW_OF} agent is set in Agents → ${NEW_WORK}.`}</Text>
       {openAgents && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowRight" title="Open Agents" accessibilityLabel="Open Settings, Agents" onPress={openAgents} />}
     </View>
   </>;
@@ -49,12 +49,9 @@ function SidebarSection({ theme, compact }: { theme: Theme; compact: boolean }) 
   const row = useNewRowSetting();
   return <SettingsSection title="Sidebar">
     <SettingsCard>
-      <SettingsSwitch label={NEW_ROW.label} hint={NEW_ROW.hint(row.key)} value={row.value ?? true} disabled={row.value === null || row.saving} onValueChange={row.set} />
+      <SettingsSwitch label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : "Ctrl K")} value={row.value ?? true} disabled={row.value === null || row.saving} onValueChange={row.set} />
     </SettingsCard>
-    {row.value !== false && <View style={{ paddingHorizontal: 4, gap: 2 }}>
-      <Text style={t.meta}>{NEW_ROW.paseo}</Text>
-      <Text style={t.meta}>{NEW_ROW.paseoWhere}</Text>
-    </View>}
+    {row.value !== false && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{NEW_ROW.paseo}</Text>}
   </SettingsSection>;
 }
 
@@ -88,7 +85,7 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
         confirming={confirm === row.id} onConfirm={v => setConfirm(v ? row.id : null)}
         onChange={op => { setConfirm(null); change.mutate(op); }} index={i} />)}
     </View>}
-    {query.data && <Text style={[t.meta, { paddingHorizontal: 4 }]}>In New, the first two shown get ↵ and ⌥↵; the rest are under More.</Text>}
+    {query.data && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{`In ${NEW_NAME}, the first two shown get ↵ and ⌥↵; the rest are under More.`}</Text>}
     {/* Reset all removes added actions, so it asks in place first, like Delete. */}
     {query.data?.edited && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       {confirm === RESET_ALL
@@ -183,7 +180,7 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
               : <Button theme={theme} compact={compact} kind="ghost" title="Remove" accessibilityLabel={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => setRemoving(rule.team)} />}
           </View>
         </View>)}
-        {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. New learns from where each team's work went; add a rule to fix one.</Text></View>}
+        {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. {NEW_NAME} learns from where each team's work went; add a rule to fix one.</Text></View>}
         {/* Three native rows, never one row of nested fields: a select squeezed beside an input cuts "Pick a project". */}
         <SettingsRow label="Add a rule" hint="A Linear team's key, like ACME.">
           <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
@@ -218,7 +215,7 @@ function BasesSection({ theme, compact }: { theme: Theme; compact: boolean }) {
     <SettingsCard>
       {worktrees.map(p => <BaseRow key={p.id} theme={theme} compact={compact} name={p.name} saved={view.bases.find(b => b.projectId === p.id)?.base ?? ""} busy={change.isPending}
         onSave={(base, done) => change.mutate({ bases: { [p.id]: base || null } }, { onSuccess: done })} />)}
-      {!worktrees.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No project here is a git repository, so New opens work in place.</Text></View>}
+      {!worktrees.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>{`No project here is a git repository, so ${NEW_NAME} opens work in place.`}</Text></View>}
     </SettingsCard>
   </SettingsSection>;
 }

@@ -104,10 +104,12 @@ test("Home shows dispatches in progress, recent failures and undoable ones, with
   assert.equal(recordLine(record({ id: "f", state: "created", workspaceId: "ws-3", undoUntil: new Date(NOW + 10 * 60_000 + 40).toISOString() }), NOW).minutesLeft, 10);
 });
 
-test("keys: ↵ primary, ⌥↵ second, ⇧↵ search, arrows, ⌘I; a field keeps Enter; created takes ⌘↵ and ⌘Z", () => {
-  const k = (key: string, m: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}, o = { editing: false, created: false }) =>
+test("keys: ↵ primary, ⌥↵ second, ⇧↵ a new line, arrows, ⌘I; a field keeps Enter; created takes ⌘↵ and ⌘Z", () => {
+  const k = (key: string, m: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}, o: { editing: boolean; created: boolean; lines?: boolean } = { editing: false, created: false }) =>
     newKey({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...m }, true, o);
-  assert.deepEqual([k("Enter"), k("Enter", { altKey: true }), k("Enter", { shiftKey: true }), k("ArrowDown"), k("i", { metaKey: true }), k("Escape")], ["primary", "second", "search", "down", "instructions", "close"]);
+  assert.deepEqual([k("Enter"), k("Enter", { altKey: true }), k("Enter", { shiftKey: true }), k("ArrowDown"), k("i", { metaKey: true }), k("Escape")], ["primary", "second", null, "down", "instructions", "close"]);
+  // A task of more than one line keeps its arrows for the caret; ↵ still starts.
+  assert.deepEqual([k("ArrowUp", {}, { editing: false, created: false, lines: true }), k("Enter", {}, { editing: false, created: false, lines: true })], [null, "primary"]);
   assert.equal(k("Enter", {}, { editing: true, created: false }), null);
   assert.equal(k("Enter", { metaKey: true }, { editing: false, created: true }), "open");
   assert.equal(k("z", { metaKey: true }, { editing: false, created: true }), "undo");

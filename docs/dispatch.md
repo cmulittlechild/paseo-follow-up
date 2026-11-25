@@ -112,8 +112,8 @@ screen, never a hidden one; Report an issue and Rename title with AI use the sam
 - **Desktop:** the sources on the left (the field, focused, then My issues: only issues you could start, the first
   preselected; each row says where it would go, or "→ which project?" when Dispatch would ask), everything about the selected
   source on the right (Project, From, Workspace, Branch, Title, Agent, Show instructions, a note), and the action bar
-  across the bottom. ↵ runs the first action, ⌥↵ the second, ⇧↵ searches all of Linear, ↑↓ move, ⌘I shows the
-  instructions, Esc closes. Once created: ⌘↵ opens the workspace, ⌘Z undoes.
+  across the bottom. ↵ runs the first action, ⌥↵ the second, ⇧↵ starts a new line, ↑↓ move the list (the caret once
+  the task has more than one line), ↵ on "Search all of Linear" searches, ⌘I shows the instructions, Esc closes. Once created: ⌘↵ opens the workspace, ⌘Z undoes.
 - **Phone:** the list with the bar pinned at the bottom, then a preview screen for any other row; on both, the bar's
   line names the target, its base, the agent and its mode before the click.
 - **Which project:** the project choices commit at once (up to four, then Other… for the full list); the fields below
@@ -144,7 +144,8 @@ preview per selection, and one record a second only while a dispatch is starting
 The task field is the dialog's main element (`TaskField`): multi-line, growing with the words (96 to 176 px on
 desktop, 88 to 160 on a phone, then it scrolls). On desktop it sits across the top, centred and at most 760 px wide,
 above the list (360 px) and the preview; on a phone it tops the list screen. Enter still starts the selected action on
-desktop; pasted text keeps its lines.
+desktop and ⇧↵ adds a line (the hint under the field says so while it has words); once the task has more than one
+line, ↑↓ move the caret, not the list. Pasted text keeps its lines.
 
 The preview belongs to the selected row, not to its text (`steadyPlan`, `samePlan` in `client/new.tsx`): while the
 words change, the row keeps its last preview on screen until the next one arrives (asked 150 ms after the last
@@ -158,8 +159,6 @@ Settings → Dispatch has four sections. It reads `follow.dispatch-actions` and 
 opens and never polls; every change goes through `follow.set-dispatch-actions` and `follow.set-dispatch-settings`, the
 RPCs the agent tools `set_dispatch_actions` and `set_dispatch_settings` run.
 
-- **Sidebar**: Dispatch in the sidebar, the Display switch `enable_new_sidebar_row` (on by default), and while it's on, the
-  tip to hide Paseo's own New workspace row ([below](#paseos-new-workspace)); agents change it with `set_display`.
 - **Actions**: every action in Dispatch's order, with its key (↵ for the first shown for an issue, ⌥↵ for the second), "PRs
   only", "Edited" or "Added by an agent". Each row moves up or down and shows or hides; an edited built-in has Reset to
   built-in, an added one has Delete (asked twice). Reset all to built-in restores the shipped list.
@@ -167,6 +166,8 @@ RPCs the agent tools `set_dispatch_actions` and `set_dispatch_settings` run.
   it or remove it), Add a rule (a team key and a project), and each team whose history points at one project without a
   rule, offered as "Make it a rule".
 - **Bases**: the base branch per project that can take a worktree; empty is the repository's default branch.
+- **Sidebar** (last, after the tab's real work): Dispatch in the sidebar, the Display switch
+  `enable_new_sidebar_row` (on by default), and while it's on, one line on hiding Paseo's own New workspace row ([below](#paseos-new-workspace)); agents change it with `set_display`.
 
 The agent Dispatch starts for an action without its own is **Settings → Agents → Dispatch** (role `dispatch`). Its default
 is "Same as the Overseer": the Overseer's provider, model, mode and effort. A pick of its own is a normal row (provider,

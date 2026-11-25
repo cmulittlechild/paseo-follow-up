@@ -269,7 +269,6 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   if (row.kind === "search") return <Pressable accessibilityRole="button" accessibilityLabel={`Search all of Linear for ${row.query}`} onPress={onPress} style={base}>
     <Icon name="Search" size={15} color={c.foregroundMuted} />
     <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 14 : 13, flex: 1 }}>Search all of Linear for “{row.query}”</Text>
-    {!compact && <Kbd c={c} label="⇧↵" />}
   </Pressable>;
   if (row.kind === "words") return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Start from your words: ${row.title}`} onPress={onPress} style={base}>
     <Icon name="Type" size={15} color={c.foregroundMuted} />
@@ -315,6 +314,8 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
 }
 
 /** Task field heights: a real task fits, and it grows with what's written up to `max`, then scrolls. */
+/** What the field takes, under it while empty; the phone's fits one line at 390. */
+const FIELD_HINT = { desktop: "A Linear key or link, a GitHub issue or PR, any link, or a sentence", phone: "A Linear key, an issue or PR, a link or a sentence" };
 const FIELD_LINES = { desktop: { min: 96, max: 176 }, phone: { min: 88, max: 160 } };
 /**
  * The task field, Dispatch's main element (2026-11-25, the developer: "the main text area … should be bigger … centered
@@ -339,12 +340,12 @@ function TaskField({ query, setQuery, img, c, compact }: { query: string; setQue
   }, [query, compact]); // eslint-disable-line react-hooks/exhaustive-deps
   return <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
     <View style={{ borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 10, padding: focused ? 0 : 1, backgroundColor: c.surface0 }}>
-      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
-        accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Describe the task, or paste a link" placeholderTextColor={c.foregroundMuted}
+        accessibilityLabel="Task" accessibilityHint={FIELD_HINT.desktop} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         onContentSizeChange={e => { if (Platform.OS !== "web") fit(e.nativeEvent.contentSize.height + 16); }}
-        style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: compact ? 22 : 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
+        style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? "" : "A Linear key or link, a GitHub issue or PR, any link, or a sentence"}</Text>
+        <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? (compact ? "" : "⇧↵ new line") : FIELD_HINT[compact ? "phone" : "desktop"]}</Text>
         {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
         {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
         <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
@@ -387,7 +388,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
         {rows.map((row, i) => <View key={row.id} style={compact && i ? { borderTopWidth: 1, borderTopColor: c.border, marginHorizontal: 16 } : undefined}>
           <View style={compact && i ? { marginHorizontal: -16 } : undefined}><ListRow row={row} selected={row.id === selected} c={c} compact={compact} chevron={chevrons} onPress={() => onRow(row)} /></View>
         </View>)}
-        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>No issues in progress or todo. Paste a link or describe the task.</Text>}
+        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>No issues in progress or todo. Describe the task, or paste a link.</Text>}
         {!!sources?.recent.length && !query && <View style={{ paddingHorizontal: compact ? 16 : 8, paddingTop: 14, gap: 4 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>Started from here</Text>
           {sources.recent.map(r => <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{r.title} · {r.actionName} · {r.state === "created" ? "started" : r.state}</Text>)}
@@ -403,7 +404,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
 function TakenPane({ row, rows, c }: { row: Extract<NewRow, { kind: "fold" }>; rows: NewRow[]; c: Colors }) {
   return <View style={{ padding: 24, gap: 10 }}>
     <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>{row.title}</Text>
-    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so New doesn't suggest them. Pick one to open its workspace.</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>They're already being worked on, so {NEW_NAME} doesn't suggest them. Pick one to open its workspace.</Text>
     {row.open && <View style={{ gap: 4 }}>{rows.filter((r): r is Extract<NewRow, { kind: "issue" }> => r.kind === "issue" && r.taken).map(r =>
       <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}><Text style={{ color: c.foreground }}>{r.key}</Text>  {r.route.text}</Text>)}</View>}
     {Platform.OS === "web" && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Kbd c={c} label="↵" /><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{row.open ? "hides them" : "shows them"}</Text></View>}
@@ -553,7 +554,8 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       const t = e.target as { tagName?: string; id?: string } | null;
       const tag = (t?.tagName ?? "").toUpperCase();
       const editing = (tag === "TEXTAREA" || tag === "INPUT") && t?.id !== "follow-up-new-field";
-      const k = newKey(e, isMac(), { editing, created: !!live.current.created });
+      const field = t?.id === "follow-up-new-field" ? t as { value?: string } : null;
+      const k = newKey(e, isMac(), { editing, created: !!live.current.created, lines: !!field?.value?.includes("\n") });
       if (!k) return;
       const s = live.current;
       if (k === "close") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
@@ -563,7 +565,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       e.preventDefault(); e.stopPropagation();
       if (k === "down" || k === "up") setPicked(moveSelection(s.rows, s.selected, k === "down" ? 1 : -1));
       else if (k === "instructions") setInstructions(v => !v);
-      else if (k === "search" || (k === "primary" && s.row?.kind === "search")) search();
+      else if (k === "primary" && s.row?.kind === "search") search();
       else if (k === "primary" && s.row?.kind === "fold") setFoldOpen(v => !v);
       else if (k === "primary") { if (s.bar.kind === "existing") openWorkspace(s.bar.workspaceId); else if (s.bar.primary && !s.bar.disabled) void start(s.bar.primary.id); }
       else if (k === "second" && s.bar.kind === "actions" && s.bar.second && !s.bar.disabled) void start(s.bar.second.id);

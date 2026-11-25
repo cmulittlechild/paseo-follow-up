@@ -135,7 +135,7 @@ test("typing never blanks the preview: the last one stays until the next arrives
   const { r, error } = await render(createElement(NewDialog, { request: { token: 1, source: null }, theme, layout: desktop, onClose: () => undefined }));
   t.after(() => r.unmount());
   assert.equal(error, null);
-  const field = () => r.root.findAll(n => typeof n.type === "string" && n.props.accessibilityLabel === "Paste a link or describe the task" && typeof n.props.onChangeText === "function")[0];
+  const field = () => r.root.findAll(n => typeof n.type === "string" && n.props.accessibilityLabel === "Task" && typeof n.props.onChangeText === "function")[0];
   const type = async (text: string, wait: number) => { await act(async () => { (field().props.onChangeText as (v: string) => void)(text); await new Promise(res => setTimeout(res, wait)); }); };
   await type("Make the invoice page faster", 300); await act(async () => { await new Promise(res => setTimeout(res, 300)); });
   assert.ok(byLabel(r, /^Project: acme\/web/).length, "the first preview is up");

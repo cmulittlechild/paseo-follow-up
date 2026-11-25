@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from "node:fs";
 
 /** `<file>|<label>`: the field's accessibilityLabel (or placeholder) as written in the source. */
 const AGENT_BOUND: Record<string, string> = {
-  "new.tsx|\"Paste a link or describe the task\"": "New's task: the new agent's first message",
+  "new.tsx|\"Task\"": "New's task: the new agent's first message",
   "new.tsx|\"Note for the agent\"": "New's note: added to the first message",
   "questions.tsx|{draft.label}": "QuestionBody's answer or note (every question surface and Catch up)",
   "brief.tsx|{`Your answer${numbered ? ` to question ${i + 1}": "the brief card's own answer",
