@@ -1,0 +1,3 @@
+- Setup shows only the steps that have something to set on your machine: no GitHub steps without the GitHub CLI, no Updates step for a copy you build yourself, and no Helper agents step until Paseo has a provider.
+- Setup's checks say Follow-up works with every agent Paseo runs, wait for a provider Paseo is still loading instead of calling it missing, and with no provider at all show one note on what to set up.
+- Setup's tour shows Dispatch, with the switch for its sidebar row.
