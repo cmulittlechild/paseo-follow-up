@@ -33,8 +33,8 @@ await renderMedia({
 });
 console.log(`\n[render] ${mp4} in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 // Remotion's master is near-lossless; the shipped file is re-encoded for the web: TV-range yuv420p (Remotion writes
-// full-range yuvj420p, which some players show washed out), sized like v1's.
-await exec(FFMPEG, ["-nostdin", "-v", "error", "-y", "-i", mp4, "-c:v", "libx264", "-preset", "veryslow", "-crf", "27", "-tune", "animation",
+// full-range yuvj420p, which some players show washed out), at CRF 21 so small UI text stays sharp in the wide shots.
+await exec(FFMPEG, ["-nostdin", "-v", "error", "-y", "-i", mp4, "-c:v", "libx264", "-preset", "veryslow", "-crf", "21", "-tune", "animation",
   "-vf", "scale=in_range=full:out_range=tv,format=yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
   "-movflags", "+faststart", "-an", join(out, "fs.mp4")], { maxBuffer: 1 << 24 });
 await fs.rename(join(out, "fs.mp4"), mp4);

@@ -5071,7 +5071,28 @@ async function galleryShots({ shoot, call, home, billing }) {
   };
   await both("home", homeDrive);
   await pair("home", homeDrive);
-  if (F) await shoot("cover-home", DESKTOP, "light", page => homeDrive(page, DESKTOP));
+  // The cover's Home: the Follow-up pane alone (Paseo's sidebar cropped off) in a 1280×800 window, Billing retries'
+  // question open beside the list, down to the end of the Needs you group. At 4×, so the cover can show it larger than
+  // 1:1 without stretching it, and its text still reads when the whole cover is scaled to a README column (about 830 px).
+  const COVER = { width: 1280, height: 800 };
+  if (F) await shoot("cover-home", COVER, "light", async page => {
+    await homeDrive(page, COVER);
+    const pane = await page.getByRole("textbox", { name: /^Search,? or ask the Overseer$/ }).first().evaluate(el => {
+      for (let up = el.parentElement; up; up = up.parentElement) {
+        const r = up.getBoundingClientRect();
+        if (r.height >= innerHeight * 0.95 && r.right >= innerWidth - 2) return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }
+      return null;
+    });
+    if (!pane || pane.x < 100) throw new Error(`cover-home: no Follow-up pane: ${JSON.stringify(pane)}`);
+    // It ends with the Needs you group, just above the Sending header, so the cover's sheet ends on a whole row.
+    const sending = await page.evaluate(() => {
+      const own = e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim();
+      return [...document.querySelectorAll("body *")].findLast(e => e.checkVisibility() && /^Sending$/i.test(own(e)))?.getBoundingClientRect().top ?? null;
+    });
+    if (sending === null || sending - pane.y < 300) throw new Error(`cover-home: no Sending header below the Needs you group (${sending})`);
+    return { ...pane, height: Math.round(sending - 10 - pane.y) };
+  }, { scale: 4 });
   // Slide sources: one element each, cropped tight at 8× so a slide can zoom it about 4× (filling the slide's sheet, as
   // Home fills the cover) and it still reads in Paseo's 288×180 media tile. Phone width where the element has a narrow form.
   const SLIDE = { scale: 8 };
