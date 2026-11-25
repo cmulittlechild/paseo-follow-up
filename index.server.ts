@@ -2128,12 +2128,12 @@ export default function contribute(server: PluginServerContext) {
       if (!w && request.workspaceId && !saved.workspaces.some(w => w.id === request.workspaceId && (w.archived || w.mainAgentId !== request.agentId))) {
         const project = await gateway.projectForWorkspace(saved, request.workspaceId).catch(() => null);
         if (project?.enable_default_tracking && !optedOut(saved, request.workspaceId)) {
-          const rows = await gateway.discover(saved, request.workspaceId).catch(() => []);
+          // an-agent-s-first-session-gets-its-tools: Paseo doesn't list this agent until its first session is open, so
+          // discovery counts it from the request. A first session then gets what any later one would.
+          const opening = { id: request.agentId, workspaceId: request.workspaceId, provider: request.provider, cwd: request.cwd, title: request.title, labels: request.labels };
+          const rows = await gateway.discover(saved, request.workspaceId, undefined, opening).catch(() => []);
           await store.mutate(state => applyDiscovery(state, rows.filter(row => followsByDefault(state, row)), Date.now()));
-          const current = await store.snapshot();
-          w = current.workspaces.find(w => w.enable_tracking && w.mainAgentId === request.agentId);
-          if (!current.workspaces.some(w => w.id === request.workspaceId) && current.projectDefaults?.[project.id] !== false)
-            return { ...request, env: { ...request.env, FOLLOW_UP_CLI: bridge, FOLLOW_UP_CLIENT_ENTRY: clientEntry() } };
+          w = (await store.snapshot()).workspaces.find(w => w.enable_tracking && w.mainAgentId === request.agentId);
         }
       }
       const root = !!request.workspaceId && !isRecovery(request.labels) && await isWorkspaceRoot({ id: request.agentId, workspaceId: request.workspaceId, labels: request.labels }, async id => (await paseo.agents.ref(id).refresh())?.agent);

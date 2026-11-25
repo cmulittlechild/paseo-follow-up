@@ -299,6 +299,9 @@ async function readSince(client: Daemon, agentId: string, since: Cursor): Promis
 
 /** A Paseo project's GitHub repository (owner/name), from its remote key; null for local or non-GitHub projects. */
 export const projectRepo = (key: string) => /^remote:github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(key)?.[1] ?? null;
+/** The agent whose session is opening, from the session_open request: Paseo doesn't list it until its first session is open. */
+export type OpeningAgent = { id: string; workspaceId: string; provider: string; cwd: string; title?: string | null; labels: Record<string, string> };
+const openingAgent = (a: OpeningAgent): Agent => ({ id: a.id, workspaceId: a.workspaceId, provider: a.provider, cwd: a.cwd, title: a.title ?? null, labels: a.labels, status: "initializing", activeTurn: null, archivedAt: null, lastUserMessageAt: null, pendingPermissions: [] } as unknown as Agent);
 export class PaseoGateway implements Gateway {
   /** Each discovered workspace's project repository, for its PR workflow before it has PRs. */
   readonly workspaceRepos = new Map<string, string>();
@@ -341,7 +344,7 @@ export class PaseoGateway implements Gateway {
    * or, when there is none (the next turn already started, or no turn cursor yet), with its own read of that agent, so
    * nothing a nudge saw is left for the timer's tick to read later.
    */
-  async discover(state: State, workspaceId?: string, scope?: { workspaces: ReadonlySet<string> }): Promise<DiscoveredWorkspace[]> {
+  async discover(state: State, workspaceId?: string, scope?: { workspaces: ReadonlySet<string> }, opening?: OpeningAgent): Promise<DiscoveredWorkspace[]> {
     await this.histories.load();
     const now = this.now();
     const windowMs = this.windowMs = activeWindowMs(state);
@@ -353,12 +356,15 @@ export class PaseoGateway implements Gateway {
     const listsIt = (r: DirectoryRows) => r.workspaces.some(w => w.id === workspaceId);
     const hasAgent = (r: DirectoryRows) => r.agents.some(({ agent }) => agent.workspaceId === workspaceId && !agent.archivedAt);
     if (workspaceId && !listsIt(rows)) rows = await this.directory.read({ fresh: true });
-    if (workspaceId && listsIt(rows)) for (const wait of [0, ...TRACK_RETRY_MS]) {
+    // an-agent-s-first-session-gets-its-tools: at session open the opening agent counts itself. Paseo runs session_open
+    // before it lists the agent it is creating, so no re-listing could find it there; it only delays the agent's start.
+    if (workspaceId && listsIt(rows) && !opening) for (const wait of [0, ...TRACK_RETRY_MS]) {
       if (hasAgent(rows)) break;
       if (wait) await new Promise(resolve => setTimeout(resolve, wait));
       rows = await this.directory.read({ fresh: "agents", force: true });
     }
-    const { agents, workspaces, projects } = rows;
+    const { workspaces, projects } = rows;
+    const agents = opening && !rows.agents.some(({ agent }) => agent.id === opening.id) ? [...rows.agents, { agent: openingAgent(opening) }] : rows.agents;
     if (this.unknownParentsFor !== rows) { this.unknownParents.clear(); this.unknownParentsFor = rows; }
     const parents = new Map<string, WorkspaceAgent | null>(agents.map(({ agent }) => [agent.id, agent]));
     const findParent = async (id: string) => {

@@ -447,8 +447,8 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    created a moment ago. When the directory lacks it or its agent, they re-list past the tick's agent memo
    (`read({ fresh: "agents", force: true })`, `server/directory.ts`) and retry a bounded number of times
    (`TRACK_RETRY_MS`, `server/daemon.ts`) before "This workspace has no available main agent". The tick's list
-   predates an agent created after it, and Paseo can list a just-created agent late. Guarded by
-   `tests/track-new-agent.test.ts`.
+   predates an agent created after it, and Paseo can list a just-created agent late. At session open the opening
+   agent counts itself instead (invariant 118). Guarded by `tests/track-new-agent.test.ts`.
 26. **Every list Home's list feeds pins the Overseer** (`every-home-list-pins-the-overseer`). Paseo's sidebar view is
    Home's list, so it shows Home's Overseer row whenever Home would, from the same state (`listOverseerRow` over
    `overseerRowState`, `shared/overseer.ts`), stacked like its other rows (`HomeList` `stackOverseer`). Selecting it
@@ -1412,6 +1412,16 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Home never opened and with Home in the history, a second press, on Home with a row, a button or a text box focused,
    Home loading, Catch up, PR stats, the queue, the log, Settings, ⌘K and `/`, desktop and 390×844, and with Home as
    the sidebar view; writes `search-focus.json`).
+
+118. **An agent's first session gets its tools** (`an-agent-s-first-session-gets-its-tools`). A brand-new agent's
+   first session gets what any later session would: a main agent in a workspace Follow-up follows by default gets the
+   follow_* tools and the bridge, and its workspace is tracked with it as the main agent from that session. Paseo runs
+   the `agent.session_open` hook while it is still creating the agent, before the agent is in its own list, so session
+   open passes the opening agent to discovery (`discover(..., opening)`, `OpeningAgent` in `server/daemon.ts`), which
+   counts it as a candidate and skips the re-listing of invariant 25 (no re-listing could find it there; it only delayed
+   the agent's start). No return in the session_open hook hands out the bridge without the tools. Before, discovery
+   found no agent, and the hook returned the bridge alone: no tools until the next session. Guarded by
+   `tests/first-session-tools.test.ts` and `scripts/check-native-tools.mjs` (`npm run test:native`, the real host).
 
 ## Bugs
 
