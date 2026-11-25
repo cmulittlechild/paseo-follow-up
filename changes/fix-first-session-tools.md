@@ -1,0 +1,1 @@
+- A new agent in a project Follow-up follows by default now gets Follow-up's tools from its very first session, and starts a little faster.

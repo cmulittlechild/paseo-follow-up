@@ -142,7 +142,9 @@ try {
   assert.equal((await call("follow.agent-status", { agentId: agent.id })).prs.length, 0, "hooks never claim referenced PRs");
   console.log("PASS: packed agent hooks provide scoped normal-turn instructions and one missed-sync continuation; scoped root-session sync changes neither ownership, PR inventory, Auto nor Done.");
   console.log("Packed plugin installs without development dependencies; MCP and lifecycle hooks registered.");
-  const config = JSON.parse(await readFile(join(home, "fixture-config.json"), "utf8")); assert.ok(!config.mcp.includes("follow-up")); assert.equal(config.bridge, undefined); assert.ok(!config.instructions?.includes("follow-up"), "unselected agents are not modified");
+  const config = JSON.parse(await readFile(join(home, "fixture-config.json"), "utf8")); // An untracked root agent gets the action tools on any provider, as on Claude (an-agent-on-any-provider-gets-follow-up;
+  // stdio on 0.15, native on 0.17, so not asserted here), but nothing tracks it: no CLI bridge, no instructions.
+  assert.equal(config.bridge, undefined); assert.ok(!config.instructions?.includes("follow-up"), "unselected agents are not tracked");
   for (let i = 0; i < 3; i++) await call("follow.refresh", {});
   assert.equal((await readFile(join(home, "fixture-receipts.jsonl"), "utf8")).trim().split("\n").length, 1, "activation and polling must not send");
   await call("follow.recover", { workspaceId: w.id });

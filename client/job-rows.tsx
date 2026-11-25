@@ -106,7 +106,8 @@ export function JobRows({ theme, compact, order, extra, preselect = false }: {
       const on = field && display.status === "ready" ? display.values[field] !== false : null;
       return <JobRow key={r.role} first={i === 0} row={rows[i]} r={r} catalog={catalog?.providers ?? []} loading={!catalog} theme={theme} compact={compact} busy={busy}
         open={open === r.role} onToggle={() => setOpen(open === r.role ? null : r.role)}
-        enabled={field ? on : undefined} onEnable={field && display.status === "ready" ? v => void display.save({ ...display.values, [field]: v }, display.revision).catch(e => toast.error(errorText(e))) : undefined}
+        // A job no available provider can run (needsGuard) shows off, and its notice says why; the setting is kept.
+        enabled={field ? (rows[i]!.blocked ? false : on) : undefined} onEnable={field && display.status === "ready" && !rows[i]!.blocked ? v => void display.save({ ...display.values, [field]: v }, display.revision).catch(e => toast.error(errorText(e))) : undefined}
         save={entry => change.mutate({ role: r.role, entry })} extra={extra} />;
     })}
   </View>;
@@ -125,12 +126,16 @@ export function JobRow({ row, r, catalog, loading, theme, compact, busy, open, o
   return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: pad, paddingVertical: 14, gap: 2 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>
-      {enabled !== undefined && <Switch theme={theme} compact={compact} label={enabled ? "On" : "Off"} accessibilityLabel={row.title} value={enabled} disabled={!onEnable} onChange={v => onEnable?.(v)} />}
+      {enabled !== undefined && <Switch theme={theme} compact={compact} label={row.blocked ? "Unavailable" : enabled ? "On" : "Off"} accessibilityLabel={row.title} hint={row.blocked ? row.notice?.text : undefined} value={enabled} disabled={!onEnable} onChange={v => onEnable?.(v)} />}
     </View>
     <Text style={[t.meta, off && { opacity: 0.6 }]}>{row.does}</Text>
-    <View style={{ opacity: off ? 0.6 : 1, gap: 6, marginTop: 8 }}>
+    {/* An off row dims, but never its warning: the one line that says why must stay readable. */}
+    <View style={{ opacity: off && row.notice?.tone !== "warning" ? 0.6 : 1, gap: 6, marginTop: 8 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        {loading
+        {row.blocked && !loading
+          // Nothing here can run it: the state as plain text, not a picker that opens onto choices that can't run it.
+          ? <Text style={[t.body, { color: c.foregroundMuted, minHeight: compact ? 44 : 32, textAlignVertical: "center", paddingVertical: compact ? 12 : 6 }]}>{row.pick}</Text>
+          : loading
           ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 32 }}><Spinner color={c.foregroundMuted} size={14} /><Text style={t.meta}>Reading your providers…</Text></View>
           : <Pressable accessibilityRole="button" accessibilityLabel={`${row.title} model: ${row.pick}. Change`} accessibilityState={{ expanded: open, disabled: busy }} aria-expanded={open}
               disabled={busy && !open} onPress={onToggle}
@@ -140,7 +145,7 @@ export function JobRow({ row, r, catalog, loading, theme, compact, busy, open, o
             </Pressable>}
         {row.recommended && <Chip theme={theme} label="Recommended" color={c.foregroundMuted} />}
       </View>
-      <Text style={[t.meta, { fontSize: 12, lineHeight: 16 }]}>{row.hint ? `${row.need} ${row.hint}` : row.need}</Text>
+      {!row.blocked && <Text style={[t.meta, { fontSize: 12, lineHeight: 16 }]}>{row.hint ? `${row.need} ${row.hint}` : row.need}</Text>}
       {row.notice && <View style={{ gap: 6, alignItems: "flex-start" }}>
         <Text accessibilityRole={row.notice.tone === "warning" ? "alert" : undefined} style={[t.meta, { fontSize: 12, lineHeight: 16, color: row.notice.tone === "warning" ? c.statusWarning : c.foregroundMuted }]}>{row.notice.text}</Text>
         {/* Can't run: a real button, the row's one way back. Only differs: the developer chose it, so a quiet link. */}

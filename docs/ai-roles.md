@@ -19,8 +19,10 @@
     `rank-plan`, Ask's `ask-plan` and `ask-items`, `compass-extract`, and a Summary with linked issues or threads).
     `AiJobs.run` refuses it before any runner on a provider `guardedProvider` doesn't name (anything but Claude or
     Codex), with reason `unguarded`, since a job agent there has its provider's own tools. The Summary leaves the linked
-    text out there and still runs on the workspace's own work. Settings → Agents says what doesn't run under the rows
-    (`OUTSIDE_READS`), and the source's own row (Compass, an Ask server) says why.
+    text out there and still runs on the workspace's own work. AI priority (`needsGuard`) is never recommended on such a
+    provider, and with none available its row shows it off and says what to install or turn on; the Summary's
+    linked items, Compass and Ask are named in the block under the rows (`providerNotes`), and the source's own row
+    (Compass, an Ask server) says why.
   - `catalogFrom` keeps each model's description (cut to 200 characters), which the recommendations read.
 - **RPCs and tools.** `follow.agent-settings`, `follow.set-agent-setting` and `follow.set-wait`; tools
   `agent_settings`, `set_agent_setting` and `set_wait_for_jobs`.
@@ -37,6 +39,13 @@
     effort the model offers;
   - when nothing fits, the provider's default model with a hint (`source: "fallback"`).
   `isRecommended` compares a saved pick with it. `shared/job-rows.ts` turns this into what a row says.
+- **A role runs on a provider you have** (`runnableRole`, `shared/job-rows.ts`). A role whose provider was never
+  picked runs on its declared default while Paseo has it; when Paseo's catalog says the default can't run and another
+  provider can, `AgentSettingsStore.role()`/`all()` return the recommendation instead, so with no Claude installed
+  the Summary, AI priority and the Overseer run on what the developer has, and Settings → Agents shows that pick. A
+  picked provider is never moved, and an unknown catalog (not read, failed, still loading) keeps the default. The
+  catalog is the last one read (the worker reads it once in the background when it first gets a Paseo handle, and
+  Settings reads it when it opens); reading a role never waits on Paseo, so no RPC does (tests/rpc-ack.test.ts).
 - **Defaults.** Jobs default to fast models: Summary on Haiku, the ranker on Sonnet. Validate required fields rather
   than raising effort.
 

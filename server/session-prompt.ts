@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { hookSource } from "./hook-source";
+import { hasHooks, isAcp } from "../shared/provider-support";
 
 /**
  * Paseo 0.17 (#9781): a plugin's `agent.open.before` result may carry `appendSystemPrompt`, which the provider gets as
@@ -63,13 +64,31 @@ export function promptText(parts: readonly PromptPart[], bridge: BridgeTexts, na
   return { parts: kept, text: kept.map(p => p === "wait" || p === "backgroundWork" ? raw[p]! : named(raw[p]!, native)) };
 }
 
-type OpenRequest = { provider: string; purpose: string; env: Record<string, string>; appendSystemPrompt?: string[] };
+/**
+ * A provider Follow-up has no hook in (anything but Claude Code and Codex): no hook adds anything, so the system prompt
+ * carries all of what the hook's SessionStart would have, including the tracked workspace's instructions and the
+ * checks line for any root or tracked agent.
+ */
+export function hooklessParts(env: Readonly<Record<string, string | undefined>>, tracked: boolean): PromptPart[] {
+  const parts = promptParts(env);
+  if (env.FOLLOW_UP_RECOVERY === "1" || env.FOLLOW_UP_OVERSEER === "1" || parts.includes("checks")) return parts;
+  return env.FOLLOW_UP_ROOT === "1" || tracked ? [...parts, "checks"] : parts;
+}
+
+type OpenRequest = { agentId?: string; provider: string; purpose: string; env: Record<string, string>; appendSystemPrompt?: string[] };
 export type PromptDeps = {
   /** The host takes `appendSystemPrompt` from a session-open hook (Paseo 0.17+). */
   hostSupports(): Promise<boolean>;
   /** The provider can take it: Claude always; Codex from 0.121 (older throws on a new thread). */
   providerSupports(provider: string): Promise<boolean>;
   bridge(): Promise<BridgeTexts | null>;
+  /**
+   * For a provider without hooks: the tracked workspace's instructions for this agent (the hook's own text,
+   * server/agent-hook.mjs workspaceInstructions), or null when it isn't a tracked main or contributor agent.
+   */
+  workspace?(agentId: string, native: boolean): Promise<string | null>;
+  /** Paseo runs this provider over ACP (shared/provider-support.ts isAcp, from Paseo's config): it drops a plugin's system prompt. */
+  acp?(provider: string): Promise<boolean>;
 };
 
 /**
@@ -80,15 +99,22 @@ export type PromptDeps = {
 export async function withSystemPrompt<R extends OpenRequest>(request: R, deps: PromptDeps, options: { background?: boolean } = {}): Promise<R & { appendSystemPrompt?: string[] }> {
   // Invariant 9: a background agent (another plugin's helper) gets nothing from Follow-up, its system prompt included.
   if (options.background) return request;
-  if (request.purpose !== "interactive" || !["claude", "codex"].includes(request.provider)) return request;
-  const wanted = promptParts(request.env);
-  if (!wanted.length) return request;
-  if (!(await deps.hostSupports().catch(() => false)) || !(await deps.providerSupports(request.provider).catch(() => false))) return request;
+  if (request.purpose !== "interactive") return request;
+  const native = request.env.FOLLOW_UP_TOOLS === "native";
+  const hooked = hasHooks(request.provider);
+  // An ACP agent never receives appendSystemPrompt (Paseo 0.17.4), so nothing is claimed as sent: no text, no env.
+  if (!hooked && await (deps.acp?.(request.provider) ?? Promise.resolve(isAcp(request.provider))).catch(() => isAcp(request.provider))) return request;
+  // Without a hook, the system prompt is the only way Follow-up's text reaches the agent (an-agent-on-any-provider-gets-follow-up).
+  const workspace = hooked || request.env.FOLLOW_UP_RECOVERY === "1" || !request.agentId || !deps.workspace ? null : await deps.workspace(request.agentId, native).catch(() => null);
+  const wanted = hooked ? promptParts(request.env) : hooklessParts(request.env, !!workspace);
+  if (!wanted.length && !workspace) return request;
+  if (!(await deps.hostSupports().catch(() => false))) return request;
+  if (hooked && !(await deps.providerSupports(request.provider).catch(() => false))) return request;
   const bridge = await deps.bridge().catch(() => null);
   if (!bridge) return request;
-  const { parts, text } = promptText(wanted, bridge, request.env.FOLLOW_UP_TOOLS === "native");
-  if (!parts.length) return request;
-  return { ...request, appendSystemPrompt: [...(request.appendSystemPrompt ?? []), text.join("\n\n")], env: { ...request.env, [SYSTEM_PROMPT_ENV]: parts.join(",") } };
+  const { parts, text } = promptText(wanted, bridge, native);
+  if (!parts.length && !workspace) return request;
+  return { ...request, appendSystemPrompt: [...(request.appendSystemPrompt ?? []), [...(workspace ? [workspace] : []), ...text].join("\n\n")], env: { ...request.env, [SYSTEM_PROMPT_ENV]: parts.join(",") } };
 }
 
 /** The installed Codex CLI's version as [major, minor, patch], or null (not installed, unreadable). */

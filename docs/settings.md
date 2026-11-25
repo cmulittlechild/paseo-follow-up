@@ -120,7 +120,7 @@ First, pick where it lives:
   (Permissions, limits, AI priority's schedule, Reset to defaults) and setup's `preselect`, which fills in a
   recommendation only for a job with nothing saved whose default can't run here. `tests/job-rows.test.ts` fails if
   either surface grows row content of its own.
-- **Which steps show** (`every-setup-step-has-something-to-do`, invariant 118): `setupSteps` keeps a step only when
+- **Which steps show** (`every-setup-step-has-something-to-do`, invariant 119): `setupSteps` keeps a step only when
   the host gives it something to set: Shipping needs GitHub signed in and a repository seen, Reviewers needs GitHub,
   Updates needs an npm install, Helper agents needs a provider in Paseo. The client reads the facts from the checks,
   `follow.pr-workflow` and `follow.updates` (reads those steps make anyway); unknown keeps the step. The count and
