@@ -44,6 +44,9 @@ Optionally, Follow-up orders the list by what your Linear issues, Slack mentions
 On Paseo 0.16 or newer, Follow-up can also be your sidebar: pick **Follow-up: Needs you** in Settings → Sidebar →
 View. Follow-up 2.0 still runs on Paseo 0.15; there it simply doesn't offer the view.
 
+On Paseo 0.17.1 or newer, a finished workspace's row in Paseo's own sidebar carries a green **Done** badge. Turn it
+off with **Follow-up: Done** in the sidebar's Show menu. Older Paseo versions get a Done label on the row instead.
+
 <img alt="Paseo 0.16's sidebar showing Follow-up's view: workspaces grouped by what they need from you, each with its status, beside the selected workspace's chat" src="screenshots/follow-up-sidebar.png" width="600">
 
 <img alt="The workspace panel beside the agent's chat: 1 of 3 PRs merged, a stack bar, a question to answer, a failed check for the agent to fix and a task waiting on a deploy" src="screenshots/follow-up-panel.png">

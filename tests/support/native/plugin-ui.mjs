@@ -11,3 +11,4 @@ export const SettingsAction = box, SettingsCard = box, SettingsRow = box, Settin
 export const copyText = async () => {};
 export const useToast = () => ({ show() {}, success() {}, error() {}, info() {} });
 export { Text };
+export const WorkspaceRowBadge = props => createElement(View, { testID: "row-badge", accessibilityLabel: props.accessibilityLabel }, createElement(Text, null, props.label ?? ""));

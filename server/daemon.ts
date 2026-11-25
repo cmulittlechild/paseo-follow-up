@@ -310,6 +310,8 @@ export class PaseoGateway implements Gateway {
   turnTimeline: TurnTimeline | null = null;
   /** Whether the host advertises features.backgroundAgents (server/host-features.ts); false on Paseo 0.15. */
   backgroundAgents: () => Promise<boolean> = async () => false;
+  /** Whether the host draws plugin workspace-row badges (Paseo 0.17.1+, server/host-features.ts): no Done label there. */
+  rowBadges: () => Promise<boolean> = async () => false;
   /**
    * Linked items' passive ingress: references in the entries this poll read for loaded agents (shared/linked-extract.ts),
    * per workspace. Only entries past the cached cursor count, so a re-read overlap is never a second sighting.
