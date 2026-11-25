@@ -64,7 +64,7 @@ try {
   client = new DaemonClient({ url, clientId: "follow-native-check", clientType: "cli", reconnect: { enabled: false }, suppressSendErrors: true }); await client.connect();
   await cli("plugin", "install", fixture);
   await cli("plugin", "install", plugin);
-  // Untracked roots, so each first session takes the root-agent path (default tracking only sets the CLI env).
+  // Untracked roots first, so each first session takes the root-agent path; the default-tracked case comes last.
   await client.invokePluginRpc("follow-up", "follow.set-follow-settings", { enable_follow_every: false });
   const api = createPaseoApi(client);
   const created = [];
@@ -124,6 +124,19 @@ try {
       result.reload = { midTurnNative: "fails (detached)", midTurnBridge: "ok", afterNextPrompt: "ok" };
     }
   }
+  // Invariant 118 (an-agent-s-first-session-gets-its-tools): Paseo opens a new agent's first session before it lists the
+  // agent. A brand-new main agent in a workspace Follow-up follows by default gets its tools and the bridge on that first
+  // session, and its workspace is tracked with it as the main agent.
+  await client.invokePluginRpc("follow-up", "follow.set-follow-settings", { enable_follow_every: true });
+  const trackedDir = join(root, "projects", "tracked"); await mkdir(trackedDir, { recursive: true });
+  const trackedWorkspace = await api.workspaces.create({ title: "Synthetic tracked workspace", source: { kind: "directory", path: trackedDir } });
+  const trackedAgent = await trackedWorkspace.agents.create({ config: { provider: "followup-fixture/fixture", model: "fixture", modeId: "default" }, title: "Synthetic tracked agent" });
+  const first = JSON.parse(await readFile(join(home, `fixture-agent-config-${trackedAgent.id}.json`), "utf8"));
+  assert.ok(first.env?.FOLLOW_UP_TOOLS, "a brand-new main agent's first session gets Follow-up's tools");
+  assert.ok(first.env?.FOLLOW_UP_CLI, "and the bridge");
+  const tracked = (await client.invokePluginRpc("follow-up", "follow.get", { workspaceId: trackedWorkspace.id })).workspace;
+  assert.equal(tracked?.mainAgentId, trackedAgent.id, "its workspace is tracked from that first session");
+  result.firstSession = { tools: first.env.FOLLOW_UP_TOOLS, tracked: true };
   const pid = Number((await readFile(join(home, "plugin-data/follow-up/worker.lock"), "utf8").catch(() => "")).split(":")[0]);
   if (pid > 0) result.workerRssMb = Math.round(Number(/VmRSS:\s+(\d+)/.exec(await readFile(`/proc/${pid}/status`, "utf8"))[1]) / 1024);
   if (STDIO) assert.equal(stdioServers, N, "stdio mode: one bridge per root agent"); else { assert.equal(stdioServers, 0, "native mode: no per-agent bridge"); assert.equal(result.followTools > 0, true); }
