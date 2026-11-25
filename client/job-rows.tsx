@@ -192,18 +192,19 @@ export function JobLine({ row, r, catalog, loading, theme, compact, busy, open, 
   </Pressable>;
   const model = <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0, opacity: off ? 0.6 : 1 }}>
     {loading && <Spinner color={c.foregroundMuted} size={12} />}
-    <Text numberOfLines={1} style={[t.meta, { flexShrink: 1 }]}>{pick}</Text>
+    <Text numberOfLines={1} style={[t.meta, { flex: 1 }]}>{pick}</Text>
     {change}
   </View>;
-  return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: compact ? 14 : 16, paddingVertical: compact ? 10 : 12, gap: 6 }}>
+  return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: compact ? 14 : 16, paddingVertical: compact ? 6 : 12, gap: compact ? 0 : 6 }}>
     {compact
-      ? <><View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>{toggle}</View>{model}</>
+      ? <><View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 }}><Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>{toggle}</View>{model}</>
       : <View style={{ flexDirection: "row", alignItems: "center", gap: 16, minHeight: 32 }}>
           <Text accessibilityRole="header" style={[t.label, { width: 120 }]}>{row.title}</Text>
           {model}
-          {toggle}
+          {/* A fixed switch column, so every row's Change lines up whether or not it has a switch. */}
+          <View style={{ width: 96, alignItems: "flex-end" }}>{toggle}</View>
         </View>}
-    {warning && <View style={{ gap: 6, alignItems: "flex-start", paddingLeft: compact ? 0 : 136 }}>
+    {warning && <View style={{ gap: 6, alignItems: "flex-start", paddingLeft: compact ? 0 : 136, paddingBottom: compact ? 8 : 0 }}>
       <Text accessibilityRole="alert" style={[t.meta, { fontSize: 12, lineHeight: 16, color: c.statusWarning }]}>{warning.text}</Text>
       {use && <Button theme={theme} compact={compact} kind="secondary" title="Use recommended" accessibilityLabel={`Use ${row.recPick} for ${row.title}`} disabled={busy} onPress={use} />}
     </View>}
