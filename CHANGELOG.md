@@ -80,6 +80,7 @@ Start new work in one step, rank it by what the people you follow ask for, and u
 - GitHub is now optional. Without the GitHub CLI, workspaces, Needs you, questions, Catch up, the Overseer, tasks and Compass all work, and setup offers GitHub instead of failing.
 - Each GitHub feature (PR status, merge, reviewers, waiting for checks, PR stats) says in one line what's missing and how to turn it on. Installing and signing in is picked up without a restart.
 - While GitHub is off, a workspace's Refresh checks for it again at once.
+- Setup skips steps with nothing to set on your machine, says Follow-up works with every agent Paseo runs, waits for a provider still loading, shows each helper as one line with Change, and its tour shows Dispatch.
 
 ### Home and Needs you
 
@@ -97,6 +98,7 @@ Start new work in one step, rank it by what the people you follow ask for, and u
 - On an action card, Add note and Reply instead fit beside Done in the narrow panel. Done keeps its Ctrl ⏎ hint where there's room, and Ctrl+Enter sends Done on the chat card too.
 - Sign off & next and `/ok next` skip the rows Needs you no longer shows.
 - Report an issue and Rename title with AI also open on the screen you're looking at.
+- Home with nothing followed offers Dispatch on desktop too.
 
 ### Agent's tasks
 
