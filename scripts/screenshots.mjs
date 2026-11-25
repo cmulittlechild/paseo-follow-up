@@ -2968,6 +2968,17 @@ async function newShots({ shoot, call, out, home, billing }) {
       check(`${device} ${theme}: a pasted key in the list selects that row`, await dialog(page).getByText("From your link").count() > 0);
       if (phone) await pick(page, /^WEB-31 /); else await preview(page); });
     await shoot(name("text"), vp, theme, async page => { await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it."); });
+    // A real task's worth of words: the field grows with them (to about seven lines), the preview stays put while
+    // typing (preview-stays-while-typing) and its first message says the words once (a-prompt-says-each-thing-once).
+    await shoot(name("long"), vp, theme, async page => {
+      await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it for the quarterly review, so include the actor, the action, the target and the time in the workspace's zone. Keep the existing filters: whatever the page shows is what the file holds. Large exports should stream rather than build in memory, and the button should say how many rows it will write.");
+      if (!phone) {
+        const box = await dialog(page).getByRole("textbox", { name: FIELD }).first().boundingBox();
+        check(`${theme} ${device}: the task field is wide and grew with the words`, !!box && box.width >= 600 && box.height >= 120, { box });
+        const text = await dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first().click().then(() => dialog(page).getByText(/Add a CSV export to the audit log page/).allInnerTexts());
+        check(`${theme} ${device}: the first message says the words once`, text.join("\n").split("Add a CSV export to the audit log page").length === 2, { text });
+      }
+    });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
     await shoot(name("existing"), vp, theme, async page => { await openFromHome(page, vp); await row(page, /^\d+ issues? already ha(s|ve) a workspace/).click(); await pick(page, /^APP-142 /);
       check(`${device} ${theme}: a source with a workspace offers Open it`, await primary(page, /^Open it/).count() > 0); });
