@@ -62,6 +62,25 @@ the card says Sending until it has the answer, and offers Send again if it could
 
 <img alt="A question card: three lettered options, A recommended, with a note for the agent" src="screenshots/follow-up-questions.png">
 
+### Catch up
+
+**Catch up** on Home goes through everything that needs you one card at a time: answer, merge or sign off, and the
+next card comes up. Skip moves a card to the end, Later snoozes it, and More context asks the agent to explain before
+you decide, while the deck moves on. On desktop the keys do it all (S lists them); on a phone the moves sit under the
+card.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/follow-up-catch-up-phone-dark.png">
+  <img alt="Catch up on a phone: a question card with lettered options and the recommendation" src="screenshots/follow-up-catch-up-phone-light.png" width="300">
+</picture>
+
+### The Overseer
+
+The Overseer is one agent that knows every workspace. Click **Start the Overseer** on Home once. Then type in Home's
+search box and pick **Ask the Overseer**: it answers from what Follow-up knows, or passes your words to the agent that
+owns the work, and says where it sent them. It never merges, approves, archives or posts anywhere, and it starts a new
+workspace only when you ask.
+
 ### The pill
 
 The bar above the message box (the pill) shows what needs you in the chat you're in, with the same actions.

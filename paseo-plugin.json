@@ -4,15 +4,13 @@
   "icon": "assets/icon.png",
   "description": "Follow every workspace until the work is done: one Home for what needs you, questions you answer anywhere, and repairs that send themselves.",
   "media": [
-    "docs/screenshots/follow-up-home.png",
-    "docs/screenshots/follow-up-sidebar.png",
-    "docs/screenshots/follow-up-panel.png",
-    "docs/screenshots/follow-up-questions.png",
-    "docs/screenshots/follow-up-pill.png",
-    "docs/screenshots/follow-up-pr-sheet.png",
-    "docs/screenshots/follow-up-linked-items.png",
-    "docs/screenshots/follow-up-phone.png",
-    "docs/screenshots/follow-up-setup.png"
+    "docs/screenshots/follow-up-slide-1-cover.png",
+    "https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2.mp4",
+    "docs/screenshots/follow-up-slide-2-decision.png",
+    "docs/screenshots/follow-up-slide-3-overseer.png",
+    "docs/screenshots/follow-up-slide-4-repairs.png",
+    "docs/screenshots/follow-up-slide-5-deploy.png",
+    "docs/screenshots/follow-up-slide-6-catch-up.png"
   ],
   "requirements": {
     "paseo": ">=0.15.0"
