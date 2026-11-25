@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount, type CheckDeps } from "../server/onboarding";
-import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, initialOnboarding, OFFER_MS, type Check } from "../shared/onboarding";
+import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, initialOnboarding, OFFER_MS, sentenceStart, type Check, type GhResult } from "../shared/onboarding";
 import { reviewerSettingsRpc, saveReviewersRpc, setFollowSettingsRpc, followSettingsRpc, prWorkflowRpc, setPrWorkflowRpc, setUpdatesRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
 
@@ -177,7 +177,7 @@ test("checks: GitHub is optional (works-without-github): missing or signed out i
 test("checks: a provider a helper uses is a failure; an unused one is optional; both missing says what still works", async () => {
   let checks = (await new ReadinessChecks(deps({ catalog: async () => catalog(false, true) })).run()).checks;
   const claude = byId(checks, "provider-claude");
-  assert.equal(claude.state, "fail"); assert.match(claude.detail, /the Overseer, Summaries and AI priority won't run/);
+  assert.equal(claude.state, "fail"); assert.match(claude.detail, /\. The Overseer, Summaries and AI priority won't run/);
   assert.equal(claude.fix?.settings, "agents", "Codex works, so offer to switch the helpers"); assert.equal(claude.fix?.command, "claude");
 
   checks = (await new ReadinessChecks(deps({ catalog: async () => catalog(true, false) })).run()).checks;
@@ -193,6 +193,25 @@ test("checks: a provider a helper uses is a failure; an unused one is optional; 
 
   checks = (await new ReadinessChecks(deps({ catalog: async () => { throw new Error("Paseo isn't connected yet"); } })).run()).checks;
   assert.equal(byId(checks, "providers").state, "warn"); assert.match(byId(checks, "providers").detail, /isn't connected/);
+});
+
+test("checks: every sentence a check writes starts capitalised, a joined list of helpers included", async () => {
+  // 2026-11-25 (the gh-optional renders): "Not available (Turned off in Paseo). the Overseer, Summaries and AI priority
+  // won't run until it is." A list that starts a sentence goes through sentenceStart.
+  assert.equal(sentenceStart("the Overseer and Summaries"), "The Overseer and Summaries");
+  const ghs: Array<() => Promise<GhResult>> = [async () => ({ login: "demo-dev" }), async () => ({ error: "missing", message: "" }), async () => ({ error: "signed-out", message: "" }), async () => ({ error: "network", message: "" })];
+  const catalogs = [catalog(true, true), catalog(false, true), catalog("Turned off in Paseo", true), catalog(false, false), catalog("Still loading", "Turned off in Paseo")];
+  const uses: Array<Record<string, string[]>> = [{ claude: ["the Overseer", "Summaries", "AI priority"] }, { claude: ["the Overseer"], codex: ["AI priority"] }, { codex: ["the Overseer", "Summaries"] }, {}];
+  const tools = [{ config: { daemon: { mcp: { enabled: true } } }, nativeAgents: 3, hookError: null }, { config: { daemon: { mcp: { enabled: false } } }, nativeAgents: 0, hookError: "x" }];
+  let seen = 0;
+  for (const gh of ghs) for (const c of catalogs) for (const use of uses) for (const t of tools) {
+    const { checks } = await new ReadinessChecks(deps({ gh, catalog: async () => c, use: async () => use, tools: async () => t as never })).run();
+    for (const row of checks) for (const text of [row.detail, row.fix?.text ?? ""]) {
+      seen++;
+      assert.doesNotMatch(text, /^[a-z]|[.!?] [a-z]/, `${row.id}: ${text}`);
+    }
+  }
+  assert.ok(seen > 100);
 });
 
 test("checks: tools through the bridge, blocked by config, not seen yet, and hooks that failed", async () => {

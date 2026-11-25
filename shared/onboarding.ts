@@ -169,6 +169,8 @@ const PROVIDER_FIX: Record<string, { text: string; command: string | null }> = {
   codex: { text: "Install Codex on the computer running Paseo and sign in.", command: "codex login" },
 };
 const joinNames = (names: string[]) => names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "";
+/** Text that starts a sentence starts capitalised ("the Overseer, …" after a stop reads "The Overseer, …"). */
+export const sentenceStart = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Claude and Codex keep a row even when no helper uses them: they're the two most setups have. */
 const KNOWN_PROVIDERS = ["claude", "codex"];
@@ -195,7 +197,7 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
     if (!users.length) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `Not available${why}. Optional: no helper uses it.`, fix: null }); continue; }
     const setup = PROVIDER_FIX[id] ?? { text: `Set up ${label} on the computer running Paseo, then check again.`, command: null };
     const other = ready.find(x => x !== id);
-    rows.push({ id: `provider-${id}`, label, state: "fail", detail: `Not available${why}. ${joinNames(users)} won't run until it is.`,
+    rows.push({ id: `provider-${id}`, label, state: "fail", detail: `Not available${why}. ${sentenceStart(joinNames(users))} won't run until it is.`,
       fix: other ? fix(`${setup.text} Or switch those helpers to ${nameOf(catalog, other)} in Settings → Agents.`, setup.command, "agents") : fix(setup.text, setup.command) });
   }
   if (!ready.length) rows.unshift({ id: "providers", label: "Helper agents", state: "fail", detail: "No provider in Paseo is ready, so the Overseer, Summaries and AI priority can't run. Following PRs and Needs you still work.", fix: null });
