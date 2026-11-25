@@ -1,2 +1,0 @@
-- New opens again after you visit Home a second time. It used to land on Home with nothing open.
-- Report an issue and Rename title with AI also open on the screen you're looking at.

@@ -1,2 +1,0 @@
-- On Paseo 0.17, agents get Follow-up's standing instructions once, in their system prompt, so Codex agents no longer get them repeated with every message.
-- On Paseo 0.17.2 and later, a message Paseo holds until the agent's turn ends reads "Queued", and a message that had to stop the agent's turn says so.

@@ -1,2 +1,0 @@
-- Send to Paseo can now show when a PR's agent is closed, instead of the PR looking like nobody owns it.
-- Send to Paseo can color its button by how a PR's workspace is doing (needs you, working, ready to merge), using the same colors as Home.

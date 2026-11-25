@@ -1,1 +1,0 @@
-- This week's plan is read and never changed: Follow-up now refuses any attempt to publish, edit or delete the plan, whatever the plan's text says.

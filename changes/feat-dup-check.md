@@ -1,1 +1,0 @@
-- Adding a task that looks like one already open no longer makes a second copy. The agent gets the open task's id and updates it, or says it really is a separate task. Repeating its own exact title updates that task.

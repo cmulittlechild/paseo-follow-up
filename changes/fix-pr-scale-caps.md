@@ -1,3 +1,0 @@
-- Workspaces with very long stacks work again: PR status, Merge when ready and Add reviewers no longer fail with "Too big: expected array to have <=50 items" past 50 PRs.
-- When Follow-up does hit one of its own limits, it says what didn't fit in a plain sentence instead of showing raw error data.
-- Home and the workspace panel stay fast on stacks with hundreds of PRs.

@@ -1,1 +1,0 @@
-- A task waiting on your decision no longer shows a second card for a question you already have or answered. The task shows which question it waits on, and an extra card from before closes as "Already asked as Q1."

@@ -1,1 +1,0 @@
-- The Follow-up skill no longer tells agents that tasks are manual. It says what the tool says: a task comes due when its pull requests merge or deploy, or on its re-check date.

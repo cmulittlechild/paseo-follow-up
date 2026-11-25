@@ -1,3 +1,0 @@
-- Asking the Overseer to start workspaces in chat works again, including "create workspaces for these" with several issues. It no longer asks you again on a card.
-- The Overseer starts only the issues you approved: picking Skip for one decision on its card keeps that issue from starting.
-- A new agent's first message is short: the issue, a line to read all of it itself, what to do, and your own words. Neither New nor the Overseer pastes the issue's description into it any more.

@@ -1,1 +1,0 @@
-- What Follow-up sends the agent (conflicts, review comments, failed checks) now reads "repairs" everywhere: Messages, Needs you, Home, Activity, Settings. "Tasks" means only the agent's own to-do list.
