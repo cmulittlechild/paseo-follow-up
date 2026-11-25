@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "batch-churn"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "compass-readers", "batch-churn"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -237,6 +237,13 @@ function fakeCompassClaude() {
   return `#!/usr/bin/env node
 if (!process.argv.some(a => a.startsWith("You read messages for one developer"))) { process.stderr.write("not logged in"); process.exit(1); }
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
+  // A doc place (Compass PR 5): its new blocks come as [d1], [d2]…; the "!" line is the urgent one.
+  const doc = /\\[(d\\d+)\\][^\\n]*\\n?[^\\[]*renewal deck/.exec(input);
+  if (doc) {
+    const value = { notes: [{ item: doc[1], what: "The acme renewal deck", keys: [], kind: "customer", strength: "high", untilWords: null, until: null, quote: "renewal deck for acme" }], retracts: [], nothing: false };
+    process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0002, usage: { input_tokens: 400, output_tokens: 40 } }));
+    return;
+  }
   const item = (/\\[(m\\d+)\\] dana[^\\n]*\\n?[^\\[]*APP-142 retries/.exec(input) || /\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
   const value = { notes: [
     { item, what: "APP-142 retries before the acme demo", keys: ["APP-142"], kind: "issue", strength: "high", untilWords: "Thursday", until: null, quote: "APP-142 retries are really important, the acme demo is Thursday" },
@@ -336,6 +343,8 @@ if (process.argv[2] === "tools" && process.argv[3] === "list") {
     ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
     // Compass (--only compass): the chat's history read, by conversation id and oldest time.
     ...(over.compass ? [t("team-chat", "read_channel", ["channel_id", "oldest", "limit", "cursor", "response_format"], "Reads a conversation's messages, newest first.")] : []),
+    // Compass's doc places (--only compass-readers): a docs server found by its read and search tools.
+    ...(over.docs ? [t("notes", "notes-fetch", ["id"], "Fetch a page or doc by its id."), t("notes", "notes-search", ["query"], "Search pages and docs in the workspace.")] : []),
   ]));
   process.exit(0);
 }
@@ -386,7 +395,13 @@ if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
 ] }));
 if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
 if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
-if (/list-events$/.test(tool)) reply(JSON.stringify({ events: [] }));
+// Compass's calendar place (over.calendar): the next days' meetings, one about tracked work, one that isn't.
+if (/list-events$/.test(tool)) reply(JSON.stringify({ events: over.calendar ? [
+  { summary: "acme demo: APP-142 retries", start: { dateTime: new Date(Date.now() + 2 * 86400_000).toISOString() }, attendees: [{ email: "dana@example.com" }, { email: "alice@example.com", self: true }, { email: "ops@acme.example" }] },
+  { summary: "Team lunch", start: { dateTime: new Date(Date.now() + 86400_000).toISOString() }, attendees: [{ email: "dana@example.com" }, { email: "alice@example.com", self: true }] },
+] : [] }));
+if (tool === "notes-search") reply(JSON.stringify({ results: [{ id: "page-now", title: "Now", url: "https://notes.example/page-now" }, { id: "page-roadmap", title: "Q4 roadmap", url: "https://notes.example/page-roadmap" }] }));
+if (tool === "notes-fetch") reply(JSON.stringify({ markdown: "# This week\\n\\n- ! renewal deck for acme\\n\\n# Later\\n\\nclean up the backlog" }));
 reply("not available in the screenshot fixture", true);
 `;
 }
@@ -1963,6 +1978,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("compass")) await compassShots({ shoot, call, home, seeded });
   if (only.includes("compass-suggest")) await compassSuggestShots({ shoot, call, home, seeded });
+  if (only.includes("compass-readers")) await compassReadersShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
@@ -3916,8 +3932,8 @@ async function compassShots({ shoot, call, home, seeded }) {
   await call("follow.set-compass", { instructions: "'The retry work' is APP-142. Customer asks wait for the plan unless they name a date.", glossary: [{ words: "the retry work", means: { issue: "APP-142" } }] });
   await call("follow.read-compass", {});
   await states("card", page => page.getByText(/2 notes live/).first().waitFor({ timeout: 30_000 }));
-  await states("notes", async page => { await page.getByRole("button", { name: /Show 2 notes from Dana/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
-  await states("editor", async page => { await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
+  await states("notes", async page => { await page.getByRole("button", { name: /Show Dana · product's notes/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
+  await states("editor", async page => { await page.getByRole("button", { name: /Show Dana · product's notes/ }).first().click(); await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
   await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); }, { phoneOnly: true });
   // One place for priority inputs: the built-in inputs follow the sources in the same list, each with its role; the
   // Linear queue's states open behind its chevron.
@@ -3980,6 +3996,78 @@ async function compassShots({ shoot, call, home, seeded }) {
       await page.waitForTimeout(800);
     });
   }
+}
+
+/**
+ * Compass PR 5 (`--only compass-readers`, docs/compass.md#readers): every reader in Settings → Compass, desktop and
+ * phone, light and dark. Sources of every kind in one list (a person's DM, everyone in a team channel, a Linear
+ * project, a notes file on this machine, the calendar), the eight presets, the doc and file pickers, the tracker picker
+ * over the queue's own projects, and Connections with a failing input. Fictional names only: Dana, #platform-team,
+ * acme, a file under the harness's own home.
+ */
+async function compassReadersShots({ shoot, call, home }) {
+  const data = join(home, "plugin-data", "follow-up");
+  const queue = briefSinceQueue();
+  for (const [key, project, milestone] of [["ACME-177", "Billing reliability", "Sprint 14"], ["ACME-142", "Billing reliability", "Sprint 14"], ["ACME-151", "Billing reliability", null], ["ACME-158", "Search", "Sprint 14"]]) Object.assign(queue.sweeps[0].issues[key], { project, milestone });
+  await fs.writeFile(join(data, "linear-queue.json"), JSON.stringify(queue));
+  const notesFile = join(home, "now.md");
+  await fs.writeFile(notesFile, "# This week\n\n- ! renewal deck for acme\n\n# Later\n\nclean up the backlog\n");
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true, docs: true, calendar: true }));
+  await call("follow.brief-sources", { check: true });
+  const states = async (name, drive, { phoneOnly = false, at = "What sets your priorities" } = {}) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      if (phoneOnly && device !== "phone") continue;
+      await shoot(`compass-readers-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        const head = page.getByText("What sets your priorities", { exact: true }).first();
+        await head.waitFor();
+        await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+        await drive?.(page);
+        if (at !== "What sets your priorities") await page.getByText(at).last().evaluate(e => e.scrollIntoView({ block: "center" }));
+        await head.evaluate(e => { for (let n = e.parentElement; n; n = n.parentElement) n.scrollLeft = 0; });
+        await page.waitForTimeout(300);
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  // The presets, all offered: a chat, a docs tool, the queue and a calendar are here.
+  await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); });
+  // A doc: the docs tool's search, and a file on this machine checked first.
+  await states("doc", async page => {
+    await page.getByRole("button", { name: "Add a source" }).first().click();
+    await page.getByRole("radio", { name: "A doc or notes" }).first().click();
+    await page.getByRole("button", { name: "A file on this machine" }).first().click();
+    const field = page.getByLabel("File path").first();
+    await field.fill(notesFile); await field.press("Enter");
+    await page.getByText("A file on this machine", { exact: true }).nth(1).waitFor({ timeout: 20_000 });
+  });
+  await states("tracker", async page => {
+    await page.getByRole("button", { name: "Add a source" }).first().click();
+    await page.getByRole("radio", { name: "A tracker project" }).first().click();
+    await page.getByRole("button", { name: "Pick a project or label" }).first().click();
+    await page.getByLabel("Search trackers").first().fill("Bill");
+    await page.getByText(/Linear project · 3 of your issues/).first().waitFor({ timeout: 20_000 });
+  });
+  const set = source => call("follow.set-compass", { source });
+  // The compass shots, when they ran first in this harness, already added Dana.
+  if (!only.includes("compass")) await set({ label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "Dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "Dana" }], roles: ["priorities", "plan"] });
+  await set({ label: "Platform team", who: { kind: "anyone" }, places: [{ kind: "conversation", sub: "channel", id: "CPLAT00001", name: "platform-team" }], roles: ["priorities"], instructions: "Only the two leads, or messages with 'priority:'." });
+  await set({ label: "Billing reliability", who: { kind: "anyone" }, places: [{ kind: "tracker", scope: "project", id: "linear:project:Billing reliability", name: "Billing reliability" }], roles: ["priorities"] });
+  const file = (await call("follow.compass-find", { kind: "file", query: notesFile })).results[0].place;
+  await set({ label: "Now", who: { kind: "me" }, places: [file], roles: ["self", "plan"], instructions: "A line starting with ! is urgent." });
+  await set({ label: "Calendar deadlines", who: { kind: "me" }, places: [{ kind: "calendar", id: "primary", name: "Your calendar", filter: "with-guests" }], roles: ["deadlines"] });
+  await call("follow.read-compass", {});
+  await states("card", page => page.getByText(/Billing reliability · 3 notes live|3 notes live/).first().waitFor({ timeout: 30_000 }));
+  await states("open", async page => { await page.getByRole("button", { name: /Show Billing reliability's notes/ }).first().click(); await page.getByText(/Webhook retries ignore/).first().waitFor(); });
+  // Connections with a failing input: one count, the failure stays on its row above.
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true, docs: true, calendar: true, upstreams: { calendar: { connected: false, health: { level: "unhealthy", summary: "connection refused", action: null } } } }));
+  await call("follow.brief-sources", { check: true });
+  await new Promise(r => setTimeout(r, 1500));
+  await states("connections", page => page.getByText(/needs? attention above/).first().waitFor({ timeout: 20_000 }), { at: /needs? attention above/ });
 }
 
 /**
@@ -4909,9 +4997,12 @@ try {
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
   await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") || only.includes("compass-suggest") ? newIssues() : []));
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
+  // A slip in the fake's template (an escape that lands as a real newline) fails every tool call as "couldn't run the
+  // read", far from its cause: check the fake parses before any shot uses it.
+  await exec(process.execPath, ["--check", join(bin, "mcpproxy")]);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
-  else if (only.includes("compass") || only.includes("compass-suggest")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("compass") || only.includes("compass-suggest") || only.includes("compass-readers")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

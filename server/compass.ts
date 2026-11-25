@@ -500,7 +500,9 @@ export class Compass {
       // Unknown guests count as guests: a reply that doesn't say never hides a meeting (unknown is not off).
       if (filter === "with-guests" && e.guests === 0) return [];
       const dayOf = zoned(t, clock.timeZone).day;
-      return [{ ref: `${e.title}|${e.start}`, key: null, title: e.title, kind: "event" as const, link: e.url, at: new Date(now).toISOString(), quote: `${e.title} · ${e.start}`, until: dayOf, strength: "normal" as const }];
+      // A meeting that names an issue ("APP-142 review") goes to that issue, as a note's own key would.
+      const key = /(?:^|[^A-Za-z0-9-])([A-Z][A-Z0-9]{1,9}-\d{1,7})(?![A-Za-z0-9])/.exec(e.title)?.[1] ?? null;
+      return [{ ref: `${e.title}|${e.start}`, key, title: e.title, kind: "event" as const, link: e.url, at: new Date(now).toISOString(), quote: `${e.title} · ${e.start}`, until: dayOf, strength: "normal" as const }];
     });
     return this.applyRules(source, placeKey(place), role, items, index, false, COMPASS.calendarNotes, setCursor);
   }

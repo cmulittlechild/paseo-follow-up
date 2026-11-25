@@ -112,6 +112,7 @@ test("developer C: no chat, a notes file read only when it changes, a calendar w
         { summary: "acme renewal deck review", start: { dateTime: "2026-11-26T10:00:00Z" }, attendees: [{ email: "you@example.com", self: true }, { email: "dana@example.com" }] },
         { summary: "Lunch", start: { dateTime: "2026-11-25T12:00:00Z" }, attendees: [{ email: "you@example.com", self: true }, { email: "avi@example.com" }] },
         { summary: "Focus time", start: { dateTime: "2026-11-25T14:00:00Z" }, attendees: [{ email: "you@example.com", self: true }] },
+        { summary: "ACME-9 export sync", start: { dateTime: "2026-11-27T09:00:00Z" }, attendees: [{ email: "you@example.com", self: true }, { email: "dana@example.com" }] },
       ] }),
       reply: p => p.includes("renewal deck") ? { notes: [{ item: "d1", what: "Renewal deck for acme", keys: [], kind: "feature", strength: "high", untilWords: null, until: null, quote: "! renewal deck for acme" }], retracts: [], nothing: false }
         : p.includes("onboarding") ? { notes: [{ item: "d1", what: "Onboarding emails", keys: [], kind: "feature", strength: "normal", untilWords: "today", until: null, quote: "onboarding emails today" }], retracts: [], nothing: false }
@@ -136,8 +137,10 @@ test("developer C: no chat, a notes file read only when it changes, a calendar w
     assert.equal(t.model.prompts.length, 1, "one extraction for the file's blocks; the calendar is rules");
     assert.match(t.model.prompts[0], /\[d1\] You · [^\n]+\nThis week\n- ! renewal deck for acme/, "a block carries its heading");
     assert.deepEqual(live(v.notes, now.id).map(n => [n.match.workspace, n.strength, typeof n.by === "object" && n.by.name]), [["ws-deck", "high", "You"]]);
-    // Meetings with guests that match work lend it their date; one about nothing known, or with no guests, isn't kept.
-    assert.deepEqual(live(v.notes, calendar.id).map(n => [n.what, n.kind, n.until, n.match.workspace]), [["acme renewal deck review", "event", "2026-11-26", "ws-deck"]]);
+    // Meetings with guests that match work lend it their date (by title, or by an issue key the title names); one about
+    // nothing known, or with no guests, isn't kept.
+    assert.deepEqual(live(v.notes, calendar.id).map(n => [n.what, n.kind, n.until, n.match.workspace ?? n.match.issue]),
+      [["acme renewal deck review", "event", "2026-11-26", "ws-deck"], ["ACME-9 export sync", "event", "2026-11-27", "ACME-9"]]);
     // Unchanged: no model call. Changed: only the new block goes to the model.
     await t.compass.read("manual");
     assert.equal(t.model.prompts.length, 1, "an unchanged file isn't read again");
