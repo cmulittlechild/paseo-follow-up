@@ -298,8 +298,12 @@ export default function contribute(server: PluginServerContext) {
     if (!api) { unsent.set(`${agentId}|${brief.id}`, { agentId, brief }); return; }
     await api.agents.ref(agentId).timeline.append({ type: "plugin", id: brief.id, kind: BRIEF_KIND, version: BRIEF_VERSION, data: brief });
   };
+  let catalogKicked = false;
   const seen = (paseo: PaseoApi) => {
     api = paseo;
+    // The first Paseo handle: read the provider catalog once in the background, so a helper left on its default runs
+    // on a provider Paseo has from its first job (runnableRole), without any RPC waiting on it.
+    if (!catalogKicked) { catalogKicked = true; queueMicrotask(() => void providerCatalog.read().catch(() => undefined)); }
     for (const [key, row] of unsent) { unsent.delete(key); void append(row.agentId, row.brief).catch(() => undefined); }
   };
   const needsYouPath = (agentId: string) => join(directory, "hook-state", `needs-you-${agentId}.json`);
@@ -1182,12 +1186,14 @@ export default function contribute(server: PluginServerContext) {
     if (!snapshot.entries?.some(e => e.status === "loading")) return snapshot as Awaited<ReturnType<CatalogSource>>;
     return await paseo.providers.waitForReady({ timeoutMs: 8000 }).catch(() => snapshot) as unknown as Awaited<ReturnType<CatalogSource>>;
   });
-  // A helper left on its default runs on a provider Paseo has (shared/job-rows.ts runnableRole): the last catalog read,
-  // or one read (cached ten minutes) when none was made yet. Never polled.
-  agentSettings.catalog = async () => providerCatalog.peek() ?? await providerCatalog.read();
+  // A helper left on its default runs on a provider Paseo has (shared/job-rows.ts runnableRole): the last catalog read.
+  // Reading a role never waits on Paseo (an-ack-never-waits-on-the-disk's rule for RPCs: overseer-status, Compass): with
+  // no catalog yet it starts one read in the background (cached ten minutes) and keeps the default meanwhile. Never polled.
+  agentSettings.catalog = async () => { const last = providerCatalog.peek(); if (!last && api) void providerCatalog.read().catch(() => undefined); return last; };
   const agentSettingsView = async (catalog: boolean, fresh = false): Promise<AgentSettingsView> => {
-    const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
+    // The catalog first, so the roles show what runs (a default on a provider Paseo lacks moves: runnableRole).
     const cat = catalog ? await providerCatalog.read(fresh) : null;
+    const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
     return { roles: Object.values(roles).map(r => ({ ...r, summary: roleSummary(r, labelsFor(r, cat)) })), invalid, catalog: cat, wait: await currentWait() };
   };
   // What's new and Settings → General. Follow-up's own install comes from Paseo's plugin list, read once per worker.

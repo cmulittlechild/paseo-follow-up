@@ -42,7 +42,8 @@
   provider can, `AgentSettingsStore.role()`/`all()` return the recommendation instead, so with no Claude installed
   the Summary, AI priority and the Overseer run on what the developer has, and Settings → Agents shows that pick. A
   picked provider is never moved, and an unknown catalog (not read, failed, still loading) keeps the default. The
-  catalog is the last one read, or one read (cached ten minutes) when none was; never polled.
+  catalog is the last one read (the worker reads it once in the background when it first gets a Paseo handle, and
+  Settings reads it when it opens); reading a role never waits on Paseo, so no RPC does (tests/rpc-ack.test.ts).
 - **Defaults.** Jobs default to fast models: Summary on Haiku, the ranker on Sonnet. Validate required fields rather
   than raising effort.
 
