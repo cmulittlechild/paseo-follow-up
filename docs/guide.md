@@ -44,6 +44,9 @@ Optionally, Follow-up orders the list by what your Linear issues, Slack mentions
 On Paseo 0.16 or newer, Follow-up can also be your sidebar: pick **Follow-up: Needs you** in Settings → Sidebar →
 View. Follow-up 2.0 still runs on Paseo 0.15; there it simply doesn't offer the view.
 
+On Paseo 0.17.1 or newer, a finished workspace's row in Paseo's own sidebar carries a green **Done** badge. Turn it
+off with **Follow-up: Done** in the sidebar's Show menu. Older Paseo versions get a Done label on the row instead.
+
 <img alt="Paseo 0.16's sidebar showing Follow-up's view: workspaces grouped by what they need from you, each with its status, beside the selected workspace's chat" src="screenshots/follow-up-sidebar.png" width="600">
 
 <img alt="The workspace panel beside the agent's chat: 1 of 3 PRs merged, a stack bar, a question to answer, a failed check for the agent to fix and a task waiting on a deploy" src="screenshots/follow-up-panel.png">
@@ -58,6 +61,25 @@ Pick an option, add a note if you like, and send. Cmd+Enter (Ctrl+Enter) sends. 
 the card says Sending until it has the answer, and offers Send again if it couldn't deliver.
 
 <img alt="A question card: three lettered options, A recommended, with a note for the agent" src="screenshots/follow-up-questions.png">
+
+### Catch up
+
+**Catch up** on Home goes through everything that needs you one card at a time: answer, merge or sign off, and the
+next card comes up. Skip moves a card to the end, Later snoozes it, and More context asks the agent to explain before
+you decide, while the deck moves on. On desktop the keys do it all (S lists them); on a phone the moves sit under the
+card.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/follow-up-catch-up-phone-dark.png">
+  <img alt="Catch up on a phone: a question card with lettered options and the recommendation" src="screenshots/follow-up-catch-up-phone-light.png" width="300">
+</picture>
+
+### The Overseer
+
+The Overseer is one agent that knows every workspace. Click **Start the Overseer** on Home once. Then type in Home's
+search box and pick **Ask the Overseer**: it answers from what Follow-up knows, or passes your words to the agent that
+owns the work, and says where it sent them. It never merges, approves, archives or posts anywhere, and it starts a new
+workspace only when you ask.
 
 ### The pill
 

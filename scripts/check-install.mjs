@@ -19,7 +19,9 @@ const url = `ws://127.0.0.1:${port}/ws`;
 let daemon; let client; let api; let github;
 const keep = process.argv.includes("--keep");
 try {
-  await Promise.all(["paseo", "claude", "codex"].map(command => exec(command, ["--version"], { timeout: 30000 })));
+  const [paseoVersion] = await Promise.all(["paseo", "claude", "codex"].map(command => exec(command, ["--version"], { timeout: 30000 }).then(r => r.stdout)));
+  // Paseo 0.17.1+ draws Done as Follow-up's row badge, so the worker writes no Done label there (invariant 113).
+  const rowBadgeHost = (v => !!v && (Number(v[1]) > 0 || Number(v[2]) > 17 || Number(v[2]) === 17 && Number(v[3]) >= 1))(/(\d+)\.(\d+)\.(\d+)(?![-\w.]*-)/.exec(paseoVersion));
   await Promise.all([home, plugin, fixture, bin].map(p => mkdir(p, { recursive: true })));
   const codexFixture = '# Preserve surrounding text\nmodel = "fixture-model"\n[projects."/synthetic/project"]\ntrust_level = "trusted"\n# Keep this server after project settings\n[mcp_servers.keep-fixture]\nurl = "https://example.invalid/mcp"\nenabled = false\n';
   await mkdir(join(home, ".codex"), { recursive: true });
@@ -233,8 +235,14 @@ try {
   await call("follow.refresh", {});
   const doneRecord = (await call("follow.get", { workspaceId: w.id })).workspace;
   let labeledWorkspace = await w.refresh();
+  if (rowBadgeHost) {
+    await call("follow.refresh", {});
+    labeledWorkspace = await w.refresh();
+    assert.ok(!(labeledWorkspace.labels ?? []).includes("Done") && !doneRecord.managedDoneLabel, `a row-badge host gets no Done label: ${JSON.stringify({ managed: doneRecord.managedDoneLabel, labels: labeledWorkspace.labels })}`);
+  } else {
   if (!(labeledWorkspace.labels ?? []).includes("Done")) await waitUntil("Done label", async () => ((labeledWorkspace = await w.refresh()).labels ?? []).includes("Done"), { baseMs: 10_000 }).catch(() => undefined);
   assert.ok((labeledWorkspace.labels ?? []).includes("Done"), JSON.stringify({ completion: doneRecord.completion, busy: doneRecord.runtimeBusy, background: doneRecord.backgroundBusy, reason: doneRecord.runtimeReason, managed: doneRecord.managedDoneLabel, batches: doneRecord.batches.map(b => b.state), labels: labeledWorkspace.labels }));
+  }
   for (const value of [true, false]) assert.ok((await call("follow.control", { workspaceId: w.id, enable_auto_sends: value })).completion, "changing Auto must preserve Done");
   const bridgeEnv = { ...env, PASEO_AGENT_ID: agent.id, FOLLOW_UP_CLIENT_ENTRY: resolve("node_modules/@getpaseo/client/dist/daemon-client.js") };
   const viaBridge = JSON.parse((await exec(process.execPath, [join(home, "plugin-data/follow-up/mcp.mjs"), "call", "workspace_status"], { env: bridgeEnv })).stdout); assert.equal(viaBridge.id, w.id);
