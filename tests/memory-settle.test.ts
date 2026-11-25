@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { HeapSettler, watchMemory, type MemoryBeat } from "../server/memory";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { HeapSettler, watchMemory, writeHeartbeat, type MemoryBeat } from "../server/memory";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,4 +81,27 @@ test("heartbeat.json gets the worker's memory and keeps what the installer reads
     assert.ok(m.utilization !== null && m.utilization >= 0 && m.utilization <= 1, `utilization ${m.utilization}`);
     assert.equal(m.quietSettles, 0); assert.equal(m.forcedSettles, 0);
   } finally { watch.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("heartbeat-is-written-whole: overlapping beats never leave a partial heartbeat.json or drop each other's fields", async () => {
+  // 2026-11-25 CI (#316): two memory beats 30 ms apart shared one temporary name; a reader got "Unexpected end of JSON input".
+  const dir = await mkdtemp(join(tmpdir(), "follow-heartbeat-"));
+  try {
+    const file = join(dir, "heartbeat.json");
+    let reads = 0; let reading = true;
+    const reader = (async () => { while (reading) { const raw = await readFile(file, "utf8").catch(() => null); if (raw !== null) { JSON.parse(raw); reads++; } await new Promise(r => setImmediate(r)); } })();
+    const big = "x".repeat(200_000);
+    try {
+      await Promise.all([
+        writeHeartbeat(file, { version: "9.9.9", at: 1, error: null }),
+        ...Array.from({ length: 40 }, (_, i) => writeHeartbeat(file, { memory: { beat: i, big } })),
+      ]);
+    } finally { reading = false; }
+    await reader;
+    const beat = JSON.parse(await readFile(file, "utf8"));
+    assert.equal(beat.version, "9.9.9", "the probation beat's fields survive the memory beats");
+    assert.equal(beat.memory.beat, 39, "beats land in order");
+    assert.deepEqual((await readdir(dir)).filter(f => f.endsWith(".tmp")), [], "no temporary file is left");
+    assert.ok(reads > 0);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

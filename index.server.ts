@@ -130,7 +130,7 @@ import type { LoadSignals } from "./shared/agent-load";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount } from "./server/onboarding";
 import { updatesConsent, type GhResult } from "./shared/onboarding";
 import { execFile, spawn } from "node:child_process";
-import { compactHeap, watchMemory } from "./server/memory";
+import { compactHeap, watchMemory, writeHeartbeat } from "./server/memory";
 import { UpdatesStore } from "./server/updates";
 import { Updater } from "./server/updater";
 import { RegistryChecker, registryUrl, type RegistrySnapshot } from "./server/update-registry";
@@ -641,6 +641,8 @@ export default function contribute(server: PluginServerContext) {
     if (!stopped) timer = setTimeout(() => void loop(), TICK_MS);
   };
   void loop();
+  // works-without-github: learn whether GitHub is on once the worker is up, so GitHub actions answer from a known state.
+  void (async () => { await ready; if (!stopped && !loadError) void githubSetup().current().catch(() => undefined); })();
   void (async () => { await ready; if (stopped || loadError) return; void inbox.refreshDirectory().catch(() => undefined); if (governor.allowsExtras()) void usage.refresh(); await inbox.start().catch(error => { inboxError = error instanceof Error ? error.message : String(error); }); void inboxLoop(); })();
   const changed = (w: Workspace) => { w.completion = null; w.declaration = null; w.updatedAt = new Date().toISOString(); };
 
@@ -952,8 +954,8 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.refreshRpc, async ({ workspaceId }) => {
     await requireReady();
     // While GitHub is off, Refresh checks it again first (one gh check, on the click), so turning it on shows at once.
-    if (githubSetup().off()) void githubSetup().check().catch(() => undefined).then(() => engine.tick({ workspaceId }));
-    else void engine.tick({ workspaceId });
+    const recheck = githubSetup().off() ? githubSetup().check().then(() => undefined, () => undefined) : Promise.resolve();
+    void recheck.then(() => engine.tick({ workspaceId }));
     return { ok: true };
   });
   handle(rpc.refineTasksRpc, async ({ workspaceId, tasks }) => {
@@ -989,13 +991,16 @@ export default function contribute(server: PluginServerContext) {
   handle(rpc.browserExchangeRpc, async ({ clientId, ready: browserReady, acceptJobs, results, repositories }) => { await requireReady(); return { ...browser.exchange(clientId, browserReady, results, acceptJobs, repositories), repositories: browserRepositories(await store.snapshot()) }; });
   handle(rpc.prControlStatusRpc, async ({ workspaceId, prKey }) => { await requireReady(); return actions.status(workspaceId, prKey); });
   // GitHub off (works-without-github): GitHub's own actions answer in one line at once, without waiting on the worker.
-  const githubFirst = async (what: string) => { const off = await github.off(); if (off) throw new GithubOffError(off, what); };
+  // works-without-github: a GitHub action answers from the last known state and never waits on a gh check before it
+  // replies (an-ack-never-waits-on-the-disk); an unknown state goes on, and the action's own gate decides later.
+  const githubOffNow = () => { const setup = githubSetup(); const off = setup.off(); if (off === null) void setup.current().catch(() => undefined); return off; };
+  const githubFirst = async (what: string) => { const off = githubOffNow(); if (off) throw new GithubOffError(off, what); };
   handle(rpc.preparePrActionRpc, async ({ workspaceId, prKey, kind }) => { await githubFirst(kind === "merge" ? "Merging" : "Merge when ready"); await requireReady(); return actions.prepare(workspaceId, prKey, kind); });
   handle(rpc.confirmPrActionRpc, async ({ planId, scope }) => { await githubFirst("Merging"); await requireReady(); const result = await actions.confirm(planId, scope); void engine.nudge(); return result; });
   handle(rpc.checkPrActionRpc, async ({ workspaceId, actionId }) => { await requireReady(); return actions.check(workspaceId, actionId); });
   handle(rpc.requestReviewersRpc, async ({ workspaceId, prKey, reviewers, remember }) => {
     // Remember still saves while GitHub is off: the developer's choice, for when it's on.
-    if (await github.off()) { if (reviewers && remember) await reviewerStore.save(prKey.split("#")[0], reviewers); await githubFirst("Adding reviewers"); }
+    if (githubOffNow()) { if (reviewers && remember) await reviewerStore.save(prKey.split("#")[0], reviewers); await githubFirst("Adding reviewers"); }
     await requireReady();
     // "Remember for <repo>" saves first: it's the developer's choice whatever GitHub answers.
     if (reviewers && remember) await reviewerStore.save(prKey.split("#")[0], reviewers);
@@ -1066,7 +1071,7 @@ export default function contribute(server: PluginServerContext) {
   });
   handle(rpc.reviewerSettingsRpc, async () => { await requireReady(); return reviewerSettings(); });
   handle(rpc.saveReviewersRpc, async ({ repo, reviewers }) => { await requireReady(); await reviewerStore.save(repo, reviewers); return reviewerSettings(); });
-  handle(rpc.reviewerSuggestionsRpc, async ({ repo }) => { const off = await github.off(); if (off) return { suggestions: [], error: `${githubOffText(off, "Suggesting reviewers")} Until then, type a login or org/team.` }; await requireReady(); return reviewerSuggestions.suggest(repo); });
+  handle(rpc.reviewerSuggestionsRpc, async ({ repo }) => { const off = githubOffNow(); if (off) return { suggestions: [], error: `${githubOffText(off, "Suggesting reviewers")} Until then, type a login or org/team.` }; await requireReady(); return reviewerSuggestions.suggest(repo); });
 
   const priorityStore = new PriorityStore(directory);
   // Paseo's workspace descriptors for the Overseer (name, project, branch), from the shared directory.
@@ -1169,7 +1174,7 @@ export default function contribute(server: PluginServerContext) {
   // it's there; server_info's version does, read from the connection's last hello (no request).
   const hostVersion = async () => { try { return String(((await withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.())) as { version?: unknown } | null)?.version ?? ""); } catch { return ""; } };
   handle(rpc.waitForChecksRpc, async (input, { paseo }) => {
-    if (!input.cancel) { const off = await github.off(); if (off) return githubOffChecksAnswer(off, input.prs); }
+    if (!input.cancel) { const off = githubOffNow(); if (off) return githubOffChecksAnswer(off, input.prs); }
     await requireReady();
     return waitForChecksAnswer(input, {
       state: () => store.snapshot(), watches: checkWatches, nudge: id => engine.nudge(id), hostVersion, githubOff: () => github.off(),
@@ -1287,8 +1292,9 @@ export default function contribute(server: PluginServerContext) {
   // The new worker reports in for the installer's probation once it is ready, with the reason if it couldn't start.
   void ready.then(async () => {
     const me = await selfInstall();
-    const beat = JSON.stringify({ version: me.version, at: Date.now(), error: loadError ? String(loadError).slice(0, 300) : null });
-    await writeFile(join(directory, "heartbeat.json"), beat, { mode: 0o600 });
+    const fields = { version: me.version, at: Date.now(), error: loadError ? String(loadError).slice(0, 300) : null };
+    const beat = JSON.stringify(fields);
+    await writeHeartbeat(join(directory, "heartbeat.json"), fields);
     // A 1.x installer on probation reads the old directory's heartbeat; can go in the release after 2.0.0.
     try { writeLegacyHeartbeat(paseoHome, beat); } catch { /* no 1.x directory, or not writable: nothing watches it */ }
     if (!stopped) await updater.start();

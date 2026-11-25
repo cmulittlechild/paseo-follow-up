@@ -1,5 +1,6 @@
 import { getHeapSpaceStatistics, setFlagsFromString } from "node:v8";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { runInNewContext } from "node:vm";
 
@@ -100,6 +101,27 @@ export function memoryBeat(settler: HeapSettler): MemoryBeat {
  * heartbeat.json gets a `memory` field every minute, so live numbers need no /proc. The rest of the heartbeat
  * (`version`, `at`, `error`: the installer's probation) is kept as written.
  */
+const heartbeatChains = new Map<string, Promise<unknown>>();
+/**
+ * The one writer of heartbeat.json (the probation beat and the memory beat): merges `patch` into what is there, one
+ * write at a time per file, through a unique temporary file and a rename, so a reader (the installer, the watchdog, the
+ * next beat) never sees a partial file and neither beat drops the other's fields. 2026-11-25 CI: two memory beats 30 ms
+ * apart shared one temporary name, and a reader got "Unexpected end of JSON input".
+ */
+export function writeHeartbeat(file: string, patch: Record<string, unknown>): Promise<void> {
+  const run = (heartbeatChains.get(file) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+    const current = await readFile(file, "utf8").then(raw => JSON.parse(raw) as Record<string, unknown>, () => ({}));
+    const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify({ ...current, ...patch }), { mode: 0o600 });
+      await rename(temporary, file);
+    } catch (error) { await rm(temporary, { force: true }).catch(() => undefined); throw error; }
+  });
+  heartbeatChains.set(file, run);
+  void run.finally(() => { if (heartbeatChains.get(file) === run) heartbeatChains.delete(file); }).catch(() => undefined);
+  return run;
+}
+
 export function watchMemory(o: { heartbeatFile: string; settler?: HeapSettler; sampleMs?: number; beatMs?: number }): { settler: HeapSettler; stop(): void } {
   const settler = o.settler ?? new HeapSettler();
   let elu = performance.eventLoopUtilization();
@@ -109,12 +131,7 @@ export function watchMemory(o: { heartbeatFile: string; settler?: HeapSettler; s
     settler.observe(process.memoryUsage().rss / 1048576, performance.eventLoopUtilization(next, elu).utilization);
     elu = next;
   }, o.sampleMs ?? 5_000);
-  const beat = setInterval(() => void (async () => {
-    const current = JSON.parse(await readFile(o.heartbeatFile, "utf8").catch(() => "{}")) as Record<string, unknown>;
-    const temporary = `${o.heartbeatFile}.${process.pid}.tmp`;
-    await writeFile(temporary, JSON.stringify({ ...current, memory: memoryBeat(settler) }), { mode: 0o600 });
-    await rename(temporary, o.heartbeatFile);
-  })().catch(() => undefined), o.beatMs ?? 60_000);
+  const beat = setInterval(() => void writeHeartbeat(o.heartbeatFile, { memory: memoryBeat(settler) }).catch(() => undefined), o.beatMs ?? 60_000);
   sample.unref?.(); beat.unref?.();
   return { settler, stop: () => { clearInterval(sample); clearInterval(beat); } };
 }
