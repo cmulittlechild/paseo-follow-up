@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as bridge from "../server/mcp.mjs";
+import { pathToFileURL } from "node:url";
 import { SYSTEM_PROMPT_ENV, atLeast, promptParts, withSystemPrompt, type PromptDeps } from "../server/session-prompt";
 
 // Paseo 0.17: the static session text moves from the SessionStart hook to appendSystemPrompt (server/session-prompt.ts).
@@ -31,14 +32,17 @@ async function home(t: { after: (f: () => Promise<void>) => void }, role: (typeo
   await writeFile(join(directory, "brief.json"), JSON.stringify({ enable_inbox: true, enable_brief_nudge: true, pending: [] }));
   await writeFile(join(directory, "background-agents.json"), JSON.stringify({ agents: role.background ? ["a1"] : [] }));
   let session = 0;
-  return (env: Record<string, string>) => new Promise<string>((ok, bad) => {
+  const fire = (env: Record<string, string>) => new Promise<string>((ok, bad) => {
     const blank = Object.fromEntries(["HOOK_IMPORT", "RECOVERY", "TOOLS", "PROVIDER", "ROOT", "BRIEF", "OVERSEER", "WAIT", "BACKGROUND_WORK", "SYSTEM_PROMPT"].map(k => [`FOLLOW_UP_${k}`, ""]));
     const child = spawn(process.execPath, [join(directory, "agent-hook.mjs")], { env: { ...process.env, ...blank, PASEO_AGENT_ID: "a1", FOLLOW_UP_PROVIDER: "claude", ...env }, stdio: ["pipe", "pipe", "pipe"] });
     let out = ""; child.stdout.on("data", c => out += c); child.once("error", bad);
     child.once("exit", () => ok(out.trim() ? JSON.parse(out.trim()).hookSpecificOutput.additionalContext as string : ""));
     child.stdin.end(JSON.stringify({ session_id: `s${++session}`, hook_event_name: "SessionStart" }));
   });
+  hookPath.set(fire, join(directory, "agent-hook.mjs"));
+  return fire;
 }
+const hookPath = new Map<unknown, string>();
 const paragraphs = (text: string) => text.split("\n\n").map(p => p.trim()).filter(Boolean);
 const deps = (host: boolean, codex = true): PromptDeps => ({ hostSupports: async () => host, providerSupports: async p => p === "claude" || codex, bridge: async () => bridge });
 const open = (env: Record<string, string>, provider = "claude") => ({ agentId: "a1", provider, purpose: "interactive", env: { ...env } });
@@ -70,7 +74,8 @@ test("who gets which text: the Overseer's role only to the Overseer, nothing to 
   assert.deepEqual(promptParts(ROLES["recovery"]!.env), []);
   assert.equal((await withSystemPrompt(open(ROLES["tracked main, native"]!.env), deps(true), { background: true })).appendSystemPrompt, undefined, "invariant 9");
   assert.equal((await withSystemPrompt({ ...open(ROLES["tracked main, native"]!.env), purpose: "history" }, deps(true))).appendSystemPrompt, undefined, "history opens get nothing");
-  assert.equal((await withSystemPrompt(open(ROLES["tracked main, native"]!.env, "opencode"), deps(true))).appendSystemPrompt, undefined, "other providers keep the hook");
+  assert.match((await withSystemPrompt(open(ROLES["tracked main, native"]!.env, "opencode"), deps(true))).appendSystemPrompt!.join("\n"), /follow_needs_you/, "a provider without hooks gets the text in its system prompt");
+  assert.equal((await withSystemPrompt(open(ROLES["tracked main, native"]!.env, "opencode"), deps(false))).appendSystemPrompt, undefined, "an older host: nothing to carry it");
   assert.equal(atLeast([0, 121, 0], [0, 121, 0]), true); assert.equal(atLeast([0, 120, 9], [0, 121, 0]), false); assert.equal(atLeast(null, [0, 121, 0]), false);
 });
 
@@ -78,3 +83,23 @@ test("another plugin's appendSystemPrompt is kept", async () => {
   const opened = await withSystemPrompt({ ...open(ROLES["tracked main, native"]!.env), appendSystemPrompt: ["other plugin"] }, deps(true));
   assert.equal(opened.appendSystemPrompt![0], "other plugin"); assert.equal(opened.appendSystemPrompt!.length, 2);
 });
+
+// an-agent-on-any-provider-gets-follow-up: a provider Follow-up has no hook in (OpenCode, Pi, an ACP agent) gets in its
+// system prompt exactly what the hook alone adds to the same role on Claude Code: the workspace instructions, the role
+// texts and the checks line. Wait is Claude Code's only, so neither side has it here.
+for (const [name, role] of Object.entries(ROLES)) {
+  test(`${name}, no hook (OpenCode): the system prompt carries what the hook would`, async t => {
+    const env = Object.fromEntries(Object.entries(role.env).filter(([k]) => k !== "FOLLOW_UP_WAIT" && k !== "FOLLOW_UP_BACKGROUND_WORK"));
+    const fire = await home(t, role);
+    const hookAlone = paragraphs(await fire(env));
+    const withWorkspace: PromptDeps = { ...deps(true), workspace: async (_agentId, native) => {
+      const scope = role.scope as { role?: string } | undefined;
+      if (!scope || scope.role === "recovery") return null;
+      (globalThis as { followUpHookLibrary?: boolean }).followUpHookLibrary = true;
+      const hook = await import(pathToFileURL(hookPath.get(fire)!).href) as { workspaceInstructions(o: object): string };
+      return hook.workspaceInstructions({ contributor: scope.role === "contributor", native, clientEntry: "/fixture/client.js" });
+    } };
+    const opened = await withSystemPrompt(open(env, "opencode"), withWorkspace, { background: role.background });
+    assert.deepEqual(paragraphs((opened.appendSystemPrompt ?? []).join("\n\n")).sort(), [...hookAlone].sort());
+  });
+}

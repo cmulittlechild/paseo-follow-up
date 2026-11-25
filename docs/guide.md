@@ -185,7 +185,9 @@ paseo plugin install npm:paseo-follow-up@1.0.1
 
 Paseo plugins run trusted, unsandboxed code on the daemon's machine. Follow-up reads workspace metadata, agent history
 and GitHub PR status with your existing credentials, and keeps its state in `$PASEO_HOME/plugin-data/follow-up`. It
-gives agents scoped tools and installs reversible hooks for Claude Code and Codex. [OVERVIEW.md](../OVERVIEW.md) has
+gives agents scoped tools and installs reversible hooks for Claude Code and Codex. Agents on any other provider
+Paseo runs get the tools and, on Paseo 0.17, the instructions in their system prompt; see
+[hooks.md](hooks.md#other-providers). [OVERVIEW.md](../OVERVIEW.md) has
 the full data-access statement.
 
 ## Memory on Linux

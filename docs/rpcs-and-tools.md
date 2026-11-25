@@ -7,7 +7,10 @@ is missing from AGENTS.md or docs/, so add a line here when you add one.
 ## How tools reach an agent
 
 - **Native (Paseo 0.15+).** `server/native-tools.ts` turns the tuples into `AgentToolDefinition`s on
-  `request.tools`. Claude sees them as `mcp__paseo__follow_<name>` and Codex as `paseo.follow_<name>`.
+  `request.tools`. Claude sees them as `mcp__paseo__follow_<name>` and Codex as `paseo.follow_<name>`. Every provider
+  gets them, not only Claude and Codex: Paseo serves plugin tools through its agent MCP to any provider that takes MCP
+  servers (OpenCode, Pi, Copilot, Cursor, any ACP agent). `FOLLOW_UP_TOOL_PROVIDERS` narrows it for the isolated
+  harness only (an-agent-on-any-provider-gets-follow-up).
   - Each call runs the RPC handler in-process through the `handlers` map, as the caller (`context.agent.id`).
   - `live()` re-checks the caller's role on every call.
   - Details: [native-agent-tools.md](native-agent-tools.md).

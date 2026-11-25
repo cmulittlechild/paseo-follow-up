@@ -8,6 +8,7 @@ import { agentSettingsRpc, setAgentSettingRpc, setWaitRpc } from "../shared/cont
 import { WAIT_HOST_NOTE, WAIT_NOT_ATTACHED, waitNote, waitSwitchCopy } from "../shared/wait";
 import { OUTSIDE_READS, guardedProvider, hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
 import { NO_PROMPT_MODE, SETTINGS_ORDER, isReset, resetEntry } from "../shared/job-rows";
+import { noHooksLine } from "../shared/provider-support";
 import { JobRows, agentSettingsKey, useAgentSettings, type JobExtra } from "./job-rows";
 import { Button, errorText, text, type Theme } from "./kit";
 
@@ -43,6 +44,8 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
     })}
     {/* Once, after the rows: what can't be picked and why (the pickers only list what can). */}
     {!!data?.catalog && unavailableLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{unavailableLine(data.catalog.providers)}</Text>}
+    {/* What agents on a provider without Follow-up's hooks don't get, and why (an-agent-on-any-provider-gets-follow-up). */}
+    {!!data?.catalog && noHooksLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{noHooksLine(data.catalog.providers)}</Text>}
   </SettingsSection>;
 }
 

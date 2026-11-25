@@ -616,8 +616,10 @@ export default function contribute(server: PluginServerContext) {
   };
   const withTools = async <R extends Parameters<typeof withSessionMcp>[0]>(request: R, recovery: boolean, brief: string | null, root: boolean, overseer = false): Promise<R> => {
     // FOLLOW_UP_TOOL_PROVIDERS / FOLLOW_UP_FORCE_STDIO exist for the isolated harness (scripts/check-native-tools.mjs).
-    const providers = (process.env.FOLLOW_UP_TOOL_PROVIDERS ?? "claude,codex").split(",");
-    if (request.purpose !== "interactive" || !providers.includes(request.provider) || request.labels["plugin-tools/enabled"] === "false") return request;
+    // Every provider gets the tools (an-agent-on-any-provider-gets-follow-up): Paseo serves them through its agent MCP to
+    // any provider that takes MCP servers. FOLLOW_UP_TOOL_PROVIDERS narrows it for the isolated harness only.
+    const providers = process.env.FOLLOW_UP_TOOL_PROVIDERS ? process.env.FOLLOW_UP_TOOL_PROVIDERS.split(",") : null;
+    if (request.purpose !== "interactive" || (providers && !providers.includes(request.provider)) || request.labels["plugin-tools/enabled"] === "false") return request;
     if (process.env.FOLLOW_UP_FORCE_STDIO !== "1" && nativeToolsAvailable(request, await paseoConfig())) {
       toolTransport = "native (Paseo's agent MCP)";
       const flags = { recovery, brief: !!brief && !recovery, root: root && !recovery, overseer: overseer && !recovery };
@@ -1180,6 +1182,9 @@ export default function contribute(server: PluginServerContext) {
     if (!snapshot.entries?.some(e => e.status === "loading")) return snapshot as Awaited<ReturnType<CatalogSource>>;
     return await paseo.providers.waitForReady({ timeoutMs: 8000 }).catch(() => snapshot) as unknown as Awaited<ReturnType<CatalogSource>>;
   });
+  // A helper left on its default runs on a provider Paseo has (shared/job-rows.ts runnableRole): the last catalog read,
+  // or one read (cached ten minutes) when none was made yet. Never polled.
+  agentSettings.catalog = async () => providerCatalog.peek() ?? await providerCatalog.read();
   const agentSettingsView = async (catalog: boolean, fresh = false): Promise<AgentSettingsView> => {
     const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
     const cat = catalog ? await providerCatalog.read(fresh) : null;
@@ -2037,6 +2042,15 @@ export default function contribute(server: PluginServerContext) {
     hostSupports: hostPrompt,
     providerSupports: async provider => provider === "claude" || provider === "codex" && await (codexPrompt ??= codexVersion().then(v => atLeast(v, CODEX_PROMPT_MIN))),
     bridge: async () => await import(pathToFileURL(join(directory, "mcp.mjs")).href) as BridgeTexts,
+    // A provider without Follow-up's hook gets the tracked workspace's instructions in its system prompt: the hook's own
+    // text (agent-hook.mjs workspaceInstructions), for this agent's role in the store as it is now.
+    workspace: async (agentId, native) => {
+      const entry = scopes(await store.snapshot(), w => prWorkflow.agentWorkflow(workspaceRepo(w), touchedRepos(w)))[agentId];
+      if (!entry || entry.role === "recovery") return null;
+      (globalThis as { followUpHookLibrary?: boolean }).followUpHookLibrary = true;
+      const hook = await import(pathToFileURL(join(directory, "agent-hook.mjs")).href) as { workspaceInstructions?: (o: Record<string, unknown>) => string };
+      return hook.workspaceInstructions?.({ contributor: entry.role === "contributor", workflow: entry.workflow, native, clientEntry: clientEntry() }) ?? null;
+    },
   };
   const withWait = (handler: SessionOpen): SessionOpen => async (input, context) => {
     const background = await isBackground(input.request.agentId, context.paseo);
@@ -2093,7 +2107,7 @@ export default function contribute(server: PluginServerContext) {
       // background recovery agent loses its tools on its second session (resume, reload, plugin update).
       if (await isBackground(request.agentId, paseo) && !recordedRecoveryAgent(await store.snapshot(), request.agentId)) return request;
       // The Overseer: needs_you (no Stop-hook nudge), the action tools and its routing tools. Never tracked.
-      if (request.labels[OVERSEER_LABEL] === "1" && ["claude", "codex"].includes(request.provider)) {
+      if (request.labels[OVERSEER_LABEL] === "1") {
         const env = { ...request.env, FOLLOW_UP_OVERSEER: "1", FOLLOW_UP_BRIEF: request.provider };
         return withTools({ ...request, env }, false, request.provider, true, true);
       }
@@ -2112,7 +2126,7 @@ export default function contribute(server: PluginServerContext) {
       }
       const root = !!request.workspaceId && !isRecovery(request.labels) && await isWorkspaceRoot({ id: request.agentId, workspaceId: request.workspaceId, labels: request.labels }, async id => (await paseo.agents.ref(id).refresh())?.agent);
       // F2: needs_you and the Stop-hook nudge reach every root agent while the inbox is on, tracked or not.
-      const brief = (await inboxSettings()).enable_inbox && ["claude", "codex"].includes(request.provider) ? request.provider : null;
+      const brief = (await inboxSettings()).enable_inbox ? request.provider : null;
       if (!w && root) {
         w = await store.mutate(state => {
           const workspace = state.workspaces.find(w => w.id === request.workspaceId && w.enable_tracking && !w.archived);

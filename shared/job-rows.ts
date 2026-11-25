@@ -133,3 +133,19 @@ export function preselect(roles: readonly RoleView[], catalog: Catalog | null | 
     return row.rec && !row.recommended && row.notice?.tone === "warning" ? [{ role: r.role, entry: recommendedEntry(r, row.rec) }] : [];
   });
 }
+
+/**
+ * A role as it runs (helpers-run-on-a-provider-you-have). A role whose provider the developer never picked runs on its
+ * declared default (Claude) while Paseo has it. When Paseo's catalog says the default can't run here and another
+ * provider can, it runs on the recommendation (recommend.ts), the same pick Settings → Agents and setup show, so a
+ * developer with no Claude never has a helper that fails on a missing CLI. A picked provider is never moved, and an
+ * unknown catalog (not read, failed, still loading) keeps the default: unknown is not off.
+ */
+export function runnableRole(r: RoleConfig, saved: SavedRole | undefined, catalog: Catalog | null | undefined): RoleConfig {
+  if (saved?.provider !== undefined || (hasSame(r.role) && r.same)) return r;
+  if (!catalog || catalog.error || !catalog.providers.length || catalog.providers.some(p => p.reason === "Still loading")) return r;
+  if (catalog.providers.find(p => p.id === r.provider)?.available) return r;
+  const rec = recommend(hasSame(r.role) ? "overseer" : r.role, catalog.providers);
+  if (!rec.provider || rec.provider === r.provider) return r;
+  return { ...r, provider: rec.provider, model: rec.model, thinking: rec.thinking, mode: isJobRole(r.role) ? null : NO_PROMPT_MODE[rec.provider] ?? null };
+}

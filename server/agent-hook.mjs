@@ -190,9 +190,17 @@ async function save(path, value) {
 // Linked items (shared/linked.ts): what the work is about, registered on purpose rather than guessed from mentions.
 const linkInstruction = "When you start from a Linear issue, Slack thread or doc, or open a new one for this work, call link_item with its URL. Don't link things you only mention. A PR isn't a link: register it.";
 function instructions(lease, contributor = false, workflow) {
-  return named(paragraphs(lease, contributor, workflow).filter(p => !(native && /^Prefer (?:the )?native/i.test(p))).join("\n\n"));
+  return workspaceInstructions({ contributor, workflow, clientEntry: lease.clientEntry });
 }
-function paragraphs(lease, contributor, workflow) {
+/**
+ * The tracked workspace's instructions. The hook adds them at SessionStart; for a provider Follow-up has no hook in
+ * (anything but Claude Code and Codex) the worker puts the same text in the session's system prompt
+ * (server/session-prompt.ts), importing this file with globalThis.followUpHookLibrary set so main() doesn't run.
+ */
+export function workspaceInstructions({ contributor = false, workflow, native: isNative = native, clientEntry, dir = directory }) {
+  return named(paragraphs({ clientEntry }, contributor, workflow, dir).filter(p => !(isNative && /^Prefer (?:the )?native/i.test(p))).join("\n\n"), isNative);
+}
+function paragraphs(lease, contributor, workflow, directory) {
   if (contributor) return [
     "Maintain PR tracking for this session in its tracked workspace. Read workspace_status now and after compaction. Register every PR you submit, including from secondary git worktrees, with register_pr; register parents before children. References and external dependencies are not owned PRs. Call sync_workspace before finishing. The designated main agent retains goal, task, scope and completion authority.",
     linkInstruction,
@@ -371,5 +379,5 @@ async function main() {
   const reasons = [detached ? detachedNotice : null, dueText, sync ? stopReason + " This is metadata bookkeeping only; do not start queued repairs or recovery.\n\n" + context() : null, nudge ? named(nudgeReason) : null].filter(Boolean);
   process.stdout.write(JSON.stringify({ decision: "block", reason: reasons.join("\n\n") }) + "\n");
 }
-// Tests import shouldNudge without running the hook.
-if (env("HOOK_IMPORT") !== "1") main().catch(() => {});
+// Tests import shouldNudge without running the hook; the worker imports workspaceInstructions the same way.
+if (env("HOOK_IMPORT") !== "1" && !globalThis.followUpHookLibrary) main().catch(() => {});

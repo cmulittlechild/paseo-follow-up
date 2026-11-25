@@ -37,6 +37,12 @@
     effort the model offers;
   - when nothing fits, the provider's default model with a hint (`source: "fallback"`).
   `isRecommended` compares a saved pick with it. `shared/job-rows.ts` turns this into what a row says.
+- **A role runs on a provider you have** (`runnableRole`, `shared/job-rows.ts`). A role whose provider was never
+  picked runs on its declared default while Paseo has it; when Paseo's catalog says the default can't run and another
+  provider can, `AgentSettingsStore.role()`/`all()` return the recommendation instead, so with no Claude installed
+  the Summary, AI priority and the Overseer run on what the developer has, and Settings → Agents shows that pick. A
+  picked provider is never moved, and an unknown catalog (not read, failed, still loading) keeps the default. The
+  catalog is the last one read, or one read (cached ten minutes) when none was; never polled.
 - **Defaults.** Jobs default to fast models: Summary on Haiku, the ranker on Sonnet. Validate required fields rather
   than raising effort.
 

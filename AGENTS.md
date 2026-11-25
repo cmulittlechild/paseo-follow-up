@@ -89,7 +89,7 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts`, `shared/reviewers-click.ts`, `shared/keep-in-place.ts`, `client/reviewers-button.tsx` | [prs](docs/prs.md) |
 | PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
-| Provider hooks, static text in the system prompt | `server/agent-hooks.ts`, `server/agent-hook.mjs`, `server/session-prompt.ts` | [hooks](docs/hooks.md) |
+| Provider hooks, static text in the system prompt, what each provider gets | `server/agent-hooks.ts`, `server/agent-hook.mjs`, `server/session-prompt.ts`, `shared/provider-support.ts` | [hooks](docs/hooks.md) |
 | Wait for checks (one message when a PR's checks finish; the polling nudge) | `shared/check-watch.ts`, `server/check-watches.ts`, `server/wait-for-checks.ts` | [wait-for-checks](docs/wait-for-checks.md) |
 | Wait for background jobs | `server/wait.ts`, `server/host-features.ts`, `server/wait-jobs.ts`, `server/wait-runner.sh`, `shared/wait.ts` | [wait](docs/wait.md) |
 | Onboarding, release notes and What's new, display settings, trust bypass | `server/onboarding.ts`, `server/release-notes.ts`, `server/trust-bypass.ts`, `shared/onboarding.ts`, `shared/changelog.ts`, `shared/version.ts`, `shared/display.ts`, `shared/settings-nav.ts` | [settings](docs/settings.md) |
@@ -1372,6 +1372,23 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    live store the pill and Home already share, so it adds no poll, no request and no daemon write. Trade-off: an app
    older than 0.17.1 on a newer daemon shows neither. Guarded by `tests/row-badges.test.ts` and
    `tests/row-badges-client.test.ts`.
+
+115. **An agent on any provider gets Follow-up** (`an-agent-on-any-provider-gets-follow-up`). Paseo runs agents on
+   Claude Code, Codex and many more (OpenCode, Pi, Copilot, Cursor, Kimi, Kiro, any ACP agent), and many developers
+   have neither Claude nor Codex. Every core feature works on any provider Paseo runs, or says in one line what needs
+   Claude or Codex and why (`noHooksLine`, `shared/provider-support.ts`, shown in Settings → Agents). Tools, `needs_you` and the Overseer's tools
+   attach to every provider (`withTools`, `withSessionMcp`; `FOLLOW_UP_TOOL_PROVIDERS` narrows it for the harness
+   only). On Paseo 0.17 a provider without Follow-up's hook gets all of the hook's SessionStart text in its system
+   prompt (`hooklessParts`, `workspaceInstructions`); what only a hook can do (the Stop checks, per-turn context, the
+   polling nudge, Wait) is named, not faked. Every helper left on its default runs on a provider Paseo has
+   (`runnableRole`: the same recommendation Settings → Agents and setup show), never one the developer lacks; a picked
+   one is never moved, and invariant 81 still refuses an outside-content job on an unguarded provider. Repairs,
+   auto-send, questions and the inbox never depended on the provider. 2026-11-25, the developer: "There are people
+   that have no claude and no codex, and use different providers too"; an OpenCode agent got no tools, no needs_you
+   and no instructions, and every helper defaulted to a Claude that wasn't installed. Guarded by
+   `tests/any-provider-core.test.ts` (the real worker with only OpenCode in Paseo's catalog and no claude or codex command:
+   nothing tries either) and `tests/session-prompt.test.ts` (every role, hookless: the system prompt is what the hook
+   alone adds on Claude).
 
 ## Bugs
 
