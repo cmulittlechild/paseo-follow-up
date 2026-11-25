@@ -1,5 +1,5 @@
 import { PriorityLine } from "./home-chrome";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, View, useWindowDimensions, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
 import { useRpc, type PluginHostProps } from "@getpaseo/plugin/client";
@@ -327,11 +327,21 @@ function TaskField({ query, setQuery, img, c, compact }: { query: string; setQue
   const [focused, setFocused] = useState(false);
   const size = compact ? FIELD_LINES.phone : FIELD_LINES.desktop;
   const [height, setHeight] = useState(size.min);
+  const fit = (h: number) => setHeight(Math.max(size.min, Math.min(size.max, Math.ceil(h))));
+  // Web: react-native-web reports no content size for a textarea, so measure it after each change (shrink to fit, read
+  // its scroll height). Native: onContentSizeChange below.
+  const input = useRef<unknown>(null);
+  useLayoutEffect(() => {
+    const el = input.current as { style?: { height: string }; scrollHeight?: number } | null;
+    if (Platform.OS !== "web" || !el?.style || el.scrollHeight === undefined) return;
+    const was = el.style.height; el.style.height = "0px"; const h = el.scrollHeight; el.style.height = was;
+    fit(h);
+  }, [query, compact]); // eslint-disable-line react-hooks/exhaustive-deps
   return <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
     <View style={{ borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 10, padding: focused ? 0 : 1, backgroundColor: c.surface0 }}>
-      <TextInput nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
+      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Paste a link or describe the task" placeholderTextColor={c.foregroundMuted}
         accessibilityLabel="Paste a link or describe the task" autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        onContentSizeChange={e => setHeight(Math.max(size.min, Math.min(size.max, Math.ceil(e.nativeEvent.contentSize.height))))}
+        onContentSizeChange={e => { if (Platform.OS !== "web") fit(e.nativeEvent.contentSize.height + 16); }}
         style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: compact ? 22 : 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
         <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? "" : "A Linear key or link, a GitHub issue or PR, any link, or a sentence"}</Text>

@@ -2975,8 +2975,9 @@ async function newShots({ shoot, call, out, home, billing }) {
       if (!phone) {
         const box = await dialog(page).getByRole("textbox", { name: FIELD }).first().boundingBox();
         check(`${theme} ${device}: the task field is wide and grew with the words`, !!box && box.width >= 600 && box.height >= 120, { box });
-        const text = await dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first().click().then(() => dialog(page).getByText(/Add a CSV export to the audit log page/).allInnerTexts());
-        check(`${theme} ${device}: the first message says the words once`, text.join("\n").split("Add a CSV export to the audit log page").length === 2, { text });
+        await dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first().click();
+        const message = (await dialog(page).getByText(/^Work on the task below\./).allInnerTexts())[0] ?? "";
+        check(`${theme} ${device}: the first message says the words once`, message.split("Add a CSV export to the audit log page").length === 2, { message });
       }
     });
     await shoot(name("github"), vp, theme, async page => { await openFromHome(page, vp); await type(page, "https://github.com/example/app/issues/77"); if (phone) await pick(page, /^Pasted/); else await preview(page); });
@@ -3148,18 +3149,17 @@ async function newShots({ shoot, call, out, home, billing }) {
       await rowSwitch(page).click();
       await page.waitForFunction(() => !document.querySelector('[role="switch"][aria-label="Dispatch in the sidebar"][aria-checked="true"]'));
       check(`${theme}: off, the tip goes too`, await tip(page).count() === 0);
-      await openChat(page, billing.title, billing.prompt); await page.waitForTimeout(800);
+      await openHome(page); await openChat(page, billing.title, billing.prompt); await page.waitForTimeout(800);
       check(`${theme}: off, the sidebar has no Dispatch row`, await sideRow(page).count() === 0);
       await openHome(page); await page.getByRole("button", { name: /^Dispatch \(Ctrl\+Shift\+O\)$/ }).click(); await dialog(page).waitFor();
       check(`${theme}: off, Home's + Dispatch still opens Dispatch`, true);
       await page.keyboard.press("Escape");
-      await openChat(page, billing.title, billing.prompt); await page.waitForTimeout(500);
     });
     await shoot(`new-row-on-${theme}`, DESKTOP, theme, async page => {
       await openSettingsAt(page, "new", DESKTOP);
       await rowSwitch(page).click();
       await page.waitForFunction(() => !!document.querySelector('[role="switch"][aria-label="Dispatch in the sidebar"][aria-checked="true"]'));
-      await openChat(page, billing.title, billing.prompt); await sideRow(page).first().waitFor();
+      await openHome(page); await openChat(page, billing.title, billing.prompt); await sideRow(page).first().waitFor();
       check(`${theme}: on again, one Dispatch row`, await sideRow(page).count() === 1);
     });
   }
