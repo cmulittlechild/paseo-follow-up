@@ -38,7 +38,7 @@ export const SLIDES = [
     subline: process.env.COVER_SUBLINE || "Your agents work in parallel. Your attention span doesn't.",
     pills: ["Inbox", "Overseer", "Catch up", "After the merge"],
     desktop: "cover-home", phone: "catch-up-phone-light" },
-  { name: "2-decision", headline: "Answer|in seconds", line: "Agents always tell you exactly what they need from YOU", src: "slide-decision" },
+  { name: "2-decision", headline: "Answer|in seconds", line: "Agents always tell you exactly what they need from YOU.", src: "slide-decision" },
   { name: "3-overseer", headline: "Ask across|every workspace", line: "One agent knows them all. Ask it anything from Home's search box.", src: "slide-overseer" },
   { name: "4-repairs", headline: "Fixes go back|by themselves", line: "Failed checks, conflicts and review comments go to the agent that made the PR.", src: "slide-repairs" },
   { name: "5-deploy", headline: "It keeps|following up", line: "Tasks come due after the merge or the deploy, and go back to their agent.", src: "slide-deploy" },
