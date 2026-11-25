@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { providerName } from "./agent-settings";
+import { ROLE_INFO, guardedProvider, needsGuard, providerName, type AgentRole } from "./agent-settings";
 import { GITHUB_ADDS, GITHUB_CLI_URL, GITHUB_LOGIN_COMMAND } from "./github-setup";
 
 /**
@@ -232,13 +232,22 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
     if (p && unsettled(p)) { rows.push({ id: `provider-${id}`, label, state: "pending", detail: `Paseo couldn't reach it yet${p.reason ? ` (${p.reason})` : ""}.`, fix: fix("Check again in a moment. If it stays, check it in Paseo's settings.") }); continue; }
     // Paseo's own reason when it gives one ("Not installed", "Turned off in Paseo"), said as the sentence it is.
     const why = p?.reason ? sentenceStart(p.reason) : p ? "Not available" : "Paseo doesn't have it";
-    if (!users.length) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `${why}. Optional: no helper uses it.`, fix: null }); continue; }
-    // No provider at all: the one row above says what to set up, so this one only says what it is (never a second alarm).
+    // No provider at all: the one "Agents" row says what to set up, so no provider gets a row of its own (never a second alarm).
     if (!ready.length && !pendingAny) continue;
+    if (!users.length) { rows.push({ id: `provider-${id}`, label, state: "off", detail: `${why}. Optional: no helper uses it.`, fix: null }); continue; }
     const setup = PROVIDER_FIX[id] ?? { text: `Set up ${label} on the computer running Paseo, then check again.`, command: null };
-    const other = ready.find(x => x !== id);
+    // A job that runs only on Claude Code or Codex (AI priority) can't move to another provider, so it never offers to.
+    const guarded = users.filter(u => GUARDED_TITLES.includes(u));
+    const movable = users.filter(u => !GUARDED_TITLES.includes(u));
+    const other = ready.find(x => x !== id && (guarded.length && !movable.length ? guardedProvider(x) : true));
+    // Another provider runs everything else: missing this one only costs the guarded job, an optional extra.
+    if (!movable.length && ready.length && !ready.some(guardedProvider)) {
+      rows.push({ id: `provider-${id}`, label, state: "off", detail: `${why}. Optional: ${joinNames(guarded)} runs only on Claude Code or Codex.`, fix: fix(setup.text, setup.command) });
+      continue;
+    }
+    const switchable = guarded.length && other && !guardedProvider(other) ? movable : users;
     rows.push({ id: `provider-${id}`, label, state: "fail", detail: `${why}. ${sentenceStart(joinNames(users))} won't run until it is.`,
-      fix: other ? fix(`${setup.text} Or switch those helpers to ${nameOf(catalog, other)} in Settings → Agents.`, setup.command, "agents") : fix(setup.text, setup.command) });
+      fix: other && switchable.length ? fix(`${setup.text} Or switch ${switchable.length === users.length ? "those helpers" : joinNames(switchable)} to ${nameOf(catalog, other)} in Settings → Agents.`, setup.command, "agents") : fix(setup.text, setup.command) });
   }
   // A provider Paseo is still loading isn't missing: the rows say "still checking" and the step checks again.
   if (rows.some(r => r.state === "pending")) return rows;
@@ -249,6 +258,7 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
 /** Paseo's reasons for a provider that isn't there at all; any other reason means it's there and hasn't answered. */
 const ABSENT = /not installed|turned off|disabled|not found|doesn't have/i;
 const unsettled = (p: ProviderInfo) => !p.available && (p.reason === "Still loading" || (!!p.reason && !ABSENT.test(p.reason)));
+const GUARDED_TITLES = (Object.keys(ROLE_INFO) as AgentRole[]).filter(needsGuard).map(r => ROLE_INFO[r].title);
 const rank = (id: string) => { const i = KNOWN_PROVIDERS.indexOf(id); return i < 0 ? KNOWN_PROVIDERS.length : i; };
 
 export type ToolsInput = {
