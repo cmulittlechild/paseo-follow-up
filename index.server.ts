@@ -100,7 +100,7 @@ import { teamOf } from "./shared/linked";
 import { holderOf, issueWorkspaces } from "./shared/issue-workspace";
 import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
-import { hostFeature, type ServerInfo } from "./server/host-features";
+import { hostAtLeast, hostFeature, ROW_BADGES_SINCE, type ServerInfo } from "./server/host-features";
 import { CODEX_PROMPT_MIN, atLeast, codexVersion, withSystemPrompt, type BridgeTexts, type PromptDeps } from "./server/session-prompt";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
@@ -605,6 +605,8 @@ export default function contribute(server: PluginServerContext) {
   // Paseo's features.workspaceMultiplicity: more than one workspace on one folder, which a report's new (directory) workspace needs.
   const hostMultiplicity = hostFeature("workspaceMultiplicity", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   gateway.backgroundAgents = hostFeature("backgroundAgents", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
+  // Paseo 0.17.1+: the client draws Done as a sidebar row badge, so the engine writes no Done label (docs/workspaces.md).
+  gateway.rowBadges = hostAtLeast(ROW_BADGES_SINCE, () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   const wait = new Wait(join(directory, "wait"), { enabled: () => agentSettings.waitEnabled(), config: async () => await paseoConfig() as WaitPaseoConfig | null, hostBackgroundWork, legacyDirectory: existsSync(dataDirs(paseoHome).legacy) ? join(dataDirs(paseoHome).legacy, "wait") : null });
   const currentWait = async () => waitStatus(await agentSettings.waitEnabled(), await paseoConfig() as WaitPaseoConfig | null, await hostBackgroundWork());
   const live = async (agentId: string): Promise<Live> => ({ role: scopes(await store.snapshot())[agentId]?.role ?? null, inbox: (await inboxSettings()).enable_inbox });

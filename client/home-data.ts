@@ -64,7 +64,7 @@ export type HomeSources = { inbox: InboxStore; live: LiveStore; paseo: PaseoWork
 
 /** One shared minute clock. Ages subscribe to it themselves, so a tick never re-renders the list rows. */
 const clock = { now: Date.now(), listeners: new Set<() => void>(), timer: null as ReturnType<typeof setInterval> | null };
-function subscribeClock(listener: () => void) {
+export function subscribeClock(listener: () => void) {
   clock.listeners.add(listener);
   if (!clock.timer) clock.timer = setInterval(() => { clock.now = Date.now(); for (const l of clock.listeners) l(); }, 60_000);
   return () => { clock.listeners.delete(listener); if (!clock.listeners.size && clock.timer) { clearInterval(clock.timer); clock.timer = null; } };

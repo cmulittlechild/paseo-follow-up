@@ -21,6 +21,7 @@ import { hasFeeds } from "./client/feeds";
 import { createLiveStore, headerIcon, sidebarItem } from "./client/live";
 import { FOLLOW_UP_ICON } from "./client/follow-up-icon";
 import { contributeFollowUpPill } from "./client/pill";
+import { contributeRowBadges } from "./client/row-badges";
 import { FollowLarge, LARGE_SCREEN } from "./client/large";
 import { bindDismissInbox } from "./client/dismiss";
 import { createInboxStore } from "./client/inbox-store";
@@ -157,6 +158,8 @@ export default function contribute(host: PluginClientContext) {
     // Agents and workspaces an agent creates: a card that opens them, relayed through Home (timeline items get no navigation).
     contributeCreated(client, { watchAgent: hasFeeds(client) ? extras.watchAgent : null, openAgent: briefDeps.openAgent, openWorkspace: workspaceId => client.openScreen({ screenId: OVERVIEW, params: { next: String(++nextToken), openWorkspace: workspaceId } }) }),
     contributeFollowUpPill(client, { inbox, live: store, openPanel, openNext }),
+    // Paseo 0.17.1+: Done on sidebar workspace rows, in place of the worker's Done label (client/row-badges.tsx).
+    contributeRowBadges(host, store),
     contributeInboxCommands(client, inbox, openNext),
     contributeBrief(client, briefDeps),
   ];
