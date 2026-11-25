@@ -1,3 +1,0 @@
-- New: start work from your Linear issues, a pasted link or a sentence. Pick an action (Create PR, Plan as artifact, Investigate and more) and Follow-up creates the workspace, starts the agent and tracks it.
-- Open New from Home's + New, the sidebar's New row, ⌘K, or the New-from-anywhere key: ⌘⇧N in the desktop app, ⌘⇧O in a browser tab (Settings → Display → New from anywhere).
-- Home shows what New just started, with Undo for 10 minutes.

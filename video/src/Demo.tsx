@@ -17,7 +17,8 @@ export type Take = {
 // 1920×1200. The app floats as a window on a dark, slowly moving field; the camera moves the whole stage, the caption
 // stays put in screen space under it.
 const W = 1920, H = 1200;
-const WIN = { x: 160, y: 56, w: 1600, h: 1000 };
+// The window fills most of the frame (a thin margin of field around it) and the caption sits in the band below it.
+const WIN = { x: 120, y: 24, w: 1680, h: 1050 };
 const INK = "#F4F2F7", LILAC = "#B79CF0", FIELD = "#141318";
 
 const CAPTIONS: { beat: string; words: string; accent: string }[] = [
@@ -162,7 +163,7 @@ const Caption = ({ take, t, zoom, fps }: { take: Take; t: number; zoom: number; 
     <AbsoluteFill style={{ pointerEvents: "none" }}>
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, opacity: scrim,
         background: "linear-gradient(to top, rgba(14,13,18,0.92) 0%, rgba(14,13,18,0.75) 40%, rgba(14,13,18,0) 100%)" }} />
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 34, height: 92, display: "flex", alignItems: "center", justifyContent: "center", gap: 26 }}>
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 22, height: 92, display: "flex", alignItems: "center", justifyContent: "center", gap: 26 }}>
         <div style={{ transform: `scale(${pop}) rotate(${(1 - pop) * -40}deg)` }}><Mark size={66} /></div>
         <div style={{ fontFamily, fontSize: 56, fontWeight: 600, letterSpacing: "-0.028em", color: INK, whiteSpace: "nowrap", display: "flex", gap: "0.26em" }}>
           {words.slice(0, accentFrom).map((w, j) => word(w, j, INK))}

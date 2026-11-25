@@ -1,3 +1,0 @@
-- When someone you follow in Compass says an issue nobody has started is urgent, it shows in Needs you as "Nobody's on it", beside issues raised in your Linear queue. Less urgent ones sort first in New, with who asked.
-- The morning brief says what Compass heard since you last looked, in the same "Since" block as your Linear queue, and Home's brief line says who it heard from.
-- Compass also reads during the day while Follow-up is open: every 2 hours by default, or set it in Settings → Compass → When. The Overseer now knows what Compass heard.

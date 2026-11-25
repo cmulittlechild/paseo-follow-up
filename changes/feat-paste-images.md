@@ -1,3 +1,0 @@
-- Paste or drop images into New, the Overseer, More context, question and brief answers, and reply boxes on desktop. They go to the agent with your words.
-- Each image shows as a small thumbnail you can remove. Past six images or 5 MB, or for an agent that can't read images, the field says so before you send.
-- Agents can attach image files the same way when they answer or start work for you.

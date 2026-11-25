@@ -14,7 +14,7 @@ your attention instead. The work comes to you, in one place, ranked.
 
 <img alt="Follow-up: Every agent, one inbox. Home lists every workspace by what it needs from you, with an agent's question and its lettered options open beside the list" src="https://raw.githubusercontent.com/tomgrin10/paseo-follow-up/main/docs/screenshots/follow-up-slide-1-cover.png">
 
-[![Follow-up in 36 seconds: Home, Catch up, automatic follow-ups, the Overseer](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2-poster.png)](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@63f56fb59efa73f2005c785e6879406ad1bf5185/docs/screenshots/follow-up-demo-v2.mp4)
+[![Follow-up in 36 seconds: Home, Catch up, automatic follow-ups, the Overseer](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@635e600d3390e23ea786492780755afda591bb45/docs/screenshots/follow-up-demo-v2-poster.png)](https://cdn.jsdelivr.net/gh/tomgrin10/paseo-follow-up@635e600d3390e23ea786492780755afda591bb45/docs/screenshots/follow-up-demo-v2.mp4)
 
 36 seconds: Home, Catch up, automatic follow-ups, the Overseer.
 

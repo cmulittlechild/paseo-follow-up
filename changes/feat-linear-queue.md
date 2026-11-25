@@ -1,3 +1,0 @@
-- Follow-up reads your whole Linear queue every workday morning, not just the 75 newest issues, and tracks what changed: raised from Low to High, new and urgent, a due date moved, or left your queue and why.
-- AI priority weighs those changes, and an urgent or newly raised issue with no workspace shows as not started.
-- The morning sweep and AI priority's hours follow your own time zone and its usual working week. Agents can read the queue and sweep it.
