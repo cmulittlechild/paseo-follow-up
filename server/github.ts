@@ -187,9 +187,21 @@ export class Github {
     this.setup = api || run ? null : githubSetup();
   }
   /** Whether GitHub is on for the host (works-without-github); null in tests that inject their own GitHub. */
-  setup: Pick<GithubSetup, "current" | "writeOff"> | null;
+  setup: (Pick<GithubSetup, "current" | "writeOff"> & Partial<Pick<GithubSetup, "off" | "binary">>) | null;
   /** Why GitHub is off right now, or null: what every PR surface and agent tool says instead of reading. */
   async off(): Promise<GithubOff | null> { if (!this.setup) return null; const state = await this.setup.current(); return state.on ? null : state.off; }
+  /**
+   * Why GitHub is off as last known, without waiting: what a GitHub action's gate answers from, so an RPC never waits
+   * on a gh check before it replies (an-ack-never-waits-on-the-disk). Unknown is not off (invariant 7): it starts the
+   * check and goes on, and the read or write itself answers if GitHub turns out to be off.
+   */
+  offNow(): GithubOff | null {
+    const off = this.setup?.off?.() ?? null;
+    if (this.setup && off === null) void this.setup.current().catch(() => undefined);
+    return off;
+  }
+  /** offNow for a write, which also needs a gh binary to run (a stat, no spawn). */
+  writeOffNow(): GithubOff | null { return this.offNow() ?? (this.setup?.binary && !this.setup.binary() ? "missing" : null); }
   /** Why a write can't run (no GitHub, or no gh to run it), or null. */
   async writeOff(): Promise<GithubOff | null> { return this.setup ? this.setup.writeOff() : null; }
   async requestReviewers(pr: Pr, reviewers: string[]): Promise<void> {

@@ -995,7 +995,7 @@ export default function contribute(server: PluginServerContext) {
   // GitHub off (works-without-github): GitHub's own actions answer in one line at once, without waiting on the worker.
   // works-without-github: a GitHub action answers from the last known state and never waits on a gh check before it
   // replies (an-ack-never-waits-on-the-disk); an unknown state goes on, and the action's own gate decides later.
-  const githubOffNow = () => { const setup = githubSetup(); const off = setup.off(); if (off === null) void setup.current().catch(() => undefined); return off; };
+  const githubOffNow = () => github.offNow();
   const githubFirst = async (what: string) => { const off = githubOffNow(); if (off) throw new GithubOffError(off, what); };
   handle(rpc.preparePrActionRpc, async ({ workspaceId, prKey, kind }) => { await githubFirst(kind === "merge" ? "Merging" : "Merge when ready"); await requireReady(); return actions.prepare(workspaceId, prKey, kind); });
   handle(rpc.confirmPrActionRpc, async ({ planId, scope }) => { await githubFirst("Merging"); await requireReady(); const result = await actions.confirm(planId, scope); void engine.nudge(); return result; });

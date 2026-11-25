@@ -23,6 +23,8 @@ type Deps = { env?: NodeJS.ProcessEnv; now?: () => number; run?: Run; stat?: (pa
 const defaultStat = (path: string) => { try { const s = statSync(path); return { mtimeMs: s.mtimeMs, size: s.size, isFile: s.isFile() }; } catch { return null; } };
 const defaultRun: Run = (bin, args, env) => new Promise((resolve, reject) => execFile(bin, args, { env, timeout: 15_000 }, (error, stdout) => error ? reject(error) : resolve(stdout)));
 
+const hung = (error: unknown) => { const e = error as { killed?: boolean; signal?: string | null; code?: unknown } | null; return !!e && (e.killed === true || !!e.signal || e.code === "ETIMEDOUT"); };
+
 export class GithubSetup {
   private state: SetupState | null = null;
   private checking: Promise<SetupState> | null = null;
@@ -55,8 +57,12 @@ export class GithubSetup {
     const bin = this.binary();
     if (!bin) return { on: false, off: "missing" };
     const { GH_TOKEN: _a, GITHUB_TOKEN: _b, ...env } = this.env;
-    const token = await (this.deps.run ?? defaultRun)(bin, ["auth", "token"], { ...env, DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS || "unix:path=/nonexistent/gh-no-session-bus" }).then(s => s.trim(), () => "");
-    return token ? { on: true, explicit: false } : { on: false, off: "signed-out" };
+    const answer = await (this.deps.run ?? defaultRun)(bin, ["auth", "token"], { ...env, DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS || "unix:path=/nonexistent/gh-no-session-bus" })
+      .then(s => ({ token: s.trim() }), (error: unknown) => ({ error }));
+    if ("token" in answer) return answer.token ? { on: true, explicit: false } : { on: false, off: "signed-out" };
+    // A gh that never answered (timed out, killed) said nothing about signing in: unknown is not off (invariant 7), so
+    // GitHub stays on and its reads answer as they would; only a gh that ran and refused is signed out.
+    return hung(answer.error) ? { on: true, explicit: false } : { on: false, off: "signed-out" };
   }
   private set(next: SetupState) {
     const changed = JSON.stringify(next) !== JSON.stringify(this.state);

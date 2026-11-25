@@ -33,7 +33,7 @@ export class PrActions {
   settle = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
   /** Re-derives a workspace's queued tasks inside the write that records a merge (Engine.settleTasks). */
   settleTasks: (w: Workspace) => void = () => undefined;
-  constructor(private store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "requestReviewers" | "merge" | "autoMerge" | "retarget" | "off" | "writeOff">>, private graphite: Pick<Graphite, "merge" | "invalidate">, readonly browser: BrowserBridge, private now = Date.now, private reviewersFor: (repo: string) => ReviewerEntry[] = configuredReviewers) {}
+  constructor(private store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "requestReviewers" | "merge" | "autoMerge" | "retarget" | "offNow" | "writeOffNow">>, private graphite: Pick<Graphite, "merge" | "invalidate">, readonly browser: BrowserBridge, private now = Date.now, private reviewersFor: (repo: string) => ReviewerEntry[] = configuredReviewers) {}
 
   private async fresh(workspaceId: string): Promise<Workspace> {
     const saved = findWorkspace(await this.store.snapshot(), workspaceId); active(saved);
@@ -78,7 +78,8 @@ export class PrActions {
   }
   /** GitHub off (works-without-github): the action answers in one line, before reading or planning anything. */
   private async needGithub(what: string, write: boolean) {
-    const off = write ? await this.github.writeOff?.() : await this.github.off?.();
+    // From the last known state, never waiting on a gh check (a confirm replies at once: an-ack-never-waits-on-the-disk).
+    const off = write ? this.github.writeOffNow?.() : this.github.offNow?.();
     if (off) throw new GithubOffError(off, what);
   }
   async prepare(workspaceId: string, key: string, kind: PrActionKind): Promise<ActionPlan> {

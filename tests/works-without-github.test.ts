@@ -120,3 +120,26 @@ test("works-without-github: the engine reads nothing, keeps what it knew and say
   assert.equal(w.githubOff ?? null, null);
   stateSchema.parse(await store.snapshot());
 });
+
+test("works-without-github: an action's gate answers from the last known state and never waits on a gh check", async () => {
+  // 2026-11-25 CI (#316, rpc ack): confirm-pr-action waited ~13 s on the first `gh auth token` under a hanging host.
+  let checks = 0; let off: "missing" | null = null;
+  const github = new Github(undefined, undefined, undefined, { graphql: async () => ({}), rest: async () => ({}) }, () => clock);
+  github.setup = { current: () => { checks++; return new Promise(() => undefined); }, writeOff: async () => null, off: () => off, binary: () => "/usr/bin/gh" };
+  assert.equal(github.offNow(), null, "unknown is not off, and it doesn't wait");
+  assert.equal(checks, 1, "unknown starts the check");
+  off = "missing";
+  assert.equal(github.offNow(), "missing"); assert.equal(github.writeOffNow(), "missing");
+  assert.equal(checks, 1, "a known answer starts nothing");
+  off = null; github.setup.binary = () => null;
+  assert.equal(github.writeOffNow(), "missing", "a write needs the gh binary (a stat)");
+});
+
+test("works-without-github: a gh that never answers is unknown, not signed out", async () => {
+  // 2026-11-25 (#316, rpc ack): under a hanging gh the probe timed out after 15 s and GitHub read as signed out.
+  const timedOut = Object.assign(new Error("Command failed: gh auth token"), { killed: true, signal: "SIGTERM" });
+  const hung = new GithubSetup({ env: { PATH: "/fake/bin", HOME: "/fake/home", FOLLOW_UP_GH_BIN: "" }, stat: p => p === "/usr/bin/gh" ? GH : null, run: async () => { throw timedOut; } });
+  assert.deepEqual(await hung.current(), { on: true, explicit: false });
+  const refused = new GithubSetup({ env: { PATH: "/fake/bin", HOME: "/fake/home", FOLLOW_UP_GH_BIN: "" }, stat: p => p === "/usr/bin/gh" ? GH : null, run: async () => { throw Object.assign(new Error("not logged in"), { code: 4 }); } });
+  assert.deepEqual(await refused.current(), { on: false, off: "signed-out" });
+});
