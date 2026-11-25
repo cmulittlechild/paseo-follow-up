@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OnboardingStore, ReadinessChecks, nativeAgentCount, type CheckDeps } from "../server/onboarding";
-import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, initialOnboarding, OFFER_MS, sentenceStart, type Check, type GhResult } from "../shared/onboarding";
+import { CHOICE_WRITES, autoSendWrites, checksSummary, classifyInstall, followWrites, offerVisible, providerChecks, setupSteps, shownStep, initialOnboarding, OFFER_MS, sentenceStart, type Check, type GhResult } from "../shared/onboarding";
 import { reviewerSettingsRpc, saveReviewersRpc, setFollowSettingsRpc, followSettingsRpc, prWorkflowRpc, setPrWorkflowRpc, setUpdatesRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
 
@@ -174,7 +174,7 @@ test("checks: GitHub is optional (works-without-github): missing or signed out i
   assert.equal(checksSummary(off).state, "ok", "no GitHub alone leaves setup all set");
 });
 
-test("checks: a provider a helper uses is a failure; an unused one is optional; both missing says what still works", async () => {
+test("checks: a provider a helper uses is a failure; an unused one is optional; none at all says what to set up", async () => {
   let checks = (await new ReadinessChecks(deps({ catalog: async () => catalog(false, true) })).run()).checks;
   const claude = byId(checks, "provider-claude");
   assert.equal(claude.state, "fail"); assert.match(claude.detail, /\. The Overseer, Summaries and AI priority won't run/);
@@ -184,7 +184,8 @@ test("checks: a provider a helper uses is a failure; an unused one is optional; 
   assert.equal(byId(checks, "provider-codex").state, "off"); assert.equal(byId(checks, "provider-codex").fix, null);
 
   checks = (await new ReadinessChecks(deps({ catalog: async () => catalog(false, false), use: async () => ({ claude: ["the Overseer"], codex: ["AI priority"] }) })).run()).checks;
-  assert.equal(byId(checks, "providers").state, "fail"); assert.match(byId(checks, "providers").detail, /Following PRs and Needs you still work/);
+  // No provider at all is Paseo's next step, not Follow-up failing: a note that says what to set up.
+  assert.equal(byId(checks, "providers").state, "warn"); assert.match(byId(checks, "providers").fix?.text ?? "", /Set one up in Paseo's settings/);
   assert.equal(byId(checks, "provider-codex").state, "fail"); assert.equal(byId(checks, "provider-codex").fix?.command, "codex login");
   assert.equal(byId(checks, "provider-claude").fix?.settings, null, "nothing to switch to");
 
@@ -351,4 +352,25 @@ test("auto-send hold: unknown or unreadable onboarding state never holds", async
 test("auto-send hold: the worker wires the engine to the onboarding store", async () => {
   const source = await readFile(new URL("../index.server.ts", import.meta.url), "utf8");
   assert.match(source, /engine\.autoSendsHeld = \(\) => onboarding\.holdsAutoSends\(\)/);
+});
+
+test("every setup step has something to do: GitHub-only steps go without the GitHub CLI, Updates without npm", () => {
+  const all = ["intro", "checks", "defaults", "shipping", "reviewers", "updates", "helpers", "tour"];
+  // Not known yet keeps every step (unknown is not off).
+  assert.deepEqual(setupSteps({ github: null, repos: null, npm: null }), all);
+  assert.deepEqual(setupSteps({ github: false, repos: null, npm: true }), ["intro", "checks", "defaults", "updates", "helpers", "tour"]);
+  // Signed in, but no repository seen yet: nothing to pick for shipping; reviewers still have a default to set.
+  assert.deepEqual(setupSteps({ github: true, repos: 0, npm: true }), ["intro", "checks", "defaults", "reviewers", "updates", "helpers", "tour"]);
+  assert.deepEqual(setupSteps({ github: true, repos: 3, npm: false }), ["intro", "checks", "defaults", "shipping", "reviewers", "helpers", "tour"]);
+  // A flow saved on a step this host doesn't show resumes on the next one that is.
+  const steps = setupSteps({ github: false, repos: null, npm: false });
+  assert.equal(shownStep("shipping", steps), "helpers");
+  assert.equal(shownStep("defaults", steps), "defaults");
+});
+
+test("checks: a provider Paseo is still loading is never \"no provider ready\"", () => {
+  const rows = providerChecks({ providers: [{ id: "claude", label: "Claude", available: false, reason: "Still loading" }, { id: "codex", label: "Codex", available: false, reason: "Not installed" }], error: null }, { claude: ["the Overseer"] });
+  assert.equal(rows.find(r => r.id === "providers"), undefined);
+  assert.equal(rows.find(r => r.id === "provider-claude")?.state, "pending");
+  assert.notEqual(checksSummary(rows).state, "fail");
 });

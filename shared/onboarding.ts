@@ -15,6 +15,32 @@ export type OnboardingStep = typeof ONBOARDING_STEPS[number];
 export const isStep = (v: unknown): v is OnboardingStep => typeof v === "string" && (ONBOARDING_STEPS as readonly string[]).includes(v);
 
 /**
+ * What this host has, for the steps that only mean something with it. `null` is not known yet, which keeps the step
+ * (unknown is not off, invariant 7).
+ */
+export type StepFacts = { github: boolean | null; repos: number | null; npm: boolean | null };
+/**
+ * The steps a developer walks on this host (every-setup-step-has-something-to-do): without the GitHub CLI signed in
+ * there's no PR to ship or review, so Shipping and Reviewers go; with no repository seen yet Shipping has nothing to
+ * pick; a copy not installed from npm updates from its checkout, so Updates goes. Everything a skipped step sets stays
+ * in Settings.
+ */
+export function setupSteps(facts: StepFacts): OnboardingStep[] {
+  return ONBOARDING_STEPS.filter(step => {
+    if (step === "shipping") return facts.github !== false && facts.repos !== 0;
+    if (step === "reviewers") return facts.github !== false;
+    if (step === "updates") return facts.npm !== false;
+    return true;
+  });
+}
+/** Where a resumed or Back-ed flow lands when its saved step isn't shown here: the next one that is. */
+export function shownStep(step: OnboardingStep, steps: readonly OnboardingStep[]): OnboardingStep {
+  if (steps.includes(step)) return step;
+  const at = ONBOARDING_STEPS.indexOf(step);
+  return steps.find(s => ONBOARDING_STEPS.indexOf(s) > at) ?? steps.at(-1) ?? step;
+}
+
+/**
  * - `fresh`: no Follow-up data on this host when the worker first started with onboarding.
  * - `existing`: Follow-up ran here before (state, inbox, reviewers or agent settings on disk). Never forced on them.
  */
@@ -200,7 +226,10 @@ export function providerChecks(catalog: { providers: ProviderInfo[]; error: stri
     rows.push({ id: `provider-${id}`, label, state: "fail", detail: `Not available${why}. ${sentenceStart(joinNames(users))} won't run until it is.`,
       fix: other ? fix(`${setup.text} Or switch those helpers to ${nameOf(catalog, other)} in Settings → Agents.`, setup.command, "agents") : fix(setup.text, setup.command) });
   }
-  if (!ready.length) rows.unshift({ id: "providers", label: "Helper agents", state: "fail", detail: "No provider in Paseo is ready, so the Overseer, Summaries and AI priority can't run. Following PRs and Needs you still work.", fix: null });
+  // A provider Paseo is still loading isn't missing: the rows say "still checking" and the step checks again.
+  if (rows.some(r => r.state === "pending")) return rows;
+  // None at all: Paseo itself has nothing to run agents on yet. Said as the next step, not as a failure of Follow-up.
+  if (!ready.length) rows.unshift({ id: "providers", label: "Agents", state: "warn", detail: "Paseo has no agent provider set up yet, so there are no agents to follow and the helper agents can't run.", fix: fix("Set one up in Paseo's settings (Claude Code, Codex or any other provider Paseo runs), then check again.") });
   return rows;
 }
 const rank = (id: string) => { const i = KNOWN_PROVIDERS.indexOf(id); return i < 0 ? KNOWN_PROVIDERS.length : i; };

@@ -4,16 +4,16 @@ import { Pressable, Text } from "./text";
 import { openExternalUrl, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { followSettingsRpc, onboardingChecksRpc, onboardingRpc, setFollowSettingsRpc, setOnboardingRpc } from "../shared/contracts";
+import { followSettingsRpc, onboardingChecksRpc, onboardingRpc, prWorkflowRpc, setFollowSettingsRpc, setOnboardingRpc } from "../shared/contracts";
 import { displayPreferences } from "../shared/display";
-import { ONBOARDING_STEPS, autoSendWrites, checksSummary, type Check, type OnboardingStep, type OnboardingView } from "../shared/onboarding";
+import { autoSendWrites, checksSummary, setupSteps, shownStep, type Check, type Checks, type OnboardingStep, type OnboardingView } from "../shared/onboarding";
 import { Button, IconButton, errorText, text, type Theme } from "./kit";
 import { ReviewerSettings } from "./reviewers";
 import { JobRows } from "./job-rows";
 import { DockedPane } from "./docked-pane";
 import { SETUP_ORDER } from "../shared/job-rows";
-import { ShippingStep } from "./shipping";
-import { UpdatesStep } from "./updates";
+import { ShippingStep, shippingKey } from "./shipping";
+import { UpdatesStep, useUpdates } from "./updates";
 import { Spinner, useReducedMotion } from "./motion";
 import { raised, runningColor, tint, withAlpha, type Colors } from "./theme";
 
@@ -60,12 +60,24 @@ function bottomPad(compact: boolean): ViewStyle {
 export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: boolean; view: OnboardingView; deps: SetupDeps }) {
   const c = theme.colors; const t = text(c);
   const act = useRpc(setOnboardingRpc); const cache = useQueryClient(); const toast = useToast();
-  const [step, setStep] = useState<OnboardingStep>(view.step);
-  const index = ONBOARDING_STEPS.indexOf(step);
+  const [saved, setStep] = useState<OnboardingStep>(view.step);
   const scroll = useRef<NativeScrollView>(null);
   const follow = useFollowSettings();
   // Checks start on the first frame so step 2 usually opens with its answers in. One cached call, never polled.
   const checks = useChecks();
+  // Which steps this host has something for (setupSteps): GitHub signed in, repositories seen, an npm install. The
+  // reads are the ones those steps make anyway, started here so the count is right by the time they come up.
+  const readShipping = useRpc(prWorkflowRpc);
+  const shipping = useQuery({ queryKey: shippingKey, queryFn: () => readShipping({}), staleTime: 60_000 });
+  const updates = useUpdates();
+  const gh = checks.data?.checks.find(row => row.id === "gh");
+  const steps = useMemo(() => setupSteps({
+    github: !gh ? null : gh.state === "ok" ? true : gh.state === "off" ? false : null,
+    repos: shipping.data ? shipping.data.repos.length : null,
+    npm: updates.data ? updates.data.installKind === "npm" : null,
+  }), [gh?.state, shipping.data?.repos.length, updates.data?.installKind]);
+  const step = shownStep(saved, steps);
+  const index = steps.indexOf(step);
   const move = useMutation({
     mutationFn: (input: Parameters<typeof act>[0]) => act(input),
     onSuccess: next => { if (!next.show) cache.setQueryData(onboardingKey, next); },
@@ -77,7 +89,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     toast.show(n ? `Set up. Following ${n} workspace${n === 1 ? "" : "s"}.` : "Set up. Follow-up starts with your next workspace.", { variant: "success" });
   } });
   const skip = () => move.mutate({ action: "skip" }, { onSuccess: () => toast.show("Setup skipped. Set it up any time from Follow-up settings, General.") });
-  const last = index === ONBOARDING_STEPS.length - 1;
+  const last = index === steps.length - 1;
   const failing = step === "checks" && checks.data ? checksSummary(checks.data.checks).state === "fail" : false;
 
   const body = step === "intro" ? <IntroStep theme={theme} compact={compact} follow={follow.data ?? null} />
@@ -90,7 +102,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     : <TourStep theme={theme} compact={compact} />;
   const lead: Record<OnboardingStep, string> = {
     intro: "It follows your agents' pull requests until the work is done, sends what needs fixing back to them as repairs, and asks you only for decisions.",
-    checks: "Helper agents run on the providers you pick. GitHub is optional: with the GitHub CLI, Follow-up also follows your PRs. Checking is free.",
+    checks: "Follow-up works with every agent Paseo runs. Agents on Claude Code or Codex also get turn-end reminders and Wait. GitHub is optional: with its CLI, Follow-up also follows your PRs.",
     defaults: "These are on now. Change anything here; it saves as you go, and Settings has the same switches.",
     shipping: "Follow-up merges and tracks PRs the way each repository already works. It picked these; change one if it's wrong.",
     reviewers: "When you press Add reviewers on a PR, Follow-up asks these people. Set a default for all repositories, or a list for one. Until then, PRs without reviewers show in Needs you.",
@@ -102,20 +114,20 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
 
   return <DockedPane compact={compact} scrollRef={scroll} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ paddingBottom: 24 }}
     header={<View style={[column, { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: compact ? 8 : 20, paddingBottom: 8 }]}>
-      <Progress theme={theme} index={index} onPick={i => i < index && go(ONBOARDING_STEPS[i])} />
+      <Progress theme={theme} index={index} steps={steps} onPick={i => i < index && go(steps[i])} />
       <Button theme={theme} compact={compact} kind="ghost" title="Skip setup" accessibilityHint="Leaves setup. Every setting keeps its current value." onPress={skip} disabled={move.isPending} />
     </View>}
     // While typing a reviewer on a phone the bar steps aside, so Continue never sits over the keyboard (DockedPane).
     dock={({ yields }) => !yields && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0, paddingTop: 12 }, bottomPad(compact)]}>
       <View style={[column, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
         {index > 0 && (compact
-          ? <IconButton theme={theme} compact icon="ChevronLeft" label="Back" onPress={() => go(ONBOARDING_STEPS[index - 1])} />
-          : <Button theme={theme} kind="ghost" icon="ChevronLeft" title="Back" onPress={() => go(ONBOARDING_STEPS[index - 1])} />)}
+          ? <IconButton theme={theme} compact icon="ChevronLeft" label="Back" onPress={() => go(steps[index - 1])} />
+          : <Button theme={theme} kind="ghost" icon="ChevronLeft" title="Back" onPress={() => go(steps[index - 1])} />)}
         {!compact && <View style={{ flex: 1 }} />}
-        {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title="Skip, set later" onPress={() => go(ONBOARDING_STEPS[index + 1])} />}
+        {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title="Skip, set later" onPress={() => go(steps[index + 1])} />}
         <Button theme={theme} compact={compact} grow={compact} kind="primary" icon={last ? "Check" : undefined}
           title={last ? "Finish" : failing ? "Continue anyway" : "Continue"} loading={last && move.isPending}
-          onPress={() => last ? finish() : go(ONBOARDING_STEPS[index + 1])} />
+          onPress={() => last ? finish() : go(steps[index + 1])} />
       </View>
     </View>}>
     <StepFade key={step} style={[column, { gap: compact ? 14 : 16, paddingTop: compact ? 8 : 20 }]}>
@@ -129,13 +141,13 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
 }
 
 /** "2 of 5" and one short segment per step, drawn like the stack bar but in neutral ink: progress isn't a PR state. */
-function Progress({ theme, index, onPick }: { theme: Theme; index: number; onPick: (i: number) => void }) {
+function Progress({ theme, index, steps, onPick }: { theme: Theme; index: number; steps: readonly OnboardingStep[]; onPick: (i: number) => void }) {
   const c = theme.colors; const t = text(c);
-  return <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }} accessibilityRole="progressbar" accessibilityLabel={`Step ${index + 1} of ${ONBOARDING_STEPS.length}`}
-    accessibilityValue={{ min: 1, max: ONBOARDING_STEPS.length, now: index + 1 }}>
-    <Text style={[t.small, { minWidth: 34 }]}>{`${index + 1} of ${ONBOARDING_STEPS.length}`}</Text>
+  return <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }} accessibilityRole="progressbar" accessibilityLabel={`Step ${index + 1} of ${steps.length}`}
+    accessibilityValue={{ min: 1, max: steps.length, now: index + 1 }}>
+    <Text style={[t.small, { minWidth: 34 }]}>{`${index + 1} of ${steps.length}`}</Text>
     <View style={{ flex: 1, maxWidth: 220, flexDirection: "row", gap: 3 }}>
-      {ONBOARDING_STEPS.map((s, i) => <Pressable key={s} disabled={i >= index} onPress={() => onPick(i)} accessibilityLabel={i < index ? `Back to step ${i + 1}` : undefined}
+      {steps.map((s, i) => <Pressable key={s} disabled={i >= index} onPress={() => onPick(i)} accessibilityLabel={i < index ? `Back to step ${i + 1}` : undefined}
         hitSlop={{ top: 12, bottom: 12 }} style={{ flex: 1, height: 14, justifyContent: "center" }}>
         <View style={{ height: 3, borderRadius: 2, backgroundColor: i === index ? c.foreground : i < index ? withAlpha(c.foreground, 0.4) : c.border }} />
       </Pressable>)}
@@ -163,7 +175,15 @@ function useFollowSettings() {
 }
 function useChecks() {
   const read = useRpc(onboardingChecksRpc);
-  return useQuery({ queryKey: checksKey, queryFn: () => read({}), staleTime: 60_000, refetchOnWindowFocus: false, retry: false });
+  const pendingSince = useRef(0);
+  // While Paseo is still loading a provider, ask again every few seconds (fresh), at most a minute; never otherwise.
+  return useQuery({ queryKey: checksKey, queryFn: () => read(pendingSince.current ? { fresh: true } : {}), staleTime: 60_000, refetchOnWindowFocus: false, retry: false,
+    refetchInterval: q => {
+      const pending = !!(q.state.data as Checks | undefined)?.checks.some(row => row.state === "pending" && row.id.startsWith("provider-"));
+      if (!pending) { pendingSince.current = 0; return false; }
+      pendingSince.current ||= Date.now();
+      return Date.now() - pendingSince.current < 60_000 ? 3000 : false;
+    } });
 }
 
 const Panel = ({ c, children }: { c: Colors; children: ReactNode }) =>
