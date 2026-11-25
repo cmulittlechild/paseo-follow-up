@@ -1,0 +1,1 @@
+- Dispatch's first message to the agent no longer repeats your words, and branch names end on a whole word.

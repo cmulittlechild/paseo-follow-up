@@ -40,6 +40,10 @@ Built-ins, in order: Create PR, Plan as artifact, Investigate, Just open (hidden
 Check out PR (offered only for a PR link). A built-in can be edited, hidden, moved or reset, never deleted. The saved
 list is `null` until the developer changes something, so new built-ins reach everyone.
 
+`a-prompt-says-each-thing-once` (invariant 117): the first message never carries the same text twice. A text value
+another placeholder holds in full is said once, in the fuller one; a line left naming nothing says "the task below"; a
+link or sentence is written once and then reads "it". Branch names end on a word.
+
 ## Where work goes
 
 `resolveWhere` decides the project, in this order, and always says why:

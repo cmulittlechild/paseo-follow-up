@@ -1379,6 +1379,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    "The "New" button on the left sidebar should be optional and configurable in the onboarding and settings, also
    recommend on its config to turn off the "New workspace" default button". Guarded by `tests/new-row.test.ts`.
 
+117. **A prompt says each thing once** (`a-prompt-says-each-thing-once`). Whatever the source (typed words, a Linear
+   issue, a GitHub issue or PR, a link) and whatever the action, Dispatch's first message carries no text twice:
+   `renderAction` (`shared/dispatch.ts`) says a text value another placeholder holds in full only once, in the fuller
+   one (`repeatedValues`: typed words' title is their first sentence), and a line left naming nothing points at it
+   ("Work on the task below"); a long value (a link, a sentence, `LONG_VALUE`) is written once, then reads "it".
+   Derived branch names end on a word (`cutAtWord`), the `-2` suffix included. 2026-11-25, the developer's first real
+   dispatch from typed words: `Work on “<the words>”.`, the PR line, then the same words again, on a branch ending
+   `…-now-impro`. Guarded by `tests/prompt-once.test.ts` (every built-in over every source kind).
+
 ## Bugs
 
 Every bug is fixed for its whole class:
