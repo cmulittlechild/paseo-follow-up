@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { GithubOff } from "../shared/github-setup";
@@ -18,9 +18,10 @@ export const LOOK_MS = 30_000;
 
 export type SetupState = { on: true; explicit: boolean } | { on: false; off: GithubOff };
 type Run = (bin: string, args: string[], env: NodeJS.ProcessEnv) => Promise<string>;
-type Deps = { env?: NodeJS.ProcessEnv; now?: () => number; run?: Run; stat?: (path: string) => { mtimeMs: number; size: number; isFile: boolean } | null };
+type Deps = { env?: NodeJS.ProcessEnv; now?: () => number; run?: Run; stat?: (path: string) => { mtimeMs: number; size: number; isFile: boolean } | null; read?: (path: string) => string };
 
 const defaultStat = (path: string) => { try { const s = statSync(path); return { mtimeMs: s.mtimeMs, size: s.size, isFile: s.isFile() }; } catch { return null; } };
+const defaultRead = (path: string) => { try { return readFileSync(path, "utf8"); } catch { return ""; } };
 const defaultRun: Run = (bin, args, env) => new Promise((resolve, reject) => execFile(bin, args, { env, timeout: 15_000 }, (error, stdout) => error ? reject(error) : resolve(stdout)));
 
 const hung = (error: unknown) => { const e = error as { killed?: boolean; signal?: string | null; code?: unknown } | null; return !!e && (e.killed === true || !!e.signal || e.code === "ETIMEDOUT"); };
@@ -44,25 +45,39 @@ export class GithubSetup {
     for (const dir of (env.PATH ?? "").split(delimiter)) if (dir && this.stat(join(dir, "gh"))?.isFile) return join(dir, "gh");
     return null;
   }
+  private mapPath() { const env = this.env; return env.GH_ACCOUNT_MAP || join(env.HOME || homedir(), ".config/gh/account-map"); }
+  /** The accounts the account map names (owner account per line, `*` for the rest), in order, once each. */
+  private mapAccounts(): string[] {
+    const raw = (this.deps.read ?? defaultRead)(this.mapPath());
+    const accounts = raw.split("\n").map(line => line.trim().split(/\s+/)).filter(([o, a]) => o && !o.startsWith("#") && a).map(([, a]) => a!);
+    return [...new Set(accounts)].slice(0, 8);
+  }
   private explicit() { return !!(this.env.GH_TOKEN || this.env.GITHUB_TOKEN); }
   /** What could turn GitHub on: the binary, gh's hosts.yml (written by gh auth login) and a token env var. */
   private fingerprint(): string {
     const env = this.env;
     const config = env.GH_CONFIG_DIR || join(env.XDG_CONFIG_HOME || join(env.HOME || homedir(), ".config"), "gh");
     const hosts = this.stat(join(config, "hosts.yml"));
-    return JSON.stringify([this.binary(), this.explicit(), hosts ? [hosts.mtimeMs, hosts.size] : null]);
+    const map = this.stat(this.mapPath());
+    return JSON.stringify([this.binary(), this.explicit(), hosts ? [hosts.mtimeMs, hosts.size] : null, map ? [map.mtimeMs, map.size] : null]);
   }
   private async probe(): Promise<SetupState> {
     if (this.explicit()) return { on: true, explicit: true };
     const bin = this.binary();
     if (!bin) return { on: false, off: "missing" };
     const { GH_TOKEN: _a, GITHUB_TOKEN: _b, ...env } = this.env;
-    const answer = await (this.deps.run ?? defaultRun)(bin, ["auth", "token"], { ...env, DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS || "unix:path=/nonexistent/gh-no-session-bus" })
-      .then(s => ({ token: s.trim() }), (error: unknown) => ({ error }));
-    if ("token" in answer) return answer.token ? { on: true, explicit: false } : { on: false, off: "signed-out" };
-    // A gh that never answered (timed out, killed) said nothing about signing in: unknown is not off (invariant 7), so
-    // GitHub stays on and its reads answer as they would; only a gh that ran and refused is signed out.
-    return hung(answer.error) ? { on: true, explicit: false } : { on: false, off: "signed-out" };
+    const runEnv = { ...env, DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS || "unix:path=/nonexistent/gh-no-session-bus" };
+    // Signed in means a token the reads can use, found the way they find one (ghTokens): gh's active account, else an
+    // account the account map names (`gh auth token --user`), so a host with accounts but no active one is on.
+    for (const account of [null, ...this.mapAccounts()]) {
+      const answer = await (this.deps.run ?? defaultRun)(bin, ["auth", "token", ...(account ? ["--user", account] : [])], runEnv)
+        .then(s => ({ token: s.trim() }), (error: unknown) => ({ error }));
+      if ("token" in answer && answer.token) return { on: true, explicit: false };
+      // A gh that never answered (timed out, killed) said nothing about signing in: unknown is not off (invariant 7),
+      // so GitHub stays on and its reads answer as they would; only a gh that ran and refused counts as signed out.
+      if ("error" in answer && hung(answer.error)) return { on: true, explicit: false };
+    }
+    return { on: false, off: "signed-out" };
   }
   private set(next: SetupState) {
     const changed = JSON.stringify(next) !== JSON.stringify(this.state);

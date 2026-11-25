@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, isAbsolute, resolve, delimiter, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENV_PREFIX, LEGACY_ENV_PREFIX } from "../shared/legacy.ts";
@@ -51,16 +51,25 @@ export const HARNESS_HOST = "dev-box";
 const HOSTNAME_PRELOAD = join(dirname(fileURLToPath(import.meta.url)), "harness-hostname.cjs");
 export const SESSION_KEYS = new RegExp(`^(PASEO_|CODEX_|${ENV_PREFIX}|${LEGACY_ENV_PREFIX})|^CLAUDE_(CONFIG_DIR|SESSION_ID|PROJECT_DIR|CODE_ENTRYPOINT|CODE_SSE_PORT)$|^CLAUDECODE$`);
 const ISOLATED = ["HOME", "XDG_CONFIG_HOME", "PASEO_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME"];
+/**
+ * The caller's GitHub sign-in never reaches a harness (`harness-never-sees-real-gh`): these are dropped unless the run
+ * keeps gh real (`real: ["gh"]`) or a script sets one itself, gh's config dir is the temp home's, and the worker's token
+ * lookup (FOLLOW_UP_GH_BIN) is the harness's own gh, the first on its PATH, never /usr/bin/gh. 2026-11-25 (#316): the
+ * GitHub setup probe preferred /usr/bin/gh, and GH_CONFIG_DIR or a token in the caller's env would have reached it.
+ */
+export const GITHUB_AUTH_KEYS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_ACCOUNT_MAP", "GH_CONFIG_DIR", "GH_HOST"];
 
 export function harnessEnv(root, { home = join(root, "home"), paseoHome = home, set = {}, strip = [], base = process.env, real = [] } = {}) {
   const env = {};
-  for (const [key, value] of Object.entries(base)) if (value !== undefined && !SESSION_KEYS.test(key) && !strip.includes(key)) env[key] = value;
-  Object.assign(env, { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), PASEO_HOME: paseoHome, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex") }, HARNESS_DEFAULTS, set);
+  const realGh = real.includes("gh");
+  for (const [key, value] of Object.entries(base)) if (value !== undefined && !SESSION_KEYS.test(key) && !strip.includes(key) && (realGh || !GITHUB_AUTH_KEYS.includes(key))) env[key] = value;
+  Object.assign(env, { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), PASEO_HOME: paseoHome, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex") }, realGh ? {} : { GH_CONFIG_DIR: join(home, ".config", "gh") }, HARNESS_DEFAULTS, set);
   for (const key of strip) delete env[key];
   Object.assign(env, { HOSTNAME: HARNESS_HOST, HARNESS_HOSTNAME: HARNESS_HOST });
   env.NODE_OPTIONS = [`--require "${HOSTNAME_PRELOAD}"`, env.NODE_OPTIONS].filter(Boolean).join(" ");
   const top = resolve(root);
   env.PATH = stubbedPath(top, env.PATH ?? "", stubbedTools(real));
+  if (!realGh && !("FOLLOW_UP_GH_BIN" in set)) env.FOLLOW_UP_GH_BIN = env.PATH.split(delimiter).map(dir => join(dir, "gh")).find(path => existsSync(path)) ?? join(top, ".harness-stubs", "gh");
   for (const key of ISOLATED) {
     const r = relative(top, resolve(env[key]));
     if (r.startsWith("..") || isAbsolute(r)) throw new Error(`harnessEnv: ${key}=${env[key]} is outside the harness root ${top}`);

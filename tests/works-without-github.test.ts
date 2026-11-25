@@ -143,3 +143,17 @@ test("works-without-github: a gh that never answers is unknown, not signed out",
   const refused = new GithubSetup({ env: { PATH: "/fake/bin", HOME: "/fake/home", FOLLOW_UP_GH_BIN: "" }, stat: p => p === "/usr/bin/gh" ? GH : null, run: async () => { throw Object.assign(new Error("not logged in"), { code: 4 }); } });
   assert.deepEqual(await refused.current(), { on: false, off: "signed-out" });
 });
+
+test("works-without-github: accounts in the account map count as signed in, as the token lookup reads them", async () => {
+  // 2026-11-25 CI (#316, test:install): the fake gh answers only `auth token --user fixture-example`, like a host with
+  // accounts but no active one; the probe ran a bare `auth token` and called GitHub signed out, so no PR was read.
+  const runs: string[] = [];
+  const setup = new GithubSetup({
+    env: { PATH: "", HOME: "/fake/home", FOLLOW_UP_GH_BIN: "/fake/gh", GH_ACCOUNT_MAP: "/fake/map" },
+    stat: p => p === "/fake/gh" ? GH : null,
+    read: p => p === "/fake/map" ? "# owner account\nexample fixture-example\n* fixture-example\n" : "",
+    run: async (_bin, args) => { runs.push(args.join(" ")); if (args.includes("--user")) return "fixture-token-example\n"; throw Object.assign(new Error("no active account"), { code: 1 }); },
+  });
+  assert.deepEqual(await setup.current(), { on: true, explicit: false });
+  assert.deepEqual(runs, ["auth token", "auth token --user fixture-example"]);
+});
