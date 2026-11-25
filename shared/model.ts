@@ -1,4 +1,5 @@
 import { sendItems } from "./send-words";
+import { GITHUB_OFF } from "./github-setup";
 import { z } from "zod";
 import { deliveryReceiptSchema } from "./queue";
 import { OBSERVATION_FRESH_MS } from "./poll";
@@ -233,6 +234,11 @@ export const workspaceSchema = z.object({
    * GraphQL budget is under the reserve Follow-up leaves for agents (shared/poll.ts). Null or absent: reads run.
    */
   githubWait: z.object({ until: z.string() }).nullable().optional(),
+  /**
+   * GitHub is off on the host (works-without-github): the CLI is missing or signed out, so this workspace's PRs aren't
+   * read. Set only on a workspace with PRs. Null or absent: GitHub is on.
+   */
+  githubOff: z.enum(GITHUB_OFF).nullable().optional(),
   /** The main agent's title from Paseo, for "Next message to <title>". Absent: "the main agent". */
   mainAgentTitle: z.string().nullable().optional(),
   /** Open tasks kept out of the next message (reconcile): capped (sent NO_PROGRESS_CAP times unchanged), manual (Auto off for that task) or person (the agent said only a person can move it: Batch.humanOnly). */

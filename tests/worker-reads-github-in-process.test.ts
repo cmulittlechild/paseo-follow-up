@@ -72,7 +72,9 @@ test("worker-reads-github-in-process: no read path spawns gh; tokens resolve onc
   const auth = spawns.filter(s => s.startsWith("gh-auth "));
   // Two owners (example, acme) and two accounts (personal, work), each keyed once, plus one account list.
   assert.equal(auth.filter(s => s.includes("auth status")).length, 1, "the account list is read once");
-  assert.ok(auth.filter(s => s.includes("auth token")).length <= 4, `one token lookup per owner or account: ${auth.join(" | ")}`);
+  assert.ok(auth.filter(s => s.includes("auth token --user")).length <= 4, `one token lookup per owner or account: ${auth.join(" | ")}`);
+  // works-without-github: one setup check (`gh auth token`, the active account) per worker, shared by every path.
+  assert.equal(auth.filter(s => s.trim() === "gh-auth auth token").length, 1, `one GitHub setup check: ${auth.join(" | ")}`);
   const before = auth.length;
   await github.observe([pr(), merged]); await new ReviewerSuggestions().suggest("example/web");
   await liveRankSources(new AiJobs(), { run: async () => { throw new Error("mcpproxy not needed"); }, slackUser: null }).github();

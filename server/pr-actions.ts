@@ -1,4 +1,5 @@
 import { STOP_WAIT_MS, settleWithin, type Deadline } from "./teardown";
+import { GithubOffError } from "../shared/github-setup";
 import { randomUUID } from "node:crypto";
 import { downstack, isGithubFlow, prRefs, mergeBlockers, prActionBlocks, type ActionPlan, type BrowserPr, type MergeStage, type PrActionKind } from "../shared/pr-actions";
 import type { MergeMethod } from "../shared/pr-workflow";
@@ -32,7 +33,7 @@ export class PrActions {
   settle = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
   /** Re-derives a workspace's queued tasks inside the write that records a merge (Engine.settleTasks). */
   settleTasks: (w: Workspace) => void = () => undefined;
-  constructor(private store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "requestReviewers" | "merge" | "autoMerge" | "retarget">>, private graphite: Pick<Graphite, "merge" | "invalidate">, readonly browser: BrowserBridge, private now = Date.now, private reviewersFor: (repo: string) => ReviewerEntry[] = configuredReviewers) {}
+  constructor(private store: Store, private github: Pick<Github, "observe"> & Partial<Pick<Github, "requestReviewers" | "merge" | "autoMerge" | "retarget" | "offNow" | "writeOffNow">>, private graphite: Pick<Graphite, "merge" | "invalidate">, readonly browser: BrowserBridge, private now = Date.now, private reviewersFor: (repo: string) => ReviewerEntry[] = configuredReviewers) {}
 
   private async fresh(workspaceId: string): Promise<Workspace> {
     const saved = findWorkspace(await this.store.snapshot(), workspaceId); active(saved);
@@ -75,7 +76,14 @@ export class PrActions {
     try { return { browser, pr: (await this.reads.get(readKey)!).find(row => row.number === p.number) ?? null, error: null }; }
     catch (error) { return { browser: this.browser.status(), pr: null, error: error instanceof Error ? errorText(plainError(error)) : "Could not read Graphite state." }; }
   }
+  /** GitHub off (works-without-github): the action answers in one line, before reading or planning anything. */
+  private async needGithub(what: string, write: boolean) {
+    // From the last known state, never waiting on a gh check (a confirm replies at once: an-ack-never-waits-on-the-disk).
+    const off = write ? this.github.writeOffNow?.() : this.github.offNow?.();
+    if (off) throw new GithubOffError(off, what);
+  }
   async prepare(workspaceId: string, key: string, kind: PrActionKind): Promise<ActionPlan> {
+    await this.needGithub(kind === "merge" ? "Merging" : "Merge when ready", false);
     const w = await this.fresh(workspaceId);
     const prs = downstack(w.prs, key);
     if (!prs.length || prs.at(-1)?.key !== key) throw new Error("This PR is already merged.");
@@ -119,6 +127,7 @@ export class PrActions {
     return work;
   }
   private async executeReviewers(workspaceId: string, key: string, logins?: string[]) {
+    await this.needGithub("Adding reviewers", true);
     const w = await this.fresh(workspaceId);
     const pr = w.prs.find(p => p.key === key);
     if (!pr) throw new Error("This PR is outside the workspace's inventory.");
@@ -158,6 +167,7 @@ export class PrActions {
     return { state, result };
   }
   private async execute(planId: string, scope: "target" | "downstack") {
+    await this.needGithub("Merging", false);
     const saved = this.plans.get(planId);
     if (!saved || Date.parse(saved.plan.expiresAt) <= this.now()) throw new Error("The confirmation expired. Check readiness again.");
     this.plans.delete(planId);
@@ -235,6 +245,7 @@ export class PrActions {
    */
   private async githubExecute(kind: PrActionKind, prs: Pr[]): Promise<{ state: "submitted" | "failed" | "uncertain"; result: string; merge?: MergeStage }> {
     const gh = this.github;
+    await this.needGithub("Merging", true);
     if (!gh.merge || !gh.autoMerge || !gh.retarget) throw new Error("GitHub merging isn't available here.");
     // What happened so far, as numbers: said with prRefs, so a long stack's result stays one short paragraph.
     const retargeted: number[] = [], merged: number[] = [], toggled: number[] = []; let queued: number | null = null;
