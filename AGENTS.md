@@ -120,9 +120,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    - Extras stop at critical (≥ 85 %).
    - `test:scale` budgets (the gate in `verify`), on the realistic seed (`--realistic`: 140 workspaces, ~280 agents,
      three PRs with full snapshots per workspace, a fake GitHub with live-sized PR bodies): **`REALISTIC_PEAK_BUDGET_MB` peak RSS**
-     from the worker's start (VmHWM, so the cold-start tick counts; 317: CI's median 302.5 plus 4 standard deviations of
-     CI's own readings, checked against `tests/fixtures/ci-peak-rss.txt`), **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (230: CI's
-     median 215.5 plus 4 standard deviations, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`),
+     from the worker's start (VmHWM, so the cold-start tick counts; 322.8: CI's median 304 plus 4 standard deviations of
+     main's own CI readings, at least `MIN_READINGS` of them, checked against `tests/fixtures/ci-peak-rss.txt`),
+     **`REALISTIC_IDLE_BUDGET_MB` idle RSS** (235.4: CI's median 217 plus 4 standard deviations, `scripts/scale-budget.mjs`, checked against `tests/fixtures/ci-idle-rss.txt`),
      both read with the daemon on the live host's allocator env (`LIVE_MALLOC_ENV`, the `MALLOC_*` lines of Paseo's env
      file), which `test:scale` always sets (`scale-runner-facts`): without it glibc's arena count is a race in the
      cold-start tick, and on 2026-11-23 it moved CI's plain peak 25-35 MB (312-335 vs 299-312 on the same runners), so
