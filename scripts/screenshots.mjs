@@ -5038,14 +5038,6 @@ async function galleryShots({ shoot, call, home, billing }) {
   if (!/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "")) {
     if (G) await shoot("gallery-sidebar-desktop-light", SIDEBAR, "light", page => sidebarDrive(page, SIDEBAR));
     await pair("sidebar", sidebarDrive);
-    // The slide: the sidebar view and the start of the chat beside it.
-    // The sidebar view's top: Needs you and Sending, beside the edge of the chat.
-    // A narrow desktop window, so the chat's decision card wraps whole beside the sidebar; down to the card's last line.
-    if (F) await shoot("slide-sidebar", { width: 960, height: 800 }, "light", async page => {
-      await sidebarDrive(page, { width: 960, height: 800 });
-      const end = await page.getByText("Something else", { exact: true }).last().boundingBox();
-      return { x: 0, y: 0, width: 960, height: Math.min(800, Math.round(end.y + end.height + 48)) };
-    }, SLIDE);
   }
   // The Overseer, asked from Home's search: the ask, its answer and the pinned row.
   const started = await call("follow.overseer-start", {});

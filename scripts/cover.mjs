@@ -4,7 +4,7 @@
 // accent dot #B79CF0): Follow-up's icon, name and a "Paseo plugin" pill at the top of the text column.
 //   - follow-up-slide-1-cover.png: a two-line headline (the second line in the accent), a subline, pills naming the
 //     pillars and an honest footnote; a real Home screenshot in a desktop window and Catch up in an overlapping phone.
-//   - follow-up-slide-2…7: one feature each, a short headline and one plain line saying what it does for you, beside
+//   - follow-up-slide-2…6: one feature each, a short headline and one plain line saying what it does for you, beside
 //     that feature's real element zoomed in, cropped from a 6× render and never upscaled. The sides alternate through
 //     the carousel: slide 2 has its text on the right and the element on the left, slide 3 the other way round, and so on.
 // An HTML composition rendered with headless Chromium. The sources come from `scripts/screenshots.mjs --only frames`
@@ -38,12 +38,11 @@ export const SLIDES = [
     subline: process.env.COVER_SUBLINE || "Your agents work in parallel. Your attention span doesn't.",
     pills: ["Inbox", "Overseer", "Catch up", "After the merge"],
     desktop: "cover-home", phone: "catch-up-phone-light" },
-  { name: "2-decision", headline: "Answer|in seconds", line: "Agents ask with lettered options and mark their pick. Answer with one click, or type the letter.", src: "slide-decision" },
+  { name: "2-decision", headline: "Answer|in seconds", line: "Agents always tell you exactly what they need from YOU", src: "slide-decision" },
   { name: "3-overseer", headline: "Ask across|every workspace", line: "One agent knows them all. Ask it anything from Home's search box.", src: "slide-overseer" },
   { name: "4-repairs", headline: "Fixes go back|by themselves", line: "Failed checks, conflicts and review comments go to the agent that made the PR.", src: "slide-repairs" },
   { name: "5-deploy", headline: "It keeps|following up", line: "Tasks come due after the merge or the deploy, and go back to their agent.", src: "slide-deploy" },
-  { name: "6-sidebar", headline: "Always beside|your chats", line: "Every workspace and what it needs, open as Paseo's sidebar.", src: "slide-sidebar" },
-  { name: "7-catch-up", headline: "Catch up|from your phone", line: "Everything that needs you, one card at a time.", src: "slide-catch-up", phone: true },
+  { name: "6-catch-up", headline: "Catch up|from your phone", line: "Inspired by Slack: a catch-up mode to swipe through every task that needs you.", src: "slide-catch-up", phone: true },
 ];
 if (arg("--headline")) SLIDES[0].headline = arg("--headline");
 if (arg("--subline")) SLIDES[0].subline = arg("--subline");

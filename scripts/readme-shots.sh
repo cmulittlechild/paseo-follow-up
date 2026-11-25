@@ -5,7 +5,7 @@
 #   - the guide's sidebar view shot, on the global Paseo CLI (HARNESS_PASEO=0.16: 0.16 or later);
 #   - the README's 16:9 frames (Home, the sidebar view, the Overseer, a task waiting on a deploy; light and dark) and
 #     Catch up on a phone (light and dark), on the global CLI (`--only frames`);
-#   - the slide set (follow-up-slide-*.png: the cover, then six slides each zooming one real element), composed
+#   - the slide set (follow-up-slide-*.png: the cover, then five slides each zooming one real element), composed
 #     by scripts/cover.mjs from the frames run; the README's cover and paseo-plugin.json's media, cover first.
 #     COVER_HEADLINE ("First line|Second line") and COVER_SUBLINE override the cover's words.
 # Needs PLAYWRIGHT_CORE and CHROMIUM (docs/testing.md); HARNESS_SLOT overrides the slot wrapper's path.
