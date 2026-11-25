@@ -1415,6 +1415,21 @@ the extra scripts, and how to start an isolated preview daemon (`npm run preview
 - Run large scans inside a memory-capped scope (`systemd-run --user --scope -p MemoryMax=4G …`) so page cache isn't
   charged to Paseo.
 
+### Screenshots and the gallery
+
+`docs/screenshots/gallery/` holds one current render of every main surface (desktop light, 390×844 dark), so an
+up-to-date image is always to hand. It stays out of the npm package; the README's and the plugin page's images stay in
+`docs/screenshots/` (`npm run shots:readme`).
+
+- A PR that changes how a surface looks re-shoots that surface into the gallery, overwriting the same file names
+  (`<surface>-desktop-light.png`, `<surface>-phone-dark.png`), so the folder stays current instead of growing.
+- Fictional data only (`acme`, `example/app`, made-up people such as Dana), compressed (the scripts take shots at 2× and run pngquant).
+- Update `INDEX.md`: `node scripts/gallery-index.mjs` rewrites it with each file's commit and version.
+- The renders a PR already makes for its final review count: copy the matching ones in under the gallery's names
+  instead of shooting twice.
+- `npm run shots:gallery` (`scripts/gallery-shots.sh`, through the harness slot) re-shoots the whole gallery;
+  `-- --shot '^gallery-(home|pill)-'` re-shoots some surfaces. Details in [docs/testing.md](docs/testing.md#screenshots).
+
 ## How releases work
 
 See [docs/releasing.md](docs/releasing.md). In short:
