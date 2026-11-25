@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import type { GithubOff } from "../shared/github-setup";
 import { join } from "node:path";
 import { graphitePrUrl } from "../shared/presentation";
 import { defaultHours, personDetail, periodRange, statsModel, type Period, type Schedule, type StatsOptions } from "../shared/pr-stats";
@@ -32,6 +33,8 @@ export const BYTES_PER_RECORD = 320;
 
 const seconds = (ms: number) => Math.floor(ms / 1000);
 export type PrStatsDeps = {
+  /** Why GitHub is off on the host (works-without-github), or null: while off, no sync starts on the timer. */
+  githubOff?: () => Promise<GithubOff | null>;
   directory: string;
   api: GithubApi;
   /** The gate's view of the shared budget and the governor. */
@@ -261,6 +264,7 @@ export class PrStats {
   tick(): void {
     if (this.running) return;
     this.running = (async () => {
+      if (await this.d.githubOff?.()) return;
       for (const repo of await this.due()) await this.runRepo(repo);
     })().catch(error => (this.d.log ?? console.warn)(`[follow-up] PR stats: sync failed: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { this.running = null; });
   }

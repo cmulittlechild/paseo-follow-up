@@ -309,6 +309,8 @@ function currentWork(w) {
     nextMessage: w.nextMessageInfo ?? null, sending: w.sending ?? null, heldTasks: w.heldTasks ?? [],
     // GitHub budget low: Follow-up's PR reads wait until this time (null: they run); PR statuses are from the last read.
     githubWait: w.githubWait ?? null,
+    // GitHub off on this host (missing: no gh; signed-out): PR status, repairs, merge and wait_for_checks are off until gh is set up.
+    ...(w.githubOff ? { githubOff: w.githubOff } : {}),
     excludedStacks: w.excludedStacks.map(s => ({ name: s.name, reason: s.reason, prs: s.prs.map(p => p.key) })), ...(w.prWorkflow ? { prWorkflow: w.prWorkflow } : {}), detail: "summary" };
 }
 function compact(tool, input, result) {

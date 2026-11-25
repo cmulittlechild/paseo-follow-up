@@ -23,6 +23,7 @@ import { ARTIFACT_READ } from "./job-guard";
 import { clockFor, BRIEF_SETTINGS_DEFAULT, priorityName, zoned, type Clock, type QueueIssue } from "../shared/linear-queue";
 
 import { ghAccounts, githubApi, type AccountReads } from "./github-api";
+import { isGithubOff } from "../shared/github-setup";
 const exec = promisify(execFile);
 
 /** The inputs' fingerprint: equal means the model would see the same material. */
@@ -187,7 +188,8 @@ export function liveRankSources(jobs: AiJobs, opts: { run?: Run; tools?: SourceD
       // and cached; the searches are HTTPS.
       await gate("github", "GitHub");
       const gh = opts.github ?? githubApi();
-      const accounts = await gh.accounts().catch(() => [] as string[]);
+      // GitHub off (works-without-github): the source is off, not failed.
+      const accounts = await gh.accounts().catch(e => { if (isGithubOff(e)) throw e; return [] as string[]; });
       // REST search: `gh search prs` goes through GraphQL search, whose secondary limit a busy work account hits often
       // (it then read as "no review requests").
       const search = async (account: string | null) => parseReviewRequests(JSON.stringify(await gh.restAs(account, "search/issues?q=" + encodeURIComponent("is:pr is:open archived:false review-requested:@me") + "&per_page=30")));
@@ -342,7 +344,7 @@ export class Ranker {
     const read = async <T>(source: RankSource, fn: () => Promise<T>, fallback: T): Promise<T> => {
       try { const v = await fn(); health[source] = "ok"; return v; }
       catch (e) {
-        if (e instanceof SourceOffError || e instanceof NoSourceError) { health[source] = "off"; return fallback; }
+        if (e instanceof SourceOffError || e instanceof NoSourceError || isGithubOff(e)) { health[source] = "off"; return fallback; }
         const line = String((e as Error)?.message ?? e).replace(/\s+/g, " ").slice(0, 200);
         health[source] = "failed"; errors[source] = line;
         (this.d.log ?? console.warn)(`[follow-up] ranker: ${source} read failed: ${line}`);

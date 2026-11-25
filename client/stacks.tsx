@@ -1,8 +1,10 @@
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
+import { openExternalUrl } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import type { Pr, Workspace } from "../shared/model";
 import { compactPrStatus, githubWaitLine, orderedStacks, settledForDisplay } from "../shared/presentation";
+import { githubOffLine } from "../shared/github-setup";
 import { mergeQueued, prTone, quietFold, stackOrder, type StackItem } from "../shared/attention";
 import { reviewersMissing } from "../shared/pr-workflow";
 import { isGithubFlow } from "../shared/pr-actions";
@@ -145,7 +147,9 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
   const showRepo = new Set(w.prs.map(p => p.repo)).size > 1;
   const openCount = w.prs.filter(p => p.snapshot?.state === "OPEN").length;
   const inFlight = w.prActions.filter(a => a.state === "sending");
-  const wait = githubWaitLine(w, Date.now());
+  // One slot for why the statuses below may be missing or behind: GitHub off (works-without-github), else the budget.
+  const off = githubOffLine(w.githubOff);
+  const wait = off ?? githubWaitLine(w, Date.now());
   const settledOpen = open("settled");
   const settledPrs = settled.reduce((n, s) => n + s.prs.length, 0);
   // Every PR in the order the card draws them, settled stacks included: the search's "n of N" and its filter.
@@ -159,10 +163,13 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
       <RichText style={[t.meta, { flex: 1, color: c.foreground }]}>{a.result || (isGithubFlow(w.prs.find(p => p.key === a.prs[0])?.snapshot) ? "Sending to GitHub…" : "Submitting to Graphite…")}</RichText>
     </View>)}
     {!hits && wait && <View accessible accessibilityLabel={wait.label} style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border }}>
-      <View style={{ paddingTop: 2 }}><Icon name="CirclePause" size={13} color={c.foregroundMuted} /></View>
+      <View style={{ paddingTop: 2 }}><Icon name={off ? "CircleMinus" : "CirclePause"} size={13} color={c.foregroundMuted} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{wait.title}</Text>
         <Text style={t.meta}>{wait.detail}</Text>
+        {off?.url && <Pressable accessibilityRole="link" accessibilityLabel="Get the GitHub CLI (opens cli.github.com)" onPress={() => void openExternalUrl(off.url!).catch(() => undefined)} hitSlop={compact ? 10 : 6} style={{ alignSelf: "flex-start", minHeight: compact ? 44 : undefined, justifyContent: "center" }}>
+          <Text style={[t.meta, { color: c.accent }]}>Get the GitHub CLI</Text>
+        </Pressable>}
       </View>
     </View>}
     {!hits && <HeldMerges workspace={w} theme={theme} compact={compact} framed />}

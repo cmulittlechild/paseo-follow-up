@@ -1,4 +1,5 @@
 import { applySourcesChange, briefSources, GITHUB_SOURCE, recipe, sourceId, sourcesLine, upstreamHealth, type BriefSource, type RecipeId, type SourceRead, type SourcesChange, type SourcesView, type Upstream } from "../shared/brief-sources";
+import { isGithubOff, type GithubOff } from "../shared/github-setup";
 import type { AskItem } from "../shared/ask";
 import type { AskPlan, AskResult } from "./ask";
 import { clockFor, isWorkday, zoned } from "../shared/linear-queue";
@@ -51,6 +52,7 @@ export class BriefSources {
   private asking: Promise<void> | null = null;
   /** gh's account count, refreshed after each read (the card never waits on gh); null until gh first answers. */
   private accounts: number | null = null;
+  private githubOff: GithubOff | null = null;
   private countingAccounts: Promise<void> | null = null;
   constructor(private d: BriefSourcesDeps) {}
   private now() { return this.d.now?.() ?? Date.now(); }
@@ -68,7 +70,7 @@ export class BriefSources {
 
   /** The rows, with each source's last read: the newest of the ranker's run, the sweep and a Retry. */
   private async rows(): Promise<BriefSource[]> {
-    this.countingAccounts ??= this.d.githubAccounts().then(a => { this.accounts = a.length; }, () => { this.accounts = 0; }).finally(() => { this.countingAccounts = null; });
+    this.countingAccounts ??= this.d.githubAccounts().then(a => { this.accounts = a.length; this.githubOff = null; }, e => { this.accounts = 0; this.githubOff = isGithubOff(e) ? e.off : null; }).finally(() => { this.countingAccounts = null; });
     const accounts = this.accounts;
     const [file, rank, sweep] = await Promise.all([this.d.store.read(), this.d.ranker().catch(() => null), this.d.sweep().catch(() => null)]);
     const discovery = this.d.tools.cached();
@@ -88,7 +90,7 @@ export class BriefSources {
     const linear = serving("linear");
     if (linear) newer(sourceId(linear), sweep);
     for (const [id, r] of Object.entries(file.sources.reads)) newer(id, r);
-    return briefSources({ upstreams: this.upstreamList ?? [], matched, on: file.sources.on, reads, github: { accounts }, asked: file.sources.asked, now: this.now() });
+    return briefSources({ upstreams: this.upstreamList ?? [], matched, on: file.sources.on, reads, github: { accounts, off: this.githubOff }, asked: file.sources.asked, now: this.now() });
   }
 
   /** The card's rows. `check` (Settings opening) asks mcpproxy again after replying; so does a first read. */

@@ -1,4 +1,5 @@
 import { sendItems } from "./send-words";
+import { githubOffLine } from "./github-setup";
 import { batchView, FINISH_LINE, perSnapshot, stuckLine, unconfirmedRefs } from "./status";
 import { deliveryStatus } from "./queue";
 import { sentence } from "./errors";
@@ -503,6 +504,9 @@ export function liveLine(w: Workspace, now = Date.now()): { icon: LiveIcon; text
   // With what moves it ("· after #232 merges"), so the line never reads as if that task were happening now.
   const waiting = followUpObligations(w).find(o => o.status === "waiting");
   if (waiting) { const d = taskDue(waiting, w, now); const moves = d && !d.due ? d.label : null; return { icon: "waiting", text: moves ? `${waiting.title} · ${moves[0].toLowerCase()}${moves.slice(1)}` : waiting.title, since: null }; }
+  // GitHub off (works-without-github): nothing is retrying and the statuses below are from before, so the line says
+  // why, in the Pull requests card's words (githubOffLine), never "retrying".
+  if (w.githubOff && w.prs.some(p => p.snapshot?.state !== "MERGED" && p.snapshot?.state !== "CLOSED")) return { icon: "waiting", text: githubOffLine(w.githubOff)!.title, since: null };
   if (w.prs.some(p => !statusKnown(p))) return { icon: "alert", text: "Some PR status is unavailable · retrying", since: null };
   // The worst open PR first (a-pr-summary-says-the-worst): failing checks before running ones, never the reverse.
   const failing = w.prs.filter(p => p.snapshot?.state === "OPEN" && p.snapshot.failedChecks?.length);
