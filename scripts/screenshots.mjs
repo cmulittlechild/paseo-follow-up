@@ -36,7 +36,7 @@ import { createPaseoApi } from "@getpaseo/client";
 import { harness, spawnDaemon } from "./harness.mjs";
 import { daemonCrashes, harnessEnv, harnessConfig } from "./harness-env.mjs";
 import { fakeGithub } from "./fake-github.mjs";
-import { openHome as openHomeAt, homeRow } from "./ui-home.mjs";
+import { openHome as openHomeAt, homeRow, homeUrl } from "./ui-home.mjs";
 
 const exec = promisify(execFile);
 const argv = process.argv.slice(2);
@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "compass-readers", "batch-churn", "gallery", "frames"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "search-focus", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "compass-readers", "batch-churn", "gallery", "frames"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -69,7 +69,7 @@ const paseo016 = /(^|\D)0\.1[6-9]\.\d+/.test(paseoVersion ?? "");
 if (only.includes("sidebar") && only.some(n => n !== "sidebar")) fail("shoot --only sidebar on its own, with HARNESS_PASEO=0.16");
 if (only.includes("sidebar") && !paseo016) fail(`the sidebar shot needs the Paseo CLI 0.16.x (found ${paseoVersion ?? "none"}); run with HARNESS_PASEO=0.16`);
 if (only.includes("feeds") && only.length > 1) fail("run --only feeds on its own (npm run test:feeds)");
-const paseoOk = only.includes("settings-tabs") || only.includes("new") || PASTE_LIKE(only) || only.includes("gallery") || only.includes("frames") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
+const paseoOk = only.includes("settings-tabs") || only.includes("new") || PASTE_LIKE(only) || only.includes("gallery") || only.includes("search-focus") || only.includes("frames") ? /(^|\D)0\.1[5-7]\.\d+/ : only.includes("sidebar") || only.includes("feeds") || only.includes("put-in-chat") || argv.includes("--sidebar-review") || argv.includes("--overseer-review") || argv.includes("--keys-review") || argv.includes("--rank-review") || argv.includes("--sortfoot-review") || argv.includes("--secsearch-review") || argv.includes("--github-wait-review") ? /(^|\D)0\.1[56]\.\d+/ : /(^|\D)0\.15\.\d+/;
 if (!paseoVersion || !paseoOk.test(paseoVersion)) fail(`needs the Paseo CLI 0.15.x on PATH (found ${paseoVersion ?? "none"}); run through harness-slot or put ~/paseo-harness/cli/0.15.4/bin first`);
 if (changelogArg && !existsSync(changelogArg)) fail(`--whats-new-changelog: no file at ${changelogArg}`);
 const optimiser = await findOptimiser();
@@ -1983,6 +1983,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("compass-suggest")) await compassSuggestShots({ shoot, call, home, seeded });
   if (only.includes("compass-readers")) await compassReadersShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
+  if (only.includes("search-focus")) await searchFocusChecks({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
   if (only.includes("rowchips")) await rowChipShots({ shoot, out });
@@ -3251,6 +3252,107 @@ async function shortcutShots({ shoot, seeded, call, out, billing }) {
   }
   await fs.writeFile(join(out, "shortcut.json"), JSON.stringify(checks, null, 2));
   log(`shortcut: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
+}
+
+/**
+ * search-focus (every-search-request-lands-in-the-visible-search): every way to ask for Home's search (the
+ * search-from-anywhere key, ⌘K "Follow-up: Search", `/`) ends with the caret in the search field the developer can
+ * see, whatever was mounted, loading or focused before: Home closed, Home in the back history, Home open with focus on
+ * a row, a pane button or the Overseer's reply box, Home still loading, Home also the sidebar view, Catch up, PR stats,
+ * the queue, the log or Settings open, a second press, on a desktop window and at 390×844. Writes search-focus.json;
+ * any failed check fails the run.
+ */
+async function searchFocusChecks({ shoot, out, billing }) {
+  const checks = [];
+  const check = (name, okay, detail = {}) => { checks.push({ name, ok: !!okay, ...detail }); if (!okay) failures.push(`search-focus: ${name}`); log(`search-focus check ${okay ? "ok" : "FAILED"}: ${name} ${JSON.stringify(detail)}`); };
+  const KEY = "Control+Shift+K";
+  // The caret is in a Home search field that is on screen (hit-tested), not one kept mounted behind another screen.
+  const state = page => page.evaluate(() => {
+    const re = /^(Search, or ask the Overseer|Search or ask the Overseer|Search workspaces, branches, PRs)$/;
+    const fields = [...document.querySelectorAll("input,textarea")].filter(e => re.test(e.getAttribute("aria-label") ?? e.getAttribute("placeholder") ?? ""));
+    const shown = e => { const r = e.getBoundingClientRect(); if (!r.width || !r.height || r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) return false; const hit = document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + r.height / 2); return !!hit && (hit === e || e.contains(hit) || hit.contains(e) || e.parentElement?.contains(hit)); };
+    const a = document.activeElement;
+    return { fields: fields.length, shownFields: fields.filter(shown).length, focusedSearch: fields.includes(a), focusedShown: fields.includes(a) && shown(a), active: a ? `${a.tagName}[${(a.getAttribute("aria-label") ?? a.getAttribute("placeholder") ?? "").slice(0, 40)}]` : null, url: location.pathname + location.search };
+  });
+  const landed = async page => { for (let i = 0; i < 25; i++) { const s = await state(page); if (s.focusedShown) return s; await page.waitForTimeout(120); } return state(page); };
+  let vp = DESKTOP;
+  // Navigation happens at desktop width (a phone's sidebar is a drawer); each press happens at the device's size.
+  const press = async (page, name, how = "key") => {
+    if (vp !== DESKTOP) { await page.setViewportSize(vp); await page.waitForTimeout(400); }
+    if (how === "key") await page.keyboard.press(KEY);
+    else if (how === "slash") await page.keyboard.press("/");
+    else { await page.keyboard.press("Control+k"); await page.keyboard.type("Follow-up: Search"); await page.getByText(/^Follow-up: Search/).first().waitFor(); await page.keyboard.press("Enter"); }
+    const s = await landed(page);
+    check(name, s.focusedShown, s);
+    if (vp !== DESKTOP) { await page.setViewportSize(DESKTOP); await page.waitForTimeout(300); }
+    return s;
+  };
+  // A chat opened inside the app (Paseo's stack keeps what was before it mounted), the caret in its composer.
+  const composer = async (page, keep = false) => { await openChat(page, billing.title, billing.prompt); if (vp !== DESKTOP && !keep) { await page.setViewportSize(vp); await page.waitForTimeout(300); } const c = page.locator("textarea").filter({ visible: true }).last(); await c.click(); await c.fill("draft"); if (vp !== DESKTOP && !keep) await page.setViewportSize(DESKTOP); };
+  // Home opened inside the app: the sidebar's Follow-up row, never a page load.
+  const appHome = async page => { await page.getByText("Follow-up", { exact: true }).filter({ visible: true }).first().click(); await page.getByRole("toolbar", { name: "Status", exact: true }).filter({ visible: true }).first().waitFor(); };
+  for (const [device, size] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+    await shoot(`search-focus-${device}`, size, "dark", async page => {
+      vp = size;
+      // 1. Home closed: a fresh app, the caret in a chat's composer.
+      await page.goto(ORIGIN); await page.getByText("Follow-up", { exact: true }).first().waitFor();
+      await composer(page);
+      await press(page, `${device}: from a chat with Home never opened`);
+      // 2. A second press with the caret moved away.
+      await page.evaluate(() => document.activeElement?.blur?.());
+      await press(page, `${device}: a second press on Home`);
+      // 3. Home in the back history: Home and a chat, both opened inside the app.
+      await appHome(page); await composer(page);
+      await press(page, `${device}: from a chat with Home in the history`);
+      // 4. Home twice in the history.
+      await appHome(page); await composer(page);
+      await press(page, `${device}: from a chat after Home was opened twice`);
+      // 5. Home open, a row selected.
+      await appHome(page);
+      const row = page.getByText(billing.title, { exact: true }).filter({ visible: true }).last();
+      if (await row.count()) { await row.click().catch(() => undefined); await page.waitForTimeout(400); }
+      await press(page, `${device}: on Home with a row selected`);
+      // 6. A button focused.
+      await page.getByRole("button", { name: /^(Sort|Open full|Sign off)/ }).filter({ visible: true }).first().focus().catch(() => undefined);
+      await press(page, `${device}: on Home with a button focused`);
+      // 7. Catch up, PR stats, the queue and the log: Home's route with another view, opened inside the app (⌘K).
+      for (const [view, command] of [["catchup", true], ["log", null], ["stats", null], ["queue", null]]) {
+        // The palette highlights matches in spans, so pick its first row with Enter.
+        if (command) { await page.keyboard.press("Control+k"); await page.keyboard.type("Follow-up: Catch up"); await page.waitForTimeout(600); await page.keyboard.press("Enter"); }
+        else await page.goto(`${homeUrl(ORIGIN, SERVER_ID)}?param.view=${view}&param.n=${Date.now()}`);
+        await page.waitForTimeout(1500);
+        await press(page, `${device}: from ${view}`);
+      }
+      // 8. Settings.
+      await openSettingsAt(page, "display", DESKTOP);
+      await press(page, `${device}: from Follow-up settings`);
+      // 9. Home still loading: the key the moment the app starts drawing Home.
+      await page.goto(homeUrl(ORIGIN, SERVER_ID));
+      await page.getByText("Follow-up", { exact: true }).first().waitFor({ state: "attached" });
+      await press(page, `${device}: while Home is loading`);
+      // 10. ⌘K "Follow-up: Search" from a chat with Home in the history, then `/` on Home.
+      await composer(page);
+      await press(page, `${device}: ⌘K Follow-up: Search from a chat`, "cmdk");
+      await page.evaluate(() => document.activeElement?.blur?.());
+      await press(page, `${device}: / on Home`, "slash");
+      return null;
+    });
+  }
+  // 11. Home is also the sidebar view (Paseo 0.16+): the key from a chat, with and without Home in the history.
+  if (paseo016) await shoot("search-focus-sidebar", DESKTOP, "dark", async page => {
+    vp = DESKTOP;
+    await page.goto(`${ORIGIN}/settings/sidebar`);
+    await page.getByText("Default view", { exact: true }).first().click();
+    await page.getByText("Follow-up: Needs you", { exact: true }).last().click();
+    await page.goto(ORIGIN); await page.waitForTimeout(1500);
+    await composer(page);
+    await press(page, "sidebar view: from a chat");
+    await composer(page);
+    await press(page, "sidebar view: from a chat with Home in the history");
+    return null;
+  });
+  await fs.writeFile(join(out, "search-focus.json"), JSON.stringify(checks, null, 2));
+  log(`search-focus: ${checks.filter(c => c.ok).length}/${checks.length} checks passed`);
 }
 
 /**

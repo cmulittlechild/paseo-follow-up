@@ -1,6 +1,7 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { contributeDisplay } from "./client/display";
 import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
+import { requestSearch } from "./client/search-focus";
 import { contributeNewRow } from "./client/new-entry";
 import { NEW_NAME, OLD_NAMES } from "./shared/new-name";
 import { closeNew, newShowing, openNew, setNewFallback, type NewRequest } from "./client/new";
@@ -180,7 +181,7 @@ export default function contribute(host: PluginClientContext) {
     void removeSearch?.();
     const label = searchKey.label();
     removeSearch = client.addCommandCenterItem({ id: "follow-up-search", title: label ? `Follow-up: Search (${label})` : "Follow-up: Search", icon: "Search", keywords: ["search", "find", "workspace", "branch", "PR", "omnibox", "shortcut"], context: "global",
-      onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); extras.focusSearch(); } });
+      onSelect({ openScreen }) { requestSearch(extras.searchFocus, () => openScreen({ screenId: OVERVIEW })); } });
   };
   syncSearch();
   // ⌘K "Follow-up: New…" names New's key the same way, re-listed when it changes.
@@ -196,7 +197,7 @@ export default function contribute(host: PluginClientContext) {
   // The sidebar's New row, optional (its Display switch, new-row-is-optional). Paseo also lists it under its title in Settings →
   // Sidebar → Header, beside its own "New workspace".
   removers.push(contributeNewRow(client, newKey, enterNew));
-  removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: () => extras.focusSearch() }, { key: newKey, open: openNewAnywhere }));
+  removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: extras.searchFocus }, { key: newKey, open: openNewAnywhere }));
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);
   if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
