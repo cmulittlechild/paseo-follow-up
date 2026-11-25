@@ -34,7 +34,7 @@ import { createRequire } from "node:module";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { createPaseoApi } from "@getpaseo/client";
 import { harness, spawnDaemon } from "./harness.mjs";
-import { daemonCrashes, harnessEnv, harnessConfig } from "./harness-env.mjs";
+import { PROVIDER_TOOLS, daemonCrashes, harnessEnv, harnessConfig } from "./harness-env.mjs";
 import { fakeGithub } from "./fake-github.mjs";
 // shared/onboarding.ts imports without extensions, which plain node can't load: read its step list as text.
 const ONBOARDING_STEPS = JSON.parse((await fs.readFile(new URL("../shared/onboarding.ts", import.meta.url), "utf8")).match(/ONBOARDING_STEPS = (\[[^\]]*\])/)[1]);
@@ -5472,9 +5472,10 @@ try {
   const url = `ws://127.0.0.1:${port}/ws`;
   // A stranger's Paseo has its defaults: the agent MCP on, and Claude and Codex on, found on PATH or not. Each points at
   // this run's own path (the stand-in, or nothing), so the host's real CLI is never found.
-  const config = harnessConfig({ port, webUi: true, mcp: !!variant });
-  if (variant) for (const id of ["claude", "codex"]) config.agents.providers[id] = { command: { mode: "replace", argv: [join(variant.providers.includes(id) ? bin : join(root, "not-installed"), id)] } };
-  await fs.writeFile(join(home, "config.json"), JSON.stringify(config));
+  // Claude and Codex stay on (`real`) because their command is this run's own, never the host's.
+  const onboardingProviders = variant ? Object.keys(PROVIDER_TOOLS) : [];
+  await fs.writeFile(join(home, "config.json"), JSON.stringify(harnessConfig({ port, webUi: true, mcp: !!variant, real: onboardingProviders,
+    providers: Object.fromEntries(onboardingProviders.map(id => [id, { command: { mode: "replace", argv: [join(variant.providers.includes(id) ? bin : join(root, "not-installed"), id)] } }])) })));
   const packed = JSON.parse((await exec("npm", ["pack", "--json", "--pack-destination", root], { timeout: 120000 })).stdout)[0];
   await exec("tar", ["-xzf", join(root, packed.filename), "--strip-components=1", "-C", plugin]);
   if (asVersion) {
