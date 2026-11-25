@@ -166,7 +166,7 @@ export function roleSummary(c: RoleConfig, labels?: { provider?: string | null; 
 
 /** What the Settings screen gets from the live provider catalog. */
 export type CatalogModel = { id: string; label: string; isDefault: boolean; description?: string; thinking: { id: string; label: string; isDefault: boolean }[] };
-export type CatalogProvider = { id: string; label: string; available: boolean; reason: string | null; models: CatalogModel[]; modes: { id: string; label: string }[]; defaultMode: string | null };
+export type CatalogProvider = { id: string; label: string; available: boolean; reason: string | null; models: CatalogModel[]; modes: { id: string; label: string }[]; defaultMode: string | null; acp?: boolean };
 export type Catalog = { providers: CatalogProvider[]; error: string | null; fetchedAt: string | null };
 
 export const roleConfigSchema = z.object({
@@ -175,7 +175,7 @@ export const roleConfigSchema = z.object({
 });
 const catalogModelSchema = z.object({ id: z.string(), label: z.string(), isDefault: z.boolean(), description: z.string().optional(), thinking: z.array(z.object({ id: z.string(), label: z.string(), isDefault: z.boolean() })) });
 export const catalogSchema = z.object({
-  providers: z.array(z.object({ id: z.string(), label: z.string(), available: z.boolean(), reason: z.string().nullable(), models: z.array(catalogModelSchema), modes: z.array(z.object({ id: z.string(), label: z.string() })), defaultMode: z.string().nullable() })),
+  providers: z.array(z.object({ id: z.string(), label: z.string(), available: z.boolean(), reason: z.string().nullable(), models: z.array(catalogModelSchema), modes: z.array(z.object({ id: z.string(), label: z.string() })), defaultMode: z.string().nullable(), acp: z.boolean().optional() })),
   error: z.string().nullable(), fetchedAt: z.string().nullable(),
 });
 /** Settings → Agents: every role as used, which saved entries were invalid, and (when asked) the live catalog. */

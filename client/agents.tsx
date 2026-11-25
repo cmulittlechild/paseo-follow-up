@@ -27,6 +27,7 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
   const c = theme.colors; const t = text(c);
   const { query } = useAgentSettings();
   const data = query.data;
+  const noHooks = data?.catalog ? noHooksLine(data.catalog.providers) : null;
   const more: JobExtra = {
     // The toggle names what's inside, so nobody opens it to find out.
     label: r => r.role === "ranker" ? "Schedule, limits and reset" : isJobRole(r.role) ? "Limits and reset" : r.same ? null : "Permissions and reset",
@@ -40,12 +41,12 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
     {/* A job role on a provider Follow-up can't take tools from: what it no longer reads, and why (invariant 81). */}
     {(data?.roles ?? []).filter(r => isJobRole(r.role) && !guardedProvider(r.provider) && OUTSIDE_READS[r.role]).map(r => {
       const label = data?.catalog?.providers.find(p => p.id === r.provider)?.label ?? r.provider;
-      return <Text key={r.role} accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, paddingHorizontal: 4 }]}>{unguardedLine(r.role, label)}</Text>;
+      return <Text key={r.role} accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, paddingHorizontal: 4, maxWidth: 720 }]}>{unguardedLine(r.role, label)}</Text>;
     })}
     {/* Once, after the rows: what can't be picked and why (the pickers only list what can). */}
-    {!!data?.catalog && unavailableLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{unavailableLine(data.catalog.providers)}</Text>}
+    {!!data?.catalog && unavailableLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4, maxWidth: 720 }]}>{unavailableLine(data.catalog.providers)}</Text>}
     {/* What agents on a provider without Follow-up's hooks don't get, and why (an-agent-on-any-provider-gets-follow-up). */}
-    {!!data?.catalog && noHooksLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{noHooksLine(data.catalog.providers)}</Text>}
+    {!!noHooks && <Text style={[t.meta, { paddingHorizontal: 4, maxWidth: 720 }]}>{noHooks}</Text>}
   </SettingsSection>;
 }
 

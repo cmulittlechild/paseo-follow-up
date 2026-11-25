@@ -1380,7 +1380,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    attach to every provider (`withTools`, `withSessionMcp`; `FOLLOW_UP_TOOL_PROVIDERS` narrows it for the harness
    only). On Paseo 0.17 a provider without Follow-up's hook gets all of the hook's SessionStart text in its system
    prompt (`hooklessParts`, `workspaceInstructions`); what only a hook can do (the Stop checks, per-turn context, the
-   polling nudge, Wait) is named, not faked. Every helper left on its default runs on a provider Paseo has
+   polling nudge, Wait) is named, not faked. Settings says an ACP agent gets no instructions, and nothing claims text it
+   never received: ACP is decided from Paseo's config (`isAcp`, the `extends` chain), never from a list of ids, since a
+   generic ACP agent carries the developer's own id. Every helper left on its default runs on a provider Paseo has
    (`runnableRole`: the same recommendation Settings → Agents and setup show), never one the developer lacks; a picked
    one is never moved, and invariant 81 still refuses an outside-content job on an unguarded provider. Repairs,
    auto-send, questions and the inbox never depended on the provider. 2026-11-25, the developer: "There are people

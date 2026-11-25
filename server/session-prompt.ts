@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { hookSource } from "./hook-source";
-import { hasHooks } from "../shared/provider-support";
+import { hasHooks, isAcp } from "../shared/provider-support";
 
 /**
  * Paseo 0.17 (#9781): a plugin's `agent.open.before` result may carry `appendSystemPrompt`, which the provider gets as
@@ -87,6 +87,8 @@ export type PromptDeps = {
    * server/agent-hook.mjs workspaceInstructions), or null when it isn't a tracked main or contributor agent.
    */
   workspace?(agentId: string, native: boolean): Promise<string | null>;
+  /** Paseo runs this provider over ACP (shared/provider-support.ts isAcp, from Paseo's config): it drops a plugin's system prompt. */
+  acp?(provider: string): Promise<boolean>;
 };
 
 /**
@@ -100,6 +102,8 @@ export async function withSystemPrompt<R extends OpenRequest>(request: R, deps: 
   if (request.purpose !== "interactive") return request;
   const native = request.env.FOLLOW_UP_TOOLS === "native";
   const hooked = hasHooks(request.provider);
+  // An ACP agent never receives appendSystemPrompt (Paseo 0.17.4), so nothing is claimed as sent: no text, no env.
+  if (!hooked && await (deps.acp?.(request.provider) ?? Promise.resolve(isAcp(request.provider))).catch(() => isAcp(request.provider))) return request;
   // Without a hook, the system prompt is the only way Follow-up's text reaches the agent (an-agent-on-any-provider-gets-follow-up).
   const workspace = hooked || request.env.FOLLOW_UP_RECOVERY === "1" || !request.agentId || !deps.workspace ? null : await deps.workspace(request.agentId, native).catch(() => null);
   const wanted = hooked ? promptParts(request.env) : hooklessParts(request.env, !!workspace);

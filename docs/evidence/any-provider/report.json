@@ -1,0 +1,268 @@
+{
+  "provider": "acme-acp",
+  "paseo": "0.17.4",
+  "tools": {
+    "servers": [
+      "paseo"
+    ],
+    "followTools": 115,
+    "sample": [
+      "follow_workspace_status",
+      "follow_sync_workspace",
+      "follow_enroll_workspace",
+      "follow_register_pr",
+      "follow_exclude_stack",
+      "follow_update_obligation",
+      "follow_acknowledge_batch",
+      "follow_ask_question"
+    ],
+    "error": null,
+    "needsYou": [
+      "follow_needs_you"
+    ]
+  },
+  "call": {
+    "tool": "follow_workspace_status",
+    "workspaceId": "own workspace",
+    "detail": "summary"
+  },
+  "instructions": {
+    "sessionNewKeys": [
+      "cwd",
+      "mcpServers"
+    ],
+    "inSessionNew": false,
+    "inPrompt": false,
+    "promptBlocks": [
+      1
+    ],
+    "followUpEnv": {
+      "FOLLOW_UP_GITHUB_API": "http://127.0.0.1:9",
+      "FOLLOW_UP_BRIEF": "acme-acp",
+      "FOLLOW_UP_TOOLS": "native",
+      "FOLLOW_UP_PROVIDER": "acme-acp",
+      "FOLLOW_UP_ROOT": "1"
+    }
+  },
+  "catalog": [
+    {
+      "id": "claude",
+      "label": "Claude",
+      "available": false
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "available": false
+    },
+    {
+      "id": "copilot",
+      "label": "Copilot",
+      "available": false
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "available": false
+    },
+    {
+      "id": "pi",
+      "label": "Pi",
+      "available": false
+    },
+    {
+      "id": "omp",
+      "label": "Oh My Pi",
+      "available": false
+    },
+    {
+      "id": "antigravity",
+      "label": "Antigravity",
+      "available": false
+    },
+    {
+      "id": "muse",
+      "label": "Muse Code",
+      "available": false
+    },
+    {
+      "id": "acme-acp",
+      "label": "Acme ACP",
+      "available": true
+    }
+  ],
+  "roles": [
+    {
+      "role": "about",
+      "provider": "acme-acp",
+      "model": null
+    },
+    {
+      "role": "overseer",
+      "provider": "acme-acp",
+      "model": null
+    },
+    {
+      "role": "recovery",
+      "provider": "claude",
+      "model": null
+    },
+    {
+      "role": "ranker",
+      "provider": "acme-acp",
+      "model": "acme-1"
+    },
+    {
+      "role": "dispatch",
+      "provider": "claude",
+      "model": null
+    }
+  ],
+  "shots": [
+    {
+      "name": "agents-desktop-light",
+      "path": "docs/evidence/any-provider/agents-desktop-light.png",
+      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "lineBox": {
+        "left": 356,
+        "right": 1076,
+        "width": 720,
+        "lines": 3,
+        "vw": 1440
+      },
+      "notes": [
+        {
+          "text": "On Acme ACP, Summaries leave out linked ",
+          "width": 720
+        },
+        {
+          "text": "On Acme ACP, AI priority doesn't rank, s",
+          "width": 720
+        },
+        {
+          "text": "Not available in Paseo: Claude, Codex an",
+          "width": 720
+        },
+        {
+          "text": "Your agents on Acme ACP get Follow-up's ",
+          "width": 720
+        }
+      ],
+      "offscreen": [],
+      "claudeInRows": true,
+      "acmeInRows": 9
+    },
+    {
+      "name": "agents-desktop-dark",
+      "path": "docs/evidence/any-provider/agents-desktop-dark.png",
+      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "lineBox": {
+        "left": 356,
+        "right": 1076,
+        "width": 720,
+        "lines": 3,
+        "vw": 1440
+      },
+      "notes": [
+        {
+          "text": "On Acme ACP, Summaries leave out linked ",
+          "width": 720
+        },
+        {
+          "text": "On Acme ACP, AI priority doesn't rank, s",
+          "width": 720
+        },
+        {
+          "text": "Not available in Paseo: Claude, Codex an",
+          "width": 720
+        },
+        {
+          "text": "Your agents on Acme ACP get Follow-up's ",
+          "width": 720
+        }
+      ],
+      "offscreen": [],
+      "claudeInRows": true,
+      "acmeInRows": 9
+    },
+    {
+      "name": "agents-phone-light",
+      "path": "docs/evidence/any-provider/agents-phone-light.png",
+      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "lineBox": {
+        "left": 16,
+        "right": 374,
+        "width": 358,
+        "lines": 6,
+        "vw": 390
+      },
+      "notes": [
+        {
+          "text": "On Acme ACP, Summaries leave out linked ",
+          "width": 358
+        },
+        {
+          "text": "On Acme ACP, AI priority doesn't rank, s",
+          "width": 358
+        },
+        {
+          "text": "Not available in Paseo: Claude, Codex an",
+          "width": 358
+        },
+        {
+          "text": "Your agents on Acme ACP get Follow-up's ",
+          "width": 358
+        }
+      ],
+      "offscreen": [
+        "DIV.GeneralFollowingReviewersAgentsNew workI",
+        "DIV.GeneralFollowingReviewersAgentsNew workI",
+        "BUTTON.plugin-settings-tab-agents",
+        "BUTTON.plugin-settings-tab-new",
+        "DIV."
+      ],
+      "claudeInRows": true,
+      "acmeInRows": 9
+    },
+    {
+      "name": "agents-phone-dark",
+      "path": "docs/evidence/any-provider/agents-phone-dark.png",
+      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "lineBox": {
+        "left": 16,
+        "right": 374,
+        "width": 358,
+        "lines": 6,
+        "vw": 390
+      },
+      "notes": [
+        {
+          "text": "On Acme ACP, Summaries leave out linked ",
+          "width": 358
+        },
+        {
+          "text": "On Acme ACP, AI priority doesn't rank, s",
+          "width": 358
+        },
+        {
+          "text": "Not available in Paseo: Claude, Codex an",
+          "width": 358
+        },
+        {
+          "text": "Your agents on Acme ACP get Follow-up's ",
+          "width": 358
+        }
+      ],
+      "offscreen": [
+        "DIV.GeneralFollowingReviewersAgentsNew workI",
+        "DIV.GeneralFollowingReviewersAgentsNew workI",
+        "BUTTON.plugin-settings-tab-agents",
+        "BUTTON.plugin-settings-tab-new",
+        "DIV."
+      ],
+      "claudeInRows": true,
+      "acmeInRows": 9
+    }
+  ],
+  "fallbackRoles": 3
+}

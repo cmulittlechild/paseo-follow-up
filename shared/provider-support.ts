@@ -19,22 +19,37 @@ export const hasHooks = (provider: string) => (HOOK_PROVIDERS as readonly string
 
 /** Paseo 0.17.4's ACP providers: their sessions don't take a plugin's system prompt, so they get the tools only. */
 export const ACP_PROVIDERS = ["copilot", "cursor", "kimi", "kiro", "trae", "acp"] as const;
-const isAcp = (provider: string) => (ACP_PROVIDERS as readonly string[]).includes(provider);
+type ProviderConfig = { agents?: { providers?: Record<string, { extends?: unknown } | null | undefined> } } | null | undefined;
+/**
+ * Whether Paseo runs this provider over ACP: one of its built-in ACP providers, or a provider in Paseo's config whose
+ * `extends` chain reaches one (a generic ACP agent the developer added, under any id they chose). Decided from the
+ * config, never from a list of ids alone.
+ */
+export function isAcp(provider: string, config?: ProviderConfig): boolean {
+  const custom = config?.agents?.providers ?? {};
+  const seen = new Set<string>();
+  for (let id: unknown = provider; typeof id === "string" && !seen.has(id); id = custom[id]?.extends) {
+    if ((ACP_PROVIDERS as readonly string[]).includes(id)) return true;
+    seen.add(id);
+  }
+  return false;
+}
 const list = (names: string[]) => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
 /**
  * The one line that says what agents on the developer's other providers miss, and why; null when every available
  * provider has hooks. Settings → Agents shows it under the helper rows.
  */
-export function noHooksLine(providers: readonly { id: string; label: string; available: boolean }[]): string | null {
+export function noHooksLine(providers: readonly { id: string; label: string; available: boolean; acp?: boolean }[]): string | null {
   const others = providers.filter(p => p.available && !hasHooks(p.id));
   if (!others.length) return null;
-  const prompt = others.filter(p => !isAcp(p.id)).map(p => p.label);
-  const acp = others.filter(p => isAcp(p.id)).map(p => p.label);
-  const why = "the turn-end reminders (sync, needs you, due tasks) and Wait run as Claude Code and Codex hooks";
+  const acpOf = (p: { id: string; acp?: boolean }) => p.acp ?? isAcp(p.id);
+  const acp = others.filter(acpOf).map(p => p.label);
+  // Outcome first, then why; what still works, so "tools only" never reads as "doesn't work" (critique 2026-11-25).
   const parts = [
-    prompt.length ? `Agents on ${list(prompt)} get Follow-up's tools and instructions, not ${why.replace(" run as", ", which run as")}.` : null,
-    acp.length ? `Agents on ${list(acp)} get the tools only: Paseo doesn't pass plugin instructions to ACP agents yet, and ${why}.` : null,
+    `Your agents on ${list(others.map(p => p.label))} get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs.`,
+    acp.length ? `On ${list(acp)} they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet.` : null,
+    "Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
   ];
   return parts.filter(Boolean).join(" ");
 }

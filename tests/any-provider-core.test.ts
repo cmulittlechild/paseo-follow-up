@@ -84,8 +84,23 @@ test("noHooksLine names what other providers miss, and nothing when every provid
   const p = (id: string, label: string, available = true) => ({ id, label, available });
   assert.equal(noHooksLine([p("claude", "Claude"), p("codex", "Codex")]), null);
   assert.equal(noHooksLine([p("claude", "Claude"), p("opencode", "OpenCode", false)]), null, "an unavailable provider isn't the developer's");
-  assert.match(noHooksLine([p("opencode", "OpenCode"), p("pi", "Pi")])!, /^Agents on OpenCode and Pi get Follow-up's tools and instructions, not .*Wait, which run as Claude Code and Codex hooks\.$/);
-  assert.match(noHooksLine([p("copilot", "Copilot")])!, /^Agents on Copilot get the tools only: Paseo doesn't pass plugin instructions to ACP agents yet/);
+  const both = noHooksLine([p("opencode", "OpenCode"), p("pi", "Pi")])!;
+  assert.match(both, /^Your agents on OpenCode and Pi get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs\. Turn-end reminders .* need Claude Code or Codex, whose hooks run them\.$/);
+  assert.doesNotMatch(both, /instructions/, "OpenCode and Pi do get the instructions: nothing says otherwise");
+  assert.match(noHooksLine([p("copilot", "Copilot")])!, / On Copilot they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet\./);
+  // A generic ACP agent carries the developer's own id: the worker marks it from Paseo's config (acp), never by id.
+  assert.match(noHooksLine([{ ...p("acme-acp", "Acme ACP"), acp: true }])!, / On Acme ACP they don't get Follow-up's instructions: /);
+});
+
+test("isAcp follows Paseo's config: a provider that extends acp, directly or through another, is ACP", async () => {
+  const { isAcp } = await import("../shared/provider-support");
+  const config = { agents: { providers: { "acme-acp": { extends: "acp" }, "acme-2": { extends: "acme-acp" }, "acme-oc": { extends: "opencode" }, loop: { extends: "loop" } } } };
+  assert.equal(isAcp("kiro"), true);
+  assert.equal(isAcp("acme-acp"), false, "without the config an unknown id isn't assumed ACP");
+  assert.equal(isAcp("acme-acp", config), true);
+  assert.equal(isAcp("acme-2", config), true);
+  assert.equal(isAcp("acme-oc", config), false);
+  assert.equal(isAcp("loop", config), false, "a cycle ends");
 });
 
 test("runnableRole: only a role left on an unavailable default moves, and only to what Paseo has", async () => {

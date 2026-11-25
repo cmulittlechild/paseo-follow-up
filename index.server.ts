@@ -102,6 +102,7 @@ import { currentSummary } from "./shared/about";
 import { RpcTiming } from "./server/rpc-timing";
 import { hostAtLeast, hostFeature, ROW_BADGES_SINCE, type ServerInfo } from "./server/host-features";
 import { CODEX_PROMPT_MIN, atLeast, codexVersion, withSystemPrompt, type BridgeTexts, type PromptDeps } from "./server/session-prompt";
+import { isAcp } from "./shared/provider-support";
 import { newWorkspaceTarget, sendReport, type ReportSendDeps } from "./server/report-send";
 type ServerInfoClient = { getLastServerInfoMessage?: () => ServerInfo };
 import { inboxAnswer } from "./server/etag";
@@ -1194,7 +1195,10 @@ export default function contribute(server: PluginServerContext) {
     // The catalog first, so the roles show what runs (a default on a provider Paseo lacks moves: runnableRole).
     const cat = catalog ? await providerCatalog.read(fresh) : null;
     const [{ invalid }, roles] = await Promise.all([agentSettings.load(), agentSettings.all()]);
-    return { roles: Object.values(roles).map(r => ({ ...r, summary: roleSummary(r, labelsFor(r, cat)) })), invalid, catalog: cat, wait: await currentWait() };
+    // Which providers are ACP comes from Paseo's config (a generic ACP agent has the developer's own id): Settings' line.
+    const config = cat ? await paseoConfig() as Parameters<typeof isAcp>[1] : null;
+    const shown = cat ? { ...cat, providers: cat.providers.map(p => ({ ...p, acp: isAcp(p.id, config) })) } : null;
+    return { roles: Object.values(roles).map(r => ({ ...r, summary: roleSummary(r, labelsFor(r, cat)) })), invalid, catalog: shown, wait: await currentWait() };
   };
   // What's new and Settings → General. Follow-up's own install comes from Paseo's plugin list, read once per worker.
   const versions = new VersionsStore(directory);
@@ -2045,6 +2049,7 @@ export default function contribute(server: PluginServerContext) {
   const hostPrompt = hostFeature("checkoutWorktreeList", () => withDaemon(async client => (client as ServerInfoClient).getLastServerInfoMessage?.()));
   let codexPrompt: Promise<boolean> | null = null;
   const promptDeps: PromptDeps = {
+    acp: async provider => isAcp(provider, await paseoConfig() as Parameters<typeof isAcp>[1]),
     hostSupports: hostPrompt,
     providerSupports: async provider => provider === "claude" || provider === "codex" && await (codexPrompt ??= codexVersion().then(v => atLeast(v, CODEX_PROMPT_MIN))),
     bridge: async () => await import(pathToFileURL(join(directory, "mcp.mjs")).href) as BridgeTexts,

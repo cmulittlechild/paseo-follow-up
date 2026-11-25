@@ -103,3 +103,13 @@ for (const [name, role] of Object.entries(ROLES)) {
     assert.deepEqual(paragraphs((opened.appendSystemPrompt ?? []).join("\n\n")).sort(), [...hookAlone].sort());
   });
 }
+
+test("an ACP provider (by Paseo's config) gets no system prompt and no claim one was sent", async () => {
+  const request = { agentId: "a1", provider: "acme-acp", purpose: "interactive", env: { FOLLOW_UP_ROOT: "1", FOLLOW_UP_BRIEF: "acme-acp" } as Record<string, string> };
+  const acp: PromptDeps = { ...deps(true), acp: async p => p === "acme-acp", workspace: async () => "Workspace text" };
+  const out = await withSystemPrompt(request, acp);
+  assert.equal(out.appendSystemPrompt, undefined);
+  assert.equal(out.env[SYSTEM_PROMPT_ENV], undefined);
+  const opencode = await withSystemPrompt({ ...request, provider: "opencode" }, acp);
+  assert.ok(opencode.appendSystemPrompt?.length, "a non-ACP hookless provider still gets it");
+});
