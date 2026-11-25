@@ -2973,8 +2973,11 @@ async function newShots({ shoot, call, out, home, billing }) {
     await shoot(name("long"), vp, theme, async page => {
       await startWords(page, vp, "Add a CSV export to the audit log page. The finance team asked for it for the quarterly review, so include the actor, the action, the target and the time in the workspace's zone. Keep the existing filters: whatever the page shows is what the file holds. Large exports should stream rather than build in memory, and the button should say how many rows it will write.");
       if (!phone) {
-        const box = await dialog(page).getByRole("textbox", { name: FIELD }).first().boundingBox();
-        check(`${theme} ${device}: the task field is wide and grew with the words`, !!box && box.width >= 600 && box.height >= 120, { box });
+        const field = dialog(page).getByRole("textbox", { name: FIELD }).first();
+        const box = await field.boundingBox();
+        // Taller than its 96 px start, with every line in view (no scroll inside the field).
+        const hidden = await field.evaluate(el => el.scrollHeight - el.clientHeight);
+        check(`${theme} ${device}: the task field is wide and grew with the words`, !!box && box.width >= 600 && box.height > 96 && hidden <= 1, { box, hidden });
         await dialog(page).getByText("Show instructions", { exact: true }).filter({ visible: true }).first().click();
         const message = (await dialog(page).getByText(/^Work on the task below\./).allInnerTexts())[0] ?? "";
         check(`${theme} ${device}: the first message says the words once`, message.split("Add a CSV export to the audit log page").length === 2, { message });
