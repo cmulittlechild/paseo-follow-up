@@ -487,10 +487,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    worker is quiet again. Under a burst V8 grows its young generation to its cap (128 MB on Node 24) and keeps it, or
    its pages pooled, while anything allocates, and a plain `gc()` returns none of it. `watchMemory`'s `HeapSettler`
    (`server/memory.ts`) runs one memory-reducing collection (`compactHeap`, 60–100 ms) when RSS is 48 MB over where
-   the last one left it and the worker has had a quiet minute (mean event-loop utilization under 1 %), at most every
-   2 minutes. `heartbeat.json`'s `memory` reports RSS, heap, external, array buffers and the last settles every minute.
-   2026-11-15: the live worker stepped 232 → 325 → 376 MB over busy periods and never came down. Guarded by
-   `tests/memory-settle.test.ts` and `test:scale:live`'s `--cycles` (`BURST_RETURN_BUDGET_MB`, enforced).
+   the last one left it and the worker has had a quiet minute (the median of its event-loop utilization samples and
+   the latest one under 1 %), at most every 2 minutes. The gate reads the minute's typical sample, never its mean, so
+   the worker's own periodic work doesn't count as busy. `heartbeat.json`'s `memory` reports RSS, heap, external,
+   array buffers, the minute's samples and the last settles every minute. 2026-11-15: the live worker stepped
+   232 → 325 → 376 MB over busy periods and never came down. 2026-11-23 to 25: scale-live failed about 1 run in 20
+   (gaps 315-342 MB): the worker's ticks spike once or twice a minute (6-12 % over a 0.1-0.3 % floor), so a quiet
+   minute's mean read 1.2-1.6 % and the settle ran 98-133 s into a 180 s gap or not at all. Guarded by
+   `tests/memory-settle.test.ts` (harness traces of a quiet gap and a burst) and `test:scale:live`'s `--cycles`
+   (`BURST_RETURN_BUDGET_MB`, enforced; its `scale-burst-diag` line shows each gap's samples, settles and minutes).
 31. **Committed workspaces are owned** (`committed-workspaces-are-owned`). A workspace a store commit changed is the
    store's own copy from that commit on: `Store.own` (`server/store.ts`) parses it (`workspaceSchema`) and
    deep-freezes it before the commit lands, so it never aliases an object a caller still holds (an observation's

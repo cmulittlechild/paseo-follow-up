@@ -56,8 +56,10 @@ loaded for an hour.
   check updates) grows V8's young generation to its 128 MB cap, and V8 keeps those pages after it shrinks. Only a
   memory-reducing collection (`gc({ type: "major", flavor: "last-resort" })`) returns them; a plain `gc()` doesn't.
   `watchMemory()` starts after the first tick: its `HeapSettler` runs one when RSS is 48 MB over where the last one
-  left it, the worker has had a quiet minute (mean event-loop utilization under 1 %; bursts run at about 3 %, gaps at
-  0.2 %) and 2 minutes have passed. Busy for 10 minutes past the threshold, it runs anyway; one that gives back under
+  left it, the worker has had a quiet minute (the median of the minute's event-loop utilization samples and the latest
+  sample under 1 %; burst samples run 2-14 %, gap samples 0.1-0.3 % with the worker's own ticks spiking to 6-12 % once
+  or twice a minute, so a quiet minute's mean reads 1.2-1.6 % and the gate never reads the mean) and 2 minutes have
+  passed. Busy for 10 minutes past the threshold, it runs anyway; one that gives back under
   8 MB doubles the wait (a runtime that ignores the flavor, as Node 20 does, or growth outside V8).
   - Cost: 57–96 ms with the event loop blocked and about 0.2–0.3 s of CPU per collection on a live-sized heap, about
     one per busy period.
@@ -65,7 +67,8 @@ loaded for an hour.
   - The young generation's cap is V8's default; `--max-semi-space-size` would lower it, but only as a flag on the
     process that starts the worker (Paseo does), not from inside the plugin.
 - **The worker's memory in heartbeat.json.** Every minute `heartbeat.json` gets `memory`: `rssMb`, `heapUsedMb`,
-  `heapTotalMb`, `externalMb`, `arrayBuffersMb`, `youngMb`, the last minute's mean event-loop `utilization`,
+  `heapTotalMb`, `externalMb`, `arrayBuffersMb`, `youngMb`, the last minute's median event-loop `utilization` and its
+  `samples`,
   `quietSettles` and `forcedSettles` (settles a quiet minute allowed, and ones the 10-minute fallback forced), and the
   last five settles (`beforeMb`, `afterMb`, `ms`, `cpuMs`, `forced`). `version`, `at` and `error` stay as the
   installer's probation reads them. The 1 % quiet gate comes from the harness: on a host whose worker never idles under
