@@ -298,6 +298,7 @@ export const CHOICE_WRITES = {
   overseer: { settings: "display", field: "enable_overseer" },
   ranker: { settings: "display", field: "enable_ranker" },
   trustBypass: { settings: "display", field: "enable_trust_bypass" },
+  newSidebarRow: { settings: "display", field: "enable_new_sidebar_row" },
   updatesMode: { rpc: "follow.set-updates", field: "mode" },
   updatesChannel: { rpc: "follow.set-updates", field: "channel" },
 } as const;

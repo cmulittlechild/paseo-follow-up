@@ -13,6 +13,9 @@ import { JobRows } from "./job-rows";
 import { DockedPane } from "./docked-pane";
 import { SETUP_ORDER } from "../shared/job-rows";
 import { ShippingStep, shippingKey } from "./shipping";
+import { useNewRowSetting } from "./new-entry";
+import { isMac } from "../shared/search-key";
+import { NEW_NAME, NEW_ROW } from "../shared/new-name";
 import { UpdatesStep, useUpdates } from "./updates";
 import { Spinner, useReducedMotion } from "./motion";
 import { raised, runningColor, tint, withAlpha, type Colors } from "./theme";
@@ -109,7 +112,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     reviewers: "When you press Add reviewers on a PR, Follow-up asks these people. Set a default for all repositories, or a list for one. Until then, PRs without reviewers show in Needs you.",
     updates: "New versions fix problems and add features. Follow-up can install them for you, at a moment when no agent is using it, and goes back to the old version if something breaks.",
     helpers: "Follow-up's own agents. They read, summarise and rank. They never change code or message anyone.",
-    tour: "Four places worth knowing. Everything else is in Settings.",
+    tour: "Five places worth knowing. Everything else is in Settings.",
   };
   const column: ViewStyle = { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: compact ? 16 : 24 };
 
@@ -403,6 +406,20 @@ function TourStep({ theme, compact }: { theme: Theme; compact: boolean }) {
       line={compact ? "Tap Follow-up at the top of any workspace: its PRs, tasks and what the agent is doing." : "The Follow-up button in a workspace's header docks its PRs, tasks and what the agent is doing beside the chat."} />
     <TourRow theme={theme} thumb={<ThumbNeeds c={theme.colors} />} title="Needs you" line="The decisions only you can make, one button each. A pill above the chat shows the same." />
     <TourRow theme={theme} thumb={<ThumbAbout c={theme.colors} />} title="Summary" line="One sentence under a workspace's title saying what it's for." />
+    <TourRow theme={theme} thumb={<ThumbNew c={theme.colors} />} title={NEW_NAME} line="Starts work from an issue, a PR, a link or your words: a workspace and an agent, already briefed." />
+    <NewRowChoice theme={theme} compact={compact} />
+  </View>;
+}
+
+/** The sidebar's Dispatch row (new-row-is-optional): the same switch and tip as Settings → Dispatch. */
+function NewRowChoice({ theme, compact }: { theme: Theme; compact: boolean }) {
+  const c = theme.colors; const t = text(c);
+  const row = useNewRowSetting();
+  return <View style={{ gap: 6, paddingTop: 6 }}>
+    <Panel c={c}>
+      <SwitchRow first theme={theme} compact={compact} label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : "Ctrl K")} value={row.value} disabled={row.saving} onChange={row.set} />
+    </Panel>
+    {row.value !== false && <Text style={t.meta}>{NEW_ROW.paseo}</Text>}
   </View>;
 }
 
@@ -420,6 +437,8 @@ const ThumbPanel = ({ c }: { c: Colors }) => <>{bar(c, "55%", c.foregroundMuted)
 const ThumbNeeds = ({ c }: { c: Colors }) => <View style={{ flex: 1, borderRadius: 4, borderWidth: 1, borderColor: c.statusWarning, padding: 4, gap: 3 }}>{bar(c, "70%")}<View style={{ width: 16, height: 5, borderRadius: 2, backgroundColor: c.accent }} /></View>;
 // The Summary: the title, then one quiet line under it.
 const ThumbAbout = ({ c }: { c: Colors }) => <>{bar(c, "60%", c.foregroundMuted, 4)}{bar(c, "90%")}{bar(c, "70%")}</>;
+// New: a + row at the top of a sidebar, then the list under it.
+const ThumbNew = ({ c }: { c: Colors }) => <><View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><Icon name="Plus" size={8} color={c.foreground} />{bar(c, "45%", c.foregroundMuted, 4)}</View>{bar(c, "80%")}{bar(c, "65%")}</>;
 
 // ---------- existing installs ----------
 
