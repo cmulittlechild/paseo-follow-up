@@ -3,6 +3,8 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { displayPreferences, displayRpc } from "../shared/display";
 import { isDesktopApp, isMac, matchesShortcut, newShortcutPreset, searchShortcutOf, shortcutLabel, type KeyEventLike, type NewShortcut, type SearchShortcut } from "../shared/search-key";
 import { subscribeDisplay } from "./display";
+import { requestSearch } from "./search-focus";
+import type { SearchFocus } from "../shared/search-focus";
 
 type DomKey = KeyEventLike & { target?: { closest?(selector: string): unknown } | null; preventDefault(): void; stopPropagation(): void };
 
@@ -13,14 +15,8 @@ type DomKey = KeyEventLike & { target?: { closest?(selector: string): unknown } 
 export const EDITOR_SELECTOR = ".cm-editor, .monaco-editor";
 type Win = {
   navigator?: { platform?: string; userAgent?: string };
-  location?: { pathname?: string };
   document?: { addEventListener(t: "keydown", f: (e: DomKey) => void, capture?: boolean): void; removeEventListener(t: "keydown", f: (e: DomKey) => void, capture?: boolean): void };
 };
-
-/** Home's route in Paseo's web app (scripts/ui-home.mjs `homeUrl`): the shortcut there only moves the cursor. */
-export function onHomeRoute(pathname: string | undefined, screenId: string): boolean {
-  return !!pathname && pathname.includes(`/surface/${screenId}`);
-}
 
 /** The current key and its label, kept in step with the Display setting; listeners hear every change. */
 export function createSearchKey() {
@@ -61,7 +57,7 @@ export type NewKey = ReturnType<typeof createNewKey>;
  * Display setting `search_shortcut`, read once at start and then from the Display feed or poll. Inside a code editor
  * the key stays the editor's (EDITOR_SELECTOR). New from anywhere (`extra`) is matched by the same listener.
  */
-export function installSearchShortcut(client: PluginClientContext, key: SearchKey, open: { screenId: string; focus: () => void }, extra?: { key: NewKey; open: () => void }): () => void {
+export function installSearchShortcut(client: PluginClientContext, key: SearchKey, open: { screenId: string; focus: SearchFocus }, extra?: { key: NewKey; open: () => void }): () => void {
   const win = globalThis as Win;
   const doc = win.document;
   if (Platform.OS !== "web" || !doc) return () => undefined;
@@ -78,11 +74,9 @@ export function installSearchShortcut(client: PluginClientContext, key: SearchKe
     if (extra && matchesShortcut(e, extra.key.preset(), mac) && !e.target?.closest?.(EDITOR_SELECTOR)) { e.preventDefault(); e.stopPropagation(); extra.open(); return; }
     if (!matchesShortcut(e, key.preset(), mac) || e.target?.closest?.(EDITOR_SELECTOR)) return;
     e.preventDefault(); e.stopPropagation();
-    if (onHomeRoute(win.location?.pathname, open.screenId)) { open.focus(); return; }
-    client.openScreen({ screenId: open.screenId });
-    // A Home that mounts now takes the request on mount; one kept mounted behind takes it once it's on screen.
-    const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
-    raf(() => raf(() => open.focus()));
+    // every-search-request-lands-in-the-visible-search: one request, held until the developer acts; Home opens unless
+    // its search is on screen, and the search field that comes on screen takes the caret.
+    requestSearch(open.focus, () => client.openScreen({ screenId: open.screenId }));
   };
   doc.addEventListener("keydown", onKey, true);
   return () => { live = false; offDisplay(); doc.removeEventListener("keydown", onKey, true); };

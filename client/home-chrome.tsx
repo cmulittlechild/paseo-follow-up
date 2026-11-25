@@ -18,6 +18,7 @@ import { Spinner } from "./motion";
 import { withAlpha, type Colors } from "./theme";
 import { text, type Theme } from "./kit";
 import { MenuItemContent, menuGlyph, menuItemRow } from "./menu-item";
+import { useSearchFocusField } from "./search-focus";
 import { useLinkedIndex } from "./linked";
 
 /**
@@ -37,6 +38,13 @@ export type Omnibox = {
   active: number;
   move(delta: number): void;
   inputRef: React.RefObject<TextInput | null>;
+  /** The search field's onLayout: a waiting search request tries again when the field comes on screen. */
+  onSearchLayout: () => void;
+  /**
+   * Asks for the caret in the search (every-search-request-lands-in-the-visible-search), only when a Home search is on
+   * screen: true when it asked. A Home kept mounted behind another screen asks nothing.
+   */
+  focusSearch(): boolean;
   /** The Overseer is on, so a query can also be an ask. */
   askOn: boolean;
   /** Images pasted or dropped on the search while the Overseer is on: they go with the ask (every-agent-field-takes-images). */
@@ -73,12 +81,12 @@ export function useOmnibox(model: HomeModel, sources: HomeSources, extraProvider
   const fallback = defaultActive(results);
   const current = active ?? fallback;
   const move = useCallback((delta: number) => setActive(a => Math.max(0, Math.min((results?.length ?? 1) - 1, (a ?? fallback) + delta))), [results, fallback]);
-  // ⌘K "Follow-up: Search".
-  // A request made before this field mounted (the search key opening Home) is taken on mount.
-  const token = useSyncExternalStore(sources.extras.subscribe, sources.extras.focusToken, sources.extras.focusToken);
-  useEffect(() => { if (sources.extras.takeFocus()) inputRef.current?.focus(); }, [token, sources.extras]);
+  // every-search-request-lands-in-the-visible-search: this field takes a search request (the key, ⌘K, `/`) while it is
+  // the one on screen, on mount, on layout, or when focus moves without the developer (client/search-focus.ts).
+  const onSearchLayout = useSearchFocusField(sources.extras.searchFocus, inputRef);
+  const focusSearch = useCallback(() => { const f = sources.extras.searchFocus; if (!f.shown()) return false; f.request(); return true; }, [sources.extras.searchFocus]);
   const hint = layoutHint((results ?? []).flatMap(r => r.hit ? [r.hit] : []));
-  return { query, setQuery, setPhysical, layoutHint: hint, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, askOn, images };
+  return { query, setQuery, setPhysical, layoutHint: hint, results, active: Math.min(current, Math.max(0, (results?.length ?? 1) - 1)), move, inputRef, onSearchLayout, focusSearch, askOn, images };
 }
 
 type DomKey = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: unknown; preventDefault(): void };
@@ -91,19 +99,22 @@ export function useSlashToFocus(omnibox: Omnibox, enabled = true) {
       if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName ?? ""))) return;
-      e.preventDefault();
-      omnibox.inputRef.current?.focus();
+      // The one owner of search focus: only the Home search on screen takes it, so a Home kept mounted behind
+      // another screen neither swallows the key nor focuses a hidden field.
+      if (omnibox.focusSearch()) e.preventDefault();
     };
     doc.addEventListener("keydown", onKey);
     return () => doc.removeEventListener("keydown", onKey);
-  }, [omnibox.inputRef, enabled]);
+  }, [omnibox.focusSearch, enabled]);
 }
 
 /**
  * The one query field: Home's omnibox (SearchField) and the sidebar view's filter (FilterField) are this with
  * different words. `dense` is the phone layout: a 44px field with a rounder shape and body-size text.
  */
-export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape, onLayoutQuery, trailing }: {
+export function QueryField({ theme, value, onChange, placeholder, icon, dense, inputRef, slashHint, slashTitle, onSubmit, onArrow, listKeys = false, count, autoFocus = false, onEscape, onLayoutQuery, trailing, onLayout }: {
+  /** The field's own layout (Home's search: a waiting search request tries again). */
+  onLayout?: () => void;
   /** A control at the field's end, before its ✕ (Home's search asking the Overseer: Add image). */
   trailing?: ReactNode;
   /** Its arrows step into the list below (client/list-keys.ts): the sidebar filter, and Home's search while empty. */
@@ -146,9 +157,9 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
   return <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: dense ? 8 : 6, height: dense ? 44 : 32, paddingHorizontal: dense ? 12 : 8, borderRadius: dense ? 12 : 6,
     borderWidth: 1, borderColor: focused ? withAlpha(c.foreground, 0.35) : c.border, backgroundColor: c.surface1 }}>
     <Icon name={icon as never} size={dense ? 16 : 13} color={c.foregroundMuted} />
-    <TextInput ref={inputRef} value={value} onChangeText={q => { onLayoutQuery?.(capture.current.change(q)); onChange(q); }} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
+    <TextInput ref={inputRef} onLayout={onLayout} value={value} onChangeText={q => { onLayoutQuery?.(capture.current.change(q)); onChange(q); }} placeholder={placeholder} placeholderTextColor={c.foregroundMuted}
       accessibilityLabel={placeholder} autoFocus={autoFocus} autoCorrect={false} autoCapitalize="none" spellCheck={false} returnKeyType="go"
-      {...(listKeys ? { dataSet: { listKeys: "1" } } as object : {})}
+      {...(listKeys || onLayout ? { dataSet: { ...(listKeys ? { listKeys: "1" } : {}), ...(onLayout ? { followUpSearch: "1" } : {}) } } as object : {})}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       onSubmitEditing={onSubmit}
       // A single-line field blurs on submit by default, which dropped focus on the page after a search pick while the
@@ -181,11 +192,11 @@ export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { t
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
   // The bar stays one line: a paste or drop lands here, and Home draws the thumbnails on their own line under it.
-  if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} attach="inline" style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+  if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} attach="inline" style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} onLayout={omnibox.onSearchLayout} slashHint={anywhereKey || "/"}
     trailing={<AttachImageButton model={omnibox.images} theme={theme} compact={dense} label="Add image for the Overseer" />}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></ImageField>;
-  return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} slashHint={anywhereKey || "/"}
+  return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} onLayout={omnibox.onSearchLayout} slashHint={anywhereKey || "/"}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} />;
 }
