@@ -16,7 +16,8 @@ type Doc = { body: unknown; activeElement: unknown; visibilityState?: string; qu
  * non-modal dialog (Home's keys sheet, which S opens and closes) leaves the page its keys; keys typed inside one stay
  * its own (the focus check below).
  */
-const OVERLAYS = '[role="menu"],[role="alertdialog"],[aria-modal="true"]';
+/** Menus and modal dialogs drawn over a surface (list keys pause under them; so does a held search request). */
+export const OVERLAYS = '[role="menu"],[role="alertdialog"],[aria-modal="true"]';
 
 export type ListKeysOptions = {
   enabled: boolean;
