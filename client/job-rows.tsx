@@ -187,7 +187,7 @@ export function JobLine({ row, r, catalog, loading, theme, compact, busy, open, 
   const pick = loading ? "Reading your providers…" : row.blocked ? row.pick : `${row.pick}${row.recommended ? " · Recommended" : ""}`;
   const toggle = enabled !== undefined && <Switch theme={theme} compact={compact} label={row.blocked ? "Unavailable" : enabled ? "On" : "Off"} accessibilityLabel={row.title} hint={row.blocked ? row.notice?.text : undefined} value={enabled} disabled={!onEnable} onChange={v => onEnable?.(v)} />;
   const change = !loading && !row.blocked && <Pressable accessibilityRole="button" accessibilityLabel={`${row.title} model: ${row.pick}. Change`} accessibilityState={{ expanded: open, disabled: busy }} aria-expanded={open}
-    disabled={busy && !open} onPress={onToggle} hitSlop={8} style={{ minHeight: compact ? 44 : 24, justifyContent: "center" }}>
+    disabled={busy && !open} onPress={onToggle} hitSlop={compact ? 12 : 8} style={{ minHeight: compact ? 32 : 24, justifyContent: "center" }}>
     <Text style={[t.label, { fontSize: 13, textDecorationLine: "underline" }]}>{open ? "Done" : "Change"}</Text>
   </Pressable>;
   const model = <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0, opacity: off ? 0.6 : 1 }}>
@@ -197,18 +197,18 @@ export function JobLine({ row, r, catalog, loading, theme, compact, busy, open, 
   </View>;
   return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: compact ? 14 : 16, paddingVertical: compact ? 6 : 12, gap: compact ? 0 : 6 }}>
     {compact
-      ? <><View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 }}><Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>{toggle}</View>{model}</>
-      : <View style={{ flexDirection: "row", alignItems: "center", gap: 16, minHeight: 32 }}>
-          <Text accessibilityRole="header" style={[t.label, { width: 120 }]}>{row.title}</Text>
+      ? <><View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 40 }}><Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>{toggle}</View>{model}</>
+      : <View style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 32 }}>
+          <Text accessibilityRole="header" style={[t.label, { width: 104 }]}>{row.title}</Text>
           {model}
           {/* A fixed switch column, so every row's Change lines up whether or not it has a switch. */}
-          <View style={{ width: 96, alignItems: "flex-end" }}>{toggle}</View>
+          <View style={{ minWidth: 84, alignItems: "flex-end" }}>{toggle}</View>
         </View>}
-    {warning && <View style={{ gap: 6, alignItems: "flex-start", paddingLeft: compact ? 0 : 136, paddingBottom: compact ? 8 : 0 }}>
+    {warning && <View style={{ gap: 6, alignItems: "flex-start", paddingLeft: compact ? 0 : 116, paddingBottom: compact ? 8 : 0 }}>
       <Text accessibilityRole="alert" style={[t.meta, { fontSize: 12, lineHeight: 16, color: c.statusWarning }]}>{warning.text}</Text>
       {use && <Button theme={theme} compact={compact} kind="secondary" title="Use recommended" accessibilityLabel={`Use ${row.recPick} for ${row.title}`} disabled={busy} onPress={use} />}
     </View>}
-    {open && !loading && <View style={{ marginTop: 4, marginLeft: compact ? 0 : 136, borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: "hidden" }}>
+    {open && !loading && <View style={{ marginTop: 4, marginLeft: compact ? 0 : 116, borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: "hidden" }}>
       <RolePickers r={r} catalog={catalog} busy={busy} save={save} />
     </View>}
   </View>;
