@@ -187,7 +187,8 @@ test("checks: a provider a helper uses is a failure; an unused one is optional; 
   // No provider at all is Paseo's next step, not Follow-up failing: a note that says what to set up.
   assert.equal(byId(checks, "providers").state, "warn"); assert.match(byId(checks, "providers").fix?.text ?? "", /Set one up in Paseo's settings/);
   // The one Agents row says what to set up; each provider row only says what it is, never a second alarm.
-  assert.equal(byId(checks, "provider-codex").state, "off"); assert.equal(byId(checks, "provider-codex").fix, null);
+  assert.equal(checks.find(c => c.id === "provider-codex"), undefined, "the Agents row stands alone");
+  assert.equal(checksSummary(checks).line, "Set up an agent provider in Paseo to start");
   assert.equal(checks.filter(c => c.state === "fail").length, 0);
 
   checks = (await new ReadinessChecks(deps({ catalog: async () => catalog("Still loading", true) })).run()).checks;
@@ -223,8 +224,8 @@ test("checks: tools through the bridge, blocked by config, not seen yet, and hoo
   tools = byId((await new ReadinessChecks(deps({ tools: async () => ({ config: { agents: { providers: { claude: { paseoTools: { disabledTools: ["follow_merge"] } } } } }, nativeAgents: 2, hookError: null }) })).run()).checks, "tools");
   assert.equal(tools.state, "warn"); assert.match(tools.detail, /off for Claude/);
 
-  tools = byId((await new ReadinessChecks(deps({ tools: async () => ({ config: null, nativeAgents: 0, hookError: null }) })).run()).checks, "tools");
-  assert.equal(tools.state, "pending"); assert.equal(tools.fix, null, "the normal fresh state is not a failure");
+  // Before the first agent there's nothing to check or do: no row at all (the normal fresh state).
+  assert.equal((await new ReadinessChecks(deps({ tools: async () => ({ config: null, nativeAgents: 0, hookError: null }) })).run()).checks.find(c => c.id === "tools"), undefined);
 
   const checks = (await new ReadinessChecks(deps({ tools: async () => ({ config: null, nativeAgents: 1, hookError: "x" }) })).run()).checks;
   assert.equal(byId(checks, "hooks").state, "warn");
@@ -374,7 +375,10 @@ test("every setup step has something to do: GitHub-only steps go without the Git
   assert.equal(providersReady([{ id: "provider-codex", label: "Codex", state: "ok", detail: "", fix: null }]), true);
 });
 
-test("checks: a provider Paseo is still loading is never \"no provider ready\"", () => {
+test("checks: a provider Paseo is still loading, or lists but can't reach yet, is never \"no provider\"", () => {
+  const slow = providerChecks({ providers: [{ id: "codex", label: "Codex", available: false, reason: "Timed out initializing Codex app-server" }, { id: "claude", label: "Claude", available: false, reason: "Not installed" }], error: null }, { claude: ["the Overseer"] });
+  assert.equal(slow.find(r => r.id === "providers"), undefined);
+  assert.equal(slow.find(r => r.id === "provider-codex")?.state, "pending");
   const rows = providerChecks({ providers: [{ id: "claude", label: "Claude", available: false, reason: "Still loading" }, { id: "codex", label: "Codex", available: false, reason: "Not installed" }], error: null }, { claude: ["the Overseer"] });
   assert.equal(rows.find(r => r.id === "providers"), undefined);
   assert.equal(rows.find(r => r.id === "provider-claude")?.state, "pending");

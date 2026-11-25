@@ -74,12 +74,15 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
   const shipping = useQuery({ queryKey: shippingKey, queryFn: () => readShipping({}), staleTime: 60_000 });
   const updates = useUpdates();
   const gh = checks.data?.checks.find(row => row.id === "gh");
-  const steps = useMemo(() => setupSteps({
+  const live = useMemo(() => setupSteps({
     github: !gh ? null : gh.state === "ok" ? true : gh.state === "off" ? false : null,
     repos: shipping.data ? shipping.data.repos.length : null,
     npm: updates.data ? updates.data.installKind === "npm" : null,
     providers: providersReady(checks.data?.checks),
   }), [gh?.state, shipping.data?.repos.length, updates.data?.installKind, providersReady(checks.data?.checks)]);
+  // Once past the checks the list holds still: a late answer never takes away a step the developer is on or has seen.
+  const frozen = useRef<OnboardingStep[] | null>(null);
+  const steps = frozen.current ?? live;
   const step = shownStep(saved, steps);
   const index = steps.indexOf(step);
   const move = useMutation({
@@ -87,7 +90,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     onSuccess: next => { if (!next.show) cache.setQueryData(onboardingKey, next); },
     onError: error => toast.error(errorText(error)),
   });
-  const go = (next: OnboardingStep) => { setStep(next); scroll.current?.scrollTo({ y: 0, animated: false }); move.mutate({ action: "step", step: next }); };
+  const go = (next: OnboardingStep) => { if (step === "checks" && next !== "intro") frozen.current = steps; else if (next === "intro" || next === "checks") frozen.current = null; setStep(next); scroll.current?.scrollTo({ y: 0, animated: false }); move.mutate({ action: "step", step: next }); };
   const finish = () => move.mutate({ action: "finish" }, { onSuccess: () => {
     const n = follow.data?.workspaces.filter(w => w.enable_tracking && !w.optedOut).length ?? 0;
     toast.show(n ? `Set up. Following ${n} workspace${n === 1 ? "" : "s"}.` : "Set up. Follow-up starts with your next workspace.", { variant: "success" });
@@ -106,7 +109,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     : <TourStep theme={theme} compact={compact} />;
   const lead: Record<OnboardingStep, string> = {
     intro: "It follows your agents' pull requests until the work is done, sends what needs fixing back to them as repairs, and asks you only for decisions.",
-    checks: "Follow-up works with every agent Paseo runs. Agents on Claude Code or Codex also get turn-end reminders and Wait. GitHub is optional: with its CLI, Follow-up also follows your PRs.",
+    checks: "Follow-up works with every agent Paseo runs. On Claude Code and Codex it also reminds agents at the end of each turn and can wait for their background jobs. GitHub is optional: with its CLI, Follow-up also follows your PRs.",
     defaults: "These are on now. Change anything here; it saves as you go, and Settings has the same switches.",
     shipping: "Follow-up merges and tracks PRs the way each repository already works. It picked these; change one if it's wrong.",
     reviewers: "When you press Add reviewers on a PR, Follow-up asks these people. Set a default for all repositories, or a list for one. Until then, PRs without reviewers show in Needs you.",
@@ -196,7 +199,7 @@ const Panel = ({ c, children }: { c: Colors; children: ReactNode }) =>
 // ---------- 1. what it is ----------
 
 const EXAMPLE = [
-  { glyph: "CircleX", tone: "danger", line: "Checks failed on #418", caption: "Follow-up notices" },
+  { glyph: "CircleX", tone: "danger", line: "Checks failed on #418", caption: "Follow-up notices the failed checks" },
   { glyph: "spinner", tone: "running", line: "Repair sent to the agent · 2m", caption: "and sends it as a repair to the agent that made the PR" },
   { glyph: "CircleCheck", tone: "success", dot: "warning", line: "#418 approved", caption: "then asks you only for the decision" },
 ] as const;
@@ -285,17 +288,19 @@ function ChecksStep({ theme, compact, checks, deps }: { theme: Theme; compact: b
 const GLYPH: Record<Check["state"], string> = { ok: "CircleCheck", warn: "CircleAlert", fail: "CircleX", pending: "CircleDashed", off: "CircleMinus" };
 function CheckRow({ theme, compact, row, first, checking, deps }: { theme: Theme; compact: boolean; row: Check; first: boolean; checking: boolean; deps: SetupDeps }) {
   const c = theme.colors; const t = text(c); const toast = useToast();
-  const [open, setOpen] = useState(false);
+  // The row that blocks everything (no provider at all) opens with its fix; optional and note rows fold theirs.
+  const [open, setOpen] = useState(row.id === "providers");
+  const folds = row.state === "warn" || row.state === "off";
   const color = row.state === "ok" ? c.statusSuccess : row.state === "warn" ? c.statusWarning : row.state === "fail" ? c.statusDanger : c.foregroundMuted;
   return <View accessibilityLabel={`${row.label}: ${row.detail}`} style={{ flexDirection: "row", gap: 10, paddingHorizontal: compact ? 14 : 16, paddingVertical: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
     <View style={{ paddingTop: 1 }}>{checking ? <Spinner color={c.foregroundMuted} size={16} /> : <Icon name={GLYPH[row.state]} size={16} color={color} />}</View>
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
       <Text style={t.label}>{row.label}</Text>
       <Text style={t.meta}>{row.detail}</Text>
-      {row.fix && row.state === "warn" && !open && <Pressable accessibilityRole="button" accessibilityState={{ expanded: false }} onPress={() => setOpen(true)} style={{ minHeight: compact ? 44 : 28, justifyContent: "center", alignSelf: "flex-start" }}>
-        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>How to fix</Text>
+      {row.fix && folds && !open && <Pressable accessibilityRole="button" accessibilityState={{ expanded: false }} onPress={() => setOpen(true)} style={{ minHeight: compact ? 44 : 28, justifyContent: "center", alignSelf: "flex-start" }}>
+        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>{row.state === "off" ? "How to turn it on" : "How to fix"}</Text>
       </Pressable>}
-      {row.fix && (row.state !== "warn" || open) && <View style={{ gap: 6, marginTop: 4 }}>
+      {row.fix && (!folds || open) && <View style={{ gap: 6, marginTop: 4 }}>
         <Text style={[t.meta, { color: c.foreground }]}>{row.fix.text}</Text>
         {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title="Get the GitHub CLI" accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error("Couldn't open the link here")); }} />}
         {row.fix.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
@@ -351,7 +356,7 @@ function DefaultsStep({ theme, compact, held }: { theme: Theme; compact: boolean
   return <View style={{ gap: 10 }}>
     {follow.error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{errorText(follow.error)}</Text>}
     <Panel c={c}>
-      <SwitchRow first theme={theme} compact={compact} label="Follow every workspace" hint="New and existing workspaces, except any you turn off below." value={data?.enable_follow_every ?? null} disabled={change.isPending}
+      <SwitchRow first theme={theme} compact={compact} label="Follow every workspace" hint={list.length ? "New and existing workspaces, except any you turn off below." : "Every workspace, from the first one you create."} value={data?.enable_follow_every ?? null} disabled={change.isPending}
         onChange={v => change.mutate([{ enable_follow_every: v }])}>
         {list.length > 0 && <View style={{ paddingLeft: compact ? 14 : 16, paddingBottom: 6 }}>
           {shown.map(w => {
