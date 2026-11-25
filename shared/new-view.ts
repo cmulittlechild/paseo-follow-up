@@ -1,3 +1,4 @@
+import type { CompassPick } from "./dispatch";
 import { KIND_WORD, UNDO_WINDOW_MS, parseSource, undoable, type DispatchPlan, type DispatchRecord, type DispatchSources, type SourceKind, type SourceRoute } from "./dispatch";
 import type { LinearIssue } from "./linear-issues";
 
@@ -10,7 +11,9 @@ import type { LinearIssue } from "./linear-issues";
 
 export type RowTone = "plain" | "warn" | "open";
 export type NewRow =
-  | { kind: "issue"; id: string; key: string; title: string; icon: string; state: string; age: string; route: { text: string; tone: RowTone }; tag: string | null; taken: boolean }
+  | { kind: "issue"; id: string; key: string; title: string; icon: string; state: string; age: string; route: { text: string; tone: RowTone }; tag: string | null; taken: boolean;
+    /** A Compass suggestion's reason line ("Dana: renewal call Thu"): it sorts first in My issues and says why. */
+    reason?: string | null }
   /** The last row while some listed issues already have a workspace: "N issues already have a workspace", opens in place. */
   | { kind: "fold"; id: "taken"; count: number; open: boolean; title: string }
   | { kind: "pasted"; id: "pasted"; key: string; title: string; icon: string; sourceKind: SourceKind; raw: string }
@@ -58,6 +61,26 @@ function issueRow(issue: LinearIssue, routes: Record<string, SourceRoute>, now: 
   return { kind: "issue", id: issue.key, key: issue.key, title: issue.title, icon: stateIcon(issue.stateType), state: issue.state ?? "", age: shortAge(issue.updatedAt, now), route: routeText(routes[issue.key]), tag, taken: !!routes[issue.key]?.existing };
 }
 
+/**
+ * Compass's suggestions first in My issues, each with its reason line (design §7: no section of its own). A suggestion
+ * already listed moves up and gains its reason; one not assigned to the developer joins while its note is live, with
+ * the compass glyph. Urgent ones first (they're in Needs you too), then the rest in the server's order.
+ */
+function withSuggestions(rows: NewRow[], picks: readonly CompassPick[], routes: Record<string, SourceRoute>): NewRow[] {
+  if (!picks.length) return rows;
+  const byKey = new Map(rows.flatMap(r => r.kind === "issue" ? [[r.key.toUpperCase(), r] as const] : []));
+  const first: NewRow[] = [];
+  for (const p of picks) {
+    const k = p.key.toUpperCase();
+    if (routes[p.key]?.existing) continue;
+    const listed = byKey.get(k);
+    first.push(listed && listed.kind === "issue" ? { ...listed, reason: p.reason }
+      : { kind: "issue", id: p.key, key: p.key, title: p.title, icon: "Compass", state: "", age: "", route: routeText(routes[p.key]), tag: null, taken: false, reason: p.reason });
+  }
+  const moved = new Set(first.map(r => r.id));
+  return [...first, ...rows.filter(r => !moved.has(r.id))];
+}
+
 /** "1 issue already has a workspace", "3 issues already have a workspace": the fold's words. */
 export const takenWords = (n: number) => n === 1 ? "1 issue already has a workspace" : `${n} issues already have a workspace`;
 
@@ -85,14 +108,15 @@ export function matchesQuery(issue: Pick<LinearIssue, "key" | "title">, query: s
  * - Words: the issues they match (the best preselected), "Start from your words" second (so ↵ on a half-typed word never
  *   starts a PR on that word unless nothing matches), then "Search all of Linear for “…”" last.
  */
-export function newRows(sources: Pick<DispatchSources, "linear" | "routes"> | null, query: string, now: number, foldOpen = false): { rows: NewRow[]; selected: string | null; empty: string | null } {
+export function newRows(sources: Pick<DispatchSources, "linear" | "routes" | "compass"> | null, query: string, now: number, foldOpen = false): { rows: NewRow[]; selected: string | null; empty: string | null } {
   const issues = sources?.linear.issues ?? [];
   const routes = sources?.routes ?? {};
   const isTaken = (i: LinearIssue) => !!routes[i.key]?.existing;
   const split = (list: readonly LinearIssue[]) => ({ free: list.filter(i => !isTaken(i)).map(i => issueRow(i, routes, now)), taken: list.filter(isTaken).map(i => issueRow(i, routes, now)) });
   const q = query.trim();
   if (!q) {
-    const { free, taken } = split(issues);
+    const { free: mine, taken } = split(issues);
+    const free = withSuggestions(mine, sources?.compass ?? [], routes);
     // All taken: the fold is selected, so ↵ opens it.
     return { rows: withFold(free, taken, foldOpen), selected: free[0]?.id ?? (taken.length ? "taken" : null), empty: !free.length && taken.length ? "Nothing new to start." : null };
   }

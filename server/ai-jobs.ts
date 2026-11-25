@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { z } from "zod";
 import { guardFor, refusedCalls, type ToolGrant } from "./job-guard";
+import { guardedProvider } from "../shared/agent-settings";
 
 /**
  * Small bounded model jobs: a prompt in, validated JSON out. Shared by Summaries and the Overseer ranker.
@@ -37,12 +38,18 @@ export type JobSpec<T> = {
   maxOutputChars?: number;
   /** This job's own runner (the ranker's plan reader needs the Artifact tool); it still takes a queue slot. */
   runner?: Runner;
+  /**
+   * The prompt carries words someone else wrote (an issue, a thread, a chat, a plan, mail). Such a job runs only on a
+   * provider Follow-up can take every tool away from (`guardedProvider`); on any other it is refused before it starts
+   * (a-job-that-reads-outside-content-can-only-read).
+   */
+  outside?: boolean;
   /** A privacy-safe rule code for a parsed reply, never its name, prompt or response text. Logging cannot fail a job. */
   diagnose?: (value: T) => string | null;
 };
 export type JobResult<T> =
   | { ok: true; value: T; costUsd: number | null; durationMs: number; inputTokens?: number | null; outputTokens?: number | null }
-  | { ok: false; error: string; reason: "timeout" | "too-large" | "invalid-json" | "invalid-shape" | "failed" | "stopped"; costUsd: number | null; durationMs: number; inputTokens?: number | null; outputTokens?: number | null };
+  | { ok: false; error: string; reason: "timeout" | "too-large" | "invalid-json" | "invalid-shape" | "failed" | "stopped" | "unguarded"; costUsd: number | null; durationMs: number; inputTokens?: number | null; outputTokens?: number | null };
 export type JobLog = { at: string; name: string; provider: string; model: string; ok: boolean; reason: string | null; durationMs: number; costUsd: number | null; promptChars: number; inputTokens: number | null; outputTokens: number | null; validationReason?: string; refused?: string[] };
 
 export const DEFAULT_SYSTEM = "You turn the material you are given into the JSON object the user asks for. Reply with that JSON object only: no prose, no code fence. Use only facts in the material; never guess names, numbers or links.";
@@ -79,6 +86,8 @@ export class AiJobs {
     if (spec.prompt.length > (spec.maxPromptChars ?? 60_000)) return done({ ok: false, reason: "too-large", error: `The prompt is ${spec.prompt.length} characters; the cap is ${spec.maxPromptChars ?? 60_000}.`, costUsd: null, durationMs: 0 });
     if (this.stopped) return done({ ok: false, reason: "stopped", error: "Follow-up is stopping.", costUsd: null, durationMs: 0 });
     const provider = spec.provider ?? "claude";
+    // Someone else's words never reach a model that has tools: refused before any runner, the tests' included.
+    if (spec.outside && !guardedProvider(provider)) return done({ ok: false, reason: "unguarded", error: `This job reads words other people wrote, and Follow-up can't take ${provider}'s tools away. Pick Claude or Codex in Settings → Agents.`, costUsd: null, durationMs: 0 });
     // An injected runner (tests) always wins, so a job can never reach the real CLI from a test; then the job's own.
     const runner = this.opts.runner ?? spec.runner ?? this.opts.runners?.[provider] ?? defaultRunner(provider) ?? this.opts.generic;
     if (!runner) return done({ ok: false, reason: "failed", error: `${provider} can't run one-shot jobs here; pick another provider in Settings → Agents.`, costUsd: null, durationMs: 0 });

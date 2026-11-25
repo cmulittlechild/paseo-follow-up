@@ -84,9 +84,9 @@ export function useHomeModel(sources: HomeSources): HomeModel {
   const now = useMinute();
   // The machine-wide auto-send hold: a string, so a usage poll that changes nothing else doesn't rebuild the model.
   const hold = useSyncExternalStore(extras.subscribe, () => autoSendHold(extras.usage().resources, Date.now()), () => null);
-  // Decision Q8: the raised Linear issues count in Needs you, the worker's one number (home feed), so Home's header,
-  // strip and brief line and the sidebar badge (client/live.tsx) agree (invariant raised-is-needs-you).
-  const raised = useSyncExternalStore(extras.subscribe, () => extras.queue().raised.length, () => 0);
+  // "Nobody's on it" rows (raised issues and urgent Compass asks) count in Needs you, the worker's one number (home
+  // feed), so Home's header, strip and brief line and the sidebar badge (client/live.tsx) agree (nobody-s-on-it-is-needs-you).
+  const raised = useSyncExternalStore(extras.subscribe, () => extras.queue().needs.length, () => 0);
   const compass = useSyncExternalStore(extras.subscribe, extras.compass, extras.compass);
   return useMemo(() => buildHome({ rows: inbox.rows(), tracked: live.all(), paseo: paseo.all(), now: Date.now(), sort, priorities, hidden: overseer ? [overseer] : [], hold, compass, raised }), [a, b, c, now, sort, priorities, inbox, live, paseo, overseer, hold, raised, compass]);
 }

@@ -233,6 +233,7 @@ const FIXED_CAPS: Record<string, string> = {
   "shared/linear-queue.ts:workdays:7": "days of the week",
   "shared/morning-brief.ts:workdays:7": "days of the week",
   "shared/morning-brief.ts:states:4": "Linear's four queue state types",
+  "shared/morning-brief.ts:unmoved:PLAN_CHANNELS_MAX + 1": "the old plan settings' person and channels, once, at the move",
   "shared/linear-queue.ts:sweeps:2": "the last two complete sweeps; the issues in one are a record, bounded by QUEUE.pagesMax pages",
   "shared/ask.ts:calls:10": "Ask planner's reply (model output); validation keeps ASK.calls",
   "shared/ask.ts:items:20": "Ask summary's reply (model output); validation keeps ASK.items",
@@ -254,8 +255,10 @@ const FIXED_CAPS: Record<string, string> = {
   "shared/compass.ts:glossary:COMPASS.glossary": "the developer's glossary entries (config, 40)",
   "shared/compass.ts:keys:10": "one Compass note's issue keys",
   "shared/compass.ts:refused:50": "the last read's refused rule codes",
+  "shared/compass.ts:removed:COMPASS.removed": "suggestions the developer removed, trimmed to the newest 200 on every write",
   "shared/compass.ts:notes:40": "one extraction reply's notes (model output; validation keeps notesPerRead)",
   "shared/compass.ts:retracts:20": "one extraction reply's retractions (model output)",
+  "shared/compass.ts:seen:COMPASS.docBlocks": "one doc place's read block hashes: a doc is at most 64 KB, and the cursor keeps the newest 400",
   "shared/scale.ts::max": "the truncated() helper itself: its callers pass a SCALE bound",
 };
 const NAMED = /^(SCALE\.\w+|BROWSER_BATCH|[A-Z][A-Z0-9_]*_MAX|MAX_[A-Z0-9_]+)$/;

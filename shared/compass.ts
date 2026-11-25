@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { WEEKDAYS, zoned, type Clock, type Weekday } from "./linear-queue";
 import { issueKey, keysIn } from "./issue-workspace";
-import { CLI_JOB_PROVIDERS } from "./agent-settings";
+import { guardedProvider } from "./agent-settings";
 
 /**
  * Compass (docs/compass.md): Follow-up takes the developer's priorities from where the developer takes them. A
@@ -30,6 +30,16 @@ export const COMPASS = {
   quoteChars: 280, whatChars: 80, labelChars: 60,
   /** A new place is read over the last week, so it is useful at once. */
   firstReadDays: 7,
+  /** A doc place: at most this much text is read (Markdown or text; a local file larger than it is refused). */
+  docBytes: 64 * 1024,
+  /** A doc's blocks Compass remembers as read (by hash), so only new or changed blocks reach the model. */
+  docBlocks: 400,
+  /** Rule notes one tracker place keeps live (most urgent first), and one calendar place (soonest first). */
+  trackerNotes: 15, calendarNotes: 10,
+  /** A calendar place reads this many days ahead (about 10 workdays). */
+  calendarDays: 14,
+  /** A tracker place on GitHub is read at most this often (its own REST read; Linear's comes from the sweep's snapshot). */
+  trackerEveryMs: 3_600_000,
   /** A date the model gives must lie within this many days of the message. */
   untilMaxDays: 60,
   /** A quote is kept this long after its note ends; ended notes are dropped after it. */
@@ -38,7 +48,18 @@ export const COMPASS = {
   notesPerRead: 10,
   /** `read_compass` waits this long, then answers `running`. */
   waitMs: 30_000,
+  /** The daytime read runs on workdays between these hours in the developer's zone, only while an app client is open. */
+  dayStartHour: 8, dayEndHour: 20,
+  /** On a host without subscriptions (Paseo 0.15), an app client counts as open this long after its last poll. */
+  openWindowMs: 120_000,
+  /** The Overseer's digest lists at most this many live notes. */
+  digestNotes: 12,
+  /** Removed suggestions kept in compass.json; the oldest go first. */
+  removed: 200,
 } as const;
+
+/** The daytime read's period for a cadence; null: off. */
+export const cadenceMs = (c: typeof CADENCES[number]): number | null => c === "off" ? null : Number(c.slice(0, -1)) * 3_600_000;
 
 // ---------- roles ----------
 
@@ -52,7 +73,7 @@ export type Role = typeof ROLES[number];
  * its text reaches AI priority as context, as the chat, calendar and mail windows do.
  */
 export const ROLE_INFO: Record<Role, { label: string; notes: string; needsYou: boolean; extracts: boolean }> = {
-  priorities: { label: "Sets my priorities", needsYou: true, extracts: true,
+  priorities: { label: "Sets your priorities", needsYou: true, extracts: true,
     notes: "A direct ask, a deadline or 'really important' is high; a stated preference is normal; 'when you get a chance' is low. A message with no priority in it is nothing." },
   plan: { label: "Posts the plan", needsYou: false, extracts: true,
     notes: "A plan lists items for a week or a cycle. Keep each item's title, level and issue keys; nothing else." },
@@ -60,7 +81,7 @@ export const ROLE_INFO: Record<Role, { label: string; notes: string; needsYou: b
     notes: "A meeting or date that work must be ready for. Ignore internal recurring meetings." },
   customer: { label: "A customer's voice", needsYou: false, extracts: true,
     notes: "A customer's request, complaint or date. Strength follows their urgency, never their tone." },
-  self: { label: "My own notes", needsYou: true, extracts: true,
+  self: { label: "Your own notes", needsYou: true, extracts: true,
     notes: "The developer's own to-dos and reminders. 'Today', 'next', 'before X' set the date." },
   background: { label: "Background", needsYou: false, extracts: false, notes: "" },
 };
@@ -72,13 +93,19 @@ export const noteRole = (roles: readonly Role[]): Role | null => NOTE_ROLE_ORDER
 
 export const PLACE_KINDS = ["conversation", "doc", "tracker", "calendar"] as const;
 export type PlaceKind = typeof PLACE_KINDS[number];
-/** The readers this release has. A place of another kind is refused with one line of why, never saved to sit unread. */
-export const BUILT_READERS: readonly PlaceKind[] = ["conversation"];
-export const READER_LATER: Record<PlaceKind, string> = {
-  conversation: "",
-  doc: "Compass reads conversations for now; docs come in a later release.",
-  tracker: "Compass reads conversations for now; tracker projects come in a later release.",
-  calendar: "Compass reads conversations for now; calendars come in a later release.",
+/**
+ * The readers this host has, each found by tool shape (a-workflow-lives-in-config): a conversation through the chat
+ * recipe, a doc through the doc recipe or a local file (always), a tracker through the Linear queue's snapshot or
+ * Follow-up's own GitHub reads, a calendar through the calendar recipe.
+ */
+export type Readers = { conversation: boolean; doc: boolean; tracker: boolean; calendar: boolean };
+export const ALL_READERS: Readers = { conversation: true, doc: true, tracker: true, calendar: true };
+/** Why a place kind can't be read here: one line, never a dead control (a missing reader hides its presets). */
+export const READER_MISSING: Record<PlaceKind, string> = {
+  conversation: "No connected chat tool can read a conversation's history or search its messages.",
+  doc: "No connected docs tool can read a page. A Markdown or text file on this machine still works.",
+  tracker: "No tracker is connected: connect Linear in mcpproxy, or sign in to the GitHub CLI.",
+  calendar: "No connected calendar tool can list events.",
 };
 
 /** A chat id: the conversation tool's own ids (letters and digits), never a name the code knows. */
@@ -89,8 +116,13 @@ export type Person = z.infer<typeof personSchema>;
 
 export const placeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("conversation"), sub: z.enum(["dm", "group", "channel", "thread"]), id: chatId, name }),
-  z.object({ kind: z.literal("doc"), id: z.string().trim().min(1).max(300), name, link: z.string().max(500).optional() }),
-  z.object({ kind: z.literal("tracker"), scope: z.enum(["project", "label", "milestone", "view"]), id: z.string().trim().min(1).max(120), name }),
+  /**
+   * A doc: a page a docs tool serves (`id` is the tool's own), or a Markdown or text file on this machine (`path`,
+   * absolute; `id` is `file-` and a hash of it, so no path is ever a key, a log line or an error).
+   */
+  z.object({ kind: z.literal("doc"), id: z.string().trim().min(1).max(300), name, link: z.string().max(500).optional(), path: z.string().max(1_000).optional() }),
+  /** A tracker scope (`trackerRef`): `linear:project:<name>`, `linear:milestone:<name>`, `github:<owner/repo>:label:<name>`, `github:<owner/repo>:milestone:<number>`. */
+  z.object({ kind: z.literal("tracker"), scope: z.enum(["project", "label", "milestone", "view"]), id: z.string().trim().min(1).max(300), name }),
   z.object({ kind: z.literal("calendar"), id: z.string().trim().min(1).max(200), name, filter: z.enum(["all", "with-guests", "titled"]).optional() }),
 ]);
 export type Place = z.infer<typeof placeSchema>;
@@ -144,7 +176,7 @@ export const compassSettingsSchema = z.object({
     graceDays: z.number().int().min(0).max(7).default(1),
     decayWorkdays: z.number().int().min(1).max(15).default(3),
   }).default({ undatedDays: 7, graceDays: 1, decayWorkdays: 3 }),
-  /** The daytime read while the app is open (a later release); the morning read always runs. */
+  /** The daytime read: every this long while an app client is open, on workdays 08:00-20:00. The morning read always runs. */
   cadence: z.enum(CADENCES).default("2h"),
 });
 export type CompassSettings = z.infer<typeof compassSettingsSchema>;
@@ -167,18 +199,23 @@ export const PRESETS: readonly Preset[] = [
   { id: "tracker", label: "A tracker project", reader: "tracker", who: "anyone", roles: ["priorities", "plan"], needsYou: true, hint: "A project, label or milestone." },
   { id: "calendar", label: "My calendar", reader: "calendar", who: "me", roles: ["deadlines"], needsYou: true, hint: "Meetings with guests set dates." },
 ];
-/** Who kinds this release reads. Everyone in a place (anyone) comes with its caps in a later release. */
-export const BUILT_WHO: readonly Who["kind"][] = ["person", "people", "me"];
-export const WHO_LATER = "Reading everyone in a place comes in a later release; pick the people whose words count.";
-
 export type PresetView = Preset & { offered: boolean; why: string | null };
-/** Every preset, offered or with its one line of why: its reader isn't in this release, or no tool has its shape. */
-export function presetsView(readers: { conversation: boolean }): PresetView[] {
+/** Every preset, offered or with its one line of why: no connected tool has its reader's shape. */
+export function presetsView(readers: Readers): PresetView[] {
   return PRESETS.map(p => {
-    const why = !BUILT_READERS.includes(p.reader) ? READER_LATER[p.reader] : !BUILT_WHO.includes(p.who) ? WHO_LATER
-      : p.reader === "conversation" && !readers.conversation ? "No connected chat tool can read a conversation's history or search its messages." : null;
+    // A doc preset is always offered: a Markdown or text file on this machine needs no tool.
+    const why = p.reader === "doc" || readers[p.reader] ? null : READER_MISSING[p.reader];
     return { ...p, offered: !why, why };
   });
+}
+
+/** A tracker place's id, read back: which tracker, which repository (GitHub), the scope and its value. Null: not one. */
+export function trackerRef(id: string): { tracker: "linear"; scope: "project" | "milestone"; value: string } | { tracker: "github"; repo: string; scope: "label" | "milestone"; value: string } | null {
+  const l = /^linear:(project|milestone):(.{1,200})$/.exec(id);
+  if (l) return { tracker: "linear", scope: l[1] as "project" | "milestone", value: l[2] };
+  const g = /^github:([\w.-]+\/[\w.-]+):(label|milestone):(.{1,100})$/.exec(id);
+  if (g && (g[2] === "label" || /^\d{1,6}$/.test(g[3]))) return { tracker: "github", repo: g[1], scope: g[2] as "label" | "milestone", value: g[3] };
+  return null;
 }
 
 // ---------- changes (Settings and set_compass send the same shapes) ----------
@@ -200,6 +237,10 @@ export const compassChangeSchema = z.strictObject({
   instructions: z.string().max(8_000).optional(),
   glossary: z.array(glossarySchema).max(COMPASS.glossary).optional(),
   expiry: z.strictObject({ undatedDays: z.number().int().min(1).max(30).optional(), graceDays: z.number().int().min(0).max(7).optional(), decayWorkdays: z.number().int().min(1).max(15).optional() }).optional(),
+  /** Where suggestions go: urgent ones to Needs you and the rest to New ("needs-you-and-new"), New only, or off. */
+  routing: z.strictObject({ urgentStrength: z.enum(["high", "normal"]).optional(), urgentWithinWorkdays: z.number().int().min(0).max(10).optional(), suggestions: z.enum(["needs-you-and-new", "new-only", "off"]).optional() }).optional(),
+  /** The daytime read while the app is open: off, or every 1, 2 or 4 hours. */
+  cadence: z.enum(CADENCES).optional(),
 });
 export type CompassChange = z.infer<typeof compassChangeSchema>;
 
@@ -210,7 +251,7 @@ export type ApplyContext = {
   /** Who is changing it: the developer, or `agent:<id>` after a confirmed plan. */
   by: string;
   /** The readers a connected tool has (shape-matched); a place no reader can read is refused. */
-  readers: { conversation: boolean };
+  readers: Readers;
   /** Whether a workspace id exists (a glossary entry naming one is checked). */
   workspaceExists?: (id: string) => boolean;
 };
@@ -233,13 +274,14 @@ export function applyCompassChange(s: CompassSettings, c: CompassChange, ctx: Ap
     const roles = c.source.roles ? ROLES.filter(r => c.source!.roles!.includes(r)) : was?.roles;
     const who = c.source.who ?? was?.who;
     const places = c.source.places ?? was?.places;
-    if (!who) return { ok: false, error: "Say whose words count (who: a person, people, or me)." };
+    if (!who) return { ok: false, error: "Say whose words count (who: a person, people, anyone in the place, or me)." };
     if (!places?.length) return { ok: false, error: "Pick at least one place to read (compass_find lists them)." };
     if (!roles?.length) return { ok: false, error: "Give it at least one role." };
-    if (!BUILT_WHO.includes(who.kind)) return { ok: false, error: WHO_LATER };
     for (const p of places) {
-      if (!BUILT_READERS.includes(p.kind)) return { ok: false, error: READER_LATER[p.kind] };
-      if (p.kind === "conversation" && !ctx.readers.conversation) return { ok: false, error: "No connected chat tool can read a conversation. Connect one in mcpproxy, then try again." };
+      if (!ctx.readers[p.kind] && !(p.kind === "doc" && p.path)) return { ok: false, error: READER_MISSING[p.kind] };
+      if (p.kind === "tracker" && (!trackerRef(p.id) || trackerRef(p.id)!.scope !== p.scope)) return { ok: false, error: `${p.name} isn't a tracker scope Compass reads. Pick it from compass_find (kind trackers).` };
+      if (p.kind === "tracker" && p.scope === "view") return { ok: false, error: "Compass reads a tracker's projects, milestones and labels, not saved views." };
+      if (p.kind === "doc" && p.path && (!/^\//.test(p.path) || p.id !== fileDocId(p.path))) return { ok: false, error: "Pick the file through compass_find (kind file), so Compass checks it first." };
     }
     const keys = places.map(placeKey);
     if (new Set(keys).size !== keys.length) return { ok: false, error: "A place is listed twice." };
@@ -269,6 +311,8 @@ export function applyCompassChange(s: CompassSettings, c: CompassChange, ctx: Ap
     next.glossary = c.glossary.map(g => ({ words: g.words, means: "issue" in g.means ? { issue: g.means.issue.toUpperCase().replace(/#/, "#") } : g.means }));
   }
   if (c.expiry) next.expiry = { ...next.expiry, ...Object.fromEntries(Object.entries(c.expiry).filter(([, v]) => v !== undefined)) };
+  if (c.routing) next.routing = { ...next.routing, ...Object.fromEntries(Object.entries(c.routing).filter(([, v]) => v !== undefined)) };
+  if (c.cadence) next.cadence = c.cadence;
   const parsed = compassSettingsSchema.safeParse(next);
   if (!parsed.success) return { ok: false, error: `That change doesn't fit Compass: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message ?? ""}`.trim() };
   return { ok: true, settings: parsed.data, touched };
@@ -290,7 +334,7 @@ export function defaultLabel(who: Who, places: readonly Place[]): string {
  * under the job guard's empty grant, Codex in its read-only sandbox (a-job-that-reads-outside-content-can-only-read).
  * Any other provider runs as a Paseo agent with its own tools, so Compass doesn't read there, and says why.
  */
-export const guardedProvider = (provider: string) => (CLI_JOB_PROVIDERS as readonly string[]).includes(provider);
+export { guardedProvider };
 export const unguardedWhy = (providerLabel: string) =>
   `Compass doesn't read on ${providerLabel}: Follow-up can't take its tools away. Pick Claude or Codex for Summaries in Settings → Agents.`;
 
@@ -322,6 +366,8 @@ export const noteSchema = z.object({
   supersededBy: z.string().nullable().default(null),
   match: z.object({ workspace: z.string().optional(), issue: z.string().optional(), account: z.string().optional(), score: z.number(), how: z.enum(["glossary", "key", "title", "hand", "none"]) }),
   restatedAt: z.string(),
+  /** A rule note's item in its place (a tracker issue's key, a calendar event): a later read restates or ends it by this. */
+  ref: z.string().max(300).optional(),
 });
 export type CompassNote = z.infer<typeof noteSchema>;
 
@@ -329,7 +375,14 @@ export const CURSOR_STATUS = ["ok", "failed", "slow-path", "paused"] as const;
 export const compassFileSchema = z.object({
   version: z.literal(1),
   /** Per place (`placeKey`): the newest item read, when, and how the read went. */
-  cursors: z.record(z.string(), z.object({ at: z.string().nullable(), readAt: z.string(), status: z.enum(CURSOR_STATUS), error: z.string().max(300).nullable().default(null) })).default({}),
+  cursors: z.record(z.string(), z.object({
+    at: z.string().nullable(), readAt: z.string(), status: z.enum(CURSOR_STATUS), error: z.string().max(300).nullable().default(null),
+    /** A doc: the hash of the text last read (an unchanged doc makes no model call) and of each block already read. */
+    hash: z.string().max(40).nullable().default(null),
+    seen: z.array(z.string().max(16)).max(COMPASS.docBlocks).default([]),
+    /** A local file: its modified time and size when last read (an unchanged file isn't opened). */
+    stat: z.string().max(60).nullable().default(null),
+  })).default({}),
   notes: z.array(noteSchema).default([]),
   /** Model calls today, against `COMPASS.extractionsPerDay`. */
   day: z.object({ date: z.string(), extractions: z.number().int() }).nullable().default(null),
@@ -338,6 +391,10 @@ export const compassFileSchema = z.object({
   lastRead: z.object({ at: z.string(), trigger: z.string(), ok: z.boolean(), notes: z.number().int(), error: z.string().max(300).nullable() }).nullable().default(null),
   /** Rule codes of refused notes from the last reads (never their text). */
   refused: z.array(z.object({ at: z.string(), code: z.string() })).max(50).default([]),
+  /** Suggestions the developer removed (Needs you's Remove, New's, `dismiss_item {compass}`), by note id. */
+  removed: z.array(z.object({ note: z.string(), at: z.string() })).max(COMPASS.removed).default([]),
+  /** The last daytime read (the app open, every `cadence`): when it ran, in the brief's zone. */
+  dayReadAt: z.string().nullable().default(null),
 });
 export type CompassFile = z.infer<typeof compassFileSchema>;
 export const emptyCompassFile = (): CompassFile => compassFileSchema.parse({ version: 1 });
@@ -773,4 +830,98 @@ export function tellText(n: CompassNote, source: { label: string } | null, place
     n.until ? `Until ${n.until}.` : null,
   ];
   return lines.filter(Boolean).join("\n");
+}
+
+// ---------- docs: a page or a local file, read in blocks ----------
+
+/** A short, stable hash (FNV-1a, 32 bits, hex): a doc's text, a block, a local file's path. Not for security. */
+export function shortHash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+/** A local file's place id: never its path (the path stays in the place's `path`, on the host only). */
+export const fileDocId = (path: string) => `file-${shortHash(path)}`;
+/** The file kinds a doc place may be: Markdown or plain text. */
+export const DOC_FILE = /\.(md|markdown|txt|text)$/i;
+
+/**
+ * A doc's text as blocks: paragraphs and list runs split at blank lines, each carrying the heading above it, so "!
+ * renewal deck by Thu" under "This week" reads as both. Only blocks whose hash isn't in `seen` are new.
+ */
+export function docBlocks(text: string): { hash: string; text: string }[] {
+  const out: { hash: string; text: string }[] = [];
+  let heading = "";
+  for (const raw of text.replace(/\r\n?/g, "\n").slice(0, COMPASS.docBytes).split(/\n\s*\n/)) {
+    const block = raw.trim();
+    if (!block) continue;
+    const lines = block.split("\n");
+    if (/^#{1,6}\s/.test(lines[0])) { heading = lines[0].replace(/^#+\s*/, "").trim(); lines.shift(); }
+    const body = lines.join("\n").trim();
+    if (!body) continue;
+    const t = (heading ? `${heading}\n${body}` : body).slice(0, 2_000);
+    out.push({ hash: shortHash(t), text: t });
+  }
+  return out;
+}
+
+// ---------- rule notes: trackers and calendars, no model ----------
+
+/**
+ * One item a structured place gives (a tracker issue in scope, a calendar event): its own fields, so the note it makes
+ * quotes them (a-compass-note-quotes-its-source) and no model reads it.
+ */
+export type RuleItem = { ref: string; key: string | null; title: string; quote: string; until: string | null; strength: Strength; link: string | null; at: string; kind: CompassNote["kind"] };
+
+/** Linear's priority as a note's strength: Urgent and High are high, Medium normal, Low and none low. */
+export const priorityStrength = (priority: number | null): Strength | null => priority === null ? null : priority === 1 || priority === 2 ? "high" : priority === 3 ? "normal" : "low";
+
+/** A date for a rule note: an item's due date (YYYY-MM-DD) up to `untilMaxDays` ahead, else none. */
+export function ruleUntil(due: string | null | undefined, now: number): string | null {
+  const d = /^(\d{4}-\d{2}-\d{2})/.exec(due ?? "")?.[1];
+  if (!d) return null;
+  const t = Date.parse(`${d}T12:00:00Z`);
+  return Number.isNaN(t) || t - now > COMPASS.untilMaxDays * 86_400_000 ? null : d;
+}
+
+/**
+ * A structured place's notes after a read (no model): an item still in scope restates its live note (its fields may
+ * have moved), a new one makes a note, and a live note whose item left the scope ends (a tracker item losing its label
+ * or closing ends its note by rule). `keepUnplaced` false drops a new item that matches nothing (a calendar's meetings
+ * lend their dates to work; one about nothing Follow-up knows isn't kept). At most `cap` live notes, in `items`' order.
+ */
+export function syncRuleNotes(notes: readonly CompassNote[], input: {
+  source: CompassSource; place: string; role: Role; items: readonly RuleItem[]; now: number; index: PlaceIndex; newId: () => string; keepUnplaced: boolean; cap: number;
+}): { notes: CompassNote[]; made: number; ended: number } {
+  const at = new Date(input.now).toISOString();
+  const mine = (n: CompassNote) => n.state === "live" && n.source === input.source.id && n.place === input.place && !!n.ref;
+  const live = new Map(notes.filter(mine).map(n => [n.ref!, n]));
+  const keep = new Map<string, CompassNote>();
+  let made = 0;
+  for (const it of input.items) {
+    if (keep.size >= input.cap) break;
+    if (keep.has(it.ref)) continue;
+    const fields = { what: it.title.replace(/\s+/g, " ").trim().slice(0, COMPASS.whatChars), quote: it.quote.slice(0, COMPASS.quoteChars), keys: it.key ? [it.key] : [], kind: it.kind, strength: it.strength, until: it.until, untilWords: null, link: it.link };
+    const was = live.get(it.ref);
+    if (was) {
+      // Still in scope is said again: an undated note lives while its item stays (its undatedDays count from here).
+      keep.set(it.ref, { ...was, ...fields, restatedAt: at, match: placeNote({ ...fields, match: was.match }, input.index) });
+      continue;
+    }
+    const draft = { ...fields, match: { score: 0, how: "none" as const } };
+    const match = placeNote(draft, input.index);
+    if (!input.keepUnplaced && match.how === "none") continue;
+    keep.set(it.ref, { id: input.newId(), source: input.source.id, place: input.place, role: input.role, by: { id: "rule", name: input.source.label }, at: it.at, ...fields,
+      state: "live", endedAt: null, supersededBy: null, match, restatedAt: at, ref: it.ref });
+    made++;
+  }
+  let ended = 0;
+  const out = notes.map(n => {
+    if (!mine(n)) return n;
+    const k = keep.get(n.ref!);
+    if (k && k.id === n.id) { keep.delete(n.ref!); return k; }
+    ended++;
+    return { ...n, state: "retracted" as const, endedAt: at };
+  });
+  return { notes: [...out, ...keep.values()], made, ended };
 }

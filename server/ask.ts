@@ -40,7 +40,7 @@ export async function askSource(d: AskDeps, server: string, opts: { since: numbe
     const since = new Date(opts.since).toISOString();
     let plan = opts.plan && opts.plan.hash === hash && opts.now - Date.parse(opts.plan.at) < ASK.planMs ? opts.plan : null;
     if (!plan) {
-      const r = await d.jobs.run({ name: "ask-plan", prompt: askPlanPrompt(server, tools, since, at, opts.timeZone), system: ASK_PLAN_SYSTEM, schema: askPlanReplySchema, ...job, maxPromptChars: 24_000, maxOutputChars: 4_000, timeoutMs: 90_000 });
+      const r = await d.jobs.run({ name: "ask-plan", outside: true, prompt: askPlanPrompt(server, tools, since, at, opts.timeZone), system: ASK_PLAN_SYSTEM, schema: askPlanReplySchema, ...job, maxPromptChars: 24_000, maxOutputChars: 4_000, timeoutMs: 90_000 });
       if (!r.ok) return fail(`The model couldn't plan the reads (${r.reason}).`);
       const v = validatePlan(tools, r.value);
       if (!v.calls.length && v.refused.length) return fail(`The model's reads were refused: ${v.refused[0]}.`);
@@ -55,7 +55,7 @@ export async function askSource(d: AskDeps, server: string, opts: { since: numbe
     }));
     const ok = results.filter(r => !r.error);
     if (!ok.length) return fail(`mcpproxy couldn't run its reads: ${results[0].error}`, plan, calls);
-    const r = await d.jobs.run({ name: "ask-items", prompt: askItemsPrompt(server, ok, since, at), system: ASK_ITEMS_SYSTEM, schema: askItemsReplySchema, ...job, maxPromptChars: 24_000, maxOutputChars: 6_000, timeoutMs: 90_000 });
+    const r = await d.jobs.run({ name: "ask-items", outside: true, prompt: askItemsPrompt(server, ok, since, at), system: ASK_ITEMS_SYSTEM, schema: askItemsReplySchema, ...job, maxPromptChars: 24_000, maxOutputChars: 6_000, timeoutMs: 90_000 });
     if (!r.ok) return fail(`The model couldn't read the replies (${r.reason}).`, plan, calls);
     return { at, items: validateItems(r.value, ok.map(x => x.reply)), calls, error: null, plan };
   } catch (e) { return fail(oneLine(e)); }

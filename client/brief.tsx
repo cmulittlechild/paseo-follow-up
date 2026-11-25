@@ -23,6 +23,7 @@ import { useDetailGate, useWorkspace } from "./workspace-data";
 import { SubmitScope, focusRing, submitHint, text, useNow } from "./kit";
 import { PrLinksProvider, RichText } from "./rich-text";
 import { useMergeButtons } from "./merge-button";
+import { useReviewerButtons } from "./reviewers-button";
 import { prLinksByNumber } from "../shared/presentation";
 import { cardStore } from "./card-store";
 import { PrSheet } from "./pr-sheet";
@@ -381,6 +382,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const live = useQuery({ queryKey: liveBriefKey(agentId), queryFn: () => readBrief({ agentId }), enabled: row.state === "open" && !!agentId, refetchInterval: LIVE_BRIEF_POLL_MS, staleTime: 5_000 });
   const workspace = row.workspaceId ? deps.workspace(row.workspaceId) : undefined;
   const merges = useMergeButtons(workspace);
+  const asks = useReviewerButtons(workspace);
   const checked = shownBrief(row, live.data, workspace?.questions ?? []);
   // The check itself failed (or there's no agent to ask): don't leave a dead card. The server still validates every
   // action against the stored brief, and a moot refusal reconciles, so acting on the row is safe.
@@ -473,11 +475,18 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     if (id !== null) deps.noteDone?.(agentId, () => { dismissToast(id); setMarked(null); });
   };
   // A merge move reads what its click merges ("Merge 3 PRs"), then "Merging…".
-  const moveLabel = (m: BriefMove) => (m.kind === "merge" && m.prKey ? merges.view(m.prKey)?.label : null) ?? (busy === m.kind ? `${m.label}…` : m.label);
-  const mergeWhy = b.moves.map(m => m.kind === "merge" && m.prKey ? merges.view(m.prKey)?.why : null).find(Boolean) ?? null;
+  // An add-reviewers move that names whom it asks reads "Add reviewers", "Requesting…", then "Requested"
+  // (a-click-on-add-reviewers-asks), and a move that is done stays done.
+  const oneClick = (m: BriefMove) => !m.prKey ? null : m.kind === "merge" ? merges.view(m.prKey) : m.kind === "add_reviewers" ? asks.view(m.prKey) : null;
+  const moveLabel = (m: BriefMove) => (m.kind === "merge" || m.kind === "add_reviewers" ? oneClick(m)?.label : null) ?? (busy === m.kind ? `${m.label}…` : m.label);
+  const moveDone = (m: BriefMove) => { const one = oneClick(m); return !!one && ("done" in one ? one.done : one.submitted); };
+  const moveIcon = (m: BriefMove) => moveDone(m) ? "Check" : MOVE_ICON[m.kind];
+  const moveOff = (m: BriefMove) => !!busy || !!oneClick(m)?.running || moveDone(m);
+  const mergeWhy = b.moves.map(m => oneClick(m)?.why).find(Boolean) ?? null;
   const press = (m: BriefMove) => {
     // Merge is one click (a-click-on-merge-merges); the sheet's confirm only for a PR whose scope can't be known.
-    const one = m.kind === "merge" && m.prKey ? merges.view(m.prKey) : null;
+    // Add reviewers is one click too when there is someone to ask; the sheet's picker only when nobody is set.
+    const one = oneClick(m);
     if (one) one.run();
     else if ((m.kind === "merge" || m.kind === "add_reviewers") && m.prKey) { if (workspace?.prs.some(p => p.key === m.prKey)) setSheet({ key: m.prKey, intent: m.kind === "merge" ? "merge" : "reviewers" }); else if (b.workspaceId) deps.openPanel(b.workspaceId); }
     else if (m.kind === "open_pr" && m.url) void openExternalUrl(m.url).catch(() => undefined);
@@ -516,7 +525,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 8 }}>
         <RichText numberOfLines={3} tooltip={askText}
           style={{ flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, color: acts ? c.foreground : c.foregroundMuted, fontSize: 14, lineHeight: 20, fontWeight: acts ? "600" : "400" }}>{askText}</RichText>
-        {!embedded && moves.map(m => <Btn key={m.kind} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
+        {!embedded && moves.map(m => <Btn key={m.kind} label={moveLabel(m)} icon={moveIcon(m)} disabled={moveOff(m)} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
       </View>
       {!!error && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13, lineHeight: 18 }}>{error}</Text>}
       {!!mergeWhy && <Text accessibilityRole="alert" style={{ color: c.statusWarning, fontSize: 13, lineHeight: 18 }}>{mergeWhy}</Text>}
@@ -585,7 +594,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       {multi && <SendBar b={b} picks={sendable} noted={notedCount(sendable, openNotes)} busy={busy} error={error} onSend={sendAll} c={c} compact={compact} />}
 
       {!embedded && moves.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, columnGap: 14 }}>
-        {moves.map((m, i) => <Btn key={m.kind} shortcut={m === doneMove} label={moveLabel(m)} icon={MOVE_ICON[m.kind]} primary={i === 0 && !multi} disabled={!!busy || m.kind === "merge" && !!m.prKey && !!merges.view(m.prKey)?.running} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
+        {moves.map((m, i) => <Btn key={m.kind} shortcut={m === doneMove} label={moveLabel(m)} icon={moveIcon(m)} primary={i === 0 && !multi} disabled={moveOff(m)} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
         {/* one-done-button: the quiet choices sit beside Done, never above the context, away from it. */}
         {doneQ && !notesOpen[doneQ.id] && !isOther(picks[doneQ.id]) && <NoteLink icon="MessageSquarePlus" label="Add note" a11y="Add a note, sent with Done" disabled={!!busy} onPress={() => noteOpenStore.set(b.id, doneQ.id, "1")} c={c} compact={compact} />}
         {doneQ && !isOther(picks[doneQ.id]) && <NoteLink icon="Reply" label="Reply instead" a11y="Write a reply instead of Done" disabled={!!busy} onPress={() => pickStore.set(b.id, doneQ.id, OTHER)} c={c} compact={compact} />}

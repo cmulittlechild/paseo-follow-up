@@ -75,6 +75,11 @@ export type OverseerDeps = {
   agent?: () => Promise<OverseerAgentSetting>;
   /** Harness override ("provider/model", from FOLLOW_UP_OVERSEER_PROVIDER): wins over the setting. */
   provider?: string;
+  /**
+   * Compass's digest block (compass-without-the-overseer): this week's plan and the live notes, built from Compass's own notes
+   * only when the digest is. The Overseer never reads a Compass source.
+   */
+  compass?: () => Promise<string[]>;
   /** Re-rank Home's Priority sort now (the ranker); Tom asked the Overseer for it. */
   rerank?: () => Promise<unknown>;
   now?: () => number;
@@ -262,7 +267,7 @@ export class Overseer {
       this.written = prior?.hash ?? ""; this.writtenAt = prior?.at ?? null;
     }
     const now = this.now();
-    const file = digestFile(s.agentId, await this.workstreams(), now);
+    const file = digestFile(s.agentId, await this.workstreams(), now, await this.d.compass?.().catch(() => []) ?? []);
     this.builtAt = now; this.digestBuilds++;
     const same = file.hash === this.written;
     if (same && !options.turn) return "same";

@@ -103,6 +103,10 @@ export function overseerDigest(file, seen, now = Date.now(), { needsMax = 20, ch
     if (gone.length) lines.push(`- ${gone.length} workspace${gone.length === 1 ? "" : "s"} archived or removed: ${gone.slice(0, 5).join(", ")}`);
   }
   if (resting.length) lines.push(`Resting (${resting.length}; agents likely unloaded, sending wakes them): ${resting.slice(0, restingMax).map(r => r.line).join("; ")}${resting.length > restingMax ? `; …${resting.length - restingMax} more: workstreams()` : ""}`);
+  // Compass (compass-without-the-overseer): what the developer's priority sources said, as notes. compass lists them all
+  // with links; compass_note pins, edits, unpins or tells (dry run, then confirm).
+  const compass = Array.isArray(file?.compass) ? file.compass.filter(l => typeof l === "string") : [];
+  if (compass.length) { lines.push("Compass (the developer's priority sources, as notes: who · until · what · where · note id; compass for all, compass_note to act):"); for (const l of compass) lines.push(`- ${l}`); }
   let text = "";
   for (const l of lines) { if (text.length + l.length + 1 > chars) { text += "- …truncated: use workstreams()\n"; break; } text += l + "\n"; }
   return { text: text.trimEnd(), seen: { at: now, rows: Object.fromEntries(all.map(r => [r.id, r.hash])) } };

@@ -10,9 +10,9 @@ import { UPDATE_MODES } from "../shared/updates";
 import { briefChoiceSchema, reportKindSchema } from "../shared/contracts";
 import { actionChangeSchema, settingsChangeSchema } from "../shared/dispatch";
 import { linearQueueInputSchema } from "../shared/contracts";
-import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
+import { briefPlanInputSchema, compassSetSchema, planChangeSchema, queueChangeSchema } from "../shared/morning-brief";
 import { sourcesChangeSchema } from "../shared/brief-sources";
-import { compassChangeSchema, noteActionBase } from "../shared/compass";
+import { noteActionBase } from "../shared/compass";
 
 /**
  * Agent parity, part 2 (1.4.0-beta.21): tools that are a developer RPC one-to-one. A read runs the RPC's handler; a
@@ -114,8 +114,8 @@ export const RPC_TOOLS: readonly RpcTool[] = [
     toRpc: a => ({ workspaceId: a.workspaceId, questionId: a.questionId, choice: a.choice, words: a.words, action: "send", ...(a.images ? { images: a.images } : {}) }) },
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: the small x on every Needs-you item and brief.
   { name: "dismiss_item", rpc: "follow.dismiss", kind: "planned",
-    input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), issue: z.string().max(30).optional(), undo: z.boolean().optional(), ...confirm }),
-    toRpc: a => ({ ...(a.agentId ? { agentId: a.agentId } : a.issue ? { issue: a.issue } : { workspaceId: a.workspaceId, key: a.key }), ...(a.undo ? { undo: true } : {}) }),
+    input: z.strictObject({ workspaceId: id.optional(), key: z.string().min(1).max(400).optional(), agentId: id.optional(), issue: z.string().max(30).optional(), compass: z.string().min(1).max(80).optional(), undo: z.boolean().optional(), ...confirm }),
+    toRpc: a => ({ ...(a.agentId ? { agentId: a.agentId } : a.issue ? { issue: a.issue } : a.compass ? { compass: a.compass } : { workspaceId: a.workspaceId, key: a.key }), ...(a.undo ? { undo: true } : {}) }),
     guard: (a, caller) => a.agentId === caller ? "dismiss_item dismisses another agent's brief for the developer; your own brief is the developer's to dismiss." : null },
   { name: "dismiss_question", rpc: "follow.dismiss-question", kind: "planned",
     input: z.strictObject({ workspaceId: id.optional(), questionId: z.string().regex(/^Q\d+$/).optional(), undo: z.boolean().optional(), ...confirm }),
@@ -186,7 +186,7 @@ export const RPC_TOOLS: readonly RpcTool[] = [
   // learns a place id; set_compass and read_compass are planned (the dry run shows Compass as it is now).
   { name: "compass", rpc: "follow.compass", kind: "read", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }) },
   { name: "compass_find", rpc: "follow.compass-find", kind: "read", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }) },
-  { name: "set_compass", rpc: "follow.set-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: compassChangeSchema.extend(confirm) },
+  { name: "set_compass", rpc: "follow.set-compass", kind: "planned", before: { rpc: "follow.compass", input: () => ({}) }, input: compassSetSchema.extend(confirm) },
   // A note by hand: pin, edit, unpin, or Tell the agent (compass-reaches-an-agent-only-by-a-click: a tell is planned, so
   // an agent's tell needs the developer's confirm, like the click). why_suggested reads the notes behind a ranking.
   { name: "compass_note", rpc: "follow.compass-note", kind: "planned", before: { rpc: "follow.compass", input: (a: { workspace?: string }) => (a.workspace ? { workspace: a.workspace } : {}) }, input: noteActionBase.extend(confirm) },
@@ -238,7 +238,6 @@ export const PARITY: Record<string, { tools: readonly string[]; note?: string } 
   "follow.brief-settings": { tools: ["brief_settings"] },
   "follow.set-brief-settings": { tools: ["set_brief_settings"] },
   "follow.set-brief-plan": { tools: ["set_brief_plan"] },
-  "follow.brief-chat-search": { tools: ["brief_chat_search"] },
   "follow.brief-sources": { tools: ["brief_sources"] },
   "follow.set-brief-sources": { tools: ["set_brief_sources"] },
   "follow.compass": { tools: ["compass"] },

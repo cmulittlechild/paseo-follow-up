@@ -44,7 +44,7 @@ const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? 
 // What's new reinstalls the plugin as 2.0.0-rc.0, so it goes last: every other shot shows the version under test.
 const SHOTS = ["setup", "home", "sidebar", "panel", "questions", "pill", "pr-sheet", "phone", "linked-items", "notes-home", "notes-panel", "tasks", "tasks-sheet", "tasks-phone", "whats-new"];
 /** Opt-in review sets, never part of the README run: they seed extra workspaces of their own. */
-const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "batch-churn", "gallery", "frames"];
+const REVIEW_SHOTS = ["tasks-view", "settings-tabs", "dictation", "local-titles", "shortcut", "split", "rowchips", "needs-you-states", "own-answer", "dock-in-view", "done-brief", "pick-notes", "review-mode", "deploy-check", "feeds", "put-in-chat", "sending", "pr-link", "merge-click", "reviewers-click", "catch-up", "icon", "home-keys", "more-context", "dismiss", "layout-search", "pr-scale", "pr-stats-settings", "morning-brief", "older-briefs", "new", "pr-stats", "pr-stats-off", "archive", "paste-images", "attach-images", "compass", "compass-suggest", "compass-readers", "batch-churn", "gallery", "frames"];
 /** Pasted images and their Add image button share one harness setup (an Overseer and the fixture provider taking images). */
 const PASTE_LIKE = only => only.includes("paste-images") || only.includes("attach-images");
 const only = arg("--only") ? arg("--only").split(",").map(s => s.trim()).filter(Boolean) : SHOTS;
@@ -126,6 +126,8 @@ function pulls() {
     250: { title: "Add the export filter model", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     251: { title: "Filter exports by date range", state: "OPEN", author: "dana", base: "branch-250", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     252: { title: "Show export filters in the admin page", state: "OPEN", author: "dana", base: "branch-251", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
+    // reviewers-click only: five open PRs per workspace, none with reviewers yet.
+    ...Object.fromEntries(REVIEWERS_CLICK_STATES.flatMap(w => w.prs.map(([n, title]) => [n, { title, state: "OPEN", author: "dana", checks: [ok("test"), ok("lint")] }]))),
     255: { title: "Attach PDF receipts to invoice emails", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     256: { title: "Send a weekly invoice digest", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
     151: { repo: "example/web", title: "Saved search filters", state: "OPEN", author: "dana", approved: true, reviewed: ["ravi"], checks: [ok("test"), ok("lint")] },
@@ -186,6 +188,14 @@ if (process.argv[2] === "pr" && process.argv[3] === "merge") setTimeout(() => {
   if (d[n] && !process.argv.includes("--auto") && !process.argv.includes("--disable-auto")) { d[n].state = "MERGED"; d[n].mergedAt = new Date().toISOString(); require("fs").writeFileSync(${JSON.stringify(file)}, JSON.stringify(d)); }
   process.exit(0);
 }, 6000);
+// gh api POST …/requested_reviewers (reviewers-click): GitHub answers after a beat, so the shots catch "Requesting…",
+// then the PR shows the reviewers. Five run at once, so each re-reads the file and adds only its own PR's reviewers.
+else if (process.argv[2] === "api" && process.argv.includes("POST") && /pulls\\/\\d+\\/requested_reviewers$/.test(process.argv.find(a => a.includes("requested_reviewers")) || "")) setTimeout(() => {
+  const n = Number(/pulls\\/(\\d+)\\//.exec(process.argv.find(a => a.includes("requested_reviewers")))[1]);
+  const now = JSON.parse(require("fs").readFileSync(${JSON.stringify(file)}, "utf8"));
+  if (now[n]) { now[n].reviewers = process.argv.filter(a => a.startsWith("reviewers[]=")).map(a => a.slice(12)); require("fs").writeFileSync(${JSON.stringify(file)}, JSON.stringify(now)); }
+  console.log("{}"); process.exit(0);
+}, 3500);
 else {
 if (process.argv[3] !== "graphql") { console.log("[]"); process.exit(0); }
 const query = process.argv.find(a => a.startsWith("query=")) || "";
@@ -227,7 +237,14 @@ function fakeCompassClaude() {
   return `#!/usr/bin/env node
 if (!process.argv.some(a => a.startsWith("You read messages for one developer"))) { process.stderr.write("not logged in"); process.exit(1); }
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
-  const item = (/\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
+  // A doc place (Compass PR 5): its new blocks come as [d1], [d2]…; the "!" line is the urgent one.
+  const doc = /\\[(d\\d+)\\][^\\n]*\\n?[^\\[]*renewal deck/.exec(input);
+  if (doc) {
+    const value = { notes: [{ item: doc[1], what: "The acme renewal deck", keys: [], kind: "customer", strength: "high", untilWords: null, until: null, quote: "renewal deck for acme" }], retracts: [], nothing: false };
+    process.stdout.write(JSON.stringify({ result: JSON.stringify(value), total_cost_usd: 0.0002, usage: { input_tokens: 400, output_tokens: 40 } }));
+    return;
+  }
+  const item = (/\\[(m\\d+)\\] dana[^\\n]*\\n?[^\\[]*APP-142 retries/.exec(input) || /\\[(m\\d+)\\] dana/.exec(input) || [])[1] || "m2";
   const value = { notes: [
     { item, what: "APP-142 retries before the acme demo", keys: ["APP-142"], kind: "issue", strength: "high", untilWords: "Thursday", until: null, quote: "APP-142 retries are really important, the acme demo is Thursday" },
     { item, what: "Search filters", keys: [], kind: "feature", strength: "low", untilWords: "next week", until: null, quote: "Search filters can wait until next week" },
@@ -241,9 +258,10 @@ function fakeAskClaude() {
   return `#!/usr/bin/env node
 const plan = process.argv.some(a => a.startsWith("You plan read-only lookups"));
 const items = process.argv.some(a => a.startsWith("You turn read-only lookup results"));
-if (!plan && !items) { process.stderr.write("not logged in"); process.exit(1); }
+const compass = process.argv.some(a => a.startsWith("You read messages for one developer"));
+if (!plan && !items && !compass) { process.stderr.write("not logged in"); process.exit(1); }
 let input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => {
-  const value = plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
+  const value = compass ? { notes: [], retracts: [], nothing: true } : plan ? { calls: [{ tool: "search_tickets", args: { query: "waiting on me", limit: "10" } }] }
     : { items: [
       { title: "T-7: review the retry limits for soft declines", why: "Waiting on your review, due tomorrow", url: "https://tracker.example/T-7", due: "2026-03-03" },
       { title: "T-12: bob asked about the refund export", why: "A question waiting on you since yesterday", url: "https://tracker.example/T-12", due: null },
@@ -325,6 +343,8 @@ if (process.argv[2] === "tools" && process.argv[3] === "list") {
     ...(over.mail ? [t("mailbox", "search_emails", ["query", "limit"], "Search the user's email inbox.")] : []),
     // Compass (--only compass): the chat's history read, by conversation id and oldest time.
     ...(over.compass ? [t("team-chat", "read_channel", ["channel_id", "oldest", "limit", "cursor", "response_format"], "Reads a conversation's messages, newest first.")] : []),
+    // Compass's doc places (--only compass-readers): a docs server found by its read and search tools.
+    ...(over.docs ? [t("notes", "notes-fetch", ["id"], "Fetch a page or doc by its id."), t("notes", "notes-search", ["query"], "Search pages and docs in the workspace.")] : []),
   ]));
   process.exit(0);
 }
@@ -365,6 +385,7 @@ if (tool === "read_channel") {
   reply(JSON.stringify({ messages: "Channel: DM (DDANA00001)\\n\\n" + [
     m("alice", "UALICE0001", 1, "on it"),
     m("dana", "UDANA00001", 2, "APP-142 retries are really important, the acme demo is Thursday. Search filters can wait until next week."),
+    m("dana", "UDANA00001", 26, "This week's plan: <https://claude.ai/artifact/0a1b2c3d-week-plan?share=K|roadmap>"),
   ].join("\\n\\n"), pagination_info: "" }));
 }
 // The Ask shots' tracker (fictional): two tickets waiting on the developer.
@@ -374,6 +395,13 @@ if (tool === "search_tickets") reply(JSON.stringify({ tickets: [
 ] }));
 if (/search_users$/.test(tool)) reply(JSON.stringify({ results: "1. **alice** (UALICE0001)\\n2. **alicia** (UALICIA001)" }));
 if (/search_channels$/.test(tool)) reply(JSON.stringify({ results: "- #planning (CPLAN00001)\\n- #plans-archive (CPLAN00002)\\n- #product-planning (CPLAN00003)" }));
+// Compass's calendar place (over.calendar): the next days' meetings, one about tracked work, one that isn't.
+if (/list-events$/.test(tool)) reply(JSON.stringify({ events: over.calendar ? [
+  { summary: "acme demo: APP-142 retries", start: { dateTime: new Date(Date.now() + 2 * 86400_000).toISOString() }, attendees: [{ email: "dana@example.com" }, { email: "alice@example.com", self: true }, { email: "ops@acme.example" }] },
+  { summary: "Team lunch", start: { dateTime: new Date(Date.now() + 86400_000).toISOString() }, attendees: [{ email: "dana@example.com" }, { email: "alice@example.com", self: true }] },
+] : [] }));
+if (tool === "notes-search") reply(JSON.stringify({ results: [{ id: "page-now", title: "Now", url: "https://notes.example/page-now" }, { id: "page-roadmap", title: "Q4 roadmap", url: "https://notes.example/page-roadmap" }] }));
+if (tool === "notes-fetch") reply(JSON.stringify({ markdown: "# This week\\n\\n- ! renewal deck for acme\\n\\n# Later\\n\\nclean up the backlog" }));
 reply("not available in the screenshot fixture", true);
 `;
 }
@@ -579,6 +607,16 @@ const REVIEW_MODE_STATES = [
       msg("Opened example/app#246; checks are running.")] },
 ];
 
+/** reviewers-click only (a-click-on-add-reviewers-asks): four workspaces of five PRs without reviewers, one per theme and size. */
+const REVIEWERS_CLICK_STATES = [
+  ["rc-panel-light", "Invoice exports", 280], ["rc-panel-dark", "Webhook retries", 285], ["rc-phone-light", "Admin search", 290], ["rc-phone-dark", "Usage alerts", 295],
+].map(([key, title, first], i) => {
+  const prs = ["Add the model", "Wire the API route", "Add the admin view", "Write the docs page", "Add the e2e test"].map((t, j) => [first + j, `${title}: ${t.toLowerCase()}`]);
+  return { key, title, minute: 170 + i, prompt: `APP-${210 + i}: ${title.toLowerCase()}, split into five small PRs.`, flag: false, prs,
+    steps: [rpc("follow.enroll", { goal: `APP-${210 + i} ${title}` }), ...prs.map(([n]) => rpc("follow.register-pr", { repo: "example/app", number: n, stack: `${title} ${n}` })),
+      msg(`Opened example/app#${first} through #${first + 4}; each is ready for review.`)] };
+});
+
 /** merge-click only (a-click-on-merge-merges): a three-PR stack, all approved, so its top PR's Merge names all three. */
 const MERGE_CLICK_STATES = [
   { key: "mc-stack", title: "Export filters", minute: 178, prompt: "APP-198: filter invoice exports by date range in the admin page.", flag: false,
@@ -620,7 +658,9 @@ async function seed({ call, home }) {
   }
   // review-mode: someone reviews example/app, so its PR without reviewers asks for them.
   if (only.includes("review-mode") || only.includes("pr-link")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }] });
-  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || PASTE_LIKE(only) ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
+  // reviewers-click: Ravi and Mina review example/app, so each PR's row reads "Add reviewers to #N: Ravi and Mina".
+  if (only.includes("reviewers-click")) await call("follow.save-reviewers", { repo: "example/app", reviewers: [{ login: "ravi", name: "Ravi" }, { login: "mina", name: "Mina" }] });
+  const specs = [...WORKSPACES.filter(w => !(argv.includes("--rename-fixup-review") || only.includes("local-titles")) || ["audit", "billing"].includes(w.key)), ...(only.includes("needs-you-states") || only.includes("tasks-view") || only.includes("own-answer") || only.includes("more-context") || only.includes("dismiss") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") || PASTE_LIKE(only) ? NEEDS_YOU_STATES : []), ...(only.includes("done-brief") ? DONE_BRIEF : []), ...(only.includes("pick-notes") || only.includes("dock-in-view") || only.includes("catch-up") || only.includes("dictation") ? PICK_NOTES : []), ...(only.includes("review-mode") || only.includes("pr-link") ? REVIEW_MODE_STATES : []), ...(only.includes("sending") ? SENDING_STATES : []), ...(only.includes("merge-click") || only.includes("dismiss") ? MERGE_CLICK_STATES : []), ...(only.includes("reviewers-click") ? REVIEWERS_CLICK_STATES : []), ...(only.includes("pr-scale") ? PR_SCALE_STATES : []), ...(only.includes("batch-churn") ? BATCH_CHURN_STATES : [])];
   if (only.includes("layout-search")) {
     specs.splice(0, specs.length, ...specs.filter(w => ["audit", "billing"].includes(w.key)));
     specs.push(
@@ -1084,7 +1124,7 @@ const PHONE = { width: 390, height: 844 };
 /** Paseo 0.16+ draws Follow-up's settings categories as its own tabs, one screen each (client/settings-screens.ts). */
 const nativeSettingsTabs = !/(^|\D)0\.15\.\d+/.test(paseoVersion ?? "");
 const SETTINGS_SCREENS = { general: "projects", following: "following", reviewers: "reviewers", agents: "agents", new: "new", display: "display", brief: "brief" };
-const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Morning brief" };
+const SETTINGS_TITLES = { general: "General", following: "Following", reviewers: "Reviewers", agents: "Agents", new: "New work", display: "Inbox & display", brief: "Compass" };
 /** Settings → Follow-up → a category, on either host: 0.16+ opens its screen; 0.15 picks Follow-up's own tab (phone: its row). */
 async function openSettingsAt(page, category, vp = page.viewportSize()) {
   if (nativeSettingsTabs) {
@@ -1932,6 +1972,7 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("deploy-check")) await deployCheckShots({ shoot, call });
   if (only.includes("pr-link")) await prLinkShots({ shoot, billing });
   if (only.includes("merge-click")) await mergeClickShots({ shoot, billing });
+  if (only.includes("reviewers-click")) await reviewersClickShots({ shoot });
   if (only.includes("catch-up")) await catchUpShots({ shoot, call, out });
   if (only.includes("dictation")) await dictationShots({ shoot });
   if (only.includes("icon")) await iconShots({ shoot, billing });
@@ -1939,6 +1980,8 @@ async function shootAll({ shoot, seeded, plugin, home, cli, call }) {
   if (only.includes("settings-tabs")) await settingsTabsShots({ shoot, out });
   if (only.includes("morning-brief")) await morningBriefShots({ shoot, call, home });
   if (only.includes("compass")) await compassShots({ shoot, call, home, seeded });
+  if (only.includes("compass-suggest")) await compassSuggestShots({ shoot, call, home, seeded });
+  if (only.includes("compass-readers")) await compassReadersShots({ shoot, call, home });
   if (only.includes("shortcut")) await shortcutShots({ shoot, seeded, call, out, billing });
   if (only.includes("new")) await newShots({ shoot, call, out, home, billing });
   if (only.includes("home-keys")) await homeKeysShots({ shoot, out });
@@ -3288,6 +3331,43 @@ async function mergeClickShots({ shoot, billing }) {
 }
 
 /**
+ * reviewers-click (a-click-on-add-reviewers-asks, a-clicked-row-holds-its-place): five "Add reviewers to #N: Ravi and
+ * Mina" rows. Before; the first click mid-request ("Requesting…", "Sending…" on a phone; the fake gh answers in 3.5 s); all five clicked one
+ * after another while the first ones are still out; then every row "Requested", still in its place. The panel on
+ * desktop and Home's detail pane on a phone, light and dark, each on its own workspace (a request is one-shot).
+ */
+async function reviewersClickShots({ shoot }) {
+  const TALL = { width: DESKTOP.width, height: 1100 };
+  const label = n => `Ask Ravi and Mina to review pull request #${n}`;
+  const button = (page, n) => page.getByRole("button", { name: label(n), exact: true }).filter({ visible: true }).first();
+  const order = async page => page.evaluate(() => [...document.querySelectorAll('[aria-label*=" pull request #"][aria-label*="Ravi and Mina"]')].filter(e => e.offsetParent).map(e => Number(/#(\d+)$/.exec(e.getAttribute("aria-label"))[1])));
+  const open = { panel: async (page, w) => { await page.setViewportSize(TALL); await openChat(page, w.title, w.prompt); await page.getByRole("button", { name: "Follow-up", exact: true }).last().click(); },
+    phone: async (page, w) => { await openHome(page); await page.setViewportSize(PHONE); await (await homeRow(page, w.title)).click(); } };
+  for (const w of REVIEWERS_CLICK_STATES) {
+    const [, size, theme] = w.key.split("-");
+    const numbers = w.prs.map(([n]) => n);
+    await shoot(`rc-${size}-${theme}`, size === "panel" ? TALL : PHONE, theme, async page => {
+      await open[size](page, w);
+      await button(page, numbers[0]).waitFor({ timeout: 60_000 });
+      await button(page, numbers[0]).scrollIntoViewIfNeeded();
+      await shoot.now(`rc-before-${size}-${theme}`, page, theme);
+      const before = await order(page);
+      await button(page, numbers[0]).click();
+      // A phone's button keeps one short word ("Asking…"); the panel says "Requesting…".
+      await page.getByText(size === "phone" ? "Sending…" : "Requesting…").filter({ visible: true }).first().waitFor();
+      await shoot.now(`rc-requesting-${size}-${theme}`, page, theme);
+      // The other four, one after another, while the first is still out: each click lands on the row it aims at.
+      for (const n of numbers.slice(1)) { await button(page, n).click(); await page.waitForTimeout(250); }
+      await shoot.now(`rc-five-${size}-${theme}`, page, theme);
+      for (const n of numbers) await page.getByRole("button", { name: `Requested Ravi and Mina on pull request #${n}`, exact: true }).filter({ visible: true }).first().waitFor({ timeout: 60_000 });
+      await page.waitForTimeout(1500);
+      const after = await order(page);
+      if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error(`reviewers-click: rows moved: ${before} -> ${after}`);
+    });
+  }
+}
+
+/**
  * The harness's stand-in for Paseo's usePaseoDictation (a proposed plugin API; the harness's Paseo has none): wraps the
  * page's eval so Follow-up's client bundle gets `@getpaseo/plugin/client` plus a fake hook driven by
  * `window.__dictation` ({ status, unavailable, error, volume }; `emit(text)` delivers a transcript). Harness only:
@@ -3835,7 +3915,7 @@ async function compassShots({ shoot, call, home, seeded }) {
       await shoot(`compass-${name}-${device}-${theme}`, viewport, theme, async page => {
         await page.setViewportSize(viewport);
         await openSettingsAt(page, "brief", viewport);
-        const head = page.getByText("Compass", { exact: true }).first();
+        const head = page.getByText("What sets your priorities", { exact: true }).first();
         await head.waitFor();
         await head.evaluate(e => e.scrollIntoView({ block: "start" }));
         await drive?.(page);
@@ -3855,9 +3935,19 @@ async function compassShots({ shoot, call, home, seeded }) {
   await call("follow.set-compass", { instructions: "'The retry work' is APP-142. Customer asks wait for the plan unless they name a date.", glossary: [{ words: "the retry work", means: { issue: "APP-142" } }] });
   await call("follow.read-compass", {});
   await states("card", page => page.getByText(/2 notes live/).first().waitFor({ timeout: 30_000 }));
-  await states("notes", async page => { await page.getByRole("button", { name: /Show 2 notes from Dana/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
-  await states("editor", async page => { await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
+  await states("notes", async page => { await page.getByRole("button", { name: /Show Dana · product's notes/ }).first().click(); await page.getByText(/Until /).first().waitFor(); });
+  await states("editor", async page => { await page.getByRole("button", { name: /Show Dana · product's notes/ }).first().click(); await page.getByRole("button", { name: "Edit Dana · product" }).first().click(); await page.getByText("How to read this", { exact: true }).first().waitFor(); });
   await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); }, { phoneOnly: true });
+  // One place for priority inputs: the built-in inputs follow the sources in the same list, each with its role; the
+  // Linear queue's states open behind its chevron.
+  await states("inputs", async page => {
+    const row = page.getByText("Your Linear queue", { exact: true }).first();
+    await row.waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: /Show Your Linear queue's setting/ }).first().click();
+    await page.getByText("Counts as the queue", { exact: true }).first().waitFor();
+    await row.evaluate(e => e.scrollIntoView({ block: "start" }));
+  });
+  await states("when", async page => { const h = page.getByText("When", { exact: true }).first(); await h.waitFor(); await h.evaluate(e => e.scrollIntoView({ block: "start" })); });
   await call("follow.set-agent-setting", { role: "about", entry: { provider: "gemini", model: null } });
   await states("blocked", page => page.getByText(/Compass doesn't read on Gemini/).first().waitFor());
   await call("follow.set-agent-setting", { role: "about", entry: null });
@@ -3911,13 +4001,170 @@ async function compassShots({ shoot, call, home, seeded }) {
   }
 }
 
+/**
+ * Compass PR 5 (`--only compass-readers`, docs/compass.md#readers): every reader in Settings → Compass, desktop and
+ * phone, light and dark. Sources of every kind in one list (a person's DM, everyone in a team channel, a Linear
+ * project, a notes file on this machine, the calendar), the eight presets, the doc and file pickers, the tracker picker
+ * over the queue's own projects, and Connections with a failing input. Fictional names only: Dana, #platform-team,
+ * acme, a file under the harness's own home.
+ */
+async function compassReadersShots({ shoot, call, home }) {
+  const data = join(home, "plugin-data", "follow-up");
+  const queue = briefSinceQueue();
+  for (const [key, project, milestone] of [["ACME-177", "Billing reliability", "Sprint 14"], ["ACME-142", "Billing reliability", "Sprint 14"], ["ACME-151", "Billing reliability", null], ["ACME-158", "Search", "Sprint 14"]]) Object.assign(queue.sweeps[0].issues[key], { project, milestone });
+  await fs.writeFile(join(data, "linear-queue.json"), JSON.stringify(queue));
+  const notesFile = join(home, "now.md");
+  await fs.writeFile(notesFile, "# This week\n\n- ! renewal deck for acme\n\n# Later\n\nclean up the backlog\n");
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true, docs: true, calendar: true }));
+  await call("follow.brief-sources", { check: true });
+  const states = async (name, drive, { phoneOnly = false, at = "What sets your priorities" } = {}) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
+      if (phoneOnly && device !== "phone") continue;
+      await shoot(`compass-readers-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        await openSettingsAt(page, "brief", viewport);
+        const head = page.getByText("What sets your priorities", { exact: true }).first();
+        await head.waitFor();
+        await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+        await drive?.(page);
+        if (at !== "What sets your priorities") await page.getByText(at).last().evaluate(e => e.scrollIntoView({ block: "center" }));
+        await head.evaluate(e => { for (let n = e.parentElement; n; n = n.parentElement) n.scrollLeft = 0; });
+        await page.waitForTimeout(300);
+        if (viewport.width < 768) return undefined;
+        const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+        const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+        return { x, y: 0, width: viewport.width - x, height: viewport.height };
+      });
+    }
+  };
+  // The presets, all offered: a chat, a docs tool, the queue and a calendar are here.
+  await states("add", async page => { await page.getByRole("button", { name: "Add a source" }).first().click(); await page.getByText("Start from", { exact: true }).first().waitFor(); });
+  // A doc: the docs tool's search, and a file on this machine checked first.
+  await states("doc", async page => {
+    await page.getByRole("button", { name: "Add a source" }).first().click();
+    await page.getByRole("radio", { name: "A doc or notes" }).first().click();
+    await page.getByRole("button", { name: "A file on this machine" }).first().click();
+    const field = page.getByLabel("File path").first();
+    await field.fill(notesFile); await field.press("Enter");
+    await page.getByText("A file on this machine", { exact: true }).nth(1).waitFor({ timeout: 20_000 });
+  });
+  await states("tracker", async page => {
+    await page.getByRole("button", { name: "Add a source" }).first().click();
+    await page.getByRole("radio", { name: "A tracker project" }).first().click();
+    await page.getByRole("button", { name: "Pick a project or label" }).first().click();
+    await page.getByLabel("Search trackers").first().fill("Bill");
+    await page.getByText(/Linear project · 3 of your issues/).first().waitFor({ timeout: 20_000 });
+  });
+  const set = source => call("follow.set-compass", { source });
+  // The compass shots, when they ran first in this harness, already added Dana.
+  if (!only.includes("compass")) await set({ label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "Dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "Dana" }], roles: ["priorities", "plan"] });
+  await set({ label: "Platform team", who: { kind: "anyone" }, places: [{ kind: "conversation", sub: "channel", id: "CPLAT00001", name: "platform-team" }], roles: ["priorities"], instructions: "Only the two leads, or messages with 'priority:'." });
+  await set({ label: "Billing reliability", who: { kind: "anyone" }, places: [{ kind: "tracker", scope: "project", id: "linear:project:Billing reliability", name: "Billing reliability" }], roles: ["priorities"] });
+  const file = (await call("follow.compass-find", { kind: "file", query: notesFile })).results[0].place;
+  await set({ label: "Now", who: { kind: "me" }, places: [file], roles: ["self", "plan"], instructions: "A line starting with ! is urgent." });
+  await set({ label: "Calendar deadlines", who: { kind: "me" }, places: [{ kind: "calendar", id: "primary", name: "Your calendar", filter: "with-guests" }], roles: ["deadlines"] });
+  await call("follow.read-compass", {});
+  await states("card", page => page.getByText(/Billing reliability · 3 notes live|3 notes live/).first().waitFor({ timeout: 30_000 }));
+  await states("open", async page => { await page.getByRole("button", { name: /Show Billing reliability's notes/ }).first().click(); await page.getByText(/Webhook retries ignore/).first().waitFor(); });
+  // Connections with a failing input: one count, the failure stays on its row above.
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true, docs: true, calendar: true, upstreams: { calendar: { connected: false, health: { level: "unhealthy", summary: "connection refused", action: null } } } }));
+  await call("follow.brief-sources", { check: true });
+  await new Promise(r => setTimeout(r, 1500));
+  await states("connections", page => page.getByText(/needs? attention above/).first().waitFor({ timeout: 20_000 }), { at: /needs? attention above/ });
+}
+
+/**
+ * Compass PR 4 (`--only compass-suggest`, docs/compass.md#suggestions-issues-nobodys-on): Nobody's on it in Needs you
+ * (a raise and a Compass ask side by side), New's My issues with Compass's suggestions first, the brief's one Since
+ * block, and Settings → Compass → When with the daytime read. The queue is briefSinceQueue's; compass.json is seeded
+ * (readDay today, so no read replaces it). Fictional people and keys only.
+ */
+async function compassSuggestShots({ shoot, call, home, seeded }) {
+  const data = join(home, "plugin-data", "follow-up");
+  const now = BASE + VIEW;
+  const iso = t => new Date(t).toISOString();
+  const day = t => new Intl.DateTimeFormat("en-CA", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+  await fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify({ compass: true }));
+  await call("follow.brief-sources", { check: true });
+  const view = await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "Dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "Dana" }], roles: ["priorities"] } });
+  const src = view.settings.sources[0].id;
+  await new Promise(r => setTimeout(r, 1500)); // the new place's first read lands before the seed replaces its notes
+  const billing = seeded.workspaces.find(w => w.key === "billing");
+  const at = iso(now - 3600_000);
+  const n = (id, over) => ({ id, source: src, place: "conversation:UDANA00001", role: "priorities", by: { id: "UDANA00001", name: "Dana" }, at, link: "https://chat.example/archives/D1/p1", quote: null, what: "", keys: [], kind: "issue",
+    strength: "normal", until: null, untilWords: null, state: "live", endedAt: null, supersededBy: null, match: { score: 0, how: "none" }, restatedAt: at, ...over });
+  const notes = [
+    n("n-renewal", { what: "acme renewal call", keys: ["ACME-177"], quote: "ACME-177 has to be fixed before the acme renewal call on Friday", strength: "high", until: day(now + 2 * 86_400_000), untilWords: "Friday", match: { issue: "ACME-177", score: 1, how: "key" } }),
+    n("n-rotate", { what: "before the audit", keys: ["OPS-12"], quote: "OPS-12 should happen before the audit", match: { issue: "OPS-12", score: 1, how: "key" } }),
+    n("n-sso", { what: "SSO for acme", keys: ["ACME-40"], quote: "acme keeps asking about SSO, ACME-40", strength: "low", match: { issue: "ACME-40", score: 1, how: "key" } }),
+    n("n-billing", { kind: "workspace", what: "retries for the client call", quote: "the retry work is really important for the client call", strength: "high", until: day(now + 86_400_000), untilWords: "tomorrow", match: { workspace: billing.workspaceId, score: 0.7, how: "title" } }),
+    n("n-okta", { what: "Okta SSO", state: "retracted", endedAt: iso(now - 1800_000), quote: "Okta SSO can wait" }),
+    n("n-deck", { kind: "event", what: "the board deck", quote: "can you look at the board deck numbers" }),
+  ];
+  const seed = async () => {
+    await fs.writeFile(join(data, "linear-queue.json"), JSON.stringify(briefSinceQueue()));
+    await fs.writeFile(join(data, "compass.json"), JSON.stringify({ version: 1, cursors: {}, notes, day: null, readDay: day(now), lastRead: { at, trigger: "morning", ok: true, notes: 4, error: null }, refused: [], removed: [], dayReadAt: iso(now) }));
+    await page0();
+  };
+  // A seed is read on the next read of each store; poke the home feed's answer so the push carries it.
+  const page0 = () => call("follow.priorities", {}).catch(() => undefined);
+  const each = async (name, drive, devices = [["desktop", DESKTOP], ["phone", PHONE]]) => {
+    for (const theme of ["light", "dark"]) for (const [device, viewport] of devices) {
+      await seed();
+      await shoot(`cs-${name}-${device}-${theme}`, viewport, theme, async page => {
+        await page.setViewportSize(viewport);
+        const clip = await drive(page, viewport.width < 768, viewport);
+        await page.waitForTimeout(500);
+        return clip;
+      });
+    }
+  };
+  // Needs you: the raise (ACME-142) and Dana's urgent ask (ACME-177), one row kind; hover reveals the x.
+  await each("needs", async (page, phone) => {
+    await openHome(page);
+    const row = page.getByLabel(/^Needs you: ACME-177, nobody's on it/).filter({ visible: true }).first();
+    await row.waitFor({ timeout: 30_000 });
+    await page.getByLabel(/^Needs you: ACME-142, nobody's on it/).filter({ visible: true }).first().waitFor();
+    if (!phone) await row.hover();
+  });
+  // The brief: one Since block, Compass's lines first.
+  await each("since", async (page, phone) => {
+    await openHome(page);
+    if (phone) await page.getByText("Morning brief", { exact: true }).filter({ visible: true }).first().click();
+    const head = page.getByText(/· Dana, your Linear queue$/).filter({ visible: true }).first();
+    await head.waitFor({ timeout: 30_000 });
+    await head.evaluate(e => e.scrollIntoView({ block: "start" }));
+  });
+  // New: My issues with OPS-12 moved up with its reason, ACME-177 and ACME-40 joining with the compass glyph.
+  const dialog = page => page.locator('[role="dialog"][aria-label="New"]').filter({ visible: true }).first();
+  await each("new", async (page, phone) => {
+    await openHome(page);
+    await page.getByRole("button", { name: /^New( \(.+\))?$/ }).filter({ visible: true }).last().click();
+    await dialog(page).waitFor();
+    await dialog(page).getByText("Dana: before the audit").filter({ visible: true }).first().waitFor({ timeout: 30_000 });
+    // Desktop: select OPS-12 (an issue the fake Linear has) so the preview shows its actions and {why}.
+    if (!phone) await dialog(page).getByRole("button", { name: /^OPS-12 Rotate/ }).first().click();
+  });
+  // Settings → Compass → When: the morning read, then During the day and Issues nobody's on.
+  await each("when", async (page, phone, viewport) => {
+    await openSettingsAt(page, "brief", viewport);
+    const h = page.getByText("During the day", { exact: true }).first();
+    await h.waitFor({ timeout: 30_000 });
+    await page.getByText("When", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "start" }));
+    if (phone) return undefined;
+    const back = await page.getByText(/Back to plugins/).first().boundingBox().catch(() => null);
+    const x = back ? Math.max(0, Math.floor(back.x) - 32) : 400;
+    return { x, y: 0, width: viewport.width - x, height: viewport.height };
+  });
+}
+
 async function morningBriefShots({ shoot, call, home }) {
   const A1 = "https://claude.ai/artifact/0a1b2c3d-week-plan", A2 = "https://claude.ai/artifact/7e6f5a4b-week-plan";
   const setChat = v => fs.writeFile(join(home, "chat-fixture.json"), JSON.stringify(v));
   const setSources = v => fs.writeFile(join(home, "sources-fixture.json"), JSON.stringify(v));
   let ranHealth = { health: {}, errors: {} };
   const seedRead = (url, title, items, ago = 2 * 3600_000) => fs.writeFile(join(home, "plugin-data", "follow-up", "ranker.json"), JSON.stringify({ version: 1, lastHash: null, lastRunAt: "2099-01-01T00:00:00.000Z", lastModelAt: null, day: null, runsToday: 0, ...ranHealth, notStarted: [], last: null, slackSince: null,
-    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: [] })) } }, prev: {}, model: null }));
+    planning: { url, at: new Date(BASE + VIEW - ago).toISOString(), value: { title, url, items: Array.from({ length: items }, (_, i) => ({ level: "milestone", title: `Milestone ${i + 1}`, keys: i < items - 3 ? [`ACME-${200 + i}`] : [] })) } }, prev: {}, model: null }));
   // Sources sit above the plan: the plan's states scroll to it; the Sources states stay at the top.
   const states = async (name, drive, { top = false } = {}) => {
     for (const theme of ["light", "dark"]) for (const [device, viewport] of [["desktop", DESKTOP], ["phone", PHONE]]) {
@@ -3937,58 +4184,48 @@ async function morningBriefShots({ shoot, call, home }) {
       });
     }
   };
-  await setChat({ messages: `1. **#planning** alice: This week's plan ${A1} 2026-03-02 09:12:00` });
+  // This week's plan comes from Compass: none until a source posts it; dana's DM (the fake history read) shares A1.
+  await setSources({ compass: true });
+  await states("plan-no-source", page => page.getByText("No source posts the plan").first().waitFor());
   await seedRead(A1, "Week of Mar 2", 18);
-  await call("follow.set-brief-plan", { mode: "auto", person: { id: "UALICE0001", name: "alice" }, channels: [{ id: "CPLAN00001", name: "planning" }] });
-  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor());
-  // Sources: every source read (opening Settings asks the fake mcpproxy again; wait for its answer).
+  await call("follow.set-compass", { source: { label: "Dana · product", who: { kind: "person", person: { id: "UDANA00001", name: "dana" } }, places: [{ kind: "conversation", sub: "dm", id: "UDANA00001", name: "dana" }], roles: ["priorities", "plan"] } });
+  await call("follow.read-compass", {});
+  await states("plan-found", page => page.getByText("Week of Mar 2").first().waitFor({ timeout: 30_000 }));
+  // The plan's line under the source that posted it, at the top of the list.
+  await states("plan-source", page => page.getByText(/Shared this week.s plan/).first().waitFor({ timeout: 30_000 }), { top: true });
+  // The built-in inputs, in the same list: every source read (opening Settings asks the fake mcpproxy again).
   const sourcesReady = page => page.getByText(/^Checked /).first().waitFor({ timeout: 15_000 });
+  const inputs = page => page.getByText("Your Linear queue", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "start" }));
   ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true });
+  await setSources({ compass: true, linear: true });
   await call("follow.sweep-queue", {});
-  await states("sources", sourcesReady, { top: true });
+  await states("sources", async page => { await sourcesReady(page); await inputs(page); }, { top: true });
   // One read failed (Retry), one server waiting for a sign-in, and mail there but off until turned on.
   ranHealth = { health: { linear: "ok", slack: "failed", github: "ok", planning: "ok" }, errors: { slack: "mcpproxy couldn't run the chat search." } };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
-  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); }, { top: true });
+  await setSources({ compass: true, linear: true, mail: true, upstreams: { calendar: { connected: false, authenticated: false, oauth: {} } } });
+  await states("sources-failing", async page => { await sourcesReady(page); await page.getByText("mcpproxy couldn't run the chat search.").first().waitFor(); await inputs(page); }, { top: true });
   // Ask: a server no recipe fits (the tracker) shows Preview; the preview (the fake claude plans one read and sums it up)
   // shows what it would add, with Turn on.
   ranHealth = { health: { linear: "ok", slack: "ok", github: "ok", calendar: "ok", planning: "ok" }, errors: {} };
   await seedRead(A1, "Week of Mar 2", 18);
-  await setSources({ linear: true, ask: true });
+  await setSources({ compass: true, linear: true, ask: true });
   const trackerRow = page => page.getByText("tracker", { exact: true }).first().evaluate(e => e.scrollIntoView({ block: "center" }));
   await states("ask-off", async page => { await sourcesReady(page); await page.getByRole("button", { name: /Preview what Ask would read from tracker/ }).first().waitFor(); await trackerRow(page); }, { top: true });
   await call("follow.brief-sources", { check: true });
   await new Promise(r => setTimeout(r, 1500));
   await call("follow.set-brief-sources", { preview: "mcp:tracker" });
   await states("ask-preview", async page => { await sourcesReady(page); await page.getByText(/would add these 2 to today.s brief/).first().waitFor({ timeout: 30_000 }); await trackerRow(page); }, { top: true });
-  await setSources({});
+  await setSources({ compass: true });
   ranHealth = { health: {}, errors: {} };
-  await seedRead(A1, "Week of Mar 2", 18);
-  await states("picker", async page => {
-    await page.getByRole("button", { name: "Add" }).filter({ visible: true }).first().click();
-    await page.getByRole("textbox", { name: "Search channels" }).filter({ visible: true }).first().fill("plan");
-    await page.getByText("#plans-archive").first().waitFor();
-  });
-  await setChat({ messages: "" });
-  await call("follow.set-brief-plan", { find: true });
-  await states("plan-missing", page => page.getByText("No plan this week yet").first().waitFor());
-  await setChat({ error: true });
-  await call("follow.set-brief-plan", { find: true });
-  await states("plan-error", page => page.getByText("Couldn't search").first().waitFor());
-  await setChat({ messages: "" });
   await call("follow.set-brief-plan", { link: A2, mode: "link" });
   // Read a minute after it was pasted (the daemon's clock is BASE + VIEW).
   await seedRead(A2, "Week 10 plan", 14, -60_000);
   await states("plan-pasted", page => page.getByText("Week 10 plan").first().waitFor());
   await call("follow.set-brief-plan", { mode: "off" });
   await states("plan-off", page => page.getByText("No plan", { exact: true }).first().waitFor());
-  await call("follow.set-brief-plan", { mode: "auto", person: null, channels: [] });
-  await states("plan-pick-first", page => page.getByText("Pick who posts it and where").first().waitFor());
-  await states("queue", async page => { const h = page.getByText("Linear queue", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 200); });
-  await states("queue-bottom", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
+  await states("when", async page => { const h = page.getByText("Workdays", { exact: true }).first(); await h.waitFor(); await h.scrollIntoViewIfNeeded(); await page.mouse.wheel(0, 600); });
   await briefSinceShots({ shoot, call, home });
 }
 
@@ -4072,7 +4309,7 @@ async function briefSinceShots({ shoot, call, home }) {
   });
   // The raised issue is the first row of Needs you; hovering it reveals its x (invariant 59).
   await each("raised", async (page, phone) => {
-    const row = page.getByLabel(/^Needs you: ACME-142 raised Low → High/).filter({ visible: true }).first();
+    const row = page.getByLabel(/^Needs you: ACME-142, nobody's on it/).filter({ visible: true }).first();
     await row.waitFor({ timeout: 20_000 });
     if (!phone) await row.hover();
   });
@@ -5005,11 +5242,14 @@ try {
   // PR reads go over HTTPS (server/github-api.ts) to this fake, which answers with the same fixture gh.
   github = await fakeGithub({ dir: root, gh: join(bin, "gh") });
   await fs.writeFile(join(home, "linear-fixture.json"), JSON.stringify(linearIssues()));
-  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") || only.includes("gallery") || only.includes("frames") ? newIssues() : []));
+  await fs.writeFile(join(home, "linear-list.json"), JSON.stringify(only.includes("new") || only.includes("compass-suggest") || only.includes("gallery") || only.includes("frames") ? newIssues() : []));
   await fs.writeFile(join(bin, "mcpproxy"), fakeMcpproxy(join(home, "linear-fixture.json"), join(home, "linear-list.json"))); await fs.chmod(join(bin, "mcpproxy"), 0o700);
+  // A slip in the fake's template (an escape that lands as a real newline) fails every tool call as "couldn't run the
+  // read", far from its cause: check the fake parses before any shot uses it.
+  await exec(process.execPath, ["--check", join(bin, "mcpproxy")]);
   if (argv.includes("--rename-review")) { await fs.writeFile(join(bin, "claude"), fakeClaude(join(home, "claude-mode"))); await fs.chmod(join(bin, "claude"), 0o700); }
   else if (only.includes("morning-brief")) { await fs.writeFile(join(bin, "claude"), fakeAskClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
-  else if (only.includes("compass")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
+  else if (only.includes("compass") || only.includes("compass-suggest") || only.includes("compass-readers")) { await fs.writeFile(join(bin, "claude"), fakeCompassClaude()); await fs.chmod(join(bin, "claude"), 0o700); }
   // Real speed while the daemon starts and the plugin installs; seeding and shooting crawl (setDaemonClock).
   // It starts ten minutes before BASE, so the clock only ever moves forward.
   await fs.writeFile(clockFile, JSON.stringify({ fake: at(-10), real: Date.now(), rate: 1 }));

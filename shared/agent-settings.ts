@@ -22,6 +22,20 @@ export type AgentRole = typeof AGENT_ROLES[number];
  */
 export const CLI_JOB_PROVIDERS = ["claude", "codex"] as const;
 export const isJobRole = (role: AgentRole) => role === "about" || role === "ranker";
+/**
+ * Whether Follow-up can take every tool away from a job on this provider: Claude under the job guard's grant, Codex in
+ * its read-only sandbox. Any other provider runs a job as a Paseo agent with its own tools
+ * (a-job-that-reads-outside-content-can-only-read), so a job that reads words someone else wrote doesn't run there.
+ */
+export const guardedProvider = (provider: string) => (CLI_JOB_PROVIDERS as readonly string[]).includes(provider);
+/** The one line a refused job leaves (Settings → Agents, the source, the job's error). */
+export const unguardedJobWhy = (providerLabel: string, what: string) =>
+  `${what} doesn't run on ${providerLabel}: it reads words other people wrote, and Follow-up can't take ${providerLabel}'s tools away. Pick Claude or Codex in Settings → Agents.`;
+/** What each job role reads from outside, for Settings → Agents' line on an unguarded provider. */
+export const OUTSIDE_READS: Partial<Record<AgentRole, string>> = {
+  about: "Summaries leave out linked issues and threads, and Compass and Ask read nothing",
+  ranker: "AI priority doesn't rank",
+};
 /** The roles that can copy another agent: recovery (the workspace's main agent) and dispatch (the Overseer). */
 export const hasSame = (role: AgentRole) => role === "recovery" || role === "dispatch";
 /** What a role's "same" copies, in the picker's words. */

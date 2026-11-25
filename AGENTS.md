@@ -81,12 +81,12 @@ Paseo app (web, desktop, phone)          Paseo daemon (host)                    
 | Summary (internal id `about`), Rename title with AI | `server/about.ts`, `server/transcript.ts`, `shared/about.ts`, `server/rename.ts`, `shared/rename.ts` | [ai-roles](docs/ai-roles.md) |
 | New: start work from an issue, PR, link or words (dispatch) | `shared/dispatch.ts`, `shared/issue-workspace.ts`, `shared/linear-issues.ts`, `shared/new-view.ts`, `server/dispatch.ts`, `server/linear-issues.ts`, `client/new.tsx`, `client/action-row.tsx`, `client/new-entry.tsx`, `shared/new-settings.ts`, `client/new-settings.tsx` | [dispatch](docs/dispatch.md) |
 | Morning brief: the whole Linear queue (sweep, snapshot, changes since you last read it), the brief's Since block, the queue screen, raised issues in Needs you | `shared/linear-queue.ts`, `server/linear-queue.ts`, `shared/brief-since.ts`, `client/brief-since.tsx` | [morning-brief](docs/morning-brief.md) |
-| Settings → Morning brief: this week's plan link (Find it for me, a link, off; the one-time import) and the queue's settings | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
+| Settings → Compass (was Morning brief): this week's plan (from Compass, a link, off; the one-time import and the move into Compass), the queue's settings and the brief's When | `shared/morning-brief.ts`, `server/morning-brief.ts`, `client/morning-brief-settings.tsx` | [morning-brief](docs/morning-brief.md#settings) |
 | The brief's sources: recipes matched by tools, discovery, health, switches, Retry, Ask for unknown sources; the one mcpproxy call site (tool-read only) | `shared/brief-sources.ts`, `server/brief-sources.ts`, `server/source-tools.ts`, `shared/ask.ts`, `server/ask.ts` | [morning-brief](docs/morning-brief.md#sources) |
-| Compass: the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
+| Compass: the one place for priority inputs (Settings → Compass: its sources and the built-in inputs, each with a role), the sources that set the developer's priorities (who, places, roles, reading notes, glossary), their reads, notes and matching, plans on arrival; pinned context on screen (the panel's Why it matters, Home's reason line, Catch up's line) | `shared/compass.ts`, `server/compass.ts`, `client/compass-settings.tsx`, `client/why-it-matters.tsx` | [compass](docs/compass.md) |
 | Linked items (Linear issues, Slack threads, docs a workspace is about) | `server/linked.ts`, `shared/linked.ts`, `shared/linked-extract.ts`, `shared/linked-display.ts`, `client/linked.tsx`, `client/brand-icons.ts` | [linked-items](docs/linked-items.md) |
 | Overseer, priority ranker, AI jobs, Settings → Agents | `server/overseer.ts`, `server/overseer-prompt.md`, `server/ranker.ts`, `server/priorities.ts`, `server/ai-jobs.ts`, `server/job-guard.ts`, `server/agent-settings.ts`, `shared/overseer.ts`, `shared/ranker.ts`, `shared/priorities.ts`, `shared/agent-settings.ts` | [ai-roles](docs/ai-roles.md) |
-| PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts` | [prs](docs/prs.md) |
+| PR workflow (Graphite or GitHub), PR actions, reviewers, deployments, Send to Paseo | `server/pr-workflow.ts`, `server/github.ts`, `server/github-api.ts`, `shared/poll.ts`, `server/graphite.ts`, `server/pr-actions.ts`, `server/browser-bridge.ts`, `server/reviewer-config.ts`, `server/deployments.ts`, `server/deployment-anchor.ts`, `shared/pr-workflow.ts`, `shared/pr-actions.ts`, `shared/reviewers.ts`, `shared/reviewers-click.ts`, `shared/keep-in-place.ts`, `client/reviewers-button.tsx` | [prs](docs/prs.md) |
 | PR statistics (records, store, sync, the GitHub budget gate, metrics, settings, tools and the page) | `shared/pr-stats-records.ts`, `shared/pr-stats.ts`, `shared/pr-stats-settings.ts`, `shared/pr-stats-page.ts`, `shared/workweek.ts`, `server/pr-stats.ts`, `client/pr-stats-settings.tsx`, `client/pr-stats.tsx`, `server/pr-stats-gate.ts`, `server/pr-stats-store.ts`, `server/pr-stats-sync.ts` | [pr-stats](docs/pr-stats.md) |
 | Agent tools and agent parity | `server/mcp.mjs`, `server/native-tools.ts`, `server/session-mcp.ts`, `server/agent-mcp.ts`, `server/mcp-registrations.ts`, `server/scopes.ts`, `server/agent-actions.ts`, `server/agent-parity.ts`, `shared/actor.ts`, `shared/chat.ts` | [rpcs-and-tools](docs/rpcs-and-tools.md) |
 | Provider hooks, static text in the system prompt | `server/agent-hooks.ts`, `server/agent-hook.mjs`, `server/session-prompt.ts` | [hooks](docs/hooks.md) |
@@ -290,7 +290,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 6. **Nothing irreversible on its own.**
    - Follow-up never merges, turns on merge-when-ready, requests reviewers or archives by itself (invariant 87). The developer's
      Merge is one click that names its whole scope first and merges exactly that at the heads it showed
-     (`a-click-on-merge-merges`, `shared/merge-click.ts`); agent tools still dry-run, then run with `confirm: true`.
+     (`a-click-on-merge-merges`, `shared/merge-click.ts`). Add reviewers on a row that names its people asks them in one
+     click, each row with its own pending state, and a clicked row holds its place (`a-click-on-add-reviewers-asks`,
+     `shared/reviewers-click.ts`, `shared/keep-in-place.ts`); agent tools still dry-run, then run with `confirm: true`.
    - Completion checks never auto-send.
    - Answers go out only on the developer's Send.
 7. **Unknown is not off.** An unreadable toggle or setting means the default, never "off". A seen user message
@@ -1007,11 +1009,15 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 78. **The brief has one timer** (`the-brief-has-one-timer`). The sweep runs once each workday at the sweep time in the
    developer's zone (from the worker's existing 15 s loop, `LinearQueue.tick`, no timer of its own, waiting while the
    governor is tight), when the brief opens on a snapshot older than 6 h, on Sweep now, and once for the ranker on a
-   fresh install; nothing else reads Linear on a schedule. Find it for me and the sources check (mcpproxy asked again)
-   ride the same loop, once a workday after the sweep time, and so does Compass's morning read (`Compass.tick`). The zone is the setting's, else the developer's device's,
+   fresh install; nothing else reads Linear on a schedule. The sources check (mcpproxy asked again) rides the same
+   loop, once a workday after the sweep time, and so does Compass's morning read (`Compass.tick`), which brings this
+   week's plan too: Find it for me's own daily search is gone (folded into Compass). Compass's daytime read rides the
+   same loop: every `compass.cadence` (Off, 1, 2 or 4 h; default 2 h) only while an app client is open (a subscriber on
+   the home feed, or on Paseo 0.15 a priorities poll in the last 2 minutes), on workdays 08:00-20:00 in the
+   developer's zone, waiting while the governor is tight; with the app closed nothing is read on a schedule. The zone is the setting's, else the developer's device's,
    else the host's, and the workdays are that zone's usual week (`clockFor`); no fixed zone or week is built in
    (2026-11-22: the ranker's window was hard-wired to one zone's Sunday-to-Thursday). Guarded by
-   `tests/linear-queue.test.ts` and `tests/ranker.test.ts`.
+   `tests/linear-queue.test.ts`, `tests/ranker.test.ts` and `tests/compass-suggestions.test.ts`.
 79. **One ask, one item** (`one-ask-one-item`). Whatever makes an ask (`ask_question`, a `needs_you` decision or
    action, a blocked task), Needs you shows it once. A blocked task's card is shaped by what it asks (`taskNeed`): an
    action the developer takes and reports back gets a Done option (`TASK_DONE`), never "Write the decision". An action
@@ -1038,10 +1044,13 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    flagged rows, 42 from closed agents; 19 asked nothing or sat in archived workspaces, 13 were closed asks over 3 days
    old. Guarded by `tests/briefs-closed-agents.test.ts` and `closedFlagViolations` ([docs/needs-you.md](docs/needs-you.md)).
 81. **Sources are read-only** (`sources-are-read-only`). Every outside read through mcpproxy (the sweep, New's Linear
-   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Find it for me) goes
+   reader, the ranker's chat, calendar and mail, the Summary's issue and thread, Linked's teams, Compass) goes
    through `SourceDirectory.call` (server/source-tools.ts), the one place that runs `mcpproxy call`, and it runs only
    `tool-read` with a tool from `mcpproxy tools list --risk read`; a tool whose annotations say it writes is dropped
-   even if the list has it. Each call carries only the inputs that tool's schema takes. Discovery is one call, made
+   even if the list has it. Each call carries only the inputs that tool's schema takes. Two reads don't go through
+   mcpproxy and are reads too: a local file a Compass source names (decision R2: Markdown or text, at most 64 KB, opened
+   in process only when its modified time or size moved, its path never in a log or an error), and a Compass GitHub
+   tracker place's issues (one in-process REST GET, `server/github-api.ts`). Discovery is one call, made
    when a reader first needs a tool and again only when Settings → Morning brief opens, on Check sources again and on
    the morning run (the-brief-has-one-timer); never on its own timer. **Discovery heals itself**
    (`discovery-heals-itself`): a reader whose recipe no server has asks again first, at most once per
@@ -1056,14 +1065,18 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    plan reader's (and Settings' title read) is the Artifact tool's `read` only. A refused call is logged by tool and
    action name only (`ai-jobs.jsonl` `refused`) and the job still completes on what it read. Codex jobs run in a
    read-only sandbox without the shell tool. Compass's extraction runs only on those two: with Summaries on any other provider it reads nothing at all and says why (compass-text-is-data). A job on any other provider (`server/job-agent.ts`) runs as a Paseo agent
-   with that provider's own tools and has no such guard yet: an open gap, not an exemption. 2026-11-23:
-   the plan reader kept the Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
-   `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete).
+   with that provider's own tools, so a job that reads outside content (`outside` on its spec: AI priority, Ask,
+   Compass, the plan reader, a Summary with linked issues or threads) never starts there: `AiJobs.run` refuses it
+   before any runner (`guardedProvider`, reason `unguarded`), the Summary leaves the linked text out and runs on the
+   workspace's own work, and Settings → Agents and the source say why in one line. 2026-11-23: the plan reader kept the
+   Artifact tool read-only by its prompt alone. Guarded by `tests/brief-sources.test.ts` and
+   `tests/job-guard.test.ts` (a fake provider whose model tries publish, update and delete; an outside job on another
+   provider never reaches a runner).
 82. **Nothing built in about a workplace** (`nothing-built-in-about-a-workplace`). No mcpproxy server name, person,
    channel or id is written in code: a source is found by its tools (shared/brief-sources.ts `RECIPES`: tool-name
    shapes and input schemas), the developer's chat id is read from the chat tool's own description, and people,
    channels and the plan are picked or imported at run time. A server renamed in mcpproxy is found the same way.
-   2026-11-22: the ranker, the Summary, Linked, New and Find it for me each named one host's chat and Linear servers.
+   2026-11-22: the ranker, the Summary, Linked, New and the plan's finder each named one host's chat and Linear servers.
    Guarded by `tests/brief-sources.test.ts` (it scans server/, shared/ and the worker for qualified tool names and
    for any `mcpproxy` run outside the source directory).
 83. **Due by fact** (`due-by-fact`). Every open task knows what moves it, and none is "Manual": its `afterPrs`
@@ -1100,18 +1113,28 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    aren't checked; `createdBy` stays on the server (dropped from the list payload). 2026-11-22 live audit: 3-4 true
    duplicate tasks and 66 tasks renamed in place. Guarded by `tests/dup-check.test.ts`.
 
-86. **A raised issue is a Needs-you item** (`raised-is-needs-you`). A Linear issue raised to Urgent or High that is still
-   in the queue and has no workspace (`raisedNeeds`, decision Q8) is a row of Home's Needs you group, first, shaped like
-   its rows, and counted wherever Needs you is counted (the group header, the strip, the brief line and the sidebar
-   badge) from one server-side count, live on the home feed: the worker computes it (`LinearQueue.needs`) and pushes it
-   on `follow.home-feed` when a sweep or a dismissal changes it (on 0.15 it rides the priorities poll), and every surface
-   reads it through `useHomeModel` (`HomeModel.raised`), never a read of its own. It
-   has the two-click Remove of every Needs-you item (invariant 59: `follow.dismiss {issue}`, agents `dismiss_item
-   {issue}`), and a later raise brings it back. One issue offers one set of actions on screen: while it's in Needs you
-   (Start…), its line in the brief's Since block keeps the news without New's buttons. 2026-11-23, two critiques: it was
-   a card above the strip that Needs you didn't count, with a second action set in the brief; then Home read it once per
-   mount, so the sidebar badge said 5 beside Home's 6 and a morning raise never reached an open Home. Guarded by
-   `tests/brief-since.test.ts`, `tests/feed-recovery.test.ts` and `tests/idle-rpc.test.ts`.
+86. **Nobody's on it is a Needs-you item** (`nobody-s-on-it-is-needs-you`, was `raised-is-needs-you`). A Linear issue
+   raised to Urgent or High that is still in the queue (`raisedNeeds`, decision Q8) and an urgent Compass ask about an
+   issue (a live note on it from a source with Needs you on, at `routing.urgentStrength`, dated within
+   `routing.urgentWithinWorkdays` workdays: `suggestions`, `shared/nobody.ts`) are the same thing when the issue has no
+   workspace: it matters and nobody started it. They are one row kind, "Nobody's on it" (`nobodyNeeds`, one row per
+   issue with every reason kept, the first drawn as the row's reason line with its source), first in Home's Needs you
+   group, shaped like its rows, and counted wherever Needs you is counted (the group header, the strip, the brief line
+   and the sidebar badge) from one server-side count, live on the home feed: the worker computes it from the queue and
+   `compass.json` it holds and pushes it on `follow.home-feed` when a sweep, a Compass read or a Remove changes it (on
+   0.15 it rides the priorities poll), and every surface reads it through `useHomeModel` (`HomeModel.raised`), never a
+   read of its own. It has one Start… (New on the issue, `{why}` filled) and the two-click Remove of every Needs-you
+   item (invariant 59: `follow.dismiss {issue}`, which takes the raise and every Compass ask on that issue; agents
+   `dismiss_item {issue}`, or `{compass}` for one note's suggestion), and a later raise or a later note brings it back.
+   A suggestion that isn't urgent never reaches Needs you: it sorts first in New's My issues with its reason. One issue
+   offers one set of actions on screen: while it's in Needs you (Start…), its line in the brief's Since block keeps the
+   news without New's buttons. 2026-11-23, two critiques: it was a card above the strip that Needs you didn't count,
+   with a second action set in the brief; then Home read it once per mount, so the sidebar badge said 5 beside Home's
+   6 and a morning raise never reached an open Home. Compass PR 4 (design §7, §16): an urgent ask from a person and a
+   raise in the queue were two row kinds for one fact. 2026-11-24, its renders: on Paseo 0.15 a priorities answer whose
+   Compass lines changed never set the queue (`setCompass(…) || setQueue(…)` short-circuits, `client/home-view.ts`), so
+   any Compass note hid every row; one answer now sets every store it carries. Guarded by `tests/brief-since.test.ts`,
+   `tests/feed-recovery.test.ts`, `tests/idle-rpc.test.ts` and `tests/compass-suggestions.test.ts`.
 87. **Follow-up archives only on the developer's click** (`follow-up-archives-only-on-the-developer-s-click`). The row
    menu's Archive workspace… (any row with a workspace; first in triage on a row ready to archive, else last in tidy)
    sends Paseo's own archive request (`workspaces.archive`, the one Paseo's sidebar and agents' `archive_workspace`
@@ -1141,8 +1164,10 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 91. **An action is data** (`an-action-is-data`). A New action is a validated record (`dispatchActionSchema`): a name, an
    icon from a fixed list, instructions that are a template with known placeholders only (an unknown one is refused by
    name when saved), a workspace kind, a branch rule and an agent. No action runs code, names a team, repo or person,
-   or reaches past its own fields; the body a source brings is clipped to 4 KB. Settings → New work and the agent tools
-   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts` and `tests/new-settings.test.ts`.
+   or reaches past its own fields; the body a source brings is clipped to 4 KB. `{why}` is a Compass suggestion's
+   quote, who said it, when and its date (`whyText`), empty for any other source; the built-ins carry it. Settings → New work and the agent tools
+   edit the same list through the same RPCs. Guarded by `tests/dispatch-core.test.ts`, `tests/new-settings.test.ts` and
+   `tests/compass-suggestions.test.ts`.
 92. **New never switches the project silently** (`new-never-switches-the-project-silently`). Every project New picks
    comes with how and why (`resolveWhere`: the pick, the link's repository, the live workspace, the team's rule, learned,
    last used as a guess, the only one), and a guess is drawn as one. When none of those holds, New asks ("Which
@@ -1164,10 +1189,11 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    invariant 94 still holds. Every surface that offers to start work from an issue reads it: New's list and its
    preselection (a taken issue folds into "N issues already have a workspace" and ↵ opens its workspace), dispatch's
    `existing` (paste, preview, the `dispatch` dry run), `dispatch_sources`' `taken`, Needs you's raised issues
-   (`raisedNeeds`) and the brief's Since block. 2026-11-23, on 2.4.0-beta.3: 8 of New's first 9 issues were ones a
+   (`raisedNeeds`), Compass's suggestions (`suggestions`: Nobody's on it, New's My issues, the brief) and the brief's
+   Since block. 2026-11-23, on 2.4.0-beta.3: 8 of New's first 9 issues were ones a
    planning workspace had made and linked, already In Review with PRs open in other workspaces, because "has a
    workspace" was two rules that counted only links and New listed every issue anyway. Guarded by
-   `tests/taken-issues.test.ts` and `tests/new-view.test.ts`.
+   `tests/taken-issues.test.ts`, `tests/new-view.test.ts` and `tests/compass-suggestions.test.ts`.
 96. **New opens where you are** (`new-opens-where-you-are`). A dialog that one of several mounted surfaces draws (New,
    Report an issue, Rename title with AI) shows on the one on screen, through one registry (`createHostSlot`,
    `client/host-slot.tsx`): the host showing it keeps it while it's on screen, else the most recently mounted host
@@ -1209,19 +1235,30 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 98. **Compass reads only what was named** (`compass-reads-only-what-was-named`). Follow-up reads a place for Compass
    only when a source names it: the developer's, or an agent's confirmed `set_compass` with a place from `compass_find`
    (the chat tool's own ids, never a name in code). It reads through `SourceDirectory.call` (`tool-read`, invariant 81),
-   finds the tool by shape (the chat recipe's `history` role, invariant 82), and reads by cursor in time order, never a
-   relevance search for "since": the history read newest page first, else the message search sorted by time, one day at
-   a time, said on the place. Only the source's people reach the model; the developer's replies come along as context
-   and never become a note; anyone else in the place is dropped first. A read that fails keeps the cursor, so a missed
-   read is never "nothing said". It reads once a workday after the sweep time, on Read now and over the last week when
-   a place is added (invariant 78). 2026-11-23, the developer: priorities come from a product lead's DM, so Follow-up
-   ranked work without what decided it. Guarded by `tests/compass-read.test.ts`.
+   finds the tool by shape (the chat recipe's `history` role, the doc recipe's read, the calendar recipe's events,
+   invariant 82), and reads by cursor in time order, never a relevance search for "since": the history read newest
+   page first, else the message search sorted by time, one day at a time, said on the place. Only the source's people
+   reach the model; the developer's replies come along as context and never become a note; anyone else in the place is
+   dropped first. A source of everyone in a place (decision R1) reads at most the newest 40 messages a read in one
+   extraction, says what it skipped, and never runs the day's extractions down. A doc is compared by hash and only its
+   new blocks reach the model; a tracker or a calendar place is read by rule with no model (its notes quote the item's
+   own fields), from the queue's own snapshot, Follow-up's own GitHub read (at most hourly, except Read now) or the
+   calendar tool. A read that fails keeps the cursor, so a missed read is never "nothing said". It reads once a
+   workday after the sweep time, on Read now and over the last week when a place is added (invariant 78); a read
+   someone asked for that arrives while another runs waits and runs after it, never joins it (2026-11-24, Compass PR
+   5's config tests: a source added during another's first read joined that read, which read only the other source, so
+   the new place waited for the next morning). 2026-11-23, the developer: priorities come from a product lead's DM, so
+   Follow-up ranked work without what decided it. Guarded by `tests/compass-read.test.ts` and
+   `tests/compass-configs.test.ts`.
 99. **A workflow lives in config** (`a-workflow-lives-in-config`, widening 82). Readers, roles, presets, default reading
    notes and copy name no tool, server, company, person or workflow; a developer's setup is a `compass` value, and the
-   developer's words are "How to read this". A preset only fills a source's fields, and one whose reader isn't in this
-   release or that no connected tool can serve is listed with one line of why, never offered; a change naming a place
-   kind with no reader is refused, never saved to sit unread. Guarded by `tests/compass-extract.test.ts` (presets) and
-   the name scans (`tests/brief-sources.test.ts`, `tests/no-real-names.test.ts`).
+   developer's words are "How to read this". A preset only fills a source's fields, and one whose reader no connected
+   tool can serve is listed with one line of why, never offered; a change naming a place kind with no reader is
+   refused, never saved to sit unread. Every role and preset works for each of the design's three fictional setups
+   (a product lead's DM and roadmap; a team channel, GitHub labels and milestones and a customer's channel; no chat, a
+   notes file and a calendar), each only a `compass` value and the readers its host has. Guarded by
+   `tests/compass-configs.test.ts` (setups B and C end to end with fake readers), `tests/compass-extract.test.ts`
+   (presets) and the name scans (`tests/brief-sources.test.ts`, `tests/no-real-names.test.ts`).
 100. **Compass instructions only interpret** (`compass-instructions-only-interpret`). "How to read this" (at most 600
    characters a source, 1000 for all) is plain text, control characters stripped, given to the extraction model after
    the rules and before the fenced data. It can't add a place, a tool, an output field or a destination: places are
@@ -1237,7 +1274,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    Claude, the read-only sandbox on Codex; with Summaries on any other provider Compass reads nothing at all, not even
    the conversation, and Settings and `compass` say why in one line. The prompt fences the messages as data. The text
    read is never written to disk or a log: `compass.json` keeps a note's quote (at most 280 characters) until 7 days
-   after it ends, and `ai-jobs.jsonl` keeps no text. Guarded by `tests/compass-read.test.ts`.
+   after it ends, and a doc's hash and its blocks' hashes, never their text; `ai-jobs.jsonl` keeps no text. A local
+   file's path stays in the source's settings: it is never a place key, a cursor, a log line or an error. Guarded by
+   `tests/compass-read.test.ts` and `tests/compass-configs.test.ts`.
 103. **A Compass note ends** (`a-compass-note-ends`). Every note has an end: its date plus `graceDays`, `undatedDays`
    after it was last said, a retraction, or a newer note from the same source on the same subject. A note pinned by hand
    ends on its date, or when it is unpinned if it has none (the developer's unpin is its end). An ended note leaves
@@ -1296,6 +1335,27 @@ These are product rules. Each has tests, and breaking one is a bug even when the
    (planned, so an agent confirms on the developer's ask), audited as its caller. Tell queues one message to the
    workspace's main agent (invariant 36) that carries the quote as someone else's words. Reads, the morning read,
    Home's lines, Catch up and `why_suggested` never queue a message. Guarded by `tests/compass-agent.test.ts`.
+
+108. **One place for priority inputs** (`one-place-for-priority-inputs`). Everything AI priority reads is an input
+   in one list, Settings → Compass's What sets your priorities (or `compass` / `set_compass` for agents): the Compass
+   sources, then the Linear queue, DMs and mentions, the calendar, mail, review requests and Ask servers, each with its
+   role. There is no second setting for the same input: who posts this week's plan is a source with Posts the plan,
+   never a picker of its own, and the plan arrives with Compass's read (`MorningBrief.recordPlan`), read at once. The
+   brief's tools stay one minor release as aliases. The move from the Morning brief tab carries every setting over once
+   (`moveToCompass`): Find it for me's person and channels become a source (or join the same person's), and a name
+   chat search can't find stays, by name, in `plan.unmoved` for Settings to show, so nothing is lost (invariant 7).
+   2026-11-23, the developer: "fewer things to learn beats fewer PRs"; the plan's person was picked twice, once as a
+   Compass source and once in the plan card. Guarded by `tests/compass-move.test.ts`.
+
+109. **Compass works without the Overseer; the Overseer never reads a source** (`compass-without-the-overseer`). Every
+   Compass read, extraction, match and suggestion runs as Follow-up's own job (the worker's loop, `AiJobs` on the
+   Summaries role), with the Overseer off or never started; `server/compass.ts` takes no Overseer dependency. The
+   Overseer sees Compass only through its digest block (`digestLines`: this week's plan and at most 12 live notes,
+   `who · until · what · where · note id`, built from Compass's notes only when its digest is built and only while a
+   note is live, about 300-400 tokens and nothing on any other turn) and the `compass_*` tools; it never gets a source,
+   a reader or a read of its own. Setup through the Overseer writes the same config as Settings (`set_compass`, dry
+   run then confirm). Design §15: running reads on the Overseer would cost a full turn every 2 h, grow its
+   conversation and make Compass depend on it. Guarded by `tests/compass-overseer.test.ts`.
 
 ## Bugs
 

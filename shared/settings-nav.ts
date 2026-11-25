@@ -13,7 +13,9 @@ export const SETTINGS_CATEGORIES = [
   { id: "agents", title: "Agents", icon: "Bot", blurb: "Questions, Overseer, models" },
   { id: "new", title: "New work", icon: "SquarePlus", blurb: "New's actions, where work goes, bases" },
   { id: "display", title: "Inbox & display", icon: "Inbox", blurb: "Sidebar, pills, Needs-you inbox" },
-  { id: "brief", title: "Morning brief", icon: "Sunrise", blurb: "This week's plan, the Linear queue" },
+  // Was Morning brief: the one place for what sets the developer's priorities (one-place-for-priority-inputs). The id
+  // stays, so saved links and screen ids land here.
+  { id: "brief", title: "Compass", icon: "Compass", blurb: "What sets your priorities, this week's plan" },
 ] as const;
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]["id"];
 export const DEFAULT_CATEGORY: SettingsCategory = "general";

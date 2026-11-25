@@ -220,13 +220,17 @@ export class LinearQueue {
   }
 
   /**
-   * Home's part of Needs you (Q8, invariant raised-is-needs-you): the raised issues, the zone their dates read in, and
+   * Home's part of Needs you (Q8, invariant nobody-s-on-it-is-needs-you): the raised issues, the zone their dates read in, and
    * the queue's revision. The worker carries it on follow.home-feed, so every Needs-you count reads one number and a
    * morning sweep's raise reaches an open Home without a read of its own.
    */
-  async needs(): Promise<{ raised: RaisedNeed[]; timeZone: string; revision: string }> {
-    const [file, clock, workspaces] = await Promise.all([this.read(), this.d.clock(), this.d.workspaces?.().catch(() => new Map()) ?? Promise.resolve(new Map())]);
-    return { raised: raisedNeeds(file, key => workspaces.has(key)), timeZone: clock.timeZone, revision: `${file.last?.at ?? ""}|${current(file)?.at ?? ""}|${file.dismissed.length}` };
+  async needs(): Promise<{ raised: RaisedNeed[]; timeZone: string; revision: string; since: string | null; issues: ReadonlyMap<string, { title: string; url: string | null }> }> {
+    const [file, clock, workspaces, settings] = await Promise.all([this.read(), this.d.clock(), this.d.workspaces?.().catch(() => new Map()) ?? Promise.resolve(new Map()), this.settings()]);
+    const snap = current(file);
+    // The snapshot's titles, so a Compass suggestion names its issue without a read of its own.
+    const issues = new Map(Object.values(snap?.issues ?? {}).map(i => [i.key.toUpperCase(), { title: i.title, url: i.url ?? null }]));
+    return { raised: raisedNeeds(file, key => workspaces.has(key)), timeZone: clock.timeZone, revision: `${file.last?.at ?? ""}|${snap?.at ?? ""}|${file.dismissed.length}`,
+      since: briefSince(file, this.now(), clock, settings.since), issues };
   }
 
   /**
@@ -253,6 +257,9 @@ export class LinearQueue {
    * The ranker's Linear input: the queue's top issues by priority plus every issue changed since the last workday's
    * sweep (stable all day, so opening the brief doesn't re-rank), each with its change. No snapshot yet: one sweep first.
    */
+  /** Every issue in the newest sweep, most urgent first (Compass's Linear tracker places): no sweep of its own. */
+  async snapshotIssues(): Promise<QueueIssue[]> { return queueIssues(current(await this.read())); }
+
   async forRanker(): Promise<(QueueIssue & { change: string | null })[]> {
     let file = await this.read();
     if (!current(file)) { await this.sweep("ranker"); file = await this.read(); }

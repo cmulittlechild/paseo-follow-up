@@ -1,4 +1,4 @@
-// raised-is-needs-you (AGENTS.md invariant 86): a raised issue with no workspace is a counted Needs-you row, with one set of actions on screen.
+// nobody-s-on-it-is-needs-you (AGENTS.md invariant 86): a raised issue with no workspace is a counted Needs-you row, with one set of actions on screen.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -184,7 +184,7 @@ test("Q8 on Home: raised issues head Needs you and count in it, making the group
   assert.deepEqual(closed.map(e => e.type), ["header"]);
 });
 
-test("raised-is-needs-you: the sidebar badge counts the raised issues from the same model as Home (one server-side count)", async () => {
+test("nobody-s-on-it-is-needs-you: the sidebar badge counts the raised issues from the same model as Home (one server-side count)", async () => {
   const { buildHome, homeCounts } = await import("../shared/home");
   const model = buildHome({ rows: [], tracked: [], paseo: [], now: Date.now(), raised: 1 });
   assert.equal(homeCounts(model).needs, 1, "a raise alone makes Needs you 1");
@@ -193,13 +193,13 @@ test("raised-is-needs-you: the sidebar badge counts the raised issues from the s
   const live = await readFile(new URL("../client/live.tsx", import.meta.url), "utf8");
   assert.match(live, /const count = homeCounts\(useHomeModel\(sources\)\)\.needs;/);
   const data = await readFile(new URL("../client/home-data.ts", import.meta.url), "utf8");
-  assert.match(data, /extras\.queue\(\)\.raised\.length/);
+  assert.match(data, /extras\.queue\(\)\.needs\.length/);
   assert.match(data, /buildHome\(\{[^}]*raised \}\)/);
   const home = await readFile(new URL("../client/home.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(home, /useRaised|linearQueueRpc/, "Home reads no queue of its own for Needs you");
 });
 
-test("raised-is-needs-you: the worker's needs() is the home feed's answer; a sweep that raises an issue changes it and calls onChange (the feed's push)", async t => {
+test("nobody-s-on-it-is-needs-you: the worker's needs() is the home feed's answer; a sweep that raises an issue changes it and calls onChange (the feed's push)", async t => {
   const r = reader([{ key: "ACME-142", priority: 4 }]);
   const directory = await mkdtemp(join(tmpdir(), "brief-since-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

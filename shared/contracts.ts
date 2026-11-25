@@ -1,7 +1,7 @@
 import { queueViewSchema } from "./queue";
-import { briefPlanInputSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
+import { briefPlanInputSchema, compassSetSchema, planChangeSchema, queueChangeSchema } from "./morning-brief";
 import { sourcesChangeSchema } from "./brief-sources";
-import { compassChangeSchema, noteActionSchema } from "./compass";
+import { noteActionSchema } from "./compass";
 import { projectSchema } from "./settings";
 import { renameResultSchema, renameStatusSchema } from "./rename";
 import { MAX_REVIEWERS, REPO, reviewerConfigSchema, reviewerEntrySchema, reviewerListSchema } from "./reviewers";
@@ -100,14 +100,19 @@ export const setFollowSettingsRpc = defineRpc({ name: "follow.set-follow-setting
 }), output: followSettingsSchema });
 /** External priorities for Home's Priority sort (written by the set_priorities agent tool). */
 /**
- * Decision Q8's part of Needs you (raised Linear issues with no workspace), computed by the worker from the queue it
- * holds, plus the zone their due dates read in and the queue's revision (a sweep or a dismissal moves it, so an open
- * brief pane re-reads). Rides the home feed, and on 0.15 the priorities poll: never a read of its own.
+ * "Nobody's on it" (invariant 86, nobody-s-on-it-is-needs-you): the Needs-you rows for issues that matter and have no
+ * workspace, a raised Linear issue and an urgent Compass ask alike, one row per issue (shared/nobody.ts), computed by
+ * the worker from the queue and compass.json it holds. Plus the zone their dates read in, the revision (a sweep, a read
+ * or a Remove moves it, so an open brief pane re-reads), and Compass's "1 from Dana" for Home's brief row. Rides the
+ * home feed, and on 0.15 the priorities poll: never a read of its own.
  */
 export const queueNeedsSchema = z.object({
-  raised: z.array(z.object({ key: z.string(), title: z.string(), url: z.string().nullable(), priority: z.number(), priorityBefore: z.number().nullable(), due: z.string().nullable(), at: z.string() })),
+  needs: z.array(z.object({ key: z.string(), title: z.string(), url: z.string().nullable(), due: z.string().nullable(), raisedTo: z.number().nullable(), at: z.string(),
+    reasons: z.array(z.object({ from: z.enum(["queue", "compass"]), line: z.string(), source: z.string(), note: z.string().nullable() })).min(1) })),
   timeZone: z.string(),
   revision: z.string(),
+  /** "1 from Dana": what Compass heard since the brief's point, for Home's brief row; null: nothing new. */
+  heard: z.string().nullable().optional(),
 });
 export const prioritiesRpc = defineRpc({ name: "follow.priorities", input: z.object({}), output: z.object({ items: z.array(prioritySchema), queue: queueNeedsSchema.optional(), compass: compassLinesSchema.optional() }) });
 /** Provider session limits from the Smart Session plugin, for Home's meters. Hidden when it isn't installed. */
@@ -148,9 +153,11 @@ export const dismissQuestionRpc = defineRpc({ name: "follow.dismiss-question", i
  * agentId. Sends nothing to any agent. `name` is what the toast calls it ("Q3", or the row's title).
  */
 export const dismissRpc = defineRpc({ name: "follow.dismiss", input: z.strictObject({ workspaceId: idSchema.optional(), key: z.string().min(1).max(400).optional(), agentId: idSchema.optional(),
-  /** Decision Q8: a raised Linear issue's Needs-you item (it has no workspace), by its key. */
-  issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]*-\d+$/).max(30).optional(), undo: z.boolean().optional() })
-  .refine(i => [!!i.agentId, !!(i.workspaceId && i.key), !!i.issue].filter(Boolean).length === 1, "Give workspaceId and key for a Needs-you item, agentId for an agent's brief, or issue for a raised Linear issue."),
+  /** A "Nobody's on it" row (it has no workspace), by its issue key: the queue's raise and Compass's asks on it alike. */
+  issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]*-\d+$/).max(30).optional(),
+  /** One Compass suggestion, by its note id (New's Remove, or a row Compass alone put in Needs you). */
+  compass: z.string().min(1).max(80).optional(), undo: z.boolean().optional() })
+  .refine(i => [!!i.agentId, !!(i.workspaceId && i.key), !!i.issue, !!i.compass].filter(Boolean).length === 1, "Give workspaceId and key for a Needs-you item, agentId for an agent's brief, issue for a Nobody's-on-it row, or compass for a Compass suggestion."),
   output: z.object({ name: z.string() }) });
 export const answerQuestionRpc = defineRpc({ name: "follow.answer-question", input: z.object({ workspaceId: idSchema, questionId: z.string().regex(/^Q\d+$/), choice: z.string().trim().min(1).max(200), words: z.string().trim().max(2000).optional(), action: z.enum(["send", "copy", "chat", "resend"]),
   /** Pasted images (shared/images.ts): they ride the answer's message, on Send only. */
@@ -370,11 +377,11 @@ export const setBriefPlanRpc = defineRpc({ name: "follow.set-brief-plan", input:
 // sends it on open).
 export const briefSourcesRpc = defineRpc({ name: "follow.brief-sources", input: z.strictObject({ check: z.boolean().optional() }), output: z.unknown() });
 export const setBriefSourcesRpc = defineRpc({ name: "follow.set-brief-sources", input: sourcesChangeSchema, output: z.unknown() });
-export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
+export const briefChatSearchRpc = defineRpc({ name: "follow.brief-chat-search", input: z.strictObject({ kind: z.enum(["people", "channels", "docs", "file", "trackers", "calendars"]), query: z.string().trim().min(1).max(1_000) }), output: z.unknown() });
 // Compass (shared/compass.ts, server/compass.ts, docs/compass.md): the sources that set the developer's priorities.
 export const compassRpc = defineRpc({ name: "follow.compass", input: z.strictObject({ workspace: z.string().min(1).max(200).optional() }), output: z.unknown() });
-export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels"]), query: z.string().trim().min(1).max(100) }), output: z.unknown() });
-export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassChangeSchema, output: z.unknown() });
+export const compassFindRpc = defineRpc({ name: "follow.compass-find", input: z.strictObject({ kind: z.enum(["people", "channels", "docs", "file", "trackers", "calendars"]), query: z.string().trim().min(1).max(1_000) }), output: z.unknown() });
+export const setCompassRpc = defineRpc({ name: "follow.set-compass", input: compassSetSchema, output: z.unknown() });
 export const readCompassRpc = defineRpc({ name: "follow.read-compass", input: z.strictObject({}), output: z.unknown() });
 /** Why it matters' menu and compass_note: pin, edit, unpin a note, or tell its workspace's main agent. */
 export const compassNoteRpc = defineRpc({ name: "follow.compass-note", input: noteActionSchema, output: z.unknown() });

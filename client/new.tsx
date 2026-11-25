@@ -1,3 +1,4 @@
+import { PriorityLine } from "./home-chrome";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, View, useWindowDimensions, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
@@ -294,12 +295,15 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   const routeColor = row.route.tone === "warn" ? c.statusWarning : row.route.tone === "open" && !row.taken ? c.foreground : c.foregroundMuted;
   // A taken issue (inside the open fold) is muted: it's somebody's work already, and ↵ opens its workspace.
   const ink = row.taken && !selected ? c.foregroundMuted : c.foreground;
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${row.key} ${row.title}, ${row.state}, ${row.taken ? `already in ${row.route.text}` : row.route.text}`} onPress={onPress} style={base}>
+  const meta = [row.state, row.age].filter(Boolean).join(" · ");
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${row.key} ${row.title}, ${row.reason ? `${row.reason}, from Compass, ` : ""}${row.state ? `${row.state}, ` : ""}${row.taken ? `already in ${row.route.text}` : row.route.text}`} onPress={onPress} style={base}>
     <View style={{ paddingTop: 2 }}><Icon name={row.icon} size={15} color={row.icon === "Contrast" && !row.taken ? c.statusWarning : c.foregroundMuted} /></View>
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
       <Text numberOfLines={compact ? 2 : 1} style={{ color: ink, fontSize: compact ? 15 : 13 }}><Text style={{ color: c.foregroundMuted }}>{row.key}  </Text>{row.title}</Text>
+      {/* A Compass suggestion says why it's on top, as Home's rows do (the reason line with its source). */}
+      {!!row.reason && <PriorityLine reason={row.reason} source={{ kind: "compass", label: "Compass" }} c={c} size={12} lines={compact ? 2 : 1} />}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{[row.state, row.age].filter(Boolean).join(" · ")} · </Text>
+        {!!meta && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{meta} · </Text>}
         {row.route.tone === "open" && <Icon name="ExternalLink" size={12} color={routeColor} />}
         <Text numberOfLines={1} style={{ color: routeColor, fontSize: 12, flexShrink: 1 }}>{row.route.text}</Text>
         {row.tag && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}> · {row.tag}</Text>}
