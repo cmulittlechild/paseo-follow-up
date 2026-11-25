@@ -53,10 +53,12 @@ test("an-agent-on-any-provider-gets-follow-up: the worker with only OpenCode: to
   };
   const run = (name: string, input: unknown) => { const h = handlers.get(name) as Registered; return h.input.parseAsync(input).then(i => h.run(i, { paseo })); };
 
-  // Helpers: none was picked, Claude isn't here, so each runs on OpenCode, sized to the job.
+  // Helpers: none was picked, Claude isn't here, so each runs on OpenCode, sized to the job; AI priority, which reads
+  // what other people wrote, has no provider it can run on, so it stays put and its row says so (blocked).
   const view = await run("follow.agent-settings", { catalog: true }) as { roles: { role: string; provider: string; model: string | null; same: boolean }[] };
   const roles = Object.fromEntries(view.roles.map(r => [r.role, r]));
-  assert.deepEqual([roles.about!.provider, roles.ranker!.provider, roles.overseer!.provider], ["opencode", "opencode", "opencode"], "no helper defaults to a provider the developer lacks");
+  assert.deepEqual([roles.about!.provider, roles.overseer!.provider], ["opencode", "opencode"], "no helper defaults to a provider the developer lacks");
+  assert.notEqual(roles.ranker!.provider, "opencode", "AI priority is never moved onto a provider it can't run on");
   assert.equal(roles.about!.model, "small-fast"); assert.equal(roles.overseer!.model, "frontier");
   assert.equal(roles.recovery!.same, true, "recovery still copies the main agent, whatever it runs on");
 
@@ -79,17 +81,44 @@ test("an-agent-on-any-provider-gets-follow-up: the worker with only OpenCode: to
   await rm(tried, { force: true });
 });
 
-test("noHooksLine names what other providers miss, and nothing when every provider has hooks", async () => {
-  const { noHooksLine } = await import("../shared/provider-support");
-  const p = (id: string, label: string, available = true) => ({ id, label, available });
-  assert.equal(noHooksLine([p("claude", "Claude"), p("codex", "Codex")]), null);
-  assert.equal(noHooksLine([p("claude", "Claude"), p("opencode", "OpenCode", false)]), null, "an unavailable provider isn't the developer's");
-  const both = noHooksLine([p("opencode", "OpenCode"), p("pi", "Pi")])!;
-  assert.match(both, /^Your agents on OpenCode and Pi get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs\. Turn-end reminders .* need Claude Code or Codex, whose hooks run them\.$/);
-  assert.doesNotMatch(both, /instructions/, "OpenCode and Pi do get the instructions: nothing says otherwise");
-  assert.match(noHooksLine([p("copilot", "Copilot")])!, / On Copilot they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet\./);
-  // A generic ACP agent carries the developer's own id: the worker marks it from Paseo's config (acp), never by id.
-  assert.match(noHooksLine([{ ...p("acme-acp", "Acme ACP"), acp: true }])!, / On Acme ACP they don't get Follow-up's instructions: /);
+test("providerNotes: at most two short lines, what works first, then what needs Claude Code or Codex and the one thing to do", async () => {
+  const { providerNotes, guardAction } = await import("../shared/provider-support");
+  const p = (id: string, label: string, available = true, reason: string | null = null) => ({ id, label, available, reason });
+  assert.deepEqual(providerNotes([p("claude", "Claude"), p("codex", "Codex")], "claude"), [], "nothing to say with Claude and Codex");
+  assert.deepEqual(providerNotes([p("claude", "Claude"), p("opencode", "OpenCode")], "claude"), [
+    "Works on OpenCode: Follow-up's tools, PR tracking and repairs.",
+    "Needs Claude Code or Codex: turn-end reminders and Wait for background jobs. Use Claude Code or Codex for these.",
+  ]);
+  // A new non-Claude user: only a generic ACP agent, Claude and Codex turned off, Summaries on the ACP agent.
+  const acp = providerNotes([p("claude", "Claude", false, "Turned off in Paseo"), p("codex", "Codex", false, "Turned off in Paseo"), p("pi", "Pi", false, "Not installed"), { ...p("acme-acp", "Acme ACP"), acp: true }], "acme-acp");
+  assert.deepEqual(acp, [
+    "Works on Acme ACP: Follow-up's tools, PR tracking and repairs. Paseo doesn't pass Follow-up's instructions to Acme ACP yet.",
+    "Needs Claude Code or Codex: turn-end reminders, Wait for background jobs, Summaries' linked issues, Compass and Ask. Turn on Claude Code or Codex in Paseo for these.",
+  ]);
+  assert.doesNotMatch(acp.join(" "), /Pick Claude|hooks|tools away/, "no dead end, no mechanism words");
+  assert.equal(guardAction([p("opencode", "OpenCode")]), "Install Claude Code or Codex");
+  assert.equal(guardAction([p("codex", "Codex"), p("opencode", "OpenCode")]), "Use Claude Code or Codex");
+});
+
+test("a helper that reads other people's words is never Recommended where it can't run, and shows off with no guarded provider", async () => {
+  const { jobRow } = await import("../shared/job-rows");
+  const { recommend } = await import("../shared/recommend");
+  const { resolveRole, roleSummary, EMPTY_AGENT_SETTINGS } = await import("../shared/agent-settings");
+  const prov = (id: string, available = true, reason: string | null = null) => ({ id, label: id === "acme-acp" ? "Acme ACP" : id, available, reason, models: [{ id: `${id}-1`, label: `${id} 1`, isDefault: true, thinking: [] }], modes: [], defaultMode: null });
+  const cat = (...providers: ReturnType<typeof prov>[]) => ({ providers, error: null, fetchedAt: null });
+  const ranker = (over: Record<string, unknown> = {}) => { const d = { ...resolveRole(EMPTY_AGENT_SETTINGS, "ranker"), ...over }; return { ...d, summary: roleSummary(d) }; };
+  const none = cat(prov("claude", false, "Turned off in Paseo"), prov("codex", false, "Not installed"), prov("acme-acp"));
+  assert.equal(recommend("ranker", none.providers).source, "none", "AI priority is never recommended on an unguarded provider");
+  assert.equal(recommend("about", none.providers).provider, "acme-acp", "Summaries still runs there");
+  const blocked = jobRow(ranker({ provider: "acme-acp", model: null }), none);
+  assert.equal(blocked.blocked, true); assert.equal(blocked.recommended, false);
+  assert.equal(blocked.pick, "No provider here can run it", "never a pick on a provider the developer lacks");
+  assert.equal(blocked.notice?.tone, "warning");
+  assert.match(blocked.notice!.text, /^AI priority reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only\. Turn on Claude Code or Codex in Paseo to use it\.$/);
+  const withCodex = cat(prov("codex"), prov("acme-acp"));
+  const moved = jobRow(ranker({ provider: "acme-acp", model: null }), withCodex);
+  assert.equal(moved.blocked, false); assert.equal(moved.recommended, false); assert.equal(moved.rec?.provider, "codex");
+  assert.match(moved.notice!.text, /^AI priority reads other people's messages, so it runs only on Claude Code or Codex, .* Recommended: /);
 });
 
 test("isAcp follows Paseo's config: a provider that extends acp, directly or through another, is ACP", async () => {

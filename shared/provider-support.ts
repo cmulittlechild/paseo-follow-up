@@ -36,20 +36,35 @@ export function isAcp(provider: string, config?: ProviderConfig): boolean {
 }
 const list = (names: string[]) => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
+type NoteProvider = { id: string; label: string; available: boolean; reason?: string | null; acp?: boolean };
+
 /**
- * The one line that says what agents on the developer's other providers miss, and why; null when every available
- * provider has hooks. Settings → Agents shows it under the helper rows.
+ * What to do to get what needs Claude Code or Codex, from what Paseo has: use them when one is available, turn one on
+ * when Paseo has it turned off, install one otherwise. Never "pick" a provider the developer can't pick.
  */
-export function noHooksLine(providers: readonly { id: string; label: string; available: boolean; acp?: boolean }[]): string | null {
+export function guardAction(providers: readonly NoteProvider[]): string {
+  const guarded = providers.filter(p => hasHooks(p.id));
+  if (guarded.some(p => p.available)) return "Use Claude Code or Codex";
+  if (guarded.some(p => /turned off/i.test(p.reason ?? ""))) return "Turn on Claude Code or Codex in Paseo";
+  return "Install Claude Code or Codex";
+}
+
+/**
+ * Settings → Agents' one block under the helper rows, at most two short lines: what works on the developer's other
+ * providers (and, for ACP agents, the one thing Paseo doesn't pass yet), then what needs Claude Code or Codex with the
+ * one thing to do (guardAction). `summariesOn` is the provider Summaries runs on: off Claude and Codex it leaves out
+ * linked items, and Compass and Ask read nothing (sources-are-read-only). Why AI priority can't run is on its row.
+ * Empty when there's nothing to say.
+ */
+export function providerNotes(providers: readonly NoteProvider[], summariesOn: string | null): string[] {
   const others = providers.filter(p => p.available && !hasHooks(p.id));
-  if (!others.length) return null;
-  const acpOf = (p: { id: string; acp?: boolean }) => p.acp ?? isAcp(p.id);
-  const acp = others.filter(acpOf).map(p => p.label);
-  // Outcome first, then why; what still works, so "tools only" never reads as "doesn't work" (critique 2026-11-25).
-  const parts = [
-    `Your agents on ${list(others.map(p => p.label))} get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs.`,
-    acp.length ? `On ${list(acp)} they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet.` : null,
-    "Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+  const acp = others.filter(p => p.acp ?? isAcp(p.id)).map(p => p.label);
+  const needs = [
+    ...(others.length ? ["turn-end reminders", "Wait for background jobs"] : []),
+    ...(summariesOn && !hasHooks(summariesOn) ? ["Summaries' linked issues", "Compass", "Ask"] : []),
   ];
-  return parts.filter(Boolean).join(" ");
+  return [
+    others.length ? `Works on ${list(others.map(p => p.label))}: Follow-up's tools, PR tracking and repairs.${acp.length ? ` Paseo doesn't pass Follow-up's instructions to ${list(acp)} yet.` : ""}` : null,
+    needs.length ? `Needs Claude Code or Codex: ${list(needs)}. ${guardAction(providers)} for ${needs.length > 1 ? "these" : "it"}.` : null,
+  ].filter((x): x is string => !!x);
 }

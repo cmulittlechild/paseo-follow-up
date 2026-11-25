@@ -109,8 +109,8 @@
     },
     {
       "role": "ranker",
-      "provider": "acme-acp",
-      "model": "acme-1"
+      "provider": "claude",
+      "model": "sonnet"
     },
     {
       "role": "dispatch",
@@ -122,7 +122,7 @@
     {
       "name": "agents-desktop-light",
       "path": "docs/evidence/any-provider/agents-desktop-light.png",
-      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "line": "Works on Acme ACP: Follow-up's tools, PR tracking and repairs. Paseo doesn't pass Follow-up's instructions to Acme ACP yet.\nNeeds Claude Code or Codex: turn-end reminders, Wait for background jobs, Summaries' linked issues, Compass and Ask. Turn on Claude Code or Codex in Paseo for these.",
       "lineBox": {
         "left": 356,
         "right": 1076,
@@ -130,32 +130,24 @@
         "lines": 3,
         "vw": 1440
       },
-      "notes": [
-        {
-          "text": "On Acme ACP, Summaries leave out linked ",
-          "width": 720
-        },
-        {
-          "text": "On Acme ACP, AI priority doesn't rank, s",
-          "width": 720
-        },
-        {
-          "text": "Not available in Paseo: Claude, Codex an",
-          "width": 720
-        },
-        {
-          "text": "Your agents on Acme ACP get Follow-up's ",
-          "width": 720
-        }
-      ],
+      "notes": [],
+      "priority": {
+        "label": "Unavailable",
+        "hint": null,
+        "amberOpacity": 1,
+        "pickerButton": false,
+        "checked": "false",
+        "disabled": true,
+        "text": "AI priority\nUnavailable\nSorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays.\nNo provider here can run it\nAI priority reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only. Turn on Claude Code or Codex in Paseo to use it.\nSchedule, limits and reset"
+      },
       "offscreen": [],
       "claudeInRows": true,
-      "acmeInRows": 9
+      "acmeInRows": 4
     },
     {
       "name": "agents-desktop-dark",
       "path": "docs/evidence/any-provider/agents-desktop-dark.png",
-      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "line": "Works on Acme ACP: Follow-up's tools, PR tracking and repairs. Paseo doesn't pass Follow-up's instructions to Acme ACP yet.\nNeeds Claude Code or Codex: turn-end reminders, Wait for background jobs, Summaries' linked issues, Compass and Ask. Turn on Claude Code or Codex in Paseo for these.",
       "lineBox": {
         "left": 356,
         "right": 1076,
@@ -163,57 +155,41 @@
         "lines": 3,
         "vw": 1440
       },
-      "notes": [
-        {
-          "text": "On Acme ACP, Summaries leave out linked ",
-          "width": 720
-        },
-        {
-          "text": "On Acme ACP, AI priority doesn't rank, s",
-          "width": 720
-        },
-        {
-          "text": "Not available in Paseo: Claude, Codex an",
-          "width": 720
-        },
-        {
-          "text": "Your agents on Acme ACP get Follow-up's ",
-          "width": 720
-        }
-      ],
+      "notes": [],
+      "priority": {
+        "label": "Unavailable",
+        "hint": null,
+        "amberOpacity": 1,
+        "pickerButton": false,
+        "checked": "false",
+        "disabled": true,
+        "text": "AI priority\nUnavailable\nSorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays.\nNo provider here can run it\nAI priority reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only. Turn on Claude Code or Codex in Paseo to use it.\nSchedule, limits and reset"
+      },
       "offscreen": [],
       "claudeInRows": true,
-      "acmeInRows": 9
+      "acmeInRows": 4
     },
     {
       "name": "agents-phone-light",
       "path": "docs/evidence/any-provider/agents-phone-light.png",
-      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "line": "Works on Acme ACP: Follow-up's tools, PR tracking and repairs. Paseo doesn't pass Follow-up's instructions to Acme ACP yet.\nNeeds Claude Code or Codex: turn-end reminders, Wait for background jobs, Summaries' linked issues, Compass and Ask. Turn on Claude Code or Codex in Paseo for these.",
       "lineBox": {
         "left": 16,
         "right": 374,
         "width": 358,
-        "lines": 6,
+        "lines": 4,
         "vw": 390
       },
-      "notes": [
-        {
-          "text": "On Acme ACP, Summaries leave out linked ",
-          "width": 358
-        },
-        {
-          "text": "On Acme ACP, AI priority doesn't rank, s",
-          "width": 358
-        },
-        {
-          "text": "Not available in Paseo: Claude, Codex an",
-          "width": 358
-        },
-        {
-          "text": "Your agents on Acme ACP get Follow-up's ",
-          "width": 358
-        }
-      ],
+      "notes": [],
+      "priority": {
+        "label": "Unavailable",
+        "hint": null,
+        "amberOpacity": 1,
+        "pickerButton": false,
+        "checked": "false",
+        "disabled": true,
+        "text": "AI priority\nUnavailable\nSorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays.\nNo provider here can run it\nAI priority reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only. Turn on Claude Code or Codex in Paseo to use it.\nSchedule, limits and reset"
+      },
       "offscreen": [
         "DIV.GeneralFollowingReviewersAgentsNew workI",
         "DIV.GeneralFollowingReviewersAgentsNew workI",
@@ -222,37 +198,29 @@
         "DIV."
       ],
       "claudeInRows": true,
-      "acmeInRows": 9
+      "acmeInRows": 4
     },
     {
       "name": "agents-phone-dark",
       "path": "docs/evidence/any-provider/agents-phone-dark.png",
-      "line": "Your agents on Acme ACP get Follow-up's tools, and Follow-up still tracks their PRs and sends them repairs. On Acme ACP they don't get Follow-up's instructions: Paseo doesn't pass a plugin's instructions to ACP agents yet. Turn-end reminders (sync, say what needs you, due tasks) and Wait for background jobs need Claude Code or Codex, whose hooks run them.",
+      "line": "Works on Acme ACP: Follow-up's tools, PR tracking and repairs. Paseo doesn't pass Follow-up's instructions to Acme ACP yet.\nNeeds Claude Code or Codex: turn-end reminders, Wait for background jobs, Summaries' linked issues, Compass and Ask. Turn on Claude Code or Codex in Paseo for these.",
       "lineBox": {
         "left": 16,
         "right": 374,
         "width": 358,
-        "lines": 6,
+        "lines": 4,
         "vw": 390
       },
-      "notes": [
-        {
-          "text": "On Acme ACP, Summaries leave out linked ",
-          "width": 358
-        },
-        {
-          "text": "On Acme ACP, AI priority doesn't rank, s",
-          "width": 358
-        },
-        {
-          "text": "Not available in Paseo: Claude, Codex an",
-          "width": 358
-        },
-        {
-          "text": "Your agents on Acme ACP get Follow-up's ",
-          "width": 358
-        }
-      ],
+      "notes": [],
+      "priority": {
+        "label": "Unavailable",
+        "hint": null,
+        "amberOpacity": 1,
+        "pickerButton": false,
+        "checked": "false",
+        "disabled": true,
+        "text": "AI priority\nUnavailable\nSorts Home by what matters most, from Linear, Slack and review requests. About hourly on workdays.\nNo provider here can run it\nAI priority reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only. Turn on Claude Code or Codex in Paseo to use it.\nSchedule, limits and reset"
+      },
       "offscreen": [
         "DIV.GeneralFollowingReviewersAgentsNew workI",
         "DIV.GeneralFollowingReviewersAgentsNew workI",
@@ -261,8 +229,8 @@
         "DIV."
       ],
       "claudeInRows": true,
-      "acmeInRows": 9
+      "acmeInRows": 4
     }
   ],
-  "fallbackRoles": 3
+  "fallbackRoles": 2
 }

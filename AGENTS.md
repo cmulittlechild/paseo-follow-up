@@ -1391,7 +1391,9 @@ These are product rules. Each has tests, and breaking one is a bug even when the
 115. **An agent on any provider gets Follow-up** (`an-agent-on-any-provider-gets-follow-up`). Paseo runs agents on
    Claude Code, Codex and many more (OpenCode, Pi, Copilot, Cursor, Kimi, Kiro, any ACP agent), and many developers
    have neither Claude nor Codex. Every core feature works on any provider Paseo runs, or says in one line what needs
-   Claude or Codex and why (`noHooksLine`, `shared/provider-support.ts`, shown in Settings → Agents). Tools, `needs_you` and the Overseer's tools
+   Claude or Codex and why (`providerNotes`, `shared/provider-support.ts`: one block in Settings → Agents, with what to do,
+   never a pick the developer can't make). A helper is never Recommended on a provider it can't run on; with no such
+   provider available, AI priority's row shows it off and says why (`needsGuard`). Tools, `needs_you` and the Overseer's tools
    attach to every provider (`withTools`, `withSessionMcp`; `FOLLOW_UP_TOOL_PROVIDERS` narrows it for the harness
    only). On Paseo 0.17 a provider without Follow-up's hook gets all of the hook's SessionStart text in its system
    prompt (`hooklessParts`, `workspaceInstructions`); what only a hook can do (the Stop checks, per-turn context, the

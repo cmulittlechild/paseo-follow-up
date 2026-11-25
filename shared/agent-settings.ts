@@ -31,11 +31,11 @@ export const guardedProvider = (provider: string) => (CLI_JOB_PROVIDERS as reado
 /** The one line a refused job leaves (Settings → Agents, the source, the job's error). */
 export const unguardedJobWhy = (providerLabel: string, what: string) =>
   `${what} doesn't run on ${providerLabel}: it reads words other people wrote, and Follow-up can't take ${providerLabel}'s tools away. Pick Claude or Codex in Settings → Agents.`;
-/** What each job role reads from outside, for Settings → Agents' line on an unguarded provider. */
-export const OUTSIDE_READS: Partial<Record<AgentRole, string>> = {
-  about: "Summaries leave out linked issues and threads, and Compass and Ask read nothing",
-  ranker: "AI priority doesn't rank",
-};
+/**
+ * A job whose whole work reads words other people wrote (AI priority), so it runs only on a guarded provider: it's never
+ * recommended on any other, and with no guarded provider available its row says so and shows it off.
+ */
+export const needsGuard = (role: AgentRole) => role === "ranker";
 /** The roles that can copy another agent: recovery (the workspace's main agent) and dispatch (the Overseer). */
 export const hasSame = (role: AgentRole) => role === "recovery" || role === "dispatch";
 /** What a role's "same" copies, in the picker's words. */

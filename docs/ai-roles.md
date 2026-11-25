@@ -19,8 +19,10 @@
     `rank-plan`, Ask's `ask-plan` and `ask-items`, `compass-extract`, and a Summary with linked issues or threads).
     `AiJobs.run` refuses it before any runner on a provider `guardedProvider` doesn't name (anything but Claude or
     Codex), with reason `unguarded`, since a job agent there has its provider's own tools. The Summary leaves the linked
-    text out there and still runs on the workspace's own work. Settings → Agents says what doesn't run under the rows
-    (`OUTSIDE_READS`), and the source's own row (Compass, an Ask server) says why.
+    text out there and still runs on the workspace's own work. AI priority (`needsGuard`) is never recommended on such a
+    provider, and with none available its row shows it off and says what to install or turn on; the Summary's
+    linked items, Compass and Ask are named in the block under the rows (`providerNotes`), and the source's own row
+    (Compass, an Ask server) says why.
   - `catalogFrom` keeps each model's description (cut to 200 characters), which the recommendations read.
 - **RPCs and tools.** `follow.agent-settings`, `follow.set-agent-setting` and `follow.set-wait`; tools
   `agent_settings`, `set_agent_setting` and `set_wait_for_jobs`.

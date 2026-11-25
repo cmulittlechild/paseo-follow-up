@@ -72,7 +72,9 @@ Follow-up's hook lives only in those two. What an agent on any other provider ge
   claim). Which providers are ACP comes from Paseo's config (`isAcp`): a built-in ACP id, or any provider whose
   `extends` chain reaches one, so a generic ACP agent under the developer's own id counts.
 - **Not there**: the Stop checks (sync, `needs_you`, due tasks), the per-turn context, the polling nudge and Wait, all
-  hooks. `noHooksLine` says so in one line under Settings → Agents' helper rows when Paseo has such a provider.
+  hooks. `providerNotes` says so in Settings → Agents' one block under the helper rows, at most two short lines: what
+  works on those providers, then what needs Claude Code or Codex and the one thing to do (`guardAction`: use, turn on
+  or install, never a pick the developer can't make).
 
 ## Env flags
 

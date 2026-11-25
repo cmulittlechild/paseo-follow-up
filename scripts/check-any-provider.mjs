@@ -7,7 +7,7 @@
 //    the fake agent records what Paseo gave it at session/new (mcpServers, any system prompt) and calls the tool through
 //    the Paseo MCP server it was handed. Asserts the follow_* tools are listed and the call answers for its own
 //    workspace; reports whether any Follow-up instruction text reached the agent (Paseo 0.17.4: none for ACP).
-// 2. Renders Settings → Agents at 1440×900 and 390×844, light and dark: the "Your agents on …" line shows, saying Acme ACP gets no instructions,
+// 2. Renders Settings → Agents at 1440×900 and 390×844, light and dark: the one notes block shows ("Works on …" / "Needs Claude Code or Codex: …"), saying Acme ACP gets no instructions, and AI priority shows off with why,
 //    the helper rows show the fallback pick (Acme ACP, never Claude), nothing overflows horizontally.
 //
 //   PLAYWRIGHT_CORE=<dir> CHROMIUM=<bin> HARNESS_PASEO=system ~/paseo-harness/tools/harness-slot \
@@ -117,7 +117,7 @@ try {
     try {
       await page.goto(`${ORIGIN}/settings/hosts/${SERVER_ID}/plugins/follow-up/agents`);
       await page.locator(`[data-testid="plugin-settings-tab-agents"]`).filter({ visible: true }).first().waitFor();
-      const line = page.getByText(/^Your agents on /).first();
+      const line = page.getByText(/^Works on /).first();
       await line.waitFor();
       await page.getByText(LABEL).first().waitFor();
       await line.scrollIntoViewIfNeeded();
@@ -125,17 +125,36 @@ try {
       const facts = await page.evaluate(() => {
         const vw = document.documentElement.clientWidth;
         const wide = [...document.querySelectorAll("body *")].filter(e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.right > vw + 1 && s.visibility !== "hidden" && !e.closest('[style*="overflow"]'); }).map(e => `${e.tagName}.${(e.getAttribute("data-testid") ?? e.textContent ?? "").slice(0, 40)}`);
-        let el = [...document.querySelectorAll("div")].find(d => /^Your agents on /.test(d.textContent ?? "") && d.children.length === 0);
+        const leaf = [...document.querySelectorAll("div")].find(d => /^Works on /.test(d.textContent ?? "") && d.children.length === 0);
+        let el = leaf?.parentElement && /Needs Claude Code or Codex/.test(leaf.parentElement.textContent ?? "") ? leaf.parentElement : leaf;
         const r = el?.getBoundingClientRect();
-        return { pageScrolls: document.scrollingElement.scrollWidth > vw + 1, wide: wide.slice(0, 5), line: el?.textContent ?? null, lineBox: r ? { left: r.left, right: r.right, width: Math.round(r.width), lines: Math.round(r.height / (parseFloat(getComputedStyle(el).lineHeight) || 20)), vw } : null, notes: [...document.querySelectorAll("div")].filter(d => d.children.length === 0 && /^(On Acme ACP, |Not available in Paseo|Your agents on )/.test(d.textContent ?? "")).map(d => ({ text: (d.textContent ?? "").slice(0, 40), width: Math.round(d.getBoundingClientRect().width) })), text: document.body.innerText };
+        return { pageScrolls: document.scrollingElement.scrollWidth > vw + 1, wide: wide.slice(0, 5), line: el?.innerText ?? null, lineBox: r ? { left: r.left, right: r.right, width: Math.round(r.width), lines: Math.round(r.height / (parseFloat(getComputedStyle(el).lineHeight) || 20)), vw } : null, notes: [...document.querySelectorAll("div")].filter(d => d.children.length === 0 && /^(On Acme ACP, |Not available in Paseo|Your agents on )/.test(d.textContent ?? "")).map(d => ({ text: (d.textContent ?? "").slice(0, 40), width: Math.round(d.getBoundingClientRect().width) })), priority: (() => {
+          const sw = document.querySelector('[role="switch"][aria-label="AI priority"]');
+          let row = sw; while (row && !(row.innerText ?? "").includes("Sorts Home")) row = row.parentElement;
+          while (row?.parentElement && !/Recovery|Overseer|Summaries/.test(row.parentElement.innerText ?? "") ) row = row.parentElement;
+          const amber = [...(row?.querySelectorAll("div") ?? [])].find(d => d.children.length === 0 && /^AI priority reads other people's messages/.test(d.textContent ?? ""));
+          let opacity = 1; for (let e = amber; e && e !== document.body; e = e.parentElement) opacity *= parseFloat(getComputedStyle(e).opacity);
+          const pickerButton = [...(row?.querySelectorAll('[role="button"], button') ?? [])].some(b => /No provider here can run it/.test(b.textContent ?? ""));
+          return sw ? { label: sw.textContent, hint: sw.getAttribute("aria-description") ?? sw.getAttribute("title") ?? null, amberOpacity: amber ? opacity : null, pickerButton, checked: sw.getAttribute("aria-checked"), disabled: sw.getAttribute("aria-disabled") === "true" || sw.hasAttribute("disabled"), text: row?.innerText ?? null } : null;
+        })(), text: document.body.innerText };
       });
       assertNoRealNames(facts.text, name);
       assert.equal(facts.pageScrolls, false, `${name}: the page scrolls sideways`);
       assert.ok(facts.lineBox && facts.lineBox.left >= 0 && facts.lineBox.right <= facts.lineBox.vw + 1, `${name}: the line overflows ${JSON.stringify(facts.lineBox)}`);
-      const claudePick = /\bClaude\b(?! Code)/.test(facts.text.split(/^Your agents on /m)[0].replace(/with Claude, Haiku[^.]*\./, "").replace(/other than Claude or Codex/g, "").replace(/need[s]? Claude or Codex/g, ""));
+      const claudePick = /\bClaude\b(?! Code)/.test(facts.text.split(/^Works on /m)[0].replace(/with Claude, Haiku[^.]*\./, "").replace(/other than Claude or Codex/g, "").replace(/need[s]? Claude or Codex/g, ""));
+      assert.ok(facts.priority, `${name}: AI priority's switch is on the page`);
+      assert.equal(facts.priority.label, "Unavailable", `${name}: AI priority's switch reads Unavailable`);
+      assert.equal(facts.priority.disabled, true, `${name}: AI priority's switch is disabled with no guarded provider`);
+      assert.doesNotMatch(facts.priority.text ?? "", /Recommended/, `${name}: AI priority shows no Recommended chip on an unguarded provider`);
+      assert.match(facts.priority.text ?? "", /No provider here can run it/, `${name}: AI priority's picker says no provider here can run it`);
+      assert.equal(facts.priority.pickerButton, false, `${name}: AI priority's picker is static text, not a button`);
+      assert.doesNotMatch(facts.priority.text ?? "", /Claude · |Codex · /, `${name}: AI priority's picker shows no unavailable Claude or Codex pick`);
+      assert.doesNotMatch(facts.priority.text ?? "", /Reads a lot and has to give reasons/, `${name}: AI priority's need line is hidden while blocked`);
+      assert.equal(facts.priority.amberOpacity, 1, `${name}: AI priority's reason is drawn at full opacity`);
+      assert.doesNotMatch(facts.text, /Pick Claude|Not in Paseo/, `${name}: no "Pick Claude" and no provider census`);
       const path = join(out, `${name}.png`);
       await page.screenshot({ path, fullPage: false, animations: "disabled", caret: "hide" });
-      report.shots.push({ name, path: relative(process.cwd(), path), line: facts.line, lineBox: facts.lineBox, notes: facts.notes, offscreen: facts.wide, claudeInRows: claudePick, acmeInRows: (facts.text.match(new RegExp(LABEL, "g")) ?? []).length });
+      report.shots.push({ name, path: relative(process.cwd(), path), line: facts.line, lineBox: facts.lineBox, notes: facts.notes, priority: facts.priority, offscreen: facts.wide, claudeInRows: claudePick, acmeInRows: (facts.text.match(new RegExp(LABEL, "g")) ?? []).length });
       log(`${name}: ${path}`);
     } catch (error) {
       await page.screenshot({ path: join(out, `${name}-failed.png`) }).catch(() => {});
@@ -146,7 +165,12 @@ try {
   await fs.writeFile(join(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report, null, 2));
   // Paseo 0.17.4 passes no plugin instructions to an ACP agent (inSessionNew false above), so the line must say it gets no instructions.
-  for (const shot of report.shots) assert.match(shot.line ?? "", new RegExp(`^Your agents on ${LABEL} get Follow-up's tools.* On ${LABEL} they don't get Follow-up's instructions: `), `${shot.name}: Settings → Agents says ${JSON.stringify(shot.line)}`);
+  for (const shot of report.shots) {
+    const lines = (shot.line ?? "").split("\n").map(l => l.trim()).filter(Boolean);
+    assert.equal(lines.length, 2, `${shot.name}: the notes block is two lines: ${JSON.stringify(shot.line)}`);
+    assert.match(lines[0], new RegExp(`^Works on ${LABEL}: .*Paseo doesn't pass Follow-up's instructions to ${LABEL} yet\\.`), `${shot.name}: first line ${JSON.stringify(lines[0])}`);
+    assert.match(lines[1], /^Needs Claude Code or Codex: /, `${shot.name}: second line ${JSON.stringify(lines[1])}`);
+  }
   assert.equal(report.instructions.inSessionNew || report.instructions.inPrompt, false, "no Follow-up instruction text reached the ACP agent");
   assert.equal(report.instructions.followUpEnv.FOLLOW_UP_SYSTEM_PROMPT, undefined, "the session env claims no system-prompt text an ACP agent never gets");
 } catch (error) {

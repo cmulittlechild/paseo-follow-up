@@ -6,9 +6,9 @@ import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, Settings
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentSettingsRpc, setAgentSettingRpc, setWaitRpc } from "../shared/contracts";
 import { WAIT_HOST_NOTE, WAIT_NOT_ATTACHED, waitNote, waitSwitchCopy } from "../shared/wait";
-import { OUTSIDE_READS, guardedProvider, hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
+import { hasSame, isJobRole, type AgentRole, type AgentSettingsView, type SavedRole } from "../shared/agent-settings";
 import { NO_PROMPT_MODE, SETTINGS_ORDER, isReset, resetEntry } from "../shared/job-rows";
-import { noHooksLine } from "../shared/provider-support";
+import { providerNotes } from "../shared/provider-support";
 import { JobRows, agentSettingsKey, useAgentSettings, type JobExtra } from "./job-rows";
 import { Button, errorText, text, type Theme } from "./kit";
 
@@ -27,7 +27,9 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
   const c = theme.colors; const t = text(c);
   const { query } = useAgentSettings();
   const data = query.data;
-  const noHooks = data?.catalog ? noHooksLine(data.catalog.providers) : null;
+  // One block under the rows: what works on other providers, what needs Claude Code or Codex and what to do, then what
+  // Paseo doesn't have (an-agent-on-any-provider-gets-follow-up; AI priority says its own case on its row).
+  const notes = data?.catalog ? providerNotes(data.catalog.providers, data.roles.find(r => r.role === "about")?.provider ?? null) : null;
   const more: JobExtra = {
     // The toggle names what's inside, so nobody opens it to find out.
     label: r => r.role === "ranker" ? "Schedule, limits and reset" : isJobRole(r.role) ? "Limits and reset" : r.same ? null : "Permissions and reset",
@@ -38,15 +40,9 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
     <SettingsCard>
       <JobRows theme={theme} compact={compact} order={SETTINGS_ORDER} extra={more} />
     </SettingsCard>
-    {/* A job role on a provider Follow-up can't take tools from: what it no longer reads, and why (invariant 81). */}
-    {(data?.roles ?? []).filter(r => isJobRole(r.role) && !guardedProvider(r.provider) && OUTSIDE_READS[r.role]).map(r => {
-      const label = data?.catalog?.providers.find(p => p.id === r.provider)?.label ?? r.provider;
-      return <Text key={r.role} accessibilityRole="alert" style={[t.meta, { color: c.statusWarning, paddingHorizontal: 4, maxWidth: 720 }]}>{unguardedLine(r.role, label)}</Text>;
-    })}
-    {/* Once, after the rows: what can't be picked and why (the pickers only list what can). */}
-    {!!data?.catalog && unavailableLine(data.catalog.providers) && <Text style={[t.meta, { paddingHorizontal: 4, maxWidth: 720 }]}>{unavailableLine(data.catalog.providers)}</Text>}
-    {/* What agents on a provider without Follow-up's hooks don't get, and why (an-agent-on-any-provider-gets-follow-up). */}
-    {!!noHooks && <Text style={[t.meta, { paddingHorizontal: 4, maxWidth: 720 }]}>{noHooks}</Text>}
+    {!!notes?.length && <View style={{ gap: 4, paddingHorizontal: 4, maxWidth: 720 }}>
+      {notes.map(line => <Text key={line} style={t.meta}>{line}</Text>)}
+    </View>}
   </SettingsSection>;
 }
 
@@ -123,22 +119,4 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
 }
 
 const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "dispatch" ? "the Overseer's agent" : role === "overseer" ? "Claude, newest Opus" : role === "about" ? "Claude Haiku" : "Claude Sonnet, hourly";
-/** "Not available in Paseo: Claude and Pi (turned off in Paseo); Antigravity (not installed)." Grouped by reason; a
- * provider whose name is also on a ready one isn't listed, so the line never contradicts the rows. */
-/** "On OpenCode, AI priority doesn't rank, since what it reads was written by other people…" (invariant 81). */
-export const unguardedLine = (role: AgentRole, label: string) =>
-  `On ${label}, ${OUTSIDE_READS[role]}, since what they read was written by other people and Follow-up can't take ${label}'s tools away. Pick Claude or Codex for all of it.`;
-
-function unavailableLine(providers: readonly { label: string; available: boolean; reason: string | null }[]): string | null {
-  const ready = new Set(providers.filter(p => p.available).map(p => p.label));
-  const groups = new Map<string, string[]>();
-  for (const p of providers) if (!p.available && !ready.has(p.label)) {
-    // Paseo's reasons can name binaries and PATH; developers here only need "not installed".
-    const why = /not found|PATH|not installed/i.test(p.reason ?? "") ? "not installed" : (p.reason ?? "unavailable").replace(/\.$/, "");
-    groups.set(why, [...(groups.get(why) ?? []), p.label]);
-  }
-  if (!groups.size) return null;
-  const list = (names: string[]) => names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `Not available in Paseo: ${[...groups].map(([why, names]) => `${list(names)} (${why[0].toLowerCase()}${why.slice(1)})`).join("; ")}.`;
-}
 const withCurrent = (list: number[], value: number) => [...new Set([...list, value])].sort((a, b) => a - b);

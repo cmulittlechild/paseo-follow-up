@@ -1,5 +1,6 @@
-import { EMPTY_AGENT_SETTINGS, ROLE_DEFAULTS, ROLE_INFO, SAME_LABEL, hasSame, isJobRole, labelsFor, resolveRole, roleSummary, type AgentRole, type AgentSettingsView, type Catalog, type RoleConfig, type SavedRole } from "./agent-settings";
+import { EMPTY_AGENT_SETTINGS, ROLE_DEFAULTS, guardedProvider, needsGuard, ROLE_INFO, SAME_LABEL, hasSame, isJobRole, labelsFor, resolveRole, roleSummary, type AgentRole, type AgentSettingsView, type Catalog, type RoleConfig, type SavedRole } from "./agent-settings";
 import { ROLE_NEED, isRecommended, recommend, type Recommendation } from "./recommend";
+import { guardAction } from "./provider-support";
 
 /**
  * One job row, as both setup's Helper agents step and Settings → Agents show it (client/job-rows.tsx renders it).
@@ -24,6 +25,8 @@ export type JobRowModel = {
   notice: { tone: "warning" | "muted"; text: string } | null;
   /** Said after the need line while the job is on the provider-default fallback. */
   hint: string | null;
+  /** No available provider can run this job (needsGuard): the row shows it off, with the notice saying why. */
+  blocked: boolean;
 };
 
 /** The provider each Paseo agent role switches to without prompting. */
@@ -59,13 +62,21 @@ export function jobRow(r: RoleView, catalog: Catalog | null | undefined): JobRow
   const current = providers.find(p => p.id === r.provider);
   const broken = known && !r.same && !current?.available;
   let notice: JobRowModel["notice"] = null;
-  if (broken) {
+  const title = ROLE_INFO[role].title;
+  const blocked = known && needsGuard(role) && !providers.some(p => p.available && guardedProvider(p.id));
+  if (blocked) {
+    notice = { tone: "warning", text: `${title} reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only. ${guardAction(providers)} to use it.` };
+  } else if (broken) {
     const name = current?.label ?? roleSummary(r).split(" · ")[0];
     notice = { tone: "warning", text: `${name} isn't available here, so ${WONT_RUN[role]}.${recPick ? ` Recommended: ${recPick}.` : ""}` };
+  } else if (known && needsGuard(role) && !r.same && !guardedProvider(r.provider)) {
+    notice = { tone: "warning", text: `${title} reads other people's messages, so it runs only on Claude Code or Codex, where Follow-up can keep it read-only.${recPick ? ` Recommended: ${recPick}.` : ""}` };
   } else if (recPick) notice = { tone: "muted", text: `Recommended: ${recPick}` };
   return {
-    role, title: ROLE_INFO[role].title, does: ROLE_INFO[role].does, need: ROLE_NEED[role], pick: r.summary, recommended, rec: usable, recPick, notice,
-    hint: recommended && usable?.source === "fallback" ? usable.hint : null,
+    role, title: ROLE_INFO[role].title, does: ROLE_INFO[role].does, need: ROLE_NEED[role],
+    // A blocked job shows no pick it can't run on (never a provider the developer lacks), only that nothing here runs it.
+    pick: blocked ? "No provider here can run it" : r.summary, recommended, rec: usable, recPick, notice,
+    hint: recommended && usable?.source === "fallback" ? usable.hint : null, blocked,
   };
 }
 
