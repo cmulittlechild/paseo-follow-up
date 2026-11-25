@@ -1,2 +1,0 @@
-- Turning on PR statistics works while your machine is busy: the cost estimate still loads, and if it can't, the dialog says why and still lets you turn them on.
-- Refresh on the PR stats page and on a workspace reads right away even when the machine is busy; only background work waits.

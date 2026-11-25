@@ -1,3 +1,0 @@
-- New Settings → Morning brief: pick where this week's plan comes from. Find it for me looks for the newest artifact link from the person and channels you pick, or paste a link, or turn it off.
-- When no plan shows up this week, the brief keeps last week's and says so, with a field to paste the new link.
-- Choose which Linear states count as your queue, when the morning sweep runs, your time zone and your workdays. Agents can change these too.

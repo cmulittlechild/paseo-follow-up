@@ -1,3 +1,0 @@
-- New is now called Dispatch: Home's button, the sidebar row, Command-K and Settings → Dispatch. Typing "new" in Command-K still finds it.
-- The sidebar's Dispatch row is optional: switch it off in Settings → Dispatch. Dispatch stays on Home, in Command-K and on its key.
-- Settings → Dispatch suggests hiding Paseo's own New workspace row, since Dispatch starts workspaces too.

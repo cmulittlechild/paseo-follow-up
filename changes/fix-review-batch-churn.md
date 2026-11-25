@@ -1,3 +1,0 @@
-- A review that keeps getting new comments no longer sends "do this" then "never mind" seconds later: the agent gets an update saying what is new, and only a review that is really gone reads "No longer needed".
-- An agent can say it is already on a repair. Follow-up then waits for that work instead of sending the same items again, and it no longer shows as a failure.
-- Repairs keep going out on their own when a subagent is stuck in an error or never goes idle, and older stuck or duplicate repairs tidy themselves up after the update.

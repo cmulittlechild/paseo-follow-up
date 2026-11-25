@@ -1,3 +1,0 @@
-- PR statistics: see who opens, merges and reviews PRs, and how long PRs wait for a first review, per repository you turn on. Open it from Home's header icon or ⌘K "Follow-up: PR stats".
-- Sort the leaderboard by PRs opened, merged, wait for a first review, reviews given or review turnaround, for this week, last week, 30 or 90 days. A person opens their PRs and the reviews they gave.
-- Turn it on per repository in Settings → Following → PR statistics. It reads GitHub slowly in the background, stops whenever GitHub's limit runs low, and stays on this machine.

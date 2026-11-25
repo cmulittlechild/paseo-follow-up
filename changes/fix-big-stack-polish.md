@@ -1,3 +1,0 @@
-- Home's PR chip now counts the PRs with failed checks, the same number the panel's status line shows.
-- A PR that holds a merge now says "checks failed", in the same words as the PR rows.
-- On a phone, the stack bar is no longer a row of tiny tap targets. Tap the PR rows below it instead.

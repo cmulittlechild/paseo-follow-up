@@ -1,3 +1,0 @@
-- An ask shows once in Needs you: when the agent's note at the end of its turn is about a blocked task, it folds into that task's card instead of sitting beside it.
-- A blocked task that needs you to do something, not decide, now has a Done button instead of asking you to write a decision.
-- Done on an action card is one click everywhere: the panel, Home and the chat card show one Done button, with Add note and Reply instead beside it, instead of an option to pick and then Send.

@@ -1,3 +1,0 @@
-- GitHub is now optional. Without the GitHub CLI, workspaces, Needs you, questions, Catch up, the Overseer, tasks and Compass all work, and setup offers GitHub instead of failing.
-- Each GitHub feature (PR status, merge, reviewers, waiting for checks, PR stats) says in one line what's missing and how to turn it on. Installing and signing in is picked up without a restart.
-- While GitHub is off, a workspace's Refresh checks for it again at once.

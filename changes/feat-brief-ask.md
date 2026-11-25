@@ -1,2 +1,0 @@
-- A server the Morning brief doesn't know can still feed it: turn on Ask for it in Settings → Morning brief → Sources. Preview what it would find first, then turn it on.
-- Ask uses a fast model to pick a few read-only lookups each morning and sums up what needs you. Every lookup is checked first, and it never changes anything.

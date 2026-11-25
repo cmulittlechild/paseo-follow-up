@@ -1,3 +1,0 @@
-- Compass reads more than chat: a doc or a notes file on this machine, a Linear project or milestone, a GitHub label or milestone, and your calendar's meetings, which date the work they match. Trackers and calendars need no model.
-- A Compass source can read everyone in a team or customer channel, the newest 40 messages each read, and your reading notes can narrow it.
-- Settings → Compass reads as one list: every source and built-in input has the same row, Add a source sits right under your sources, and Connections no longer repeats a row's failure.
