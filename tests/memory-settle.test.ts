@@ -105,3 +105,29 @@ test("heartbeat-is-written-whole: overlapping beats never leave a partial heartb
     assert.ok(reads > 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+// scale-live's burst-return check failed on ~1 in 20 CI runs from 2026-11-23 (gaps 315-342 MB against 260, the idle
+// window right after them at ~220): the settler ran, but late, 98-133 s into a 180 s gap, so most of the gap stayed
+// high. Its quiet gate was the minute's mean utilization under 1 %. The worker's own ticks spike once or twice a minute
+// (6-12 %, a few 1-5 %) over a 0.1-0.3 % floor, so a quiet minute's mean read 1.2-1.6 % and the gate opened only when
+// a window happened to miss a spike. Per-sample traces from the harness, 2026-11-25 (heartbeat.json `samples`, %):
+const QUIET_GAP = [2.6, 0.1, 0.1, 2.2, 0.1, 0.9, 10.0, 0.1, 0.1, 2.3, 0.1, 0.1]; // mean 1.56 %, median 0.1 %
+const BURST = [3.1, 3.5, 4.8, 3.0, 3.1, 5.7, 9.2, 2.2, 2.6, 4.0, 2.4, 1.3];       // mean 3.74 %, median 3.1 %
+test("a gap whose only work is the worker's own ticks settles within its first minute; a burst never does", () => {
+  let now = 0; let rss = 210; let runs = 0;
+  const s = new HeapSettler({ now: () => now, rssMb: () => rss, cpuMs: () => 0, compact: () => { runs++; rss = 210; return true; } });
+  const at: number[] = [];
+  // A burst grows RSS to `mb`; a gap leaves it where it is (only a settle brings it down).
+  const run = (trace: number[], mb: number | null, seconds: number) => { for (let t = 0; t < seconds; t += 5) { now += 5_000; if (mb !== null) rss = mb; const before = runs; s.observe(rss, trace[(t / 5) % trace.length] / 100); if (runs > before) at.push(now); } };
+  run(QUIET_GAP, null, 120);
+  for (let k = 0; k < 2; k++) {
+    const burstAt = now; run(BURST, 330, 120);
+    assert.equal(runs, k, `no settle mid-burst ${k + 1} (minute medians ~3 %)`); assert.ok(at.every(x => x <= burstAt));
+    const gapAt = now; run(QUIET_GAP, null, 180);
+    assert.equal(runs, k + 1, `burst ${k + 1}'s gap settles`);
+    const into = (at[k] - gapAt) / 1000;
+    // The check judges the gap's median sample (90 s in); a settle has to land well before it.
+    assert.ok(into <= 60, `the settle ran ${into} s into the gap; the check reads the gap's median at 90 s`);
+    assert.equal(s.settles[k].forced, false);
+  }
+});

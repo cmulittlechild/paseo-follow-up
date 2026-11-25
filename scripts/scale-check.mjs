@@ -303,12 +303,17 @@ try {
     // second (follow.list with its revision, as client/live.tsx does), PR heads, checks and review threads move (the fake
     // gh's epoch), and one agent asks (a permission prompt, answered in the gap). RSS is sampled every 5 s; the worker's
     // CPU seconds per burst are reported. The last gap's median is judged against BURST_RETURN_BUDGET_MB.
-    const cycleSpec = arg("cycles", null)?.split(",").map(Number) ?? null; let cycles = null;
+    const cycleSpec = arg("cycles", null)?.split(",").map(Number) ?? null; let cycles = null; let cycleDiag = null;
     if (cycleSpec) {
       const { writeFileSync } = await import("node:fs"); const epochFile = join(root, "gh-epoch"); writeFileSync(epochFile, "0");
       const [n, burstS, gapS] = cycleSpec; const askAgent = created[Math.max(1, AWAKE) - 1].agentId; const turnAgents = created.slice(0, Math.max(1, AWAKE - 1));
       let listRevision; const RPCS = [["follow.list", () => listRevision === undefined ? {} : { since: listRevision }], ["follow.inbox-list", () => ({})], ["follow.get", k => ({ workspaceId: created[k % created.length].workspaceId })], ["follow.workspace-about", k => ({ workspaceId: created[k % created.length].workspaceId })], ["follow.priorities", () => ({})], ["follow.usage", () => ({})], ["follow.inbox-brief", k => ({ agentId: created[k % created.length].agentId })]];
       let turnN = 0, rpcN = 0; cycles = [];
+      // scale-burst-diag: the settler's own view (heartbeat.json's memory, written every minute): the minute's
+      // utilization and every settle, timed from the first burst, so a gap that stays high says why.
+      const beatFile = join(home, "plugin-data/follow-up/heartbeat.json"); const cyclesFrom = Date.now(); const beats = new Map(); const settles = new Map();
+      const readBeat = async () => { const m = JSON.parse(await readFile(beatFile, "utf8").catch(() => "{}")).memory; if (!m) return; beats.set(m.at, { s: Math.round((m.at - cyclesFrom) / 1000), u: m.utilization, rss: Math.round(m.rssMb), ...(m.samples ? { us: m.samples } : {}) }); for (const x of m.settles ?? []) settles.set(x.at, { s: Math.round((x.at - cyclesFrom) / 1000), before: x.beforeMb, after: x.afterMb, forced: x.forced }); };
+      cycleDiag = { beats, settles, readBeat, from: cyclesFrom, edges: [] };
       for (let k = 1; k <= n; k++) {
         writeFileSync(epochFile, String(k));
         const c = { k, turns: 0, rpcs: 0, rpcFailed: 0, asked: false, answered: false, burstSamplesMb: [], gapSamplesMb: [], burstCpuS: 0, gapCpuS: 0 };
@@ -318,13 +323,13 @@ try {
           while (nextTurn <= Date.now()) { nextTurn += 60_000 / (BUSY_TURNS_PER_MIN * 2); const a = turnAgents[turnN++ % turnAgents.length].agentId; c.turns++; void client.sendMessage(a, `Fixture: busy turn ${BUSY_TURN_ITEMS} ${BUSY_ITEM_BYTES}`, { messageId: `cycle-${k}-${turnN}` }).catch(() => undefined); }
           while (nextRpc <= Date.now()) { nextRpc += 250; const [m, input] = RPCS[rpcN % RPCS.length]; const q = rpcN++; c.rpcs++; void client.invokePluginRpc("follow-up", m, input(q)).then(out => { if (m === "follow.list" && out?.revision !== undefined) listRevision = out.revision; }, () => { c.rpcFailed++; }); }
           if (!c.asked && Date.now() - from > burstS * 500) { c.asked = true; void client.sendMessage(askAgent, "Fixture: permission tool Bash", { messageId: `cycle-ask-${k}` }).catch(() => undefined); }
-          if (Date.now() >= nextSample) { nextSample += 5_000; c.burstSamplesMb.push(Math.round(await rss())); }
+          if (Date.now() >= nextSample) { nextSample += 5_000; c.burstSamplesMb.push(Math.round(await rss())); await cycleDiag.readBeat(); }
         }
-        const gapFrom = Date.now(); const cpuMid = await ticks(); nextSample = gapFrom;
+        const gapFrom = Date.now(); const cpuMid = await ticks(); nextSample = gapFrom; cycleDiag.edges.push({ k, burstS: Math.round((from - cycleDiag.from) / 1000), gapS: Math.round((gapFrom - cycleDiag.from) / 1000) });
         while (Date.now() - gapFrom < gapS * 1000) {
           await sleep(500);
           if (!c.answered && Date.now() - gapFrom > 30_000) { const p = (await agents().catch(() => [])).find(a => a.id === askAgent)?.pendingPermissions?.[0]; if (p) { await client.respondToPermission(askAgent, p.id, { behavior: "allow" }).catch(() => undefined); c.answered = true; } }
-          if (Date.now() >= nextSample) { nextSample += 5_000; c.gapSamplesMb.push(Math.round(await rss())); }
+          if (Date.now() >= nextSample) { nextSample += 5_000; c.gapSamplesMb.push(Math.round(await rss())); await cycleDiag.readBeat(); }
         }
         const hzC = Number((await exec("getconf", ["CLK_TCK"])).stdout.trim()) || 100; const cpuTo = await ticks();
         c.burstCpuS = Math.round((cpuMid - cpuFrom) / hzC * 10) / 10; c.gapCpuS = Math.round((cpuTo - cpuMid) / hzC * 10) / 10;
@@ -371,6 +376,7 @@ try {
     const tree = new Set([daemon.pid]);
     for (let grew = true; grew;) { grew = false; for (const r of rows) if (!tree.has(r.pid) && tree.has(r.ppid)) { tree.add(r.pid); grew = true; } }
     const hostRss = rows.filter(r => tree.has(r.pid) && r.pid !== pid && /plugin-process/.test(r.args)).map(r => r.rssMb);
+    if (cycleDiag) { await cycleDiag.readBeat(); console.log(`scale-burst-diag ${JSON.stringify({ edges: cycleDiag.edges, idleS: Math.round((started - cycleDiag.from) / 1000), gapsMb: cycles.map(c => c.gapSamplesMb), settles: [...cycleDiag.settles.values()], beats: [...cycleDiag.beats.values()] })}`); }
     worker = { pid, idleWindow: { from: started, to: Date.now() }, memory: memoryIdle, memoryAfterGc, hostPluginBaselineMb: hostRss.length ? Math.min(...hostRss) : null, rssMb: Math.round(await rss()), idleMedianRssMb: idleVerdict(idleSamples, 0).medianMb, idlePeakRssMb: idleVerdict(idleSamples, 0).peakMb, idleSamplesMb: idleSamples.map(Math.round), lifetimePeakRssMb: Math.round(await rss("VmHWM")), cpuPct, idleSeconds: IDLE_MS / 1000, ...(BUSY_MS > 0 ? { busy: { seconds: BUSY_MS / 1000, turns: busyTurns, ...busyVerdict(busySamples, 0), samplesMb: busySamples.map(Math.round) } } : {}), drain, ...(appBurst ? { appBurst: { ...appBurst, beforeMedianMb: idleVerdict(idleSamples.slice(0, appBurst.startSample), 0).medianMb, afterMedianMb: idleVerdict(idleSamples.slice(appBurst.endSample + 60), 0).medianMb } } : {}), ...(cycles ? { cycles: { spec: arg("cycles"), each: cycles.map(c => ({ k: c.k, turns: c.turns, rpcs: c.rpcs, rpcFailed: c.rpcFailed, asked: c.asked, answered: c.answered, burstPeakMb: Math.max(...c.burstSamplesMb), gapMedianMb: idleVerdict(c.gapSamplesMb, 0).medianMb, burstCpuS: c.burstCpuS, gapCpuS: c.gapCpuS, burstSamplesMb: c.burstSamplesMb, gapSamplesMb: c.gapSamplesMb })), ...burstReturnVerdict(cycles.map(c => c.gapSamplesMb), budget.burstReturnMb) } } : {}), stateWrites: writes, stateBytesBefore, stateBytesAfter: statSync(statePath).size, daemonRequestsPerMin: requests };
   }
   tracing = false; await tracer;

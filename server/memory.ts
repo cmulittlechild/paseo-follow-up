@@ -39,11 +39,16 @@ export type SettlerOptions = { growthMb?: number; minGapMs?: number; quietSample
  * allocates; the worker always does, so RSS stepped up with every busy period and never came down. `observe` gets the
  * worker's RSS and event-loop utilization every 5 s. One memory-reducing collection (60-100 ms, the event loop
  * blocked) runs when RSS is `growthMb` over where the last one left it, `minGapMs` has passed, and the worker is quiet:
- * mean utilization under 1 % over the last 12 samples (a minute). Mid-burst the young generation would grow straight
- * back, and a burst's utilization is low too (median 3 %, harness 2026-11-16), so the gate is the minute's mean, which
- * was quiet in 2 of 109 burst samples and 95 of 158 gap samples. Busy for `maxWaitMs` past the threshold, it runs anyway. A collection that gives back under 8 MB (a runtime that ignores the memory-reducing flavor,
+ * the median of the last 12 samples (a minute) under 1 %. Mid-burst the young generation would grow straight back, and
+ * a burst's samples sit at 2-14 % (minute medians 3-6 %, harness 2026-11-25). The gate reads the minute's typical
+ * sample, not its mean: the worker's own ticks spike once or twice a minute (6-12 %) over a 0.1-0.3 % floor, so a quiet
+ * minute's mean read 1.2-1.6 % and a mean gate opened only when a window missed a spike, 98-133 s into a gap or not at
+ * all (scale-live failed ~1 in 20 from 2026-11-23, as the worker's background work grew; on 2026-11-16 gaps ran at
+ * 0.2 %). The median opens about 35 s into a gap. A median lags a burst's start by half a minute, so the latest sample
+ * has to be under 1 % too (a burst's are 1.2 % and up). Busy for `maxWaitMs` past the threshold, it runs anyway. A collection that gives back under 8 MB (a runtime that ignores the memory-reducing flavor,
  * or growth outside V8) doubles the gap, up to an hour, so a futile one doesn't repeat.
  */
+const medianOf = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 export class HeapSettler {
   private baseline: number | null = null;
   private last = -Infinity;
@@ -54,8 +59,10 @@ export class HeapSettler {
   /** Settles since start, by what let them run: a quiet minute, or the fallback (live verification, heartbeat.json). */
   quietSettles = 0;
   forcedSettles = 0;
-  /** The mean event-loop utilization over the last minute's samples, or null before the first. */
-  utilization(): number | null { return this.recent.length ? this.recent.reduce((a, b) => a + b, 0) / this.recent.length : null; }
+  /** The last minute's per-sample utilizations, oldest first (heartbeat.json: how close the gate is). */
+  recentSamples(): number[] { return [...this.recent]; }
+  /** The last minute's typical event-loop utilization (its median sample: the quiet gate's reading), or null before the first. */
+  utilization(): number | null { return this.recent.length ? medianOf(this.recent) : null; }
   constructor(private o: SettlerOptions = {}) { this.gap = o.minGapMs ?? 120_000; }
   observe(rssMb: number, utilization = 0): Settle | null {
     const now = (this.o.now ?? Date.now)();
@@ -65,7 +72,8 @@ export class HeapSettler {
     if (rssMb < this.baseline + (this.o.growthMb ?? 48)) { this.overSince = null; return null; }
     this.overSince ??= now;
     if (now - this.last < this.gap) return null;
-    const quiet = this.recent.length >= window && this.recent.reduce((a, b) => a + b, 0) / window < (this.o.quietUtilization ?? 0.01);
+    const q = this.o.quietUtilization ?? 0.01;
+    const quiet = this.recent.length >= window && medianOf(this.recent) < q && utilization < q;
     if (!quiet && now - this.overSince < (this.o.maxWaitMs ?? 600_000)) return null;
     const cpu = this.o.cpuMs ?? (() => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; });
     const t0 = performance.now(); const c0 = cpu();
@@ -83,17 +91,18 @@ export class HeapSettler {
   }
 }
 
-export type MemoryBeat = { at: number; rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number; arrayBuffersMb: number; youngMb: number | null; utilization: number | null; quietSettles: number; forcedSettles: number; settles: Settle[] };
+export type MemoryBeat = { at: number; samples: number[]; rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number; arrayBuffersMb: number; youngMb: number | null; utilization: number | null; quietSettles: number; forcedSettles: number; settles: Settle[] };
 const mb = (n: number) => Math.round(n / 1048576 * 10) / 10;
 const round = (u: number | null) => u === null ? null : Math.round(u * 10000) / 10000;
 /**
- * The worker's memory as heartbeat.json reports it: process.memoryUsage(), V8's young generation, the last minute's mean
- * event-loop utilization (is the 1 % quiet gate reachable on this host?), and the settles, quiet and forced counted.
+ * The worker's memory as heartbeat.json reports it: process.memoryUsage(), V8's young generation, the last minute's
+ * median event-loop utilization and its samples (is the 1 % quiet gate reachable on this host?), and the settles, quiet
+ * and forced counted.
  */
 export function memoryBeat(settler: HeapSettler): MemoryBeat {
   const m = process.memoryUsage();
   const young = getHeapSpaceStatistics().find(x => x.space_name === "new_space");
-  return { at: Date.now(), rssMb: mb(m.rss), heapUsedMb: mb(m.heapUsed), heapTotalMb: mb(m.heapTotal), externalMb: mb(m.external), arrayBuffersMb: mb(m.arrayBuffers), youngMb: young ? mb(young.space_size) : null, utilization: round(settler.utilization()), quietSettles: settler.quietSettles, forcedSettles: settler.forcedSettles, settles: settler.settles.slice(-5) };
+  return { at: Date.now(), samples: settler.recentSamples().map(u => Math.round(u * 10000) / 10000), rssMb: mb(m.rss), heapUsedMb: mb(m.heapUsed), heapTotalMb: mb(m.heapTotal), externalMb: mb(m.external), arrayBuffersMb: mb(m.arrayBuffers), youngMb: young ? mb(young.space_size) : null, utilization: round(settler.utilization()), quietSettles: settler.quietSettles, forcedSettles: settler.forcedSettles, settles: settler.settles.slice(-5) };
 }
 
 /**
