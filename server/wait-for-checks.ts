@@ -1,6 +1,7 @@
 import { WATCH_DEFAULT_MS, parsePrRef } from "../shared/check-watch";
 import type { State, Workspace } from "../shared/model";
 import type { CheckWatches } from "./check-watches";
+import { githubOffText, type GithubOff } from "../shared/github-setup";
 
 /** How long the tool waits for its own workspace's nudged read before it answers from what it has. */
 export const ANSWER_READ_MS = 8_000;
@@ -17,9 +18,15 @@ type Deps = {
   /** register_pr's own path, for the caller's PR that Follow-up doesn't follow yet. */
   register?: (repo: string, number: number) => Promise<unknown>;
   readMs?: number;
+  /** Why GitHub is off on the host (works-without-github), or null: then nothing is watched and the answer says so. */
+  githubOff?: () => Promise<GithubOff | null>;
 };
 type Answer = { text: string; waiting: string[]; done: { pr: string; result: string; text: string }[]; notFollowed: string[] };
 
+/** GitHub off (works-without-github): nothing is watched, and the answer says what's missing and how to turn it on. */
+export function githubOffChecksAnswer(off: GithubOff, prs?: string[]): Answer {
+  return { text: `${githubOffText(off, "Waiting for checks")} Until then, end your turn and check once later; never poll in a loop.`, waiting: [], done: [], notFollowed: prs?.length ? prs : ["this workspace's PRs"] };
+}
 /** Paseo 0.17 serves subscribe_change_request; the version is the only sign (server_info has no feature flag for it). */
 export function hostWatches(version: string): boolean {
   const m = /^(\d+)\.(\d+)/.exec(version);
@@ -49,6 +56,8 @@ export async function waitForChecksAnswer(input: Input, deps: Deps): Promise<Ans
     else for (const ref of refs) { const key = keyFor(w, ref); if (key) n += await deps.watches.cancel(input.agentId, key); }
     return { text: n ? `Stopped waiting on ${n} PR${n === 1 ? "" : "s"}.` : "You weren't waiting on any of those.", waiting: [], done: [], notFollowed: [] };
   }
+  const off = await deps.githubOff?.();
+  if (off) return githubOffChecksAnswer(off, input.prs);
   if (!w) {
     const advice = unseenAdvice(await deps.hostVersion());
     return { text: `Follow-up doesn't follow this workspace, so it can't tell you when checks finish. ${advice}`, waiting: [], done: [], notFollowed: refs.length ? refs : ["this workspace's PRs"] };

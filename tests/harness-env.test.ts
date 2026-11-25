@@ -31,6 +31,23 @@ test("harnessEnv puts HOME, CLAUDE_CONFIG_DIR, CODEX_HOME and PASEO_HOME inside 
   assert.throws(() => harnessEnv("/tmp/follow-x", { base, set: { CLAUDE_CONFIG_DIR: "/home/real/.claude" } }), /outside the harness root/);
   assert.throws(() => harnessEnv("/tmp/follow-x", { base, home: "/home/real" }), /outside the harness root/);
 });
+test("harness-never-sees-real-gh: the caller's GitHub sign-in never reaches a harness, and its gh is the harness's own", async () => {
+  // 2026-11-25 (#316): the GitHub setup probe preferred /usr/bin/gh, and GH_CONFIG_DIR or a token in the caller's env
+  // would have reached the real sign-in. Pass real: ["gh"] to keep it; a script's own value still wins.
+  const { mkdtemp, rm: remove } = await import("node:fs/promises"); const { tmpdir } = await import("node:os");
+  const root = await mkdtemp(join(tmpdir(), "follow-gh-env-"));
+  try {
+    const base = { PATH: "/usr/bin:/bin", HOME: "/home/real", GH_TOKEN: "real-token", GITHUB_TOKEN: "real-token", GH_ENTERPRISE_TOKEN: "real", GH_ACCOUNT_MAP: "/home/real/.config/gh/account-map", GH_CONFIG_DIR: "/home/real/.config/gh", GH_HOST: "github.com" };
+    const env = harnessEnv(root, { base });
+    for (const key of ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_ACCOUNT_MAP", "GH_HOST"]) assert.equal(env[key], undefined, key);
+    assert.equal(env.GH_CONFIG_DIR, join(root, "home", ".config", "gh"));
+    assert.equal(env.FOLLOW_UP_GH_BIN, join(root, ".harness-stubs", "gh"), "the token lookup runs the stub, never /usr/bin/gh");
+    assert.equal(harnessEnv(root, { base, set: { FOLLOW_UP_GH_BIN: join(root, "bin", "gh"), GH_ACCOUNT_MAP: join(root, "map") } }).GH_ACCOUNT_MAP, join(root, "map"), "a script's own value wins");
+    const kept = harnessEnv(root, { base, real: ["gh"] });
+    assert.equal(kept.GH_TOKEN, "real-token"); assert.equal(kept.GH_CONFIG_DIR, "/home/real/.config/gh"); assert.equal(kept.FOLLOW_UP_GH_BIN, undefined);
+  } finally { await remove(root, { recursive: true, force: true }); }
+});
+
 test("harnessEnv turns dictation and voice mode off for harness daemons unless the caller sets them", () => {
   // 2026-11-11: each fresh harness PASEO_HOME downloaded and unpacked the speech model; harness-slot's "false" was stripped.
   const base = { PATH: "/bin", PASEO_DICTATION_ENABLED: "true", PASEO_VOICE_MODE_ENABLED: "true" };

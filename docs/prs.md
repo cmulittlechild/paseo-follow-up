@@ -17,6 +17,35 @@
 - **UI:** Settings → Following → Shipping PRs (`client/shipping.tsx`). Tests: `tests/pr-workflow.test.ts`.
   End to end: `npm run test:github-mode`.
 
+## Without GitHub (optional integration)
+
+GitHub is optional (invariant 110, `works-without-github`). `GithubSetup` (`server/github-setup.ts`, one per worker:
+`githubSetup()`) says whether it is on: a `gh` binary (`FOLLOW_UP_GH_BIN`, `/usr/bin/gh`, else PATH) that hands out a
+token (`gh auth token`), or an explicit `GH_TOKEN`/`GITHUB_TOKEN`. It checks once on first use; while off it looks
+again at most every `LOOK_MS` (30 s) with stat calls only, and checks again (one spawn) only when something that could
+turn it on changed: a `gh` on PATH, gh's `hosts.yml` (written by `gh auth login`), a token variable. A token GitHub
+later refuses (`invalidate`) checks once more. So nothing spawns, retries or logs while it's off, and installing gh and
+signing in is picked up without a restart.
+
+- **Reads.** `githubApi()` takes the setup: while off every call (`graphql`, `rest`, `restAs`, `accounts`, `send`)
+  throws `GithubOffError` (`shared/github-setup.ts`) before any token lookup or request.
+- **The poller.** `Github.observe` reads nothing while off; each PR keeps what was known, with `PR status needs
+  GitHub. …` as its error, and the engine sets `Workspace.githubOff` (`missing` or `signed-out`) on a workspace with
+  PRs. The Pull requests card says it in the budget line's slot (`githubOffLine`), `workspace_status` carries
+  `githubOff`, and no repair is made from a status nobody read.
+- **Actions and tools.** Merge, Merge when ready, Add reviewers, reviewer suggestions and `wait_for_checks` answer in
+  one line (`githubOffText`: what needs GitHub, what's missing, how to turn it on) before waiting on the worker's start;
+  writes also need the `gh` binary (`writeOff`). Remember on Add reviewers still saves.
+- **Background.** PR stats' sync doesn't start, the ranker's review requests count as off (not failed), the brief's
+  GitHub source says how to turn it on, and the Summary leaves out PR bodies quietly.
+- **Setup.** The readiness check's GitHub row is `off` (optional) with Get the GitHub CLI and `gh auth login`.
+- **On screen.** The panel header's line says "Not checking GitHub" and its Refresh ("Check GitHub again") checks
+  once at once (`follow.refresh` runs `GithubSetup.check` first); Home's Sources line says GitHub isn't connected or is
+  signed out.
+
+Guarded by `tests/works-without-github.test.ts`, `tests/works-without-github-worker.test.ts` (the real worker with no
+gh) and `npm run test:no-gh` (a real daemon, gh missing and signed out).
+
 ## Review mode
 
 Each repository is **Team review** (the default) or **No review** (`review: "none"` in `pr-workflow.json`; Team
