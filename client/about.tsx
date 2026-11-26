@@ -72,7 +72,7 @@ export function SummaryLine({ workspace, theme, compact, lead = false }: { works
 }
 
 /**
- * The panel's Summary row (inside "Spec, agent and recovery"): who wrote it and when, and Rewrite. The agent tool
+ * The panel's Summary row (inside tr("Spec, agent and recovery")): who wrote it and when, and Rewrite. The agent tool
  * `workspace_about` with refresh=true does the same.
  */
 export function SummaryRow({ workspaceId, theme, compact }: { workspaceId: string; theme: Theme; compact: boolean }) {
@@ -85,7 +85,7 @@ export function SummaryRow({ workspaceId, theme, compact }: { workspaceId: strin
     : d.footer ? shortFooter(d.footer)
     : d.failed ? "Couldn't write a summary"
     : d.pending ? "Writing a summary…" : "No summary yet";
-  const action = busy ? "Rewriting…" : d.failed ? "Try again" : d.sentence ? "Rewrite" : "Write summary";
+  const action = busy ? "Rewriting…" : d.failed ? tr("Try again") : d.sentence ? "Rewrite" : "Write summary";
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 48 : 36 }}>
     <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
       <Text style={t.label}>{tr("Summary")}</Text>

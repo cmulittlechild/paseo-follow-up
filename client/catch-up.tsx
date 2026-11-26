@@ -68,14 +68,14 @@ function cardWord(card: DeckCard): string {
   if (card.kind === "finished") return "Finished";
   if (card.kind === "brief") return card.s.word ?? "Ask";
   switch (card.item?.kind) {
-    case "merge": return "Merge"; case "reviewers": return "Add reviewers"; case "send": return "Send"; case "answer": return "Your answer";
-    case "hold": return "Paused"; case "retry": case "capped": case "message": return "Retry"; case "check": return "Check"; case "decision": return "Blocked";
+    case "merge": return "Merge"; case "reviewers": return "Add reviewers"; case "send": return tr("Send"); case "answer": return "Your answer";
+    case "hold": return "Paused"; case "retry": case "capped": case "message": return tr("Retry"); case "check": return tr("Check"); case "decision": return "Blocked";
     case "person": return card.item.review ? "Re-review" : "Someone else";
-    default: return card.s.word ?? "Needs you";
+    default: return card.s.word ?? tr("Needs you");
   }
 }
 const cardIcon = (card: DeckCard) => card.kind === "permission" ? "ShieldQuestion" : card.kind === "question" ? "MessageCircleQuestion"
-  : card.item?.kind === "merge" ? "GitMerge" : card.item?.kind === "reviewers" ? "UserPlus" : card.item?.kind === "person" ? "UserRound" : card.item?.kind === "send" ? "Send" : card.kind === "finished" ? "Flag" : card.s.icon;
+  : card.item?.kind === "merge" ? "GitMerge" : card.item?.kind === "reviewers" ? "UserPlus" : card.item?.kind === "person" ? "UserRound" : card.item?.kind === "send" ? tr("Send") : card.kind === "finished" ? "Flag" : card.s.icon;
 /**
  * The card Skip names what it skips, so it never reads as the workspace (Tom, beta.3: "at first I thought it skips the
  * workspace"): the card's kind where one word says it, else "card", the deck's own word ("N skipped" counts cards).
@@ -323,7 +323,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   // The peek says exactly what the release does: where Skip workspace lands (skipWorkspace itself), or Back's card.
   const ahead = dragDir === "skip-workspace" ? skipWorkspace(session) : null;
   const peekKey = ahead ? ahead.order[ahead.pos] : dragDir === "back" ? session.order[prevPos(session)] : undefined;
-  const peekWhat = dragDir === "back" ? "Back" : wsLeft > 1 ? `Skip workspace · ${wsLeft} cards` : `Skip ${card ? skipNoun(card) : "card"}`;
+  const peekWhat = dragDir === "back" ? tr("Back") : wsLeft > 1 ? `Skip workspace · ${wsLeft} cards` : `Skip ${card ? skipNoun(card) : "card"}`;
   const peekCard = cardOf(peekKey);
   const peek = compact && dragDir && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
     style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.surface1, justifyContent: "center", alignItems: dragDir === "skip-workspace" ? "flex-end" : "flex-start", paddingHorizontal: 20 }}>
@@ -453,11 +453,11 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     ? <View style={{ flex: 1 }}><Button theme={theme} compact grow kind="primary" icon="Send" title={tr("Send")} accessibilityLabel={tr("Send to agent")} shortcut disabled={ready.busy} onPress={ready.send} /></View>
     : <Button theme={theme} kind="primary" icon="Send" title={tr("Send to agent")} shortcut disabled={ready.busy} onPress={ready.send} />);
   const moves = <View {...({ dataSet: { catchUpCardMoves: "1" } } as object)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
-    <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
+    <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? tr("Back") : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
     {compact ? <IconButton theme={theme} compact icon="Sparkles" label={tr("More context")} onPress={toggleMore} />
-      : <View>{popover(moreBlock, "More context", 560)}<Tip label={tr("More context (M)")}><Button theme={theme} icon="Sparkles" title={tr("More context")} accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
-    <View>{!compact && popover(laterBlock, "Later", 380)}<IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={toggleLater} /></View>
-    <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? "Open chat" : "Open chat (O)"} tooltip={!compact} disabled={!navigation} onPress={openChat} />
+      : <View>{popover(moreBlock, tr("More context"), 560)}<Tip label={tr("More context (M)")}><Button theme={theme} icon="Sparkles" title={tr("More context")} accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
+    <View>{!compact && popover(laterBlock, tr("Later"), 380)}<IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? tr("Later") : tr("Later (L)")} tooltip={!compact} disabled={!s.agentId} onPress={toggleLater} /></View>
+    <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? tr("Open chat") : tr("Open chat (O)")} tooltip={!compact} disabled={!navigation} onPress={openChat} />
     {!compact && <View style={{ flex: 1 }} />}
     {/* Two skips, named apart: this card (J), and the whole workspace (⇧J), shown only while it has more than one card left. */}
     {compact ? ready ? <IconButton theme={theme} compact icon="ArrowRight" label={skipCardHint(noun)} onPress={onSkip} />
@@ -475,7 +475,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   return <DockedPane compact={compact}
     contentContainerStyle={{ padding: compact ? 16 : 28, gap: compact ? 16 : 18, ...(compact ? {} : { maxWidth: 720, width: "100%", alignSelf: "center" }) }}
     dock={({ yields, typingInContent }) => compact && (sheet && !typingInContent || !yields) && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
-      {sheet && !typingInContent && <MoveResult place="sheet" theme={theme} label={moreBlock ? "More context" : "Later"}>{sheet}</MoveResult>}
+      {sheet && !typingInContent && <MoveResult place="sheet" theme={theme} label={moreBlock ? tr("More context") : tr("Later")}>{sheet}</MoveResult>}
       {!yields && moves}
     </View>}>
     {goneBanner}
@@ -508,7 +508,7 @@ export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { 
   const c = theme.colors; const t = text(c, compact);
   // "All caught up" only when it is true: a skipped or waiting card means the developer is not, so the end says so.
   const caughtUp = !stats.skipped && !stats.waiting;
-  const icon = caughtUp ? "Check" : stats.waiting ? "Hourglass" : "CornerUpRight";
+  const icon = caughtUp ? tr("Check") : stats.waiting ? "Hourglass" : "CornerUpRight";
   const tone = caughtUp ? c.statusSuccess : stats.waiting ? c.statusWarning : c.foregroundMuted;
   const line = [stats.done && `${stats.done} done`, stats.skipped && `${stats.skipped} skipped`, stats.later && `${stats.later} for later`, stats.gone && `${stats.gone} handled elsewhere`].filter(Boolean).join(" · ");
   return <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 14 }}>
@@ -533,7 +533,7 @@ export type KeySection = { title: string; keys: readonly { key: string; what: st
  * S: the keys, from the one list the handler reads (Catch up: shared/catch-up.ts; Home: shared/home-keys.ts). A dialog
  * over the screen; S or its X closes it.
  */
-export function KeysSheet({ theme, onClose, label = "Catch up keys", sections: given, keyWidth = 64 }: { theme: Theme; onClose: () => void; label?: string; sections?: readonly KeySection[]; /** The key column, wide enough for the list's longest key so every description lines up. */ keyWidth?: number }) {
+export function KeysSheet({ theme, onClose, label = tr("Catch up keys"), sections: given, keyWidth = 64 }: { theme: Theme; onClose: () => void; label?: string; sections?: readonly KeySection[]; /** The key column, wide enough for the list's longest key so every description lines up. */ keyWidth?: number }) {
   const dictation = !!hostDictation();
   const sections = given ?? catchUpSections(dictation);
   const c = theme.colors; const t = text(c, false);

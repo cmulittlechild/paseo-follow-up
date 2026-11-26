@@ -272,7 +272,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
       shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 }}>
       {SORT_MODES.map(m => <Pressable key={m} accessibilityRole="menuitem" accessibilityState={{ selected: m === mode }} onPress={() => { onChange(m); setOpen(false); }}
         style={state => ({ ...menuItemRow(touch), minHeight: touch ? 48 : 34, paddingHorizontal: touch ? 12 : 10, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-        <MenuItemContent theme={theme} touch={touch} glyph={m === mode ? "Check" : null} label={SORT_LABEL[m]} hint={SORT_HINT[m]} />
+        <MenuItemContent theme={theme} touch={touch} glyph={m === mode ? tr("Check") : null} label={SORT_LABEL[m]} hint={SORT_HINT[m]} />
       </Pressable>)}
       <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 2 }}>
         {rank?.enabled && onRerank && <Pressable accessibilityRole="menuitem" accessibilityState={{ busy: running, disabled: running }} disabled={running} onPress={() => void rerank()}
@@ -288,7 +288,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
 // ---------- status strip ----------
 
 const STRIP: { id: HomeGroupId; label: string }[] = [
-  { id: "needs", label: "Needs you" }, { id: "sending", label: "Sending" }, { id: "running", label: "Running" }, { id: "waiting", label: "Waiting" }, { id: "quiet", label: "Quiet" },
+  { id: "needs", label: tr("Needs you") }, { id: "sending", label: "Sending" }, { id: "running", label: tr("Running") }, { id: "waiting", label: "Waiting" }, { id: "quiet", label: "Quiet" },
 ];
 
 /**
@@ -319,7 +319,7 @@ export function StatusStrip({ theme, model, filter, onFilter, touch, dense }: { 
   };
   const chips = <>
     {STRIP.filter(s => !touch || counts[s.id] > 0 || filter === s.id).map(s => chip(s.id, s.label, counts[s.id], filter === s.id, () => onFilter(filter === s.id ? null : s.id), s.id === "needs" && counts.needs ? c.statusWarning : undefined))}
-    {counts.later > 0 && chip("later", "Later", counts.later, filter === "later", () => onFilter(filter === "later" ? null : "later"))}
+    {counts.later > 0 && chip("later", tr("Later"), counts.later, filter === "later", () => onFilter(filter === "later" ? null : "later"))}
     {counts.archivable > 0 && <Text style={{ color: c.statusSuccess, fontSize: 12, paddingHorizontal: 6 }}>{counts.archivable} to archive</Text>}
   </>;
   // Phones: only groups that have something, on one line that scrolls sideways instead of wrapping.

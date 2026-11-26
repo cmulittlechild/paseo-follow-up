@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState, type ReactNode } from "react";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/ui";
@@ -70,7 +71,7 @@ export function useMergeButtons(w: Workspace | undefined): MergeButtons {
     const submitted = outcome?.state === "submitted" || outcome?.state === "uncertain";
     // Phones keep the button on the row's line: a short done label, so the row's title keeps its one line.
     const title = mergeWords(scope, outcome && outcome.state !== "error" ? outcome : null, running, compact).button;
-    const button = <Button theme={theme} compact={compact} kind={kind} grow={grow} icon={submitted ? "Check" : scope.queue ? "ListPlus" : "GitMerge"} title={title} accessibilityLabel={scope.a11y}
+    const button = <Button theme={theme} compact={compact} kind={kind} grow={grow} icon={submitted ? tr("Check") : scope.queue ? "ListPlus" : "GitMerge"} title={title} accessibilityLabel={scope.a11y}
       loading={running} disabled={disabled || merge.isPending || submitted} onPress={() => merge.mutate({ prKey, scope })} />;
     const why = whyNot(outcome);
     const notice = why ? <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning }]}>{why}</Text> : null;

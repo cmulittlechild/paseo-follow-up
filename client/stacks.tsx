@@ -31,7 +31,7 @@ function Node({ pr, colors }: { pr: Pr; colors: Colors }) {
     return <View style={[ring, { borderWidth: 1.5, borderColor: colors.foregroundMuted, backgroundColor: colors.surface0 }]} />;
   }
   if (tone === "draft") return <View style={[ring, { borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.foregroundMuted, backgroundColor: colors.surface0 }]} />;
-  const icon = tone === "merged" ? "GitMerge" : tone === "approved" ? (mergeQueued(pr) ? "Clock" : "Check") : tone === "danger" ? (s?.conflict ? "TriangleAlert" : "X") : tone === "warning" ? (s?.threads.length || s?.reviewDecision === "CHANGES_REQUESTED" ? "MessageSquare" : "X") : tone === "closed" ? "X" : "CircleHelp";
+  const icon = tone === "merged" ? "GitMerge" : tone === "approved" ? (mergeQueued(pr) ? tr("Clock") : tr("Check")) : tone === "danger" ? (s?.conflict ? "TriangleAlert" : "X") : tone === "warning" ? (s?.threads.length || s?.reviewDecision === "CHANGES_REQUESTED" ? "MessageSquare" : "X") : tone === "closed" ? "X" : "CircleHelp";
   return <View style={[ring, { backgroundColor: colors.surface0 }]}><View style={[ring, { backgroundColor: tint(color, colors) }]}><Icon name={icon} size={10} color={color} /></View></View>;
 }
 
@@ -50,7 +50,7 @@ export function PrRow({ pr, theme, first, last, showRepo, onOpen, compact, wide 
   const line = c.border;
   const extras = [
     s?.state === "OPEN" && reviewersMissing(pr) ? "No reviewers" : null,
-    s?.state === "OPEN" && s.mergeWhenReady === "on" && !mergeQueued(pr) ? isGithubFlow(s) ? "Auto-merge" : "Merge when ready" : null,
+    s?.state === "OPEN" && s.mergeWhenReady === "on" && !mergeQueued(pr) ? isGithubFlow(s) ? "Auto-merge" : tr("Merge when ready") : null,
   ].filter(Boolean) as string[];
   const titleText = s?.title ?? `${pr.repo} pull request`;
   const titleStyle = [t.body, s?.state !== "OPEN" && s ? { color: c.foregroundMuted } : null];

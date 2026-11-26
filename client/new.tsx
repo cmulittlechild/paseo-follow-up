@@ -57,7 +57,7 @@ const newIsOpen = () => !!slot.now();
 
 // ---------- small pieces ----------
 
-/** The ambiguous note's project chips before "Other…" opens the full list. */
+/** The ambiguous note's project chips before tr("Other…") opens the full list. */
 const CHOICES_SHOWN = 4;
 
 const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" });
@@ -368,7 +368,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
   return <View style={{ flex: 1, minHeight: 0 }}>
     {field && <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={compact} /></View>}
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
-      <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? "Start from" : "My issues"}</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? tr("Start from") : "My issues"}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>{searching ? `· “${searching}”` : status === "missing" ? "· a link or your words" : compact ? "· Linear" : "· Linear · in progress and todo"}</Text>
       {status === "ok" && <Pressable accessibilityRole="button" accessibilityLabel={tr("Read Linear again")} hitSlop={8} onPress={onRefresh} style={{ width: compact ? 44 : 28, height: compact ? 44 : 28, alignItems: "center", justifyContent: "center" }}><Icon name="RefreshCw" size={14} color={c.foregroundMuted} /></Pressable>}
     </View>
@@ -596,11 +596,11 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     </View>;
   const recordBar = phase.kind === "record" && record ? <View style={{ flexDirection: compact ? "column" : "row", gap: 8, alignItems: compact ? "stretch" : "center" }}>
     {created && record.workspaceId && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: "Open workspace", icon: "ExternalLink", key: isMac() ? "⌘↵" : "Ctrl ↵" }} onPress={() => openWorkspace(record.workspaceId!)} />}
-    {created && recordLine(record, now).undo && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: "Undo", icon: "Undo2", key: isMac() ? "⌘Z" : "Ctrl Z" }} onPress={() => void undo()} />}
+    {created && recordLine(record, now).undo && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Undo"), icon: "Undo2", key: isMac() ? "⌘Z" : "Ctrl Z" }} onPress={() => void undo()} />}
     {failed && remedy && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: remedy.label, icon: remedy.field === "agent" ? "Bot" : "GitBranch", key: null }} onPress={() => { setReopen(remedy.field); setPhase({ kind: "edit" }); setRecord(null); if (compact) setScreen("preview"); }} />}
-    {failed && <BarBtn c={c} compact={compact} primary={!remedy} disabled={false} b={{ name: "Try again", icon: "RotateCw", key: null }} onPress={() => { setReopen(null); setPhase({ kind: "edit" }); setRecord(null); if (compact) setScreen("preview"); }} />}
+    {failed && <BarBtn c={c} compact={compact} primary={!remedy} disabled={false} b={{ name: tr("Try again"), icon: "RotateCw", key: null }} onPress={() => { setReopen(null); setPhase({ kind: "edit" }); setRecord(null); if (compact) setScreen("preview"); }} />}
     {(created || failed) && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: "Start another", icon: "Plus", key: null }} onPress={another} />}
-    {!created && !failed && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: "Close", icon: "X", key: null }} onPress={onClose} />}
+    {!created && !failed && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Close"), icon: "X", key: null }} onPress={onClose} />}
     {created && !compact && <Text style={{ color: c.foregroundMuted, fontSize: 12, flex: 1, textAlign: "right" }}>Start another keeps {record.projectName} and {record.actionName} first.</Text>}
   </View> : null;
   const errorLine = planError && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 12 }}>{planError}</Text>;
@@ -700,7 +700,7 @@ export function DispatchRows({ records, theme, compact, navigation }: { records:
     for (const r of records) {
       const before = seen.current.get(r.id);
       seen.current.set(r.id, r.state);
-      if (before && before !== r.state && r.state === "created" && !newIsOpen()) pushToast("success", `Started ${r.title}`, recordLine(r, Date.now()).undo ? [{ label: "Undo", onPress: () => void undo(r) }] : [], { durationMs: 10_000 });
+      if (before && before !== r.state && r.state === "created" && !newIsOpen()) pushToast("success", `Started ${r.title}`, recordLine(r, Date.now()).undo ? [{ label: tr("Undo"), onPress: () => void undo(r) }] : [], { durationMs: 10_000 });
       if (before && before !== r.state && r.state === "failed" && !newIsOpen()) pushToast("warning", `${r.title} didn't start: ${r.error ?? ""}`);
     }
   }, [records, undo]);

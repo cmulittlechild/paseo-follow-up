@@ -54,7 +54,7 @@ export function SpecRow({ workspace: w, theme, compact, onEdit }: { workspace: W
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
         {url && <Button theme={theme} compact={compact} icon="ArrowUpRight" title={tr("Open")} accessibilityLabel={tr("Open the spec")} onPress={() => openUrl(url)} />}
-        <Button theme={theme} compact={compact} kind={url ? "ghost" : "secondary"} icon={url ? "Pencil" : "Link"} title={url ? "Edit" : "Add link"} accessibilityLabel={url ? "Edit the spec link" : "Add a spec link"} onPress={onEdit} />
+        <Button theme={theme} compact={compact} kind={url ? "ghost" : "secondary"} icon={url ? "Pencil" : tr("Link")} title={url ? "Edit" : "Add link"} accessibilityLabel={url ? "Edit the spec link" : "Add a spec link"} onPress={onEdit} />
       </View>
     </View>
   </CardRow>;
@@ -72,7 +72,7 @@ export function SpecSheet({ workspace: w, open, theme, compact, onClose }: { wor
   const act = (input: { action: "set"; url: string; title?: string | null } | { action: "remove" } | { action: "reset" }) => {
     onClose();
     void runAction({
-      label: "Spec link", toast, run: () => save({ workspaceId: w.id, ...input }),
+      label: tr("Spec link"), toast, run: () => save({ workspaceId: w.id, ...input }),
       success: () => ({ message: input.action === "set" ? "Spec link saved" : input.action === "remove" ? "Spec link removed" : "Spec link handed back to the agent" }),
       onSuccess: () => {
         void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey });

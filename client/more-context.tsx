@@ -72,7 +72,7 @@ export function QuestionMoreContext({ workspace: w, question: q, theme, compact,
   const link = !!ask && !asking && !open && <Pressable accessibilityRole="button" accessibilityLabel={`More context on ${q.id}`} accessibilityHint="Ask the agent to explain this question" hitSlop={6} onPress={() => setOpen(true)}
     style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => ({ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: compact ? 44 : 28, paddingHorizontal: 4, marginLeft: -4, borderRadius: 6, opacity: pressed ? 0.7 : 1, backgroundColor: hovered ? withAlpha(c.foreground, 0.05) : "transparent" })}>
     <Icon name="Sparkles" size={14} color={c.foregroundMuted} />
-    <Text style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "500" }}>{request ? "Ask more" : "More context"}</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "500" }}>{request ? "Ask more" : tr("More context")}</Text>
   </Pressable>;
   if (!ask && !request && !children) return null;
   return <View {...({ dataSet: { moreContext: q.id } } as object)} style={{ gap: 8 }}>
@@ -116,7 +116,7 @@ export function MoveResult({ place, theme, label, width, inset = false, children
 export function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent, onQuestion = false, chatDisabled = false }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void;
   /** On a question card outside Catch up: a pending ask says where its answer will show. */ onQuestion?: boolean; chatDisabled?: boolean }) {
   const c = theme.colors; const t = text(c, compact);
-  const who = request.target === "overseer" ? "Overseer" : agent === "the agent" ? "The agent" : agent;
+  const who = request.target === "overseer" ? tr("Overseer") : agent === "the agent" ? "The agent" : agent;
   const asking = request.state === "asking";
   return <View accessibilityLiveRegion="polite" style={{ gap: 8, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: asking ? c.border : withAlpha(c.statusSuccess, 0.4), backgroundColor: c.surface1 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

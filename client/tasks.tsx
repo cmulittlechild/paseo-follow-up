@@ -35,7 +35,7 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
     failure: `Schedule for ${o.title} not saved`,
   }) };
   const busy = save.isPending;
-  const options = [["manual", "Not sent"], ["now", "Now"], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
+  const options = [["manual", "Not sent"], ["now", tr("Now")], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
   return <SubmitScope enabled={!busy && valid} onSubmit={() => save.mutate()} style={{ gap: 10 }}>
     <View style={{ gap: 4 }}>
       <Text style={t.label}>{tr("Send to the agent")}</Text>
@@ -66,14 +66,14 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
   </SubmitScope>;
 }
 
-/** "Open agent" ("Open chat" for a closed one): goes to the task's agent's chat on the developer's tap. An archived one is just the words. */
+/** tr("Open agent") (tr("Open chat") for a closed one): goes to the task's agent's chat on the developer's tap. An archived one is just the words. */
 function OpenAgentLink({ status, openAgent, theme, compact, lead = true }: { status: TaskStatus; openAgent?: (agentId: string) => void; theme: Theme; compact: boolean; /** A "·" before it, when it follows other words on the line. */ lead?: boolean }) {
   const c = theme.colors;
   if (!status.agentId || !openAgent) return null;
   const id = status.agentId;
-  return <>{lead && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }} accessibilityElementsHidden importantForAccessibility="no">·</Text>}<Pressable accessibilityRole="link" accessibilityLabel={`${status.link ?? "Open agent"}: ${status.text}`} hitSlop={compact ? 12 : 6} onPress={() => openAgent(id)}
+  return <>{lead && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }} accessibilityElementsHidden importantForAccessibility="no">·</Text>}<Pressable accessibilityRole="link" accessibilityLabel={`${status.link ?? tr("Open agent")}: ${status.text}`} hitSlop={compact ? 12 : 6} onPress={() => openAgent(id)}
     style={state => ({ flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 4, opacity: state.pressed ? 0.6 : 1, ...((state as { hovered?: boolean }).hovered ? { textDecorationLine: "underline" } : {}) } as object)}>
-    <Text style={{ color: c.foreground, fontSize: 12, lineHeight: 17, fontWeight: "500" }}>{status.link ?? "Open agent"}</Text>
+    <Text style={{ color: c.foreground, fontSize: 12, lineHeight: 17, fontWeight: "500" }}>{status.link ?? tr("Open agent")}</Text>
     <Icon name="ArrowUpRight" size={12} color={c.foreground} />
   </Pressable></>;
 }

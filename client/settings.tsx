@@ -62,7 +62,7 @@ const followKey = ["follow-up", "follow-settings"];
 /**
  * Following: the three switches, then Projects and Workspaces as folds. Both lists are exceptions to "Follow every
  * workspace", so they stay next to it. Workspaces replaces the old 100-option select: search, exceptions first,
- * one row open at a time, 25 rows and "Show more".
+ * one row open at a time, 25 rows and tr("Show more").
  */
 function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);

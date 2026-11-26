@@ -59,14 +59,14 @@ export function PermissionsSection({ theme }: Pick<PluginSurfaceProps, "theme">)
   </SettingsSection>;
 }
 
-/** A neutral "Beta" chip for section titles. */
+/** A neutral tr("Beta") chip for section titles. */
 export function BetaChip({ theme }: Pick<PluginSurfaceProps, "theme">) {
   return <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: theme.colors.surface2 }}>
     <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{tr("Beta")}</Text>
   </View>;
 }
 
-/** "Sidebar & pills" and "Needs-you inbox", the Inbox & display tab of Follow-up's settings. */
+/** tr("Sidebar & pills") and tr("Needs-you inbox"), the Inbox & display tab of Follow-up's settings. */
 export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const settings = useSettings(displayPreferences);
   const list = useRpc(inboxListRpc);

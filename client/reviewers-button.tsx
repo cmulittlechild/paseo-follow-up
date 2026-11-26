@@ -99,7 +99,7 @@ export function useReviewerButtons(w: Pick<Workspace, "id" | "prs"> | undefined)
     if (!s) return fallback ? { done: false, notice: null, button: <Button theme={theme} compact={compact} kind={kind} icon="UserPlus" title={tr("Add reviewers…")} accessibilityLabel={tr("Pick reviewers for this PR")} onPress={fallback} /> } : null;
     const { scope, words } = s;
     // As wide as its widest word, so the PR link beside it never moves under the next click.
-    const button = <View style={{ minWidth: compact ? 118 : 146 }}><Button theme={theme} compact={compact} kind={kind} icon={words.done ? "Check" : "UserPlus"} title={words.button}
+    const button = <View style={{ minWidth: compact ? 118 : 146 }}><Button theme={theme} compact={compact} kind={kind} icon={words.done ? tr("Check") : "UserPlus"} title={words.button}
       accessibilityLabel={words.done && words.button !== "Unconfirmed" ? scope.doneA11y : words.done ? `Unconfirmed: ${scope.a11y}` : scope.a11y}
       loading={s.running} disabled={s.running || words.done} onPress={() => run(prKey, after)} /></View>;
     const notice = words.line ? <Text accessibilityRole={words.tone === "warning" ? "alert" : undefined} style={[t.meta, words.tone === "warning" ? { color: c.statusWarning } : null]}>{words.line}</Text> : null;

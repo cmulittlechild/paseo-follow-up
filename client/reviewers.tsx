@@ -72,7 +72,7 @@ function AddReviewer({ repo, theme, compact, taken, onAdd }: { repo: string | nu
         autoCapitalize="none" autoCorrect={false} onFocus={() => { setFocused(true); setOpen(true); }} onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyPress={e => { if (e.nativeEvent.key === "Escape") setOpen(false); }} onChangeText={v => { setValue(v); setOpen(true); }} onSubmitEditing={() => { if (typed) add({ login: q, name: null }); }}
         style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
-      <Button theme={theme} compact={compact} icon="Plus" title={tr("Add")} disabled={!typed} accessibilityLabel={typed ? `Add ${q}` : "Add reviewer"} onPress={() => add({ login: q, name: null })} />
+      <Button theme={theme} compact={compact} icon="Plus" title={tr("Add")} disabled={!typed} accessibilityLabel={typed ? `Add ${q}` : tr("Add reviewer")} onPress={() => add({ login: q, name: null })} />
     </View>
     {!!q && !valid(q) && <Text style={[t.small, { color: c.statusWarning }]}>{tr("Use a GitHub login like octocat, or a team as org/team.")}</Text>}
     {open && suggestions.isFetching && !suggestions.data && <Text style={t.small}>{tr("Loading collaborators…")}</Text>}

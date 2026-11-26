@@ -127,10 +127,10 @@ function NoteCard({ note: n, view: v, workspace, theme, compact, openAgent }: { 
       {v.overseer && action("Ask the Overseer", "MessageSquare", () => void ask())}
     </View>}
     {open === "menu" && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginLeft: compact ? -12 : -8 }}>
-      {action("Tell the agent", "Send", () => change.mutate({ action: "tell", id: n.id }))}
+      {action("Tell the agent", tr("Send"), () => change.mutate({ action: "tell", id: n.id }))}
       {action("Edit", "Pencil", () => setOpen("edit"))}
       {action("Move to another workspace", "ArrowRightLeft", () => setOpen("move"))}
-      {action("Unpin", "PinOff", () => setOpen("unpin"))}
+      {action(tr("Unpin"), "PinOff", () => setOpen("unpin"))}
     </View>}
     {open === "edit" && <NoteEditor note={n} busy={busy} theme={theme} compact={compact} onCancel={() => setOpen(null)} onSave={a => change.mutate({ action: "edit", id: n.id, ...a })} />}
     {open === "move" && <MovePicker current={workspace.id} busy={busy} theme={theme} compact={compact} onCancel={() => setOpen(null)} onPick={id => change.mutate({ action: "edit", id: n.id, workspace: id })} />}

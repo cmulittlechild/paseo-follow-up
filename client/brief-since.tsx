@@ -287,7 +287,7 @@ export function NobodyRows({ theme, compact, data, onDismissed }: { theme: Theme
     const first = r.reasons[0]!;
     const reason = <PriorityLine reason={first.line} source={first.from === "compass" ? { kind: "compass", label: first.source } : { kind: "linear", label: first.source }} c={c} size={compact ? 12 : 11} lines={compact ? 2 : 1} />;
     const when = age(r.at, now);
-    const start = <BarBtn c={c} compact={compact} small primary={false} disabled={false} b={{ name: "Start…", icon: "Play", key: null }} onPress={() => openNew({ source: r.key })} />;
+    const start = <BarBtn c={c} compact={compact} small primary={false} disabled={false} b={{ name: tr("Start…"), icon: "Play", key: null }} onPress={() => openNew({ source: r.key })} />;
     const x = <DismissX theme={theme} compact={compact} label={`Remove ${r.key}`} onPress={() => dismiss({ issue: r.key })} />;
     const glyph = <View style={{ width: compact ? 18 : 16, alignItems: "center", paddingTop: compact ? 2 : 0 }}><Icon name={row.compass ? "Compass" : "ArrowUp"} size={compact ? 17 : 15} color={c.statusWarning} /></View>;
     return <RevealScope key={r.key} accessibilityLabel={`Needs you: ${row.label}`}

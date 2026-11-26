@@ -224,7 +224,7 @@ function WideDialog({ title, open, onDismiss, theme, width, children, overlay }:
 /**
  * "What's new in X": the host's dialog on desktop (a wider one of ours from 1280px windows), its sheet on the phone.
  * On the phone our own scroll body with a pinned footer, so Close stays in thumb reach however long the notes are.
- * "See all release notes" switches the same sheet to every version, so nothing navigates away from under it. A tapped
+ * tr("See all release notes") switches the same sheet to every version, so nothing navigates away from under it. A tapped
  * screenshot opens the image viewer over the notes; Esc or a click closes the viewer first, then the notes.
  */
 export function WhatsNewSheet({ open, name, notes, all, theme, compact, onClose, startAll = false }: { open: boolean; name: string; notes: readonly ReleaseNote[]; all: readonly ReleaseNote[]; theme: Theme; compact: boolean; onClose: () => void; startAll?: boolean }) {

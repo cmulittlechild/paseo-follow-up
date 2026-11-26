@@ -86,7 +86,7 @@ export function contributeInboxCommands(client: PluginClientContext, store: Inbo
   const removers = [
     client.addCommandCenterItem({ id: "inbox-sign-off-next", title: "Follow-up: Sign off & next", icon: "ArrowRight", keywords: ["ok", "done", "ack", "needs you", "sign off", "next"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); openNext(agent.id); } }),
-    client.addCommandCenterItem({ id: "inbox-sign-off", title: "Follow-up: sign off", icon: "Check", keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
+    client.addCommandCenterItem({ id: "inbox-sign-off", title: "Follow-up: sign off", icon: tr("Check"), keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); } }),
     client.addCommandCenterItem({ id: "inbox-later", title: "Follow-up: Later (tomorrow 09:00)", icon: "AlarmClock", keywords: ["ok", "snooze", "later", "needs you"], context: "agent",
       onSelect({ agent }) { void store.snooze([agent.id], snoozeUntil("tomorrow", new Date())); } }),
@@ -100,7 +100,7 @@ export function contributeInboxCommands(client: PluginClientContext, store: Inbo
   return () => { for (const r of removers) r(); };
 }
 
-/** "Sign off & next" target, honouring D9 and skipping the agent just signed off. */
+/** tr("Sign off & next") target, honouring D9 and skipping the agent just signed off. */
 export function nextTarget(store: InboxStore, from: string | null, archived?: ReadonlySet<string>): InboxRow | null {
   return nextAfter(store.rows(), from, Date.now(), archived);
 }

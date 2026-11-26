@@ -43,8 +43,8 @@ function glyph(item: NeedItem, colors: Colors): { name: string; color: string } 
     case "message": return { name: "MessageSquareWarning", color: colors.statusWarning };
     case "decision": return { name: "MessageCircleQuestion", color: colors.statusWarning };
     case "question": return { name: item.state === "stopped" ? "CirclePause" : "MessageCircleQuestion", color: colors.statusWarning };
-    case "answer": return item.waiting ? { name: item.waiting === "in-chat" ? "MessageSquareText" : "Copy", color: colors.statusWarning } : { name: "TriangleAlert", color: colors.statusWarning };
-    case "send": return { name: item.finish ? "ListChecks" : "Send", color: colors.statusWarning };
+    case "answer": return item.waiting ? { name: item.waiting === "in-chat" ? "MessageSquareText" : tr("Copy"), color: colors.statusWarning } : { name: "TriangleAlert", color: colors.statusWarning };
+    case "send": return { name: item.finish ? "ListChecks" : tr("Send"), color: colors.statusWarning };
     case "merge": return { name: "GitMerge", color: colors.statusSuccess };
     case "reviewers": return { name: "UserPlus", color: colors.foregroundMuted };
   }
@@ -264,7 +264,7 @@ export function NeedsYouBlock({ workspace: w, theme, compact, actions, now, brie
   if (!block.count) return null; // held rows keep the block drawn after its last ask is done
   // In Later the block stays (its moves still work) but reads Later, without the attention border.
   const later = workspaceSnoozed(w, all, now) && w.snooze ? laterLabel(w.snooze.until, now) : null;
-  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : asked ? "Check" : "CircleAlert"} title={later ? `Later ${later}` : asked ? "Reviewers requested" : "Needs you"} tone={later || !count ? "plain" : "attention"} count={count || undefined} style={style}>
+  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : asked ? tr("Check") : "CircleAlert"} title={later ? `Later ${later}` : asked ? "Reviewers requested" : tr("Needs you")} tone={later || !count ? "plain" : "attention"} count={count || undefined} style={style}>
     {block.cards.map(card => card.kind === "brief"
       ? <View key="brief" style={{ borderTopWidth: 1, borderTopColor: theme.colors.border }}>{briefCard}</View>
       : <QuestionAsk key={card.questionId} workspace={w} questionId={card.questionId} context={card.brief ? brief?.context ?? null : null} theme={theme} compact={compact} now={now} openAgent={actions.openAgent}

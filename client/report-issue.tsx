@@ -173,7 +173,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
     <Footer compact={compact} theme={theme}>
       <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
       {nowhere ? <Button title={tr("Open on GitHub")} icon="ExternalLink" kind="primary" theme={theme} compact={compact} grow={compact} disabled={empty} onPress={() => void openGithub()} />
-        : <Button title={chosen === NEW_WORKSPACE ? "Start workspace and send" : chosen === NEW_AGENT ? "Start agent and send" : "Send to agent"} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
+        : <Button title={chosen === NEW_WORKSPACE ? "Start workspace and send" : chosen === NEW_AGENT ? "Start agent and send" : tr("Send to agent")} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
     </Footer>
   </SubmitScope></Modal.Content>;
 }

@@ -25,8 +25,8 @@ import type { InboxStore } from "./inbox-store";
  * unmounted, so the card doesn't move when it appears and the keyboard and screen readers always reach it.
  *
  * Two clicks, in place (dismiss-takes-two-clicks-in-place, armed-dismiss-shows-remove-and-keep): the first click (tap,
- * Enter, Space, ⇧D in Catch up) arms the x: it turns into two small buttons on the same spot, a quiet "Keep" (backs out;
- * first in reading order, and where focus lands, so a second Enter keeps) and a red-tinted "Remove" (confirms; solid
+ * Enter, Space, ⇧D in Catch up) arms the x: it turns into two small buttons on the same spot, a quiet tr("Keep") (backs out;
+ * first in reading order, and where focus lands, so a second Enter keeps) and a red-tinted tr("Remove") (confirms; solid
  * red under the pointer), growing leftward over what sits beside it, so the card never reflows. It disarms quietly on
  * Keep, a click or tap anywhere else, Esc (focus goes back to the x), focus leaving the pair, the pointer leaving its
  * card (after a short grace), or DISMISS_ARM_MS untouched. The second click of a double-click never removes. Only one x
@@ -76,13 +76,13 @@ export function useDismiss(after?: () => void): (target: DismissTarget, options?
     success: () => `${name.charAt(0).toUpperCase()}${name.slice(1)} is back in Needs you`, failure: `Couldn't bring back ${name}` }, `dismiss:${targetKey(t)}`);
   return (t, options = {}) => {
     options.onDismissed?.();
-    void runAction({ label: "Remove", toast, run: () => call(t, false), onSuccess: () => refresh(t), failure: "Couldn't remove it",
+    void runAction({ label: tr("Remove"), toast, run: () => call(t, false), onSuccess: () => refresh(t), failure: "Couldn't remove it",
       // Already gone (merged, answered, sent elsewhere): nothing to say, the surface shows what happened.
       reconcile: () => refresh(t),
       success: r => {
         const message = `Removed ${r.name}. The agent wasn't messaged.`;
         if (!hasToastHost()) return message;
-        pushToast("success", message, [{ label: "Undo", onPress: () => undo(t, r.name) }], { durationMs: DISMISS_UNDO_MS, keep: true });
+        pushToast("success", message, [{ label: tr("Undo"), onPress: () => undo(t, r.name) }], { durationMs: DISMISS_UNDO_MS, keep: true });
         return null;
       } }, `dismiss:${targetKey(t)}`);
   };
@@ -113,7 +113,7 @@ export function RevealScope({ children, style, ...rest }: { children: ReactNode;
 
 
 /** The armed pair's quiet button names the same item: "Remove Q1" → "Keep Q1". */
-export const keepLabel = (label: string) => /^Remove\b/.test(label) ? label.replace(/^Remove\b/, "Keep") : `Keep ${label}`;
+export const keepLabel = (label: string) => /^Remove\b/.test(label) ? label.replace(/^Remove\b/, tr("Keep")) : `Keep ${label}`;
 
 type PressEvent = { detail?: number; relatedTarget?: unknown; nativeEvent?: { detail?: number; relatedTarget?: unknown } } | undefined;
 /** The click count of a pointer press (the DOM's `detail`: 2 is a double-click's second click); 0 for keys and native. */
@@ -122,7 +122,7 @@ const clickCount = (e: PressEvent) => e?.nativeEvent?.detail ?? e?.detail ?? 0;
 /**
  * The small x. `label` names what it removes ("Remove Q1", "Remove #12 is approved"); the hint follows it. Quiet by
  * design: the muted foreground at 14 px (16 on phones), no fill until hovered, never the size or colour of an action.
- * Armed (the first click), it is a quiet "Keep" and a red "Remove" in the same place; Remove calls `onPress`.
+ * Armed (the first click), it is a quiet tr("Keep") and a red tr("Remove") in the same place; Remove calls `onPress`.
  */
 export function DismissX({ theme, compact, label, onPress, disabled = false }: { theme: Theme; compact: boolean; label: string; onPress: () => void; disabled?: boolean }) {
   const c = theme.colors;

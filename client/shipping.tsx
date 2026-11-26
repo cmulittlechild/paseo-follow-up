@@ -68,7 +68,7 @@ export function ShippingSettings({ theme, compact }: { theme: Theme; compact: bo
         </View>)}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: compact ? 16 : 14, paddingVertical: 8 }}>
           <Text style={[t.meta, { flex: 1 }]}>{`${checked ? `Checked ${checked}` : "Not checked yet"} · looks at what's installed and how each repository is set up.`}</Text>
-          <Button theme={theme} compact={compact} title={recheck.isPending ? "Checking…" : "Check again"} disabled={recheck.isPending} loading={recheck.isPending} onPress={() => recheck.mutate()} />
+          <Button theme={theme} compact={compact} title={recheck.isPending ? "Checking…" : tr("Check again")} disabled={recheck.isPending} loading={recheck.isPending} onPress={() => recheck.mutate()} />
         </View>
       </Disclosure> : <Text style={t.meta}>{tr("Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote.")}</Text>}
     </>}
@@ -106,7 +106,7 @@ function RepoShipping({ row, view, theme, compact, busy, set }: { row: RepoWorkf
       : <SettingsSelect<"default" | MergeMethod> label={tr("Merge method")} disabled={busy || !row.github}
         hint={!row.github ? "Shows after Follow-up reads a PR here." : `This repository allows ${listMethods(methods)}.`}
         value={row.mergeMethod && methods.includes(row.mergeMethod) ? row.mergeMethod : "default"}
-        options={[{ value: "default", label: preferred ? `Default · ${MERGE_METHOD_SHORT[preferred]}` : "Repository default" }, ...methods.map(m => ({ value: m, label: MERGE_METHOD_LABELS[m] }))]}
+        options={[{ value: "default", label: preferred ? `Default · ${MERGE_METHOD_SHORT[preferred]}` : tr("Repository default") }, ...methods.map(m => ({ value: m, label: MERGE_METHOD_LABELS[m] }))]}
         onValueChange={value => set({ mergeMethod: value === "default" ? null : value }, value === "default" ? "GitHub's default merge method" : MERGE_METHOD_LABELS[value])} />}</View>}
     <View style={{ zIndex: 2 }}>{rule}<ReviewModeRow repo={row.repo} value={row.review} theme={theme} compact={compact} busy={busy}
       onChange={mode => set({ review: mode === "team" ? null : mode }, mode === "none" ? `no review. ${REVIEW_MODE_LABELS.none.hint}` : `team review. ${REVIEW_MODE_LABELS.team.hint}`)} /></View>

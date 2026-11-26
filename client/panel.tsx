@@ -299,7 +299,7 @@ function MainAgentName({ agentId, theme }: { agentId: string; theme: Theme }) {
 }
 
 /**
- * Another root agent in this workspace: it can contribute PRs but not ask Tom or call Done. "Make main agent" is
+ * Another root agent in this workspace: it can contribute PRs but not ask Tom or call Done. tr("Make main agent") is
  * the developer's choice (a plugin RPC, never an agent tool). It swaps roles, so the former main appears here with
  * its own Make main agent: that is the undo, and the toast says so instead of a confirmation step.
  */

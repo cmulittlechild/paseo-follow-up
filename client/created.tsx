@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { View } from "react-native";
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -86,7 +87,7 @@ function CreatedCardView({ item, theme, layout, deps }: PluginTimelineItemProps<
   const wordColor = presence.tone === "working" ? c.statusSuccess : c.foregroundMuted;
   const tile = compact ? 32 : 28;
   const chipColor = (tone: "success" | "danger" | "warning" | "merged" | "muted") => tone === "success" ? c.statusSuccess : tone === "danger" ? c.statusDanger : tone === "warning" ? c.statusWarning : tone === "merged" ? mergedColor(c) : c.foregroundMuted;
-  const glyph = card.phase === "starting" ? <Spinner color={c.foregroundMuted} size={13} label={card.kind === "agent" ? "Starting" : "Creating"} />
+  const glyph = card.phase === "starting" ? <Spinner color={c.foregroundMuted} size={13} label={card.kind === "agent" ? tr("Starting") : "Creating"} />
     : failed ? <Icon name="CircleAlert" size={15} color={c.statusDanger} />
     : card.kind === "workspace" ? <Icon name="GitBranch" size={15} color={c.foregroundMuted} />
     : card.provider === "claude" ? <Icon icon={BRAND_ICONS.claude} size={15} color={c.foregroundMuted} />

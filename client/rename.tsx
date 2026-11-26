@@ -88,10 +88,10 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
     if (!check.ok) return;
     const title = check.name; const workspaceId = request.workspaceId;
     onClose();
-    void runAction({ label: "Rename", toast, run: () => rename({ workspaceId, title }), onSuccess: refresh, failure: "Couldn't rename the workspace",
+    void runAction({ label: tr("Rename"), toast, run: () => rename({ workspaceId, title }), onSuccess: refresh, failure: "Couldn't rename the workspace",
       success: r => {
         if (!hasToastHost()) return `Renamed to ${r.title}`;
-        pushToast("success", `Renamed to ${r.title}`, [{ label: "Undo", onPress: () => undo(workspaceId) }], { durationMs: RENAME_UNDO_MS, keep: true });
+        pushToast("success", `Renamed to ${r.title}`, [{ label: tr("Undo"), onPress: () => undo(workspaceId) }], { durationMs: RENAME_UNDO_MS, keep: true });
         return null;
       } }, `rename:${workspaceId}`);
   };
@@ -145,7 +145,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
             ? <Button theme={theme} compact={compact} kind="primary" icon="RefreshCw" title={tr("Try again")} onPress={() => void suggest()} />
             : <>
               <Button shortcut={canRename} theme={theme} compact={compact} kind="primary" icon="Check" title={tr("Rename")} disabled={!canRename} onPress={apply} />
-              <Button theme={theme} compact={compact} kind="ghost" icon="RefreshCw" title={phase === "error" ? "Try again" : "Suggest another"} disabled={phase === "suggesting"} onPress={() => void suggest()} />
+              <Button theme={theme} compact={compact} kind="ghost" icon="RefreshCw" title={phase === "error" ? tr("Try again") : "Suggest another"} disabled={phase === "suggesting"} onPress={() => void suggest()} />
             </>}
         </View>
         {info?.last && <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: compact ? 12 : 10, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

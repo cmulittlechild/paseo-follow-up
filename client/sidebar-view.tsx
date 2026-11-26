@@ -47,7 +47,7 @@ export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => v
     const refs = sdk as unknown as RefSdk;
     useSidebarViewMounted();
     const full = useHomeModel(sources);
-    // "Filter workspaces" narrows this list in place with Home search's matcher; the sort is Home's own setting.
+    // tr("Filter workspaces") narrows this list in place with Home search's matcher; the sort is Home's own setting.
     const filter = useListFilter(full, sources);
     const model = filter.model;
     const rank = useSyncExternalStore(sources.extras.subscribe, sources.extras.rank, sources.extras.rank);

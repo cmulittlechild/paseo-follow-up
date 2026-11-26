@@ -17,7 +17,7 @@ import type { Colors } from "./theme";
 
 /**
  * Linked items on screen (design §5): the references line (Spec and Linked chips) under the Summary, the Linked
- * sheet, and the "Linked items" row in the panel's disclosure. Copy, order, folding and paste-to-add are pure, in
+ * sheet, and the tr("Linked items") row in the panel's disclosure. Copy, order, folding and paste-to-add are pure, in
  * shared/linked-display.ts; this file only draws them.
  */
 
@@ -84,7 +84,7 @@ export function LinkedChip({ model, theme, compact, onPress }: { model: LinkedCh
 
 /**
  * The Linked sheet plus the spec sheet its spec row edits, as one unit any surface can host. `open(focus)` shows the
- * list; "Edit spec link…" swaps to the spec sheet (one modal at a time).
+ * list; tr("Edit spec link…") swaps to the spec sheet (one modal at a time).
  */
 export function useLinkedSheets(workspace: Workspace, theme: Theme, compact: boolean): { open: () => void; editSpec: () => void; element: ReactNode } {
   const [which, setWhich] = useState<"linked" | "spec" | null>(null);
@@ -119,7 +119,7 @@ export function ReferencesLine({ workspace: w, theme, compact }: { workspace: Wo
   </>;
 }
 
-/** The way in when nothing is linked: a row in "Spec, agent and recovery", under the spec row. */
+/** The way in when nothing is linked: a row in tr("Spec, agent and recovery"), under the spec row. */
 export function LinkedItemsRow({ workspace: w, theme, compact }: { workspace: Workspace; theme: Theme; compact: boolean }) {
   const t = text(theme.colors, compact);
   const query = useLinked(w.id);
@@ -132,7 +132,7 @@ export function LinkedItemsRow({ workspace: w, theme, compact }: { workspace: Wo
         <Text style={t.label}>{tr("Linked items")}</Text>
         <Text numberOfLines={2} style={t.meta}>{line}</Text>
       </View>
-      <Button theme={theme} compact={compact} icon={model ? "List" : "Plus"} title={model ? "Open" : "Add"}
+      <Button theme={theme} compact={compact} icon={model ? "List" : "Plus"} title={model ? tr("Open") : tr("Add")}
         accessibilityLabel={model ? "Open linked items" : "Add a linked item"} onPress={sheets.open} />
     </View>
     {sheets.element}

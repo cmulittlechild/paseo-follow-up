@@ -69,7 +69,7 @@ export function StatsPage({ theme, compact, params, deps }: { theme: Theme; comp
     {!compact && <Button theme={theme} kind="ghost" icon="House" title={tr("Home")} onPress={deps.onHome} />}
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text accessibilityRole="header" numberOfLines={1} style={t.headline}>{person ? person : "PR stats"}</Text>
+        <Text accessibilityRole="header" numberOfLines={1} style={t.headline}>{person ? person : tr("PR stats")}</Text>
         {person && out?.repo && <Text style={t.meta}>{`${out.repo} · ${PERIOD_LABELS[period]}`}</Text>}
       </View>
       {out?.model && <IconButton theme={theme} compact={compact} icon="RefreshCw" label={tr("Read GitHub now")} tooltip spinning={refreshing} disabled={refreshing} onPress={() => void refresh()} />}
@@ -128,7 +128,7 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
     <View style={{ gap: 4 }}>
       <Text style={t.meta}>{`${rangeWords(out)} · ${out.clock === "working" ? "working hours" : "calendar time"} · ${out.timeZone}`}</Text>
       {sync && <View style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
-        <Icon name={sync.tone === "danger" ? "CircleAlert" : sync.tone === "warning" ? "TriangleAlert" : "Clock"} size={13} color={toneColor} />
+        <Icon name={sync.tone === "danger" ? "CircleAlert" : sync.tone === "warning" ? "TriangleAlert" : tr("Clock")} size={13} color={toneColor} />
         <Text style={[t.meta, { flex: 1, color: toneColor }]}>{sync.text}</Text>
       </View>}
       {out.teamNotice && <Text style={t.meta}>{out.teamNotice}</Text>}

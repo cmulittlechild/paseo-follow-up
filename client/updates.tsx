@@ -48,7 +48,7 @@ export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; c
         <Text style={t.label}>{title}</Text>
         <Text style={t.meta}>{confirm ? "Some agents are mid-turn. Open agent chats lose Follow-up's tools until you reopen them; their work and history are kept." : detail}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={rolled ? "Dismiss" : "Not now"} hitSlop={8} onPress={() => run.mutate(() => dismiss({ id: n.id }))}
+      <Pressable accessibilityRole="button" accessibilityLabel={rolled ? tr("Dismiss") : "Not now"} hitSlop={8} onPress={() => run.mutate(() => dismiss({ id: n.id }))}
         style={state => ({ width: compact ? 44 : 32, height: compact ? 44 : 32, marginTop: compact ? -12 : -6, marginRight: compact ? -12 : -8, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
         <Icon name="X" size={14} color={c.foregroundMuted} />
       </Pressable>
@@ -77,9 +77,9 @@ function StatusCard({ view, theme, compact, onWhatsNew }: { view: UpdatesView; t
   const version = "version" in p ? p.version : view.version;
   const act: Record<StatusAction, { title: string; onPress: () => void; icon?: string }> = {
     check: { title: "Check now", onPress: () => run.mutate(() => read({ check: "manual" })) },
-    install: { title: "Install now", onPress: () => run.mutate(async () => { const v = await install({ version }); if (v.phase.kind === "waiting" && v.phase.busy) setConfirm(true); return v; }) },
+    install: { title: tr("Install now"), onPress: () => run.mutate(async () => { const v = await install({ version }); if (v.phase.kind === "waiting" && v.phase.busy) setConfirm(true); return v; }) },
     "install-anyway": { title: "Install now anyway", onPress: () => setConfirm(true) },
-    retry: { title: "Try again", onPress: () => run.mutate(() => install({ version })) },
+    retry: { title: tr("Try again"), onPress: () => run.mutate(() => install({ version })) },
     "copy-details": { title: "Copy details", onPress: () => void copyText(`${s.title}\n${s.detail}`).then(() => toast.show("Copied"), () => toast.error("Couldn't copy")) },
     "copy-command": { title: "Copy install command", onPress: () => void copyText(copyCommand(version)).then(() => toast.show("Copied. Run it on the computer running Paseo."), () => toast.error("Couldn't copy")) },
     "view-npm": { title: "View on npm", onPress: () => void openExternalUrl(`https://www.npmjs.com/package/paseo-follow-up/v/${encodeURIComponent(version)}`).catch(() => undefined) },
@@ -130,7 +130,7 @@ function MoveLine({ view, theme, compact }: { view: UpdatesView; theme: Theme; c
   </View>;
 }
 
-const HISTORY_RESULT: Record<string, string> = { updated: "Updated", "rolled-back": "Rolled back", failed: "Failed", skipped: "Skipped" };
+const HISTORY_RESULT: Record<string, string> = { updated: "Updated", "rolled-back": "Rolled back", failed: "Failed", skipped: tr("Skipped") };
 const stamp = (at: number) => { const d = new Date(at); return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 /**
@@ -153,13 +153,13 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
       <StatusCard view={view} theme={theme} compact={compact} onWhatsNew={() => setSheet(false)} />
       <MoveLine view={view} theme={theme} compact={compact} />
     </SettingsSection>
-    <SettingsSection title={view.installKind === "npm" ? "How Follow-up updates" : "Release notes"}>
+    <SettingsSection title={view.installKind === "npm" ? "How Follow-up updates" : tr("Release notes")}>
       <SettingsCard>
         {view.installKind === "npm" && <>
         <SettingsSelect<UpdateMode> label={tr("When a new version is out")} hint={MODE_HINT[view.mode]} value={view.mode} disabled={save.isPending}
           options={UPDATE_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onValueChange={mode => save.mutate({ mode })} />
         <SettingsSelect<Channel> label={tr("Channel")} hint={channelHint(view)} value={view.channel} disabled={save.isPending}
-          options={[{ value: "stable", label: "Stable" }, { value: "beta", label: "Beta" }]}
+          options={[{ value: "stable", label: "Stable" }, { value: "beta", label: tr("Beta") }]}
           onValueChange={channel => save.mutate({ channel }, { onSuccess: () => toast.show(channel === "stable" ? "Switched to Stable. Nothing changes until a newer stable is out." : "Switched to Beta. The next check looks for betas.") })} />
         </>}
         <SettingsSwitch label={WHATS_NEW_LABEL} hint={whatsNewHint(view.enable_whats_new)} value={view.enable_whats_new} disabled={save.isPending} onValueChange={enable_whats_new => save.mutate({ enable_whats_new })} />
@@ -201,7 +201,7 @@ export function UpdatesStep({ theme, compact }: { theme: Theme; compact: boolean
     </View>
     <SettingsCard>
       <SettingsSelect<Channel> label={tr("Channel")} hint={channelHint(view)} value={view.channel} disabled={save.isPending}
-        options={[{ value: "stable", label: "Stable" }, { value: "beta", label: "Beta" }]} onValueChange={channel => save.mutate({ channel })} />
+        options={[{ value: "stable", label: "Stable" }, { value: "beta", label: tr("Beta") }]} onValueChange={channel => save.mutate({ channel })} />
     </SettingsCard>
     <Text style={t.small}>{tr("Follow-up only installs versions npm confirms were built from github.com/tomgrin10/paseo-follow-up.")}</Text>
   </View>;

@@ -38,7 +38,7 @@ type FindKind = "people" | "channels" | "docs" | "file" | "trackers" | "calendar
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const placeName = (p: Place) => p.kind === "conversation" ? (p.sub === "dm" ? `DM with ${p.name}` : `#${p.name}`)
-  : p.kind === "tracker" ? `${trackerRef(p.id)?.tracker === "github" ? "GitHub" : "Linear"} ${p.scope} ${p.name}` : p.kind === "doc" && p.path ? `${p.name} (this machine)` : p.kind === "calendar" && p.filter === "with-guests" ? `${p.name}, meetings with guests` : p.name;
+  : p.kind === "tracker" ? `${trackerRef(p.id)?.tracker === "github" ? tr("GitHub") : "Linear"} ${p.scope} ${p.name}` : p.kind === "doc" && p.path ? `${p.name} (this machine)` : p.kind === "calendar" && p.filter === "with-guests" ? `${p.name}, meetings with guests` : p.name;
 /**
  * "DM with Dana" when the source is one person read in their DM; "Dana in #planning"; "Everyone in #team"; a tracker
  * or calendar place alone (its items are read by rule, so nobody's words are picked).
@@ -46,7 +46,7 @@ const placeName = (p: Place) => p.kind === "conversation" ? (p.sub === "dm" ? `D
 const whoWhere = (s: CompassSource) => s.who.kind === "person" && s.places.length === 1 && s.places[0].kind === "conversation" && s.places[0].sub === "dm" && s.places[0].id === s.who.person.id
   ? placeName(s.places[0]) : s.places.every(p => p.kind === "tracker" || p.kind === "calendar") ? s.places.map(placeName).join(", ") : `${whoName(s.who)} in ${s.places.map(placeName).join(", ")}`;
 const day = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-const whoName = (w: Who) => w.kind === "person" ? w.person.name : w.kind === "people" ? w.people.map(p => p.name).join(", ") : w.kind === "me" ? "You" : "Everyone";
+const whoName = (w: Who) => w.kind === "person" ? w.person.name : w.kind === "people" ? w.people.map(p => p.name).join(", ") : w.kind === "me" ? tr("You") : "Everyone";
 
 /** Settings → Compass's one read: the sources, their notes, the plan and the inputs (`follow.compass`, as `compass` reads it). */
 export function useCompassView<T = View_>() {
@@ -126,7 +126,7 @@ export function CompassReading({ theme, compact }: { theme: Theme; compact: bool
 /** The daytime read's choices (the-brief-has-one-timer): only while Follow-up is open, on workdays 08:00-20:00. */
 const CADENCE_LABEL: Record<CompassSettings["cadence"], string> = { off: "Mornings only", "1h": "Every hour", "2h": "Every 2 hours", "4h": "Every 4 hours" };
 /** Where Compass's suggestions go: an issue nobody started that a source said matters. */
-const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": `Needs you and ${NEW_NAME}`, "new-only": `${NEW_NAME} only`, off: "Off" };
+const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": `Needs you and ${NEW_NAME}`, "new-only": `${NEW_NAME} only`, off: tr("Off") };
 
 /**
  * When's Compass rows: the daytime read (Off, 1, 2 or 4 h while the app is open) and where suggestions go. The same
@@ -210,7 +210,7 @@ function PlanLine({ source, plan, theme, compact }: { source: CompassSource; pla
   const line = inUse ? `Shared ${last ? "last week's plan" : "this week's plan"}${plan.read?.title ? `, ${plan.read.title}` : ""}${posted ? ` · ${posted}` : ""}`
     : mine ? "Shared a plan; a pasted link is in use instead" : "No plan shared yet: the newest claude.ai artifact becomes the plan";
   return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
-    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={inUse ? "Check" : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
+    <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={inUse ? tr("Check") : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
     <RichText plain style={[t.meta, { flexShrink: 1, minWidth: 0 }]}>{line}</RichText>
     {inUse && <Pressable accessibilityRole="link" accessibilityLabel={`Open this week's plan from ${source.label}`} onPress={() => void openExternalUrl(mine!.url).catch(() => undefined)} hitSlop={compact ? 0 : 6}
       style={{ minHeight: compact ? 44 : 20, marginTop: compact ? -12 : 0, justifyContent: compact ? "center" : "flex-start" }}>
@@ -226,7 +226,7 @@ function PlanLine({ source, plan, theme, compact }: { source: CompassSource; pla
 function NoteList({ notes, view, theme, compact }: { notes: CompassNote[]; view: View_; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   // A rule note (tracker, calendar) quotes its title then its fields: the title is already the note's line, so only the
-  // fields show; a meeting's raw start time is said by "Until" instead.
+  // fields show; a meeting's raw start time is said by tr("Until") instead.
   const quoteOf = (n: CompassNote) => {
     if (!n.quote) return null;
     const cut = n.quote.indexOf(" · ");
@@ -246,10 +246,10 @@ function NoteList({ notes, view, theme, compact }: { notes: CompassNote[]; view:
 
 /** What the editor picks places with, by the kind of place a source reads. */
 const PICKS: Record<Place["kind"], { kinds: FindKind[]; first: string; more: string }> = {
-  conversation: { kinds: ["channels"], first: "Pick a channel", more: "Add" },
-  doc: { kinds: ["docs", "file"], first: "Pick a doc", more: "Add" },
-  tracker: { kinds: ["trackers"], first: "Pick a project or label", more: "Add" },
-  calendar: { kinds: ["calendars"], first: "Pick a calendar", more: "Add" },
+  conversation: { kinds: ["channels"], first: "Pick a channel", more: tr("Add") },
+  doc: { kinds: ["docs", "file"], first: "Pick a doc", more: tr("Add") },
+  tracker: { kinds: ["trackers"], first: "Pick a project or label", more: tr("Add") },
+  calendar: { kinds: ["calendars"], first: "Pick a calendar", more: tr("Add") },
 };
 type WhoMode = "people" | "anyone" | "me";
 
@@ -292,7 +292,7 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
       <Icon name="X" size={12} color={c.foregroundMuted} />
     </Pressable>
   </View>;
-  // On a phone a label sits on its own line above its controls, as "Start from" does; on desktop, a column.
+  // On a phone a label sits on its own line above its controls, as tr("Start from") does; on desktop, a column.
   const labelCol = (s: string) => <Text style={[t.meta, compact ? { width: "100%" } : { width: 96 }]}>{s}</Text>;
   const row = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 } as const;
   const pill = (on: boolean, title: string, onPress: () => void, role: "radio" | "checkbox", key: string) => <Pressable key={key} accessibilityRole={role} accessibilityState={{ checked: on }} onPress={onPress}
@@ -359,13 +359,13 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
       <Text style={t.meta}>{`Your words for the model that reads it. They change how it is read, never what is read. ${notes.length}/${COMPASS.sourceInstructions}`}</Text>
     </View>}
     <View style={row}>
-      {labelCol("Name")}
-      <TextInput accessibilityLabel={tr("Source name")} value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? "Now" : kind === "calendar" ? "Calendar deadlines" : "Dana · product"} placeholderTextColor={c.foregroundMuted}
+      {labelCol(tr("Name"))}
+      <TextInput accessibilityLabel={tr("Source name")} value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? tr("Now") : kind === "calendar" ? "Calendar deadlines" : "Dana · product"} placeholderTextColor={c.foregroundMuted}
         style={{ flex: 1, minWidth: 160, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
     </View>
     <View style={[row, { justifyContent: "space-between" }]}>
       <View style={row}>
-        <Button title={source ? "Save" : "Add source"} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
+        <Button title={source ? tr("Save") : "Add source"} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
         <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
       </View>
       {onRemove && <Button title={tr("Remove source")} kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}

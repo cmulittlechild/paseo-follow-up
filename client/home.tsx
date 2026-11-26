@@ -281,7 +281,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const list = <HomeList model={model} theme={theme} dense={compact} touch={compact} selectedKey={selected} onSelect={onSelect} briefLine={briefLine}
     keys={{ mode: "select", onOpen: openKey, onKeys: () => setKeysOpen(v => !v), scope: homeRef, claimBody: true }}
     results={omnibox.results} activeResult={omnibox.active} onResult={item => void pick(item)} filter={filter} overseer={overseer} asking={asking} menu={rowMenu} onSendNow={sendNow}
-    // Phones: the host header already says Follow-up, so no "Home" title row; search, sort and settings share one row and
+    // Phones: the host header already says Follow-up, so no tr("Home") title row; search, sort and settings share one row and
     // the meters move to the end of the list.
     footer={omnibox.results ? undefined : compact
       ? <View style={{ paddingTop: 16, paddingBottom: 96, gap: 12 }}>{!nothing && <UsageMeters theme={theme} sources={deps.sources} dense hold={!!model.hold} />}
@@ -424,7 +424,7 @@ const seenSteps = new Map<string, { steps: TailStep[]; at: number }>();
 /**
  * "Recent · last N steps", read only for the selected agent, refreshed when its status or flag changes.
  * Reading a timeline loads an unloaded agent for an hour (see shared/agent-load.ts), so an agent that isn't loaded
- * shows the steps Home saw last (marked with when) and waits for an explicit "Load recent steps".
+ * shows the steps Home saw last (marked with when) and waits for an explicit tr("Load recent steps").
  */
 function useTail(handle: ReturnType<typeof useAgentLive>["handle"], key: string, n = 6) {
   const [steps, setSteps] = useState<TailStep[] | null>(null);
@@ -649,13 +649,13 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       </View>
       <Button theme={theme} compact kind="ghost" title={tail.loading ? "Loading…" : "Load"} accessibilityLabel={tr("Load recent steps")} accessibilityHint="Loads the agent into memory for about an hour" loading={tail.loading} disabled={tail.loading} onPress={tail.load} />
     </View> : <>
-      <Text style={compact ? t.section : [t.small, { fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" }]}>{tail.asleep && tail.seenAt ? `Last seen · ${age(new Date(tail.seenAt).toISOString(), Date.now()) === "now" ? "just now" : `${age(new Date(tail.seenAt).toISOString(), Date.now())} ago`}` : tail.steps?.length ? `Recent · last ${tail.steps.length} steps` : "Recent steps"}</Text>
+      <Text style={compact ? t.section : [t.small, { fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" }]}>{tail.asleep && tail.seenAt ? `Last seen · ${age(new Date(tail.seenAt).toISOString(), Date.now()) === "now" ? "just now" : `${age(new Date(tail.seenAt).toISOString(), Date.now())} ago`}` : tail.steps?.length ? `Recent · last ${tail.steps.length} steps` : tr("Recent steps")}</Text>
       {!!tail.error && <Text style={t.meta}>{`Couldn't load the agent's steps: ${tail.error}`}</Text>}
       {tail.steps === null ? <Spinner color={c.foregroundMuted} size={12} label={tr("Loading the agent's steps")} />
         : tail.steps.length === 0 ? (tail.error ? null : <Text style={t.meta}>{tail.asleep ? "This agent isn't loaded, so its steps aren't shown." : "No steps yet."}</Text>)
         : <PrLinksProvider prs={w ? prLinksByNumber(w.prs) : undefined}>{tail.steps.map((step, i) => <Step key={i} step={step} c={c} last={i === tail.steps!.length - 1} />)}</PrLinksProvider>}
       {(tail.asleep || (tail.woken && tail.loading)) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <Button theme={theme} compact={compact} kind="secondary" title={tail.loading ? "Loading…" : "Load recent steps"} loading={tail.loading} disabled={tail.loading} onPress={tail.load} />
+        <Button theme={theme} compact={compact} kind="secondary" title={tail.loading ? "Loading…" : tr("Load recent steps")} loading={tail.loading} disabled={tail.loading} onPress={tail.load} />
         <Text style={[t.small, { flex: 1, minWidth: 160 }]}>{tr("Loads the agent into memory for about an hour.")}</Text>
       </View>}
       {!compact && !!tail.steps?.length && <Text style={t.small}>{tr("A preview, not the whole session. Open full for the chat.")}</Text>}
@@ -681,7 +681,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       {agent.permissions.map(p => <PermissionBlock key={p.id} p={p} theme={theme} compact={compact} busy={busy === `perm:${p.id}`} primary={plan.primary === "allow"} onRespond={r => void respond(p, r)} />)}
       {showBrief ? inBlock ? null : <BriefCard {...({ embedded: true, snoozed: !!later, item: { data: b }, theme, layout: { compact }, agentId: s.agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} />
         : echoed || (b && compact && b.source === "none" && asks.length) ? null
-        : row?.needs && !agent.permissions.length && !b ? <Text style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{s.line || s.word || "Needs you"}</Text>
+        : row?.needs && !agent.permissions.length && !b ? <Text style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{s.line || s.word || tr("Needs you")}</Text>
         : !row?.needs && s.line ? <Text style={t.body}>{s.line}</Text> : null}
       {!row?.needs && s.sendNow && <DetailSendNow s={s} theme={theme} compact={compact} deps={deps} />}
       {w && <NeedsYouBlock workspace={w} theme={theme} compact={compact} now={Date.now()} style={{ marginHorizontal: 0, marginTop: 0 }}
@@ -791,7 +791,7 @@ function Step({ step, c, last }: { step: TailStep; c: Colors; last: boolean }) {
     <Text style={t.small}>{tr("You")}</Text><RichText numberOfLines={3} style={t.body}>{answerLine(step.text) ?? step.text}</RichText>
   </View>;
   // Anyone but the developer (another agent, a child's finish, Follow-up's own send, an Overseer forward): outlined,
-  // labelled by sender, never "You" and never the raw envelope (shared/message-sender.ts).
+  // labelled by sender, never tr("You") and never the raw envelope (shared/message-sender.ts).
   if (step.kind === "message") return <View style={{ padding: 10, borderRadius: 8, borderWidth: 1, borderColor: c.border, gap: 3 }}>
     <Text numberOfLines={1} style={t.small}>{step.from}</Text><RichText numberOfLines={3} style={t.body}>{answerLine(step.text) ?? step.text}</RichText>
   </View>;
@@ -834,7 +834,7 @@ export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }:
 
 /** The reply box. Sending is the developer writing to the agent, which clears Needs you (binding rule). */
 const REPLY_HINT = "Sending clears Needs you. Sign off & next moves on without a reply.";
-export function ReplyBox({ theme, compact, agentName, onSend, placeholder = "Answer in your own words", hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
+export function ReplyBox({ theme, compact, agentName, onSend, placeholder = tr("Answer in your own words"), hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
   /** `images`: the pasted images (every-agent-field-takes-images), sent with the words through Paseo's own send. */
   onSend: (text: string, images?: { data: string; mimeType: string }[]) => Promise<void>; placeholder?: string; hint?: string | null; focus?: number; onFocusChange?: (focused: boolean) => void; docked?: boolean;
   /** Who reads it, so a recipient that can't take images says so before Send. */
@@ -930,7 +930,7 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, 
         <Text style={[t.meta, { color: c.foreground }]}>{tr("View log")}</Text>
         <Icon name="ChevronRight" size={14} color={c.foregroundMuted} />
       </Pressable>
-      : section("Done while you were away", <Pressable accessibilityRole="link" onPress={openLog} hitSlop={8}><Text style={[t.small, { color: c.foreground }]}>{pane.away.count} · log</Text></Pressable>)}
+      : section(tr("Done while you were away"), <Pressable accessibilityRole="link" onPress={openLog} hitSlop={8}><Text style={[t.small, { color: c.foreground }]}>{pane.away.count} · log</Text></Pressable>)}
     {!(compact && !pane.away.count) && <>
       {pane.away.top.length ? pane.away.top.map(l => <LogRow key={l.key} l={l} c={c} />) : <Text style={t.meta}>Follow-up didn't act on its own since {sinceLabel(now)}.</Text>}
       <Text style={t.meta}>{tr("No merges, no messages to people. Those stay yours.")}</Text>

@@ -47,7 +47,7 @@ const TITLES: Record<OnboardingStep, string> = {
   shipping: "How do you ship PRs?",
   reviewers: "Who should review your PRs?",
   updates: "Keep Follow-up up to date",
-  helpers: "Helper agents",
+  helpers: tr("Helper agents"),
   tour: "Where to find things",
 };
 
@@ -114,7 +114,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
           : <Button theme={theme} kind="ghost" icon="ChevronLeft" title={tr("Back")} onPress={() => go(ONBOARDING_STEPS[index - 1])} />)}
         {!compact && <View style={{ flex: 1 }} />}
         {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title={tr("Skip, set later")} onPress={() => go(ONBOARDING_STEPS[index + 1])} />}
-        <Button theme={theme} compact={compact} grow={compact} kind="primary" icon={last ? "Check" : undefined}
+        <Button theme={theme} compact={compact} grow={compact} kind="primary" icon={last ? tr("Check") : undefined}
           title={last ? "Finish" : failing ? "Continue anyway" : "Continue"} loading={last && move.isPending}
           onPress={() => last ? finish() : go(ONBOARDING_STEPS[index + 1])} />
       </View>
@@ -221,9 +221,9 @@ function IntroStep({ theme, compact, follow }: { theme: Theme; compact: boolean;
     </Panel>
     <View style={{ gap: 4 }}>
       {[
-        ["Inbox", "Needs you", "One list of what only you can decide: a merge, a question, a permission."],
+        ["Inbox", tr("Needs you"), "One list of what only you can decide: a merge, a question, a permission."],
         ["Send", "Repairs", "Review comments, conflicts and failed checks become repairs and go to the workspace's agent in one message."],
-        ["MessageCircleQuestion", "Questions", "Agents ask you here, with options and a recommendation. Your answer goes to their chat."],
+        ["MessageCircleQuestion", tr("Questions"), "Agents ask you here, with options and a recommendation. Your answer goes to their chat."],
       ].map(([icon, title, line]) => <View key={title} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
         <Icon name={icon} size={16} color={c.foregroundMuted} />
         <View style={{ flex: 1, gap: 1 }}><Text style={t.label}>{title}</Text><Text style={t.meta}>{line}</Text></View>

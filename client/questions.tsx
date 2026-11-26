@@ -45,15 +45,15 @@ const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !
  */
 export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAnswer | null | undefined): { icon: string; color: (c: Colors) => string; text: string } {
   if (pending?.error) return { icon: "CircleAlert", color: c => c.statusDanger, text: `Your answer wasn't sent: ${sentence(pending.error)} Open it to retry; your words are kept.` };
-  if (pending) return { icon: "Send", color: c => c.foregroundMuted, text: "Sending your answer…" };
-  if (q.taskId && q.need === "action") return { icon: "Clock", color: c => c.foregroundMuted, text: "A task waits on this. The agent works on the rest meanwhile." };
-  if (q.taskId && !q.options.length) return { icon: "Clock", color: c => c.foregroundMuted, text: "A task is blocked on this. The agent works on the rest." };
+  if (pending) return { icon: tr("Send"), color: c => c.foregroundMuted, text: "Sending your answer…" };
+  if (q.taskId && q.need === "action") return { icon: tr("Clock"), color: c => c.foregroundMuted, text: "A task waits on this. The agent works on the rest meanwhile." };
+  if (q.taskId && !q.options.length) return { icon: tr("Clock"), color: c => c.foregroundMuted, text: "A task is blocked on this. The agent works on the rest." };
   switch (questionState(q)) {
     case "stopped": return { icon: "CirclePause", color: c => c.statusWarning, text: q.big ? `The agent stopped and waits for your answer. Big question: ${q.big}.` : "The agent stopped and waits for your answer." };
     case "building": return { icon: "Hammer", color: c => c.foregroundMuted, text: `The agent is building ${q.recommend} while you decide. Pick another option and it undoes that first.` };
     default: return q.big
       ? { icon: "Hand", color: c => c.statusWarning, text: `Big question: ${q.big}. The agent builds nothing this affects until you answer.` }
-      : { icon: "Clock", color: c => c.foregroundMuted, text: "The agent holds what this affects and keeps working on the rest." };
+      : { icon: tr("Clock"), color: c => c.foregroundMuted, text: "The agent holds what this affects and keeps working on the rest." };
   }
 }
 
@@ -65,7 +65,7 @@ function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: s
     case "sent": {
       const note = receiptNote(d.receipt);
       const held = d.receipt?.deliveryStatus === "queued";
-      return { icon: held ? "Clock" : "CircleCheck", tone: held ? "muted" : "success", text: `Sent to ${who(w, d.to)} ${ago(d.at, now)}${note ? `. ${note}` : ""}` };
+      return { icon: held ? tr("Clock") : "CircleCheck", tone: held ? "muted" : "success", text: `Sent to ${who(w, d.to)} ${ago(d.at, now)}${note ? `. ${note}` : ""}` };
     }
     // The queue's states read one way everywhere (shared/queue.ts deliveryStatus).
     case "sending": case "queued": case "retrying": case "failed": case "cancelled": {
@@ -73,8 +73,8 @@ function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: s
       return { icon: s.tone === "spinner" ? "" : d.state === "queued" ? "Clock" : d.state === "retrying" ? "RotateCcw" : d.state === "cancelled" ? "CircleSlash" : "TriangleAlert", tone: s.tone === "danger" ? "warning" : s.tone, text: s.detail };
     }
     case "unconfirmed": return { icon: "RotateCcw", tone: "muted", text: RETRYING_DETAIL };
-    case "copied": return { icon: "Copy", tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
-    case "signed-off": return { icon: "Check", tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
+    case "copied": return { icon: tr("Copy"), tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
+    case "signed-off": return { icon: tr("Check"), tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
     case "in-chat": return { icon: "MessageSquareText", tone: "muted", text: `Put in ${who(w, d.to)}'s chat ${ago(d.at, now)}. Send it there, or send it from here.` };
     case "recorded": return { icon: "MessageSquare", tone: "muted", text: `You answered in chat; the agent recorded it ${ago(d.at, now)}.` };
   }
@@ -484,14 +484,14 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
   const list = found[tab];
   // While searching, "Show all" is ignored: every match shows.
   const shown = all || hits ? list : list.slice(0, LIMIT);
-  const tabs = (counts: boolean) => <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline", counts ? found.timeline.length : undefined)}{tabButton("questions", "Questions", found.questions.length)}</View>;
+  const tabs = (counts: boolean) => <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline", counts ? found.timeline.length : undefined)}{tabButton("questions", tr("Questions"), found.questions.length)}</View>;
   return <Card theme={theme} compact={compact} icon="Activity" title={tr("Activity")} search={search.header}
     right={<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>{questions.length ? tabs(false) : null}{search.button}</View>}>
     {/* Searching: the tabs move under the field and count their matches, so a hit in the other tab is never hidden. */}
     {search.header && questions.length > 0 && <View style={{ flexDirection: "row", paddingHorizontal: compact ? 14 : 12, paddingTop: 6, paddingBottom: 10 }}>{tabs(!!hits)}</View>}
     {hits && !hits.size && <NoMatchRow section="activity" query={search.query!} theme={theme} compact={compact} />}
     {hits && hits.size > 0 && !list.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
-      <Text style={t.meta}>{`Nothing in ${tab === "timeline" ? "Timeline" : "Questions"} matches. ${found[tab === "timeline" ? "questions" : "timeline"].length} in ${tab === "timeline" ? "Questions" : "Timeline"}.`}</Text>
+      <Text style={t.meta}>{`Nothing in ${tab === "timeline" ? "Timeline" : tr("Questions")} matches. ${found[tab === "timeline" ? "questions" : "timeline"].length} in ${tab === "timeline" ? tr("Questions") : "Timeline"}.`}</Text>
     </View>}
     {/* The timeline is drawn on the same rail as the stacks: a 2px line through 16px state nodes. */}
     {!list.length ? null : tab === "timeline" ? <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6, borderTopWidth: 1, borderTopColor: c.border }}>

@@ -18,7 +18,7 @@ import {
 
 export const briefSettingsKey = ["follow-up", "brief-settings"];
 export const briefSourcesKey = ["follow-up", "brief-sources"];
-const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: "A link", off: "Off" };
+const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: "A link", off: tr("Off") };
 
 /**
  * Settings → Compass (docs/compass.md#settings, one-place-for-priority-inputs): the one place for what sets the
@@ -66,7 +66,7 @@ type SourcesState = ReturnType<typeof useSourcesView>;
 /**
  * The built-in inputs as rows of What sets your priorities, after the Compass sources: each with its role, its switch,
  * its health, and (behind its chevron) its own setting: the queue's states, the chat window, the calendar's days.
- * Servers no recipe fits follow under "Other servers on mcpproxy", for Ask.
+ * Servers no recipe fits follow under tr("Other servers on mcpproxy"), for Ask.
  */
 function InputRows({ view, sources, theme, compact }: { view: BriefSettingsView; sources: SourcesState; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
@@ -206,14 +206,14 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, detail, on
       </View>
       <Text style={t.meta}>{meta}</Text>
       {bad && <Warning text={row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")} theme={theme} compact={compact}
-        action={row.health === "failed" ? action("Retry", onRetry, busy) : action("Check again", onCheck, checking)} />}
+        action={row.health === "failed" ? action(tr("Retry"), onRetry, busy) : action(tr("Check again"), onCheck, checking)} />}
       {bad && row.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", marginLeft: 18, paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
         <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: MONO.fontFamily }}>{row.command}</Text>
         <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.command}`} onPress={() => onCopy(row.command!)} />
       </View>}
       {!row.on && row.detail && <Text style={t.meta}>{row.detail}</Text>}
       {/* Phones: the 44 pt target stays, but its slack overlaps the row's padding instead of adding a gap under it. */}
-      {needsPreview && <View style={compact ? { marginTop: -6, marginBottom: -12 } : null}>{action("Preview", onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}</View>}
+      {needsPreview && <View style={compact ? { marginTop: -6, marginBottom: -12 } : null}>{action(tr("Preview"), onPreview, false, "Eye", `Preview what Ask would read from ${row.label}`)}</View>}
       {ask && !row.on && (previewing || row.asked) && <AskPreview row={row} previewing={previewing} fresh={fresh} sweepAt={sweepAt} onPreview={onPreview} onToggle={onToggle} busy={busy} theme={theme} compact={compact} />}
       {ask && row.on && row.asked && !row.asked.preview && !row.asked.error && <Text style={t.meta}>{row.asked.items.length ? `Found ${row.asked.items.length} for you at ${clock(row.asked.at)}` : `Nothing for you at ${clock(row.asked.at)}`}</Text>}
       {open && detail && <View style={{ paddingTop: 8 }}>{detail.body}</View>}
@@ -269,7 +269,7 @@ function AskPreview({ row, previewing, fresh, sweepAt, onPreview, onToggle, busy
     {!previewing && <View style={{ gap: 6 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         {a && !a.error && fresh && <Button title={tr("Turn on")} kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onToggle(true)} accessibilityLabel={`Turn on Ask for ${row.label}`} />}
-        <Button title={a ? "Preview again" : "Preview"} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
+        <Button title={a ? "Preview again" : tr("Preview")} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
       </View>
       {a && !a.error && fresh && <Text style={t.meta}>{`Then asked once each workday morning, after the ${sweepAt} sweep, with ${ASK_COST}.`}</Text>}
     </View>}
@@ -356,7 +356,7 @@ function LinkField({ initial, busy, onUse, theme, compact, placeholder = "https:
 function PlanCardView({ card, busy, onAnother, onPaste, theme, compact }: { card: NonNullable<ReturnType<typeof planCard>>; busy: boolean; onAnother: () => void; onPaste: (link: string) => void; theme: Theme; compact: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const warn = card.tone === "warn";
-  const icon = card.tone === "ok" ? "Check" : warn ? "TriangleAlert" : "Info";
+  const icon = card.tone === "ok" ? tr("Check") : warn ? "TriangleAlert" : "Info";
   const iconColor = card.tone === "ok" ? c.statusSuccess : warn ? c.statusWarning : c.foregroundMuted;
   return <View accessibilityRole={warn ? "alert" : undefined} style={{ flexDirection: "row", gap: 10, padding: compact ? 14 : 12, borderRadius: 8, borderWidth: 1, borderColor: warn ? withAlpha(c.statusWarning, 0.4) : c.border, backgroundColor: warn ? withAlpha(c.statusWarning, 0.14) : c.surface1 }}>
     <View style={{ paddingTop: 2 }}><Icon name={icon} size={14} color={iconColor} /></View>
@@ -444,7 +444,7 @@ function ZoneField({ view, zoneFrom, busy, onChange, theme, compact }: { view: B
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
       <TextInput accessibilityLabel={tr("Time zone")} value={value} onChangeText={setValue} placeholder={tr("Automatic: this device's zone")} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
         onSubmitEditing={() => valid && dirty && onChange(v || null)} style={field(theme, compact)} />
-      {dirty && <Button title={v ? "Save" : "Use automatic"} theme={theme} compact={compact} disabled={!valid} loading={busy} onPress={() => onChange(v || null)} />}
+      {dirty && <Button title={v ? tr("Save") : "Use automatic"} theme={theme} compact={compact} disabled={!valid} loading={busy} onPress={() => onChange(v || null)} />}
     </View>
     {!valid && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{tr("Use an IANA time zone, like Europe/Paris.")}</Text>}
   </View>;

@@ -39,13 +39,13 @@ export function useSetReviewMode() {
   const set = (repo: string, mode: ReviewMode, undoable: boolean | "undo") => {
     const before: ReviewMode = noReviewRepoList().includes(repoKey(repo)) ? "none" : "team";
     local(repo, mode); refresh();
-    return runAction({ label: "Review", toast, run: () => write({ repo, review: mode === "team" ? null : mode }), onSuccess: refresh,
+    return runAction({ label: tr("Review"), toast, run: () => write({ repo, review: mode === "team" ? null : mode }), onSuccess: refresh,
       failure: `Couldn't change review for ${repo}`,
       success: () => {
         const message = mode === "none" ? noReviewNotice(repo) : `${repo}: team review. ${REVIEW_MODE_LABELS.team.hint}`;
         if (undoable === "undo") return null;
         if (!undoable || !hasToastHost()) return message;
-        pushToast("success", message, [{ label: "Undo", onPress: () => void set(repo, before, "undo") }], { durationMs: REVIEW_UNDO_MS, keep: true });
+        pushToast("success", message, [{ label: tr("Undo"), onPress: () => void set(repo, before, "undo") }], { durationMs: REVIEW_UNDO_MS, keep: true });
         return null;
       } }, `review:${repoKey(repo)}`).then(ok => { if (!ok) { local(repo, before); refresh(); } return ok; });
   };
@@ -90,7 +90,7 @@ export function ReviewModeRow({ repo, value, theme, compact, busy, onChange }: {
           borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 }}>
           {REVIEW_MODES.map(mode => <Pressable key={mode} accessibilityRole="menuitem" accessibilityState={{ selected: mode === value }} onPress={() => { setOpen(false); if (mode !== value) onChange(mode); }}
             style={state => ({ ...menuItemRow(compact), minHeight: compact ? 56 : 44, paddingHorizontal: compact ? 12 : 10, paddingVertical: 6, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-            <MenuItemContent theme={theme} touch={compact} glyph={mode === value ? "Check" : null} label={REVIEW_MODE_LABELS[mode].label} hint={REVIEW_MODE_LABELS[mode].hint} hintLines={compact ? 2 : 1} />
+            <MenuItemContent theme={theme} touch={compact} glyph={mode === value ? tr("Check") : null} label={REVIEW_MODE_LABELS[mode].label} hint={REVIEW_MODE_LABELS[mode].hint} hintLines={compact ? 2 : 1} />
           </Pressable>)}
         </View>}
       </View>

@@ -25,7 +25,7 @@ import { QuestionSheet, QuestionStepper } from "./questions";
 import { useReviewerSettings } from "./reviewers";
 
 export const PILL_ID = "follow-up";
-/** The pill's title in a move's Undo window; the label itself comes from pillState ("Signed off", "Later", "Done"). */
+/** The pill's title in a move's Undo window; the label itself comes from pillState ("Signed off", tr("Later"), tr("Done")). */
 const UNDO_TITLE: Record<string, string> = { sign_off: "Signed off", later: "Moved to Later" };
 
 
@@ -99,7 +99,7 @@ export function contributeFollowUpPill(client: PluginClientContext, deps: Deps) 
       const label = undo ? state.label : state.headline.label;
       // The tooltip (and accessible name) says whose pill it is and what kind of ask. On phones the host shows it as the
       // sheet's title right above the popover, which carries the ask itself in full, so the title doesn't repeat it.
-      const title = undo ? `Follow-up · ${state.label === "Done" ? "Done" : UNDO_TITLE[recent?.kind ?? "sign_off"] ?? "Signed off"}` : `Follow-up · ${state.headline.label}`;
+      const title = undo ? `Follow-up · ${state.label === "Done" ? tr("Done") : UNDO_TITLE[recent?.kind ?? "sign_off"] ?? "Signed off"}` : `Follow-up · ${state.headline.label}`;
       const key = `${state.mode}|${label}|${title}`;
       // Always a popover, Undo included: Paseo 0.16 draws a chevron on popover pills, so switching kinds for the undo
       // window made the chevron and the pill's width jump (tests/pill-popover.test.ts).
@@ -198,7 +198,7 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
         <Icon name={HEADLINE_ICON[headline.key]} size={14} color={tone} />
         {/* Phones: the host's sheet title already says "Follow-up · <label>", so the meta line doesn't repeat it. */}
         {touch
-          ? <Text style={t.small}>{main ? "Main agent" : "This agent"}{count.meta ? ` · ${countText} in this workspace` : ""}</Text>
+          ? <Text style={t.small}>{main ? tr("Main agent") : "This agent"}{count.meta ? ` · ${countText} in this workspace` : ""}</Text>
           : <>
             <Text style={{ color: tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{headline.label}</Text>
             {count.meta && <Text style={t.small}>· {countText} in this workspace</Text>}

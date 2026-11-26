@@ -29,7 +29,7 @@ import { useViewVersion } from "./view-store";
 export { BRIEF_KEY, OVERSEER_KEY, archivedRow } from "../shared/list-entries";
 /** The pinned Overseer row: not started yet (a one-time Start), working, asking, idle, or failed to come back. */
 export type OverseerRowState = { state: "start" | "idle" | "running" | "asks" | "error"; line: string;
-  /** A list filter's match in `line`, highlighted like a row's (the sidebar view's "Filter workspaces"). */
+  /** A list filter's match in `line`, highlighted like a row's (the sidebar view's tr("Filter workspaces")). */
   ranges?: Range[] };
 
 
@@ -53,7 +53,7 @@ export type HomeListProps = {
   afterNeeds?: ReactNode;
   /** Decision Q8's raised Linear issues, drawn first in Needs you when `model.raised` counts any. */
   raised?: ReactNode;
-  /** Phones: the action under the "Nothing followed yet" empty state. */
+  /** Phones: the action under the tr("Nothing followed yet") empty state. */
   emptyAction?: ReactNode;
   /** While searching: one flat ranked list instead of the groups. */
   results?: OmniboxItem[] | null;
@@ -345,7 +345,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const line: ReactNode = s.word && s.group !== "needs" ? (s.line ? <>{s.word} · {shownLine}</> : s.word) : shownLine;
   const via = hit?.via ? (() => { const e = excerpt(hit.via.text, hit.via.ranges, touch ? 90 : dense ? 90 : 44); return <>{FIELD_LABEL[hit.via.field]} · {marks(e.text, e.ranges, c)}</>; })() : null;
   const title = <>{marks(s.title, hit?.titleRanges, c)}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" › "}{marks(s.agent, hit?.agentRanges, c)}</Text> : null}</>;
-  // Phones: "Working" under every row of a "Running 9" group says nothing the header didn't; one line per row instead.
+  // Phones: tr("Working") under every row of a "Running 9" group says nothing the header didn't; one line per row instead.
   const generic = touch && !s.word && s.line === "Working";
   // The reason line: AI priority's, else the workspace's first live Compass note (a live note is a reason).
   const why = s.priority?.reason ? { reason: s.priority.reason, source: s.priority.source } : s.compass ? { reason: s.compass, source: { kind: "compass" as const, label: "Compass" } } : null;

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PanResponder, Platform, View, type LayoutChangeEvent } from "react-native";
 import { withAlpha } from "./theme";
@@ -27,7 +28,7 @@ export type SplitProps = {
   range: [number, number];
   /** Called once per drag or key press with the new fraction. */
   onCommit: (fraction: number) => void;
-  /** What the side pane is, for the handle's label ("Resize the detail pane"). */
+  /** What the side pane is, for the handle's label (tr("Resize the detail pane")). */
   label: string;
   testID?: string;
 };

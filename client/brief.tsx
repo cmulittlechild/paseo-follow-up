@@ -147,7 +147,7 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
   </View>;
 }
 
-/** "Add note" / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. QuestionBody uses it too. */
+/** tr("Add note") / "Remove note": a quiet text link (muted, 13px), 44 tall on phones. QuestionBody uses it too. */
 /** The brief's answer or note field with the card's pasted images (client/image-attach.tsx); a read-only copy has none. */
 /** `row`: whether this field draws the card's thumbnails. One set per card, so only its last open field does. */
 function WithImages({ img, c, compact, row, children }: { img?: ImageAttachments; c: Colors; compact: boolean; row: boolean; children: ReactNode }) {
@@ -163,7 +163,7 @@ export function NoteLink({ icon, label, a11y, disabled, onPress, c, compact }: {
 
 /**
  * The card's body: decisions, error text, details, context, facts and links, and the agent's extra ask. Shared by the
- * open card and by a past card's read-only "Show full question", so a past question reads exactly as it was asked.
+ * open card and by a past card's read-only tr("Show full question"), so a past question reads exactly as it was asked.
  */
 export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks, onPick, busy, onSend, words = {}, onWords, onSendOther, notes = {}, notesOpen = {}, onNote, onNoteOpen, doneIds = [], img }: {
   /** The card's pasted images (one model for its answer and note fields). Absent: read-only copies. */
@@ -179,7 +179,7 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [details, setDetails] = useState(false);
   const [fullContext, setFullContext] = useState(false);
-  // Only the copy whose "Add note" was pressed takes focus: the chat, the panel and Home can show the same card, and a
+  // Only the copy whose tr("Add note") was pressed takes focus: the chat, the panel and Home can show the same card, and a
   // field opening in another copy (the store is shared) must never pull the caret out of the one being typed in.
   const [focusNote, setFocusNote] = useState<string | null>(null);
   const [contextWidth, setContextWidth] = useState(0);
@@ -210,7 +210,7 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? "Sending…" : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy || !!img?.blocked} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
+            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? tr("Sending…") : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy || !!img?.blocked} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
             {!words[d.id]?.trim() && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{OWN_ANSWER_HINT}</Text>}
           </View>}
         </View>}
@@ -222,7 +222,7 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           <NoteLink icon="X" label={tr("Remove note")} a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
         </View> : done ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14 }}>
-          <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y={numbered ? `Add note to decision ${i + 1}` : "Add note"} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
+          <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y={numbered ? `Add note to decision ${i + 1}` : tr("Add note")} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
           {mode === "send" && !tight && !embedded && !done && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{`Or type ${letters(d)} in the composer.`}</Text>}
         </View>)}
       </View>}
@@ -267,7 +267,7 @@ function SendBar({ b, picks, noted = 0, busy, error, onSend, c, compact }: { b: 
   const bar = sendBar(b, picks);
   return <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-      <Btn shortcut label={busy === "answers" ? "Sending…" : bar.label} icon="Send" primary={bar.ready && !bar.partial} disabled={!bar.ready || !!busy} onPress={onSend} c={c} compact={compact} />
+      <Btn shortcut label={busy === "answers" ? tr("Sending…") : bar.label} icon="Send" primary={bar.ready && !bar.partial} disabled={!bar.ready || !!busy} onPress={onSend} c={c} compact={compact} />
       {!bar.ready && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{tr("Pick your answers, then send them in one message.")}</Text>}
       {bar.ready && noted > 0 && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{noted === 1 ? "1 with a note" : `${noted} with notes`}</Text>}
     </View>
@@ -276,7 +276,7 @@ function SendBar({ b, picks, noted = 0, busy, error, onSend, c, compact }: { b: 
   </View>;
 }
 
-/** "Show full question" / "Show original": a past card opens back up, read-only. */
+/** tr("Show full question") / "Show original": a past card opens back up, read-only. */
 const CONTEXT_LINES = 4;
 /**
  * Whether 13px text likely runs past `lines` lines at its measured width, so it gets Show more. It errs toward showing
@@ -295,7 +295,7 @@ function Reveal({ label, openLabel, open, onPress, c, compact }: { label: string
 
 /**
  * A card that's no longer open keeps its question (1.4.0). Answered: the ask, each decision with what was picked, and
- * "Show full question" opens the original read-only. Superseded or signed off: the one muted line, plus "Show original".
+ * tr("Show full question") opens the original read-only. Superseded or signed off: the one muted line, plus "Show original".
  */
 function Past({ b, c, now, compact, height, pending = false, onResend, resending = false, questions = [] }: { b: Brief; c: Colors; now: number; compact: boolean; height: number; pending?: boolean; onResend?: () => void; resending?: boolean; questions?: readonly ListQuestion[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -315,15 +315,15 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
   const failed = b.delivery?.state === "failed";
   const cancelled = b.delivery?.state === "cancelled";
   // Pending reads as in progress (a dashed circle), and becomes the solid check when the send lands.
-  const icon = b.state === "superseded" ? "History" : failed ? "CircleAlert" : sending ? "CircleDashed" : "CircleCheck";
+  const icon = b.state === "superseded" ? tr("History") : failed ? "CircleAlert" : sending ? "CircleDashed" : "CircleCheck";
   const spoken = pending ? `Done, sending (undo available): ${ask}` : unsent ? `${status!.label}: ${ask}` : failed ? `Answer not delivered: ${ask}` : sending ? `Answered, sending to the agent: ${ask}` : undefined;
   const color = failed ? c.statusWarning : pastTone(b.state, sending) === "success" ? c.statusSuccess : c.foregroundMuted;
-  // A Done card already says "Done" as its outcome; its time stands alone rather than repeating it.
+  // A Done card already says tr("Done") as its outcome; its time stands alone rather than repeating it.
   const right = delivery && !pending ? delivery.label : unsent ? status!.label : answered && b.outcomeAt ? (b.outcome === "Done" ? clock(b.outcomeAt) : `Answered ${clock(b.outcomeAt)}`) : age(b.outcomeAt ?? b.at, now);
   // Failed (the rare loud case) says so with Retry; a timer's wait (Queued, Retrying) offers Try now; Cancelled says why.
   const undelivered = (indent: number) => delivery && !pending && (failed || cancelled || delivery.action === "try-now") && <View style={{ paddingLeft: indent, gap: 8, alignItems: "flex-start" }}>
     <Text accessibilityRole={failed ? "alert" : undefined} style={{ color: failed ? c.statusWarning : c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{failed ? `${delivery.detail} Your answer is kept.` : delivery.detail}</Text>
-    {onResend && delivery.action && <Btn label={resending ? "Sending…" : delivery.action === "retry" ? "Retry" : "Try now"} icon="RotateCcw" primary={delivery.action === "retry"} onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
+    {onResend && delivery.action && <Btn label={resending ? tr("Sending…") : delivery.action === "retry" ? tr("Retry") : "Try now"} icon="RotateCcw" primary={delivery.action === "retry"} onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
   </View>;
   const body = expanded && <View style={{ gap: 10, paddingTop: 4 }}>
     <BriefBody b={b} c={c} compact={compact} tight={false} embedded height={height} mode="readonly" picks={{}} onPick={() => undefined} busy={null} />
@@ -340,7 +340,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
       <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{right}</Text>
     </View>
     {undelivered(25)}
-    {hasOriginal(b) && <View style={{ paddingLeft: 25 }}><Reveal label={answered ? (b.kind === "action" ? "Show full ask" : "Show full question") : "Show original"} open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>}
+    {hasOriginal(b) && <View style={{ paddingLeft: 25 }}><Reveal label={answered ? (b.kind === "action" ? "Show full ask" : tr("Show full question")) : "Show original"} open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>}
     {body}
   </View>;
   // Answered with picks: the ask, then each decision's question and the picked option, so the answer is never
@@ -354,7 +354,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
     {!expanded && <View style={{ gap: 6, paddingLeft: 23 }}>
       {pastRows(b).map(r => <View key={r.id} style={{ gap: 1 }}>
         {!!r.question && <RichText linkColor={c.foreground} numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{r.question}</RichText>}
-        <RichText style={{ color: r.answer ? c.foreground : c.foregroundMuted, fontSize: 13, lineHeight: 19, fontWeight: r.answer ? "600" : "400" }}>{r.answer ?? "Skipped"}</RichText>
+        <RichText style={{ color: r.answer ? c.foreground : c.foregroundMuted, fontSize: 13, lineHeight: 19, fontWeight: r.answer ? "600" : "400" }}>{r.answer ?? tr("Skipped")}</RichText>
       </View>)}
     </View>}
     {undelivered(23)}
@@ -364,7 +364,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
 }
 
 /** `embedded`: inside Home's detail pane, which has its own reply box and action bar, so the card drops its moves. */
-/** `snoozed`: the row is in Later, so the card wears the row's muted tone and says "Later" instead of "Needs you". */
+/** `snoozed`: the row is in Later, so the card wears the row's muted tone and says tr("Later") instead of tr("Needs you"). */
 /** `bare`: a section of the Needs you block (client/needs-you.tsx), whose frame says "Needs you": no border, margin or second label. */
 type BriefCardProps = PluginTimelineItemProps<Brief> & { deps: BriefDeps; embedded?: boolean; snoozed?: boolean; bare?: boolean; /** After its x is pressed (Catch up moves on). */ onDismissed?: () => void };
 /** A brief names its PRs ("#240 is merged"): each "#N" its workspace tracks opens that PR (a-row-that-names-a-pr-opens-it-in-one-click). */
@@ -430,14 +430,14 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const resend = () => {
     // Only a send in flight blocks it: a resolved card is never "actionable", but its undelivered answer can go again.
     if (sending || !b.answerId) return; setBusy("resend");
-    void runAction({ label: "Answer", toast, run: () => act({ agentId, briefId: b.id, answerId: b.answerId! }), success: () => null, reconcile, failure: "Your answer wasn't sent again" }).finally(() => setBusy(null));
+    void runAction({ label: tr("Answer"), toast, run: () => act({ agentId, briefId: b.id, answerId: b.answerId! }), success: () => null, reconcile, failure: "Your answer wasn't sent again" }).finally(() => setBusy(null));
   };
   // An add-reviewers card for a PR the agent merges itself isn't an ask: gone the moment the repository flips to No
   // review, back on Undo (invariant a-no-review-repo-never-asks-for-review-or-merge).
   if (b.state === "open" && !liveBrief(b)) return null;
   if (shown.brief.state !== "open") return <Past b={shown.brief} c={c} now={now} compact={compact} height={height} onResend={b.answerId ? resend : undefined} resending={sending === "resend"} questions={workspace?.questions} />;
   // Muted until the send lands: the server's answered brief then replaces this, green.
-  if (marked) return <Past b={{ ...b, state: "answered", outcome: "Done", outcomeAt: marked }} pending={!sent} c={c} now={now} compact={compact} height={height} />;
+  if (marked) return <Past b={{ ...b, state: "answered", outcome: tr("Done"), outcomeAt: marked }} pending={!sent} c={c} now={now} compact={compact} height={height} />;
 
   const attention = c.statusWarning;
   const flaggedAct = b.flagged && ACTS.includes(b.kind);
@@ -457,7 +457,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const run = async (key: string, work: (answerId: string) => Promise<unknown>, failure = "Your answer wasn't sent") => {
     if (busy) return; setBusy(key); setError(null);
     const answerId = newAnswerId();
-    await runAction({ label: "Brief", toast, run: () => work(answerId), success: () => null, onError: e => setError(errorText(e)), reconcile, failure });
+    await runAction({ label: tr("Brief"), toast, run: () => work(answerId), success: () => null, onError: e => setError(errorText(e)), reconcile, failure });
     setBusy(null);
   };
   // Done: "Done: <ask>" can't be unsent, so it goes out when the toast's Undo window ends (runUndoable). A failure
@@ -469,7 +469,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     if (busy || marked) return;
     setError(null); setSent(false); setMarked(new Date().toISOString());
     const doneId = newAnswerId();
-    const id = runUndoable("Telling the agent it's done", { label: "Done", toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), ...withImages(), action: "send" })
+    const id = runUndoable("Telling the agent it's done", { label: tr("Done"), toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), ...withImages(), action: "send" })
       : act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: "Marked done. The agent has it.",
       failure: "Done not sent", open: () => deps.openAgent(agentId), onSuccess: () => setSent(true), onError: e => { setMarked(null); setError(errorText(e)); }, reconcile: e => { setMarked(null); reconcile(e); } }, () => setMarked(null), `done:${b.id}`, () => deps.endDone?.(agentId));
     // The pill's Undo is this toast's Undo: it closes the toast (so nothing is sent) and reopens the card.
@@ -481,7 +481,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const oneClick = (m: BriefMove) => !m.prKey ? null : m.kind === "merge" ? merges.view(m.prKey) : m.kind === "add_reviewers" ? asks.view(m.prKey) : null;
   const moveLabel = (m: BriefMove) => (m.kind === "merge" || m.kind === "add_reviewers" ? oneClick(m)?.label : null) ?? (busy === m.kind ? `${m.label}…` : m.label);
   const moveDone = (m: BriefMove) => { const one = oneClick(m); return !!one && ("done" in one ? one.done : one.submitted); };
-  const moveIcon = (m: BriefMove) => moveDone(m) ? "Check" : MOVE_ICON[m.kind];
+  const moveIcon = (m: BriefMove) => moveDone(m) ? tr("Check") : MOVE_ICON[m.kind];
   const moveOff = (m: BriefMove) => !!busy || !!oneClick(m)?.running || moveDone(m);
   const mergeWhy = b.moves.map(m => oneClick(m)?.why).find(Boolean) ?? null;
   const press = (m: BriefMove) => {
@@ -500,7 +500,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // A merge runs Follow-up's own merge flow, so it needs the tracked workspace; without one it isn't offered.
   const tracked = b.moves.filter(m => (m.kind !== "merge" && m.kind !== "add_reviewers") || !!b.workspaceId);
   // A decision brief that folded into an action card still gets the card's one Done, first.
-  const moves: BriefMove[] = doneQ && !tracked.some(m => m.kind === "done") ? [{ kind: "done", label: "Done", prKey: null, url: null, agentId: null }, ...tracked] : tracked;
+  const moves: BriefMove[] = doneQ && !tracked.some(m => m.kind === "done") ? [{ kind: "done", label: tr("Done"), prKey: null, url: null, agentId: null }, ...tracked] : tracked;
 
   // F7: "Nothing needed" is one muted line, no buttons. Paseo's own running and idle state says the rest.
   if (b.kind === "done" && b.source === "agent" && !b.flagged) return <View accessibilityRole="summary" accessibilityLabel={nothingNeededLine(b.ask)}
@@ -517,7 +517,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       style={[{ marginVertical: embedded ? 0 : 10, gap: 4, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: border }, bare && BARE]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
         <Icon name={ICON[b.kind]} size={14} color={tone} />
-        <Text numberOfLines={1} style={{ flexShrink: 1, color: acts ? attention : tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{acts && !bare ? "Needs you" : flaggedAct && !bare ? "Later" : word(b.kind)}</Text>
+        <Text numberOfLines={1} style={{ flexShrink: 1, color: acts ? attention : tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{acts && !bare ? tr("Needs you") : flaggedAct && !bare ? tr("Later") : word(b.kind)}</Text>
         <View style={{ flex: 1 }} />
         {/* In Later the age would read as a second clock beside "Later until"; the pane header keeps it. */}
         {!snoozed && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{ageText}</Text>}
@@ -562,13 +562,13 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const doneMove = doneQ && !multi && !isOther(picks[doneQ.id]) && moves[0]?.kind === "done" ? moves[0] : null;
   const keySend = multi ? (sendBar(b, sendable).ready ? () => sendAll() : null) : otherId && words[otherId]?.trim() ? () => sendOther(otherId) : doneMove ? () => press(doneMove) : null;
   const sendOther = (decisionId: string) => { const text = words[decisionId]?.trim(); if (text) void run(`${decisionId}:${OTHER}`, async answerId => { await answer([{ decisionId, choice: OTHER, words: text }], answerId); clearCard(b.id); }); };
-  return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you" : flaggedAct ? "Later" : word(b.kind)}: ${askText}`}
+  return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? tr("Needs you") : flaggedAct ? tr("Later") : word(b.kind)}: ${askText}`}
     style={[{ marginVertical: embedded ? 0 : 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: c.surface1, overflow: "hidden" }, bare && BARE]}>
     <SubmitScope enabled={!!keySend && !busy} onSubmit={() => keySend?.()} style={{ paddingHorizontal: pad, paddingTop: compact ? 12 : 14, paddingBottom: 14, gap: tight ? 10 : 12 }}>
       <View style={{ gap: 4 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
           <Icon name={ICON[b.kind]} size={14} color={tone} />
-          <Text style={{ color: acts ? attention : tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{acts && !bare ? "Needs you" : flaggedAct && !bare ? "Later" : word(b.kind)}</Text>
+          <Text style={{ color: acts ? attention : tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{acts && !bare ? tr("Needs you") : flaggedAct && !bare ? tr("Later") : word(b.kind)}</Text>
           {flaggedAct && !bare && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{word(b.kind)}</Text>}
           {multi && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>· {pickedCount(b, sendable)} of {askedDecisions(b).length} picked</Text>}
           <View style={{ flex: 1 }} />
@@ -619,7 +619,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
 
 const BARE = { marginVertical: 0, borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" } as const;
 const MOVE_HINT: Partial<Record<BriefMove["kind"], string>> = { done: "Tells the agent you did this. Undo for 6 seconds." };
-const MOVE_ICON: Record<BriefMove["kind"], string> = { merge: "GitMerge", open_pr: "ExternalLink", sign_off_next: "ArrowRight", retry: "RotateCcw", copy_error: "Copy", open_subagent: "SquareArrowOutUpRight", add_reviewers: "UserPlus", done: "Check" };
+const MOVE_ICON: Record<BriefMove["kind"], string> = { merge: "GitMerge", open_pr: "ExternalLink", sign_off_next: "ArrowRight", retry: "RotateCcw", copy_error: tr("Copy"), open_subagent: "SquareArrowOutUpRight", add_reviewers: "UserPlus", done: tr("Check") };
 
 export function contributeBrief(client: PluginClientContext, deps: BriefDeps) {
   const Component = (props: PluginTimelineItemProps<Brief>) => <BriefCard {...props} deps={deps} />;

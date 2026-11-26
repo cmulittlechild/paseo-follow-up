@@ -128,7 +128,7 @@ function RepoWait({ row, theme, compact }: { row: Row; theme: Theme; compact: bo
   const color = tone === "danger" ? c.statusDanger : tone === "warning" ? c.statusWarning : c.foregroundMuted;
   const next = tone === "danger" ? " Check this GitHub account can read it, or turn it off." : "";
   return <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }}>
-    <View style={{ paddingTop: compact ? 3 : 2 }}><Icon name={tone === "danger" ? "CircleAlert" : "Clock"} size={13} color={color} /></View>
+    <View style={{ paddingTop: compact ? 3 : 2 }}><Icon name={tone === "danger" ? "CircleAlert" : tr("Clock")} size={13} color={color} /></View>
     <Text style={[t.meta, { flex: 1, color }]}>{`${words}${next}`}</Text>
   </View>;
 }

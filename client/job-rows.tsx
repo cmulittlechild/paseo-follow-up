@@ -127,7 +127,7 @@ export function JobRow({ row, r, catalog, loading, theme, compact, busy, open, o
   return <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.border, paddingHorizontal: pad, paddingVertical: 14, gap: 2 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text accessibilityRole="header" style={[t.label, { flex: 1 }]}>{row.title}</Text>
-      {enabled !== undefined && <Switch theme={theme} compact={compact} label={row.blocked ? "Unavailable" : enabled ? "On" : "Off"} accessibilityLabel={row.title} hint={row.blocked ? row.notice?.text : undefined} value={enabled} disabled={!onEnable} onChange={v => onEnable?.(v)} />}
+      {enabled !== undefined && <Switch theme={theme} compact={compact} label={row.blocked ? "Unavailable" : enabled ? "On" : tr("Off")} accessibilityLabel={row.title} hint={row.blocked ? row.notice?.text : undefined} value={enabled} disabled={!onEnable} onChange={v => onEnable?.(v)} />}
     </View>
     <Text style={[t.meta, off && { opacity: 0.6 }]}>{row.does}</Text>
     {/* An off row dims, but never its warning: the one line that says why must stay readable. */}

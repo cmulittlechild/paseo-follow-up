@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 // Pasted images, the one component and model for every field whose words reach an agent
 // (every-agent-field-takes-images, docs/client.md#pasted-images): New's task and note, the Overseer's reply box, Home's
 // search when it asks the Overseer, More context, a question's answer and note, the brief card's answer and note, and
@@ -208,8 +209,8 @@ export function ImageField({ model, theme, compact = false, children, style, row
  * field's own controls; `labelled` under a field. At the cap it is disabled and says why (invariant 8). Nothing on a
  * platform without a picker.
  */
-export function AttachImageButton({ model, theme, compact = false, labelled = false, label = "Add image" }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean; labelled?: boolean;
-  /** Its name where the field doesn't say who gets the image (Home's search: "Add image for the Overseer"). */
+export function AttachImageButton({ model, theme, compact = false, labelled = false, label = tr("Add image") }: { model: ImageAttachments; theme: Pick<Theme, "colors">; compact?: boolean; labelled?: boolean;
+  /** Its name where the field doesn't say who gets the image (Home's search: tr("Add image for the Overseer")). */
   label?: string }) {
   const [picking, setPicking] = useState(false);
   if (!PICKER_ON) return null;

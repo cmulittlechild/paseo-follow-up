@@ -116,7 +116,7 @@ function Popover({ menu, theme, expanded, setExpanded, confirm, setConfirm, choo
       if (e.key === "Tab") { e.preventDefault(); close(); return; }
       setKeys(true);
       const item = items[active];
-      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) { e.preventDefault(); e.stopPropagation(); focusAt(moveFocus(active, items.length, e.key)); return; }
+      if (["ArrowDown", "ArrowUp", tr("Home"), "End"].includes(e.key)) { e.preventDefault(); e.stopPropagation(); focusAt(moveFocus(active, items.length, e.key)); return; }
       if (e.key === "ArrowRight" && item?.children) { e.preventDefault(); setExpanded(item.key); setTimeout(() => focusAt(active + 1), 0); return; }
       if (e.key === "ArrowLeft") {
         // Only from inside the open Later: back to Later, closed.

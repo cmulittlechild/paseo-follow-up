@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, View, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
@@ -213,7 +214,7 @@ export function Switch({ theme, label, value, onChange, disabled = false, access
   const on = value === true;
   const inactive = disabled || value === null;
   return <Pressable accessibilityRole="switch" aria-checked={value === null ? "mixed" : on} accessibilityLabel={accessibilityLabel ?? label} accessibilityHint={hint}
-    accessibilityState={{ checked: value === null ? "mixed" : on, disabled: inactive }} accessibilityValue={{ text: value === null ? "Unknown" : on ? "On" : "Off" }}
+    accessibilityState={{ checked: value === null ? "mixed" : on, disabled: inactive }} accessibilityValue={{ text: value === null ? "Unknown" : on ? "On" : tr("Off") }}
     disabled={inactive} onPress={() => onChange(!on)} hitSlop={compact ? 0 : 4}
     style={({ pressed }) => ({ minHeight: compact ? 44 : 28, minWidth: compact ? 44 : undefined, justifyContent: "center", flexDirection: "row", alignItems: "center", gap: 8, opacity: inactive ? 0.5 : pressed ? 0.8 : 1 })}>
     {label ? <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{label}</Text> : null}

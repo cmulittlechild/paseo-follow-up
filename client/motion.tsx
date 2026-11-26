@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { initialReducedMotion, rememberReducedMotion } from "../shared/motion";
 import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Platform, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
@@ -74,7 +75,7 @@ export function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: n
 }
 
 /** The system spinner, sized to sit beside a line of text. */
-export function Spinner({ color, size = 12, label = "Working" }: { color: string; size?: number; label?: string }) {
+export function Spinner({ color, size = 12, label = tr("Working") }: { color: string; size?: number; label?: string }) {
   return <View accessibilityLabel={label} style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
     {Platform.OS === "ios" ? <ActivityIndicator size="small" color={color} style={{ transform: [{ scale: size / 20 }] }} /> : <ActivityIndicator size={size} color={color} />}
   </View>;
