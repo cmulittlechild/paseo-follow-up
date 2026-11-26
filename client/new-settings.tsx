@@ -50,7 +50,7 @@ function SidebarSection({ theme, compact }: { theme: Theme; compact: boolean }) 
   const row = useNewRowSetting();
   return <SettingsSection title={tr("Sidebar")}>
     <SettingsCard>
-      <SettingsSwitch label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : "Ctrl K")} value={row.value ?? true} disabled={row.value === null || row.saving} onValueChange={row.set} />
+      <SettingsSwitch label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : tr("Ctrl K"))} value={row.value ?? true} disabled={row.value === null || row.saving} onValueChange={row.set} />
     </SettingsCard>
     {row.value !== false && <Text style={[t.meta, { paddingHorizontal: 4 }]}>{NEW_ROW.paseo}</Text>}
   </SettingsSection>;
@@ -91,11 +91,11 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
     {query.data?.edited && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       {confirm === RESET_ALL
         ? <>
-          <Button theme={theme} compact={compact} kind="danger" icon="RotateCcw" title={added ? `Reset and remove ${added} added` : "Reset all"} disabled={change.isPending} onPress={() => { setConfirm(null); change.mutate({ op: "reset-all" }); }} />
+          <Button theme={theme} compact={compact} kind="danger" icon="RotateCcw" title={added ? `Reset and remove ${added} added` : tr("Reset all")} disabled={change.isPending} onPress={() => { setConfirm(null); change.mutate({ op: "reset-all" }); }} />
           <Button theme={theme} compact={compact} kind="ghost" title={tr("Keep them")} onPress={() => setConfirm(null)} />
         </>
         : <Button theme={theme} compact={compact} icon="RotateCcw" title={tr("Reset all to built-in")} disabled={change.isPending} onPress={() => setConfirm(RESET_ALL)} />}
-      <Text style={[t.meta, { flexShrink: 1 }]}>{added ? `Restores the built-in order and text, and removes ${added === 1 ? "the action" : `the ${added} actions`} added here.` : "Restores the built-in order and text."}</Text>
+      <Text style={[t.meta, { flexShrink: 1 }]}>{added ? `Restores the built-in order and text, and removes ${added === 1 ? "the action" : `the ${added} actions`} added here.` : tr("Restores the built-in order and text.")}</Text>
     </View>}
   </SettingsSection>;
 }
@@ -163,13 +163,13 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
     {view && <>
       <SettingsCard>
         <SettingsSelect label={tr("Everything else")} hint={tr("Issues from a team without a rule or a clear history, links and your words.")} value={view.noTeam} disabled={change.isPending}
-          options={[{ value: "last", label: "The project you used last" }, { value: "ask", label: "Ask which project" }]} onValueChange={noTeam => change.mutate({ noTeam })} />
+          options={[{ value: "last", label: tr("The project you used last") }, { value: "ask", label: "Ask which project" }]} onValueChange={noTeam => change.mutate({ noTeam })} />
       </SettingsCard>
       <SettingsCard>
         {view.rules.map(rule => <View key={rule.team}>
-          <SettingsSelect label={`${rule.team} issues`} hint={rule.project ? undefined : "That project is gone: pick another or remove the rule."}
+          <SettingsSelect label={`${rule.team} issues`} hint={rule.project ? undefined : tr("That project is gone: pick another or remove the rule.")}
             value={rule.project ? rule.projectId : PICK} disabled={change.isPending}
-            options={[...(rule.project ? [] : [{ value: PICK, label: "Pick a project" }]), ...projectOptions]}
+            options={[...(rule.project ? [] : [{ value: PICK, label: tr("Pick a project") }]), ...projectOptions]}
             onValueChange={v => v !== PICK && change.mutate({ rules: { [rule.team]: v } })} />
           {/* Removing is its own control, asked twice in place; never an option hidden in the project list. */}
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, paddingHorizontal: 12, paddingBottom: 8, marginTop: -4 }}>
@@ -182,12 +182,12 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
           </View>
         </View>)}
         {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. {NEW_NAME} learns from where each team's work went; add a rule to fix one.</Text></View>}
-        {/* Three native rows, never one row of nested fields: a select squeezed beside an input cuts "Pick a project". */}
+        {/* Three native rows, never one row of nested fields: a select squeezed beside an input cuts tr("Pick a project"). */}
         <SettingsRow label={tr("Add a rule")} hint={tr("A Linear team's key, like ACME.")}>
           <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
         </SettingsRow>
-        <SettingsSelect label={tr("Its project")} value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
-        <SettingsAction label={!key ? "Type a team key and pick its project" : project === PICK ? `Pick ${key}'s project` : `${key} issues → ${projectOptions.find(o => o.value === project)?.label ?? project}`}
+        <SettingsSelect label={tr("Its project")} value={project} options={[{ value: PICK, label: tr("Pick a project") }, ...projectOptions]} onValueChange={setProject} />
+        <SettingsAction label={!key ? tr("Type a team key and pick its project") : project === PICK ? `Pick ${key}'s project` : `${key} issues → ${projectOptions.find(o => o.value === project)?.label ?? project}`}
           actionLabel="Add rule" disabled={!key || project === PICK || change.isPending} onPress={add} />
       </SettingsCard>
       {learnedTeams(view).map(l => <SettingsCard key={l.team}>

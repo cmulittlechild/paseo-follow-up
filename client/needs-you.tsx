@@ -66,16 +66,16 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   const control = useRpc(controlRpc); const send = useRpc(sendRpc); const check = useRpc(checkPrActionRpc); const answer = useRpc(answerQuestionRpc); const queueAction = useRpc(queueActionRpc);
   const refresh = () => { void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey }); };
   const fail = (error: Error) => { toast.error(errorText(error)); refresh(); };
-  const resume = useMutation({ mutationFn: () => control({ workspaceId: w.id, clearHold: true }), onSuccess: () => { toast.show("Follow-up resumed", { variant: "success" }); refresh(); actions.after?.(); }, onError: fail });
-  const retry = useMutation({ mutationFn: (batchId: string) => control({ workspaceId: w.id, retryBatchId: batchId }), onSuccess: () => { toast.show("Queued again"); refresh(); actions.after?.(); }, onError: fail });
-  const retryTask = useMutation({ mutationFn: (taskKey: string) => control({ workspaceId: w.id, retryTask: taskKey }), onSuccess: () => { toast.show("Queued for the next message"); refresh(); actions.after?.(); }, onError: fail });
+  const resume = useMutation({ mutationFn: () => control({ workspaceId: w.id, clearHold: true }), onSuccess: () => { toast.show(tr("Follow-up resumed"), { variant: "success" }); refresh(); actions.after?.(); }, onError: fail });
+  const retry = useMutation({ mutationFn: (batchId: string) => control({ workspaceId: w.id, retryBatchId: batchId }), onSuccess: () => { toast.show(tr("Queued again")); refresh(); actions.after?.(); }, onError: fail });
+  const retryTask = useMutation({ mutationFn: (taskKey: string) => control({ workspaceId: w.id, retryTask: taskKey }), onSuccess: () => { toast.show(tr("Queued for the next message")); refresh(); actions.after?.(); }, onError: fail });
   // Say what actually happened to the batch: delivery can be deferred or unconfirmed without an error.
   const deliver = useMutation({ mutationFn: (batchId: string) => send({ workspaceId: w.id, batchId }), onSuccess: (result, batchId) => {
     const b = result.batches.find(x => x.id === batchId);
-    if (!b || ["sent", "sending", "completed"].includes(b.state)) toast.show("Sent to the main agent", { variant: "success" });
-    else if (b.state === "uncertain") toast.show("Delivery wasn't confirmed. Check the agent before retrying.", { variant: "warning" });
-    else if (b.state === "pending") toast.show("Queued. It goes out when the agent is free.", { variant: "info" });
-    else toast.error(b.result || "The message couldn't be sent.");
+    if (!b || ["sent", "sending", "completed"].includes(b.state)) toast.show(tr("Sent to the main agent"), { variant: "success" });
+    else if (b.state === "uncertain") toast.show(tr("Delivery wasn't confirmed. Check the agent before retrying."), { variant: "warning" });
+    else if (b.state === "pending") toast.show(tr("Queued. It goes out when the agent is free."), { variant: "info" });
+    else toast.error(b.result || tr("The message couldn't be sent."));
     refresh(); actions.after?.();
   }, onError: fail });
   // A waiting answer (copied or put in the agent's chat) is already decided: Send delivers the recorded pick and note
@@ -99,7 +99,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   }, onSuccess: (_result, questionId) => { toast.show(`Sending your ${questionId} answer again`, { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
   // A forward or report that didn't go out (Workspace.undelivered): Retry or Cancel its queue item, the queue tools' path.
   const queueAct = useMutation({ mutationFn: (input: { itemId: string; action: "retry" | "cancel" }) => queueAction(input),
-    onSuccess: (_r, input) => { toast.show(input.action === "retry" ? "Sending it again" : "Cancelled; it won't be sent", { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
+    onSuccess: (_r, input) => { toast.show(input.action === "retry" ? tr("Sending it again") : tr("Cancelled; it won't be sent"), { variant: "info" }); refresh(); actions.after?.(); }, onError: fail });
   const inspect = useMutation({ mutationFn: (actionId: string) => check({ workspaceId: w.id, actionId }), onSuccess: reply => { toast.show(reply.result, { variant: reply.state === "failed" ? "warning" : "info" }); refresh(); }, onError: fail });
   const reviewerControl = useReviewerButtons(w);
   // a-clicked-row-holds-its-place: a row clicked here keeps its spot (with its outcome) after the next read drops it,
@@ -148,7 +148,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
           <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title={tr("Retry")} accessibilityLabel={`Send your ${item.questionId} answer again`} loading={resendAnswer.isPending} disabled={busy} onPress={() => resendAnswer.mutate(item.questionId)} />
           {actions.openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title={tr("Open agent")} accessibilityLabel={`Open the agent's chat to check for your ${item.questionId} answer`} onPress={() => { const q = w.questions.find(x => x.id === item.questionId); actions.openAgent!(q?.askedBy ?? w.mainAgentId); }} />}
         </>;
-      case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : sendButton(item.what)} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.what} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
+      case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? tr("Ask to finish") : sendButton(item.what)} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.what} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
       // One click merges what the button names (a-click-on-merge-merges); the sheet's confirm only when the scope can't be known.
       case "merge": return mergeControl(item.prKey, { theme, compact, fallback: actions.openPr ? () => actions.openPr!(item.prKey, "merge") : undefined }).button;
       // One click asks the people the row names (a-click-on-add-reviewers-asks); the sheet's picker only when nobody is set.
@@ -157,7 +157,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   };
   // A second, quieter action after the primary and its PR link, so the link never wraps onto a line of its own.
   const secondary = (item: NeedItem) => item.kind === "person"
-    ? <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title={compact ? "Hand back" : "Hand back to agent"} accessibilityLabel={`Hand it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
+    ? <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title={compact ? tr("Hand back") : tr("Hand back to agent")} accessibilityLabel={`Hand it back to ${agentName(w)}: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
     : null;
   return <PrLinksProvider prs={prLinksByNumber(w.prs)}><View>
     {items.map((item, index) => {
@@ -173,7 +173,7 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
       const notice = merging?.notice ?? null;
       // A reviewers row's why-not sits in its own text column on phones too, so the row never changes layout under the next tap.
       const asked = item.kind === "reviewers" ? reviewerControl(item.prKey, { theme, compact })?.notice ?? null : null;
-      // The action and its link are one group, so the link never wraps under the button (a long "Add reviewers").
+      // The action and its link are one group, so the link never wraps under the button (a long tr("Add reviewers")).
       const pair = act && link ? <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 }}>{act}{link}</View> : null;
       const more = secondary(item);
       const button = act || link || more ? <>{pair ?? <>{act}{link}</>}{more}</> : null;
@@ -264,7 +264,7 @@ export function NeedsYouBlock({ workspace: w, theme, compact, actions, now, brie
   if (!block.count) return null; // held rows keep the block drawn after its last ask is done
   // In Later the block stays (its moves still work) but reads Later, without the attention border.
   const later = workspaceSnoozed(w, all, now) && w.snooze ? laterLabel(w.snooze.until, now) : null;
-  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : asked ? tr("Check") : "CircleAlert"} title={later ? `Later ${later}` : asked ? "Reviewers requested" : tr("Needs you")} tone={later || !count ? "plain" : "attention"} count={count || undefined} style={style}>
+  return <Card theme={theme} compact={compact} icon={later ? "AlarmClock" : asked ? tr("Check") : "CircleAlert"} title={later ? `Later ${later}` : asked ? tr("Reviewers requested") : tr("Needs you")} tone={later || !count ? "plain" : "attention"} count={count || undefined} style={style}>
     {block.cards.map(card => card.kind === "brief"
       ? <View key="brief" style={{ borderTopWidth: 1, borderTopColor: theme.colors.border }}>{briefCard}</View>
       : <QuestionAsk key={card.questionId} workspace={w} questionId={card.questionId} context={card.brief ? brief?.context ?? null : null} theme={theme} compact={compact} now={now} openAgent={actions.openAgent}

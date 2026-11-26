@@ -69,13 +69,13 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
   // button draws opens here with intent "merge": that starts the read-only check, and the plan below asks to confirm.
   const started = useRef(false);
   useEffect(() => { if (intent === "merge" && canMerge && !disabled && !started.current) { started.current = true; begin("merge"); } }, [intent, canMerge]);
-  // Opening from "Add reviewers" with nobody set goes straight to the picker instead of an error.
+  // Opening from tr("Add reviewers") with nobody set goes straight to the picker instead of an error.
   const loaded = !!reviewerSettings.data;
   useEffect(() => { if (intent === "reviewers" && loaded && missingReviewers && !pr.snapshot?.draft && !reviewers.length) setPicking(true); }, [intent, loaded]);
   if (pr.snapshot?.state !== "OPEN") return null;
   const mergeOne = mergeControl(pr.key, { theme, compact, kind: "primary", disabled, fallback: () => begin("merge") });
   const scopeLine = canMerge ? mergeScope(workspace, pr.key)?.detail ?? null : null;
-  const waitingFor = mergeBlockers(pr).filter(b => !b.startsWith("Graphite ")).map(lowerFirst);
+  const waitingFor = mergeBlockers(pr).filter(b => !b.startsWith(tr("Graphite "))).map(lowerFirst);
   // GitHub refuses auto-merge on a PR it can already merge, so the switch shows only while Merge is waiting, or to turn it off.
   const showSwitch = browserReady && (!github || !canMerge || !!enabled);
   const autoMergeOff = github && !!pr.snapshot?.repoMerge && !pr.snapshot.repoMerge.autoMerge && !canMerge && !queued;
@@ -87,16 +87,16 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
         <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>{tr("No reviewers yet")}<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : tr("No reviewers yet")}</Text>
       </View>
       {!pr.snapshot?.draft && !picking && reviewerSettings.data && <View style={{ flexDirection: "row", gap: 8 }}>
-        {reviewers.length > 0 && <Button grow title={reviewRequest.isPending ? "Requesting…" : "Add reviewers"} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
-        <Button grow title={reviewers.length ? "Choose others…" : tr("Add reviewers…")} icon={reviewers.length ? "Users" : "UserPlus"} accessibilityLabel={reviewers.length ? "Pick different reviewers for this PR" : `Pick reviewers for ${pr.repo} pull request ${pr.number}`} theme={theme} compact disabled={disabled} onPress={() => { setNotice(null); setPicking(true); }} />
+        {reviewers.length > 0 && <Button grow title={reviewRequest.isPending ? "Requesting…" : tr("Add reviewers")} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
+        <Button grow title={reviewers.length ? "Choose others…" : tr("Add reviewers…")} icon={reviewers.length ? "Users" : "UserPlus"} accessibilityLabel={reviewers.length ? tr("Pick different reviewers for this PR") : `Pick reviewers for ${pr.repo} pull request ${pr.number}`} theme={theme} compact disabled={disabled} onPress={() => { setNotice(null); setPicking(true); }} />
       </View>}
     </View>}
     {missingReviewers && !compact && <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
       <Icon name="UserX" size={14} color={c.statusWarning} />
       <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>{tr("No reviewers yet")}<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : tr("No reviewers yet")}</Text>
       {!pr.snapshot?.draft && !picking && reviewerSettings.data && <>
-        {reviewers.length > 0 && <Button title={reviewRequest.isPending ? "Requesting…" : "Add reviewers"} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact={compact} disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
-        <Button title={reviewers.length ? "Choose others…" : tr("Add reviewers…")} kind={reviewers.length ? "ghost" : "secondary"} icon={reviewers.length ? undefined : "UserPlus"} accessibilityLabel={reviewers.length ? "Pick different reviewers for this PR" : `Pick reviewers for ${pr.repo} pull request ${pr.number}`} theme={theme} compact={compact} disabled={disabled} onPress={() => { setNotice(null); setPicking(true); }} />
+        {reviewers.length > 0 && <Button title={reviewRequest.isPending ? "Requesting…" : tr("Add reviewers")} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact={compact} disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
+        <Button title={reviewers.length ? "Choose others…" : tr("Add reviewers…")} kind={reviewers.length ? "ghost" : "secondary"} icon={reviewers.length ? undefined : "UserPlus"} accessibilityLabel={reviewers.length ? tr("Pick different reviewers for this PR") : `Pick reviewers for ${pr.repo} pull request ${pr.number}`} theme={theme} compact={compact} disabled={disabled} onPress={() => { setNotice(null); setPicking(true); }} />
       </>}
     </View>}
     {missingReviewers && !pr.snapshot?.draft && picking && <ReviewerPicker repo={pr.repo} author={pr.snapshot?.reviewers?.author ?? null} theme={theme} compact={compact} busy={reviewRequest.isPending}
@@ -111,9 +111,9 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
         });
       }} />}
     {!plan && <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-      {canMerge && !queued && !recentlySubmitted && !busy && mergeOne.button ? mergeOne.button : (canMerge || queued || recentlySubmitted || busy) ? <Button title={busy ? checking.isPending ? "Checking…" : "Submitting…" : queued ? "Queued to merge" : recentlySubmitted ? "Submitted" : `Merge #${pr.number}`} icon={queued ? tr("Clock") : "GitMerge"} theme={theme} compact={compact} kind={canMerge ? "primary" : "secondary"} loading={busy} disabled={disabled || !canMerge} onPress={() => begin("merge")} />
-        : <Text style={[t.meta, { flex: 1 }]}>{waitingFor.length ? `Merge opens when it clears: ${waitingFor.join(", ")}.` : github ? "Waiting for GitHub to confirm it can merge." : "Waiting for Graphite to report it ready to merge."}</Text>}
-      {showSwitch && <Switch theme={theme} compact={compact} label={`${github ? "Auto-merge" : "When ready"}${known ? "" : " · unknown"}`} accessibilityLabel={`${github ? "Auto-merge" : "Merge when ready"} for ${pr.repo} pull request ${pr.number}`} value={known ? !!enabled : null} disabled={disabled} onChange={() => begin(enabled ? "disable_mwr" : "enable_mwr")} />}
+      {canMerge && !queued && !recentlySubmitted && !busy && mergeOne.button ? mergeOne.button : (canMerge || queued || recentlySubmitted || busy) ? <Button title={busy ? checking.isPending ? "Checking…" : "Submitting…" : queued ? tr("Queued to merge") : recentlySubmitted ? "Submitted" : `Merge #${pr.number}`} icon={queued ? tr("Clock") : "GitMerge"} theme={theme} compact={compact} kind={canMerge ? "primary" : "secondary"} loading={busy} disabled={disabled || !canMerge} onPress={() => begin("merge")} />
+        : <Text style={[t.meta, { flex: 1 }]}>{waitingFor.length ? `Merge opens when it clears: ${waitingFor.join(", ")}.` : github ? "Waiting for GitHub to confirm it can merge." : tr("Waiting for Graphite to report it ready to merge.")}</Text>}
+      {showSwitch && <Switch theme={theme} compact={compact} label={`${github ? "Auto-merge" : tr("When ready")}${known ? "" : " · unknown"}`} accessibilityLabel={`${github ? "Auto-merge" : "Merge when ready"} for ${pr.repo} pull request ${pr.number}`} value={known ? !!enabled : null} disabled={disabled} onChange={() => begin(enabled ? "disable_mwr" : "enable_mwr")} />}
     </View>}
     {!plan && mergeOne.notice}
     {!plan && scopeLine && <Text style={t.meta}>{scopeLine}</Text>}
@@ -121,8 +121,8 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
     {error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     {notice && <Text accessibilityLiveRegion="polite" style={t.meta}>{notice}</Text>}
     {plan && (plan.kind === "merge" || browserReady) && <View accessibilityRole="summary" style={{ gap: 8 }}>
-      <Text accessibilityRole="header" style={[t.label, { fontSize: 14, lineHeight: 20 }]}>{plan.kind === "merge" ? plan.prs.length > 1 ? "Merge the PRs underneath too?" : "Merge this PR?" : `${plan.kind === "enable_mwr" ? "Enable" : "Disable"} for downstack too?`}</Text>
-      <Text style={t.meta}>{plan.kind === "merge" ? plan.prs.length > 1 ? `#${pr.number} depends on ${plan.prs.length - 1} unmerged PR${plan.prs.length === 2 ? "" : "s"}. ${plan.mergeQueue ? `This repository merges through a merge queue, so #${plan.prs[0].number} goes in first; merge the next one after it lands:` : `Merge these ${plan.prs.length} PRs in order:`}` : plan.via === "github" ? plan.mergeQueue ? "GitHub adds it to this repository’s merge queue, which merges it once its checks pass." : `GitHub will ${METHOD_SENTENCE[plan.method ?? "squash"]} once this repository’s required protections pass.` : "Graphite will merge using this repository’s settings and required protections." : `Change ${plan.via === "github" ? "auto-merge" : "merge when ready"} for #${pr.number} only, or for all ${plan.prs.length} listed PRs.`}</Text>
+      <Text accessibilityRole="header" style={[t.label, { fontSize: 14, lineHeight: 20 }]}>{plan.kind === "merge" ? plan.prs.length > 1 ? tr("Merge the PRs underneath too?") : tr("Merge this PR?") : `${plan.kind === "enable_mwr" ? "Enable" : "Disable"} for downstack too?`}</Text>
+      <Text style={t.meta}>{plan.kind === "merge" ? plan.prs.length > 1 ? `#${pr.number} depends on ${plan.prs.length - 1} unmerged PR${plan.prs.length === 2 ? "" : "s"}. ${plan.mergeQueue ? `This repository merges through a merge queue, so #${plan.prs[0].number} goes in first; merge the next one after it lands:` : `Merge these ${plan.prs.length} PRs in order:`}` : plan.via === "github" ? plan.mergeQueue ? tr("GitHub adds it to this repository’s merge queue, which merges it once its checks pass.") : `GitHub will ${METHOD_SENTENCE[plan.method ?? "squash"]} once this repository’s required protections pass.` : tr("Graphite will merge using this repository’s settings and required protections.") : `Change ${plan.via === "github" ? "auto-merge" : "merge when ready"} for #${pr.number} only, or for all ${plan.prs.length} listed PRs.`}</Text>
       {(plan.via !== "github" || plan.prs.length > 1 || plan.prs.some(p => p.blockers.length > 0)) && plan.prs.map((p, i) => <View key={p.key} style={{ flexDirection: "row", gap: 8 }}>
         <Text style={[t.meta, { width: 16, textAlign: "right", fontVariant: ["tabular-nums"] }]}>{i + 1}.</Text>
         <View style={{ flex: 1, gap: 2 }}>

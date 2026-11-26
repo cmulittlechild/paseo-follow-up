@@ -18,7 +18,7 @@ import {
 
 export const briefSettingsKey = ["follow-up", "brief-settings"];
 export const briefSourcesKey = ["follow-up", "brief-sources"];
-const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: "A link", off: tr("Off") };
+const MODE_LABEL: Record<PlanMode, string> = { compass: "Compass", link: tr("A link"), off: tr("Off") };
 
 /**
  * Settings → Compass (docs/compass.md#settings, one-place-for-priority-inputs): the one place for what sets the
@@ -83,7 +83,7 @@ function InputRows({ view, sources, theme, compact }: { view: BriefSettingsView;
   const askable = (data?.sources ?? []).filter(r => r.kind === "ask" && !r.on);
   const pending = change.isPending ? change.variables : null;
   const checking = !!data?.checking || !!pending?.check;
-  const toastCopy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
+  const toastCopy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error(tr("Couldn't copy here"))); };
   const q = view.queue;
   const detail = (row: BriefSource): { line: string; body: ReactNode } | null => {
     if (row.recipe === "linear") return { line: q.states.map(queueStateLabel).join(", "), body: <ChipGroup label={tr("Counts as the queue")} hint={tr("Issues assigned to you in these states. At least one.")}
@@ -205,7 +205,7 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, detail, on
         {row.server && row.server.toLowerCase() !== label.toLowerCase() && <Text style={[t.meta, MONO]}>{row.server}</Text>}
       </View>
       <Text style={t.meta}>{meta}</Text>
-      {bad && <Warning text={row.detail ?? (row.health === "sign-in" ? "Needs a sign-in." : "The last read failed.")} theme={theme} compact={compact}
+      {bad && <Warning text={row.detail ?? (row.health === "sign-in" ? tr("Needs a sign-in.") : tr("The last read failed."))} theme={theme} compact={compact}
         action={row.health === "failed" ? action(tr("Retry"), onRetry, busy) : action(tr("Check again"), onCheck, checking)} />}
       {bad && row.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", marginLeft: 18, paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
         <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: MONO.fontFamily }}>{row.command}</Text>
@@ -227,7 +227,7 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, detail, on
   </View>;
 }
 
-/** A due date in the screen's voice: today, tomorrow, else "Tue 3 Mar". */
+/** A due date in the screen's voice: today, tomorrow, else tr("Tue 3 Mar"). */
 function dueText(due: string): string {
   const d = new Date(due.length <= 10 ? `${due}T12:00:00` : due);
   if (Number.isNaN(d.getTime())) return due.slice(0, 10);
@@ -269,7 +269,7 @@ function AskPreview({ row, previewing, fresh, sweepAt, onPreview, onToggle, busy
     {!previewing && <View style={{ gap: 6 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         {a && !a.error && fresh && <Button title={tr("Turn on")} kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onToggle(true)} accessibilityLabel={`Turn on Ask for ${row.label}`} />}
-        <Button title={a ? "Preview again" : tr("Preview")} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
+        <Button title={a ? tr("Preview again") : tr("Preview")} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
       </View>
       {a && !a.error && fresh && <Text style={t.meta}>{`Then asked once each workday morning, after the ${sweepAt} sweep, with ${ASK_COST}.`}</Text>}
     </View>}
@@ -293,7 +293,7 @@ function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme:
   const c = theme.colors; const t = text(c, compact);
   const plan = view.plan;
   const change = usePlanChange();
-  // "Use a link" with nothing pasted yet shows the field without saving a mode that has no link.
+  // tr("Use a link") with nothing pasted yet shows the field without saving a mode that has no link.
   const [picked, setPicked] = useState<PlanMode | null>(null);
   const mode = picked ?? plan.mode;
   useEffect(() => { if (picked && picked === plan.mode) setPicked(null); }, [picked, plan.mode]);
@@ -400,11 +400,11 @@ function WhenSection({ view, theme, compact }: { view: BriefSettingsView; theme:
         options={times.map(v => ({ value: v, label: v }))} onValueChange={sweepAt => change.mutate({ sweepAt })} />
       <CompassWhen theme={theme} compact={compact} part="cadence" />
       <CompassWhen theme={theme} compact={compact} part="routing" />
-      <SettingsSelect label={tr("Changes since")} hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
-        value={q.since} disabled={change.isPending} options={[{ value: "read", label: "Your last read" }, { value: "workday", label: "Your last workday" }]} onValueChange={since => change.mutate({ since })} />
+      <SettingsSelect label={tr("Changes since")} hint={q.since === "read" ? tr("What moved since you last read the brief; before your first read, since the last workday's sweep.") : tr("What moved since the last workday's sweep, however often you look.")}
+        value={q.since} disabled={change.isPending} options={[{ value: "read", label: tr("Your last read") }, { value: "workday", label: tr("Your last workday") }]} onValueChange={since => change.mutate({ since })} />
     </SettingsCard>
     <ZoneField view={view} zoneFrom={zoneFrom} busy={change.isPending} onChange={timeZone => change.mutate({ timeZone })} theme={theme} compact={compact} />
-    <ChipGroup label={tr("Workdays")} hint={q.workdays ? "Set here." : "The zone's usual week."} options={WEEKDAYS.map(d => ({ value: d, label: d }))} value={q.workdays ?? usual} disabled={change.isPending}
+    <ChipGroup label={tr("Workdays")} hint={q.workdays ? tr("Set here.") : tr("The zone's usual week.")} options={WEEKDAYS.map(d => ({ value: d, label: d }))} value={q.workdays ?? usual} disabled={change.isPending}
       onChange={days => change.mutate({ workdays: sameDays(days, usual) ? null : days as Weekday[] })} theme={theme} compact={compact} />
   </SettingsSection>;
 }
@@ -444,7 +444,7 @@ function ZoneField({ view, zoneFrom, busy, onChange, theme, compact }: { view: B
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
       <TextInput accessibilityLabel={tr("Time zone")} value={value} onChangeText={setValue} placeholder={tr("Automatic: this device's zone")} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
         onSubmitEditing={() => valid && dirty && onChange(v || null)} style={field(theme, compact)} />
-      {dirty && <Button title={v ? tr("Save") : "Use automatic"} theme={theme} compact={compact} disabled={!valid} loading={busy} onPress={() => onChange(v || null)} />}
+      {dirty && <Button title={v ? tr("Save") : tr("Use automatic")} theme={theme} compact={compact} disabled={!valid} loading={busy} onPress={() => onChange(v || null)} />}
     </View>
     {!valid && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{tr("Use an IANA time zone, like Europe/Paris.")}</Text>}
   </View>;

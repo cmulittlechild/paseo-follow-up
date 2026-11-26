@@ -83,7 +83,7 @@ export function JobRows({ theme, compact, order, extra, preselect = false }: {
         await change.mutateAsync({ role: row.role, entry: recommendedEntry(roles[i], row.rec), quiet: true });
         if (row.role === "overseer") overseer = true;
       }
-      toast.show(overseer ? "Using the recommended models. A running Overseer switches when you restart it from Home." : "Using the recommended models.", { variant: "success" });
+      toast.show(overseer ? tr("Using the recommended models. A running Overseer switches when you restart it from Home.") : tr("Using the recommended models."), { variant: "success" });
     } catch { /* the mutation's toast says why */ } finally { setBulk(false); }
   };
 
@@ -197,7 +197,7 @@ export function RolePickers({ r, catalog, busy, save }: { r: RoleView; catalog: 
   const models = current?.models ?? [];
   const model = r.model ? models.find(m => m.id === r.model) : null;
   const providerDefault = models.find(m => m.isDefault);
-  const defaultModel = role === "overseer" && r.provider === "claude" ? "Default (newest Opus)" : providerDefault ? `Default (${providerDefault.label})` : "Default";
+  const defaultModel = role === "overseer" && r.provider === "claude" ? tr("Default (newest Opus)") : providerDefault ? `Default (${providerDefault.label})` : "Default";
   const modelOptions = [{ value: DEFAULT, label: defaultModel }, ...models.map(m => ({ value: m.id, label: m.label })),
     ...(r.model && !model ? [{ value: r.model, label: modelName(r.model) }] : [])];
   const thinking = (model ?? providerDefault)?.thinking ?? [];

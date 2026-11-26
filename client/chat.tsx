@@ -67,7 +67,7 @@ function DoneCard({ summary, unconfirmed, theme }: { summary: string; unconfirme
           <View style={{ paddingTop: 2 }}><Icon name="CircleAlert" size={13} color={c.statusWarning} /></View>
           <Text style={{ flex: 1, color: c.foreground, fontSize: 12, lineHeight: 17 }}>{unconfirmedNote(unconfirmed)}</Text>
         </View>}
-        <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }}>{unconfirmed.length ? "Archive the workspace when you're ready." : "Follow-up checked every PR and task. Archive the workspace when you're ready."}</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }}>{unconfirmed.length ? tr("Archive the workspace when you're ready.") : tr("Follow-up checked every PR and task. Archive the workspace when you're ready.")}</Text>
       </View>
     </View>
   </Reveal>;
@@ -83,10 +83,10 @@ function BatchCardView({ item, theme }: PluginTimelineItemProps<BatchCard>) {
     <View style={{ borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, overflow: "hidden" }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: recovery ? 10 : 6 }}>
         <Icon name={recovery ? tr("History") : tr("Send")} size={14} color={c.foregroundMuted} />
-        <Text style={{ flex: 1, color: c.foreground, fontSize: 13, lineHeight: 18, fontWeight: "600" }}>{recovery ? "Follow-up recovery brief" : "Follow-up sent a message"}</Text>
-        <Pressable accessibilityRole="button" aria-expanded={expanded} accessibilityLabel={expanded ? "Hide the full message" : "Show the full message"} onPress={() => setExpanded(v => !v)} hitSlop={6}
+        <Text style={{ flex: 1, color: c.foreground, fontSize: 13, lineHeight: 18, fontWeight: "600" }}>{recovery ? "Follow-up recovery brief" : tr("Follow-up sent a message")}</Text>
+        <Pressable accessibilityRole="button" aria-expanded={expanded} accessibilityLabel={expanded ? tr("Hide the full message") : tr("Show the full message")} onPress={() => setExpanded(v => !v)} hitSlop={6}
           style={state => ({ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
-          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{expanded ? "Hide" : "Full message"}</Text>
+          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{expanded ? "Hide" : tr("Full message")}</Text>
         </Pressable>
       </View>
       {!recovery && <View style={{ paddingHorizontal: 12, paddingBottom: 10, gap: 3 }}>
@@ -115,9 +115,9 @@ function AnswerCardView({ item, theme }: PluginTimelineItemProps<AnswerCard>) {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 }}>
         <Icon name="MessageCircleReply" size={14} color={c.statusSuccess} />
         <Text numberOfLines={card.answers ? 2 : 1} style={{ flex: 1, color: c.foreground, fontSize: 13, lineHeight: 18, fontWeight: "600" }}>{card.answers ? `${whose} · ${card.title}` : <>{whose}{/^D\d+$/.test(card.id) ? "" : ` to ${card.id}`} · {card.title}</>}</Text>
-        <Pressable accessibilityRole="button" aria-expanded={expanded} accessibilityLabel={expanded ? "Hide the full message" : "Show the full message"} onPress={() => setExpanded(v => !v)} hitSlop={6}
+        <Pressable accessibilityRole="button" aria-expanded={expanded} accessibilityLabel={expanded ? tr("Hide the full message") : tr("Show the full message")} onPress={() => setExpanded(v => !v)} hitSlop={6}
           style={state => ({ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
-          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{expanded ? "Hide" : "Full message"}</Text>
+          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{expanded ? "Hide" : tr("Full message")}</Text>
         </Pressable>
       </View>
       {card.answers ? <View style={{ paddingHorizontal: 12, paddingBottom: 10, gap: 8 }}>

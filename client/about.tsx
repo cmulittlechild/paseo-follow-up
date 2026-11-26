@@ -83,9 +83,9 @@ export function SummaryRow({ workspaceId, theme, compact }: { workspaceId: strin
   const busy = rewriting || d.pending;
   const line = query.error ? `Couldn't load the summary: ${errorText(query.error)}`
     : d.footer ? shortFooter(d.footer)
-    : d.failed ? "Couldn't write a summary"
-    : d.pending ? "Writing a summary…" : "No summary yet";
-  const action = busy ? "Rewriting…" : d.failed ? tr("Try again") : d.sentence ? "Rewrite" : "Write summary";
+    : d.failed ? tr("Couldn't write a summary")
+    : d.pending ? "Writing a summary…" : tr("No summary yet");
+  const action = busy ? "Rewriting…" : d.failed ? tr("Try again") : d.sentence ? "Rewrite" : tr("Write summary");
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 48 : 36 }}>
     <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
       <Text style={t.label}>{tr("Summary")}</Text>

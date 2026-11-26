@@ -123,7 +123,7 @@ function CreatedCardView({ item, theme, layout, deps }: PluginTimelineItemProps<
   const frame = { flexDirection: "row" as const, gap: 10, alignItems: "flex-start" as const, borderRadius: 10, borderWidth: 1, borderColor: c.border, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 12 : 10, minHeight: compact ? 56 : undefined };
   return <View style={{ width: "100%", maxWidth: compact ? undefined : 560 }}>
     {opens
-      ? <Pressable accessibilityRole="link" accessibilityLabel={label} accessibilityHint={card.kind === "agent" ? presence.link === "Open chat" ? "Opens the agent's chat" : "Opens the agent" : "Opens the workspace"} onPress={open}
+      ? <Pressable accessibilityRole="link" accessibilityLabel={label} accessibilityHint={card.kind === "agent" ? presence.link === "Open chat" ? tr("Opens the agent's chat") : tr("Opens the agent") : tr("Opens the workspace")} onPress={open}
           style={state => ({ ...frame, backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : c.surface1 })}>{body}</Pressable>
       : <View accessible accessibilityLabel={label} style={{ ...frame, backgroundColor: c.surface1 }}>{body}</View>}
   </View>;
@@ -131,7 +131,7 @@ function CreatedCardView({ item, theme, layout, deps }: PluginTimelineItemProps<
 
 /**
  * Paseo's create_agent / create_workspace calls become a card that opens what they made (docs/client.md). The card
- * replaces the raw call, so Paseo's "N tool calls" group no longer counts it, like the Done card. The transform lives
+ * replaces the raw call, so Paseo's tr("N tool calls") group no longer counts it, like the Done card. The transform lives
  * in client/chat.tsx's one tool_call transformer (`createdCard`); this registers the renderer. Hosts whose client API
  * has no timeline transformers or renderers get nothing registered and keep the plain row.
  */

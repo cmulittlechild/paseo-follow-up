@@ -68,7 +68,7 @@ function AddReviewer({ repo, theme, compact, taken, onAdd }: { repo: string | nu
   const typed = !!q && valid(q) && !taken.some(l => sameLogin(l, q));
   return <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <TextInput accessibilityLabel={repo ? `Add a reviewer for ${repo}` : "Add a default reviewer"} value={value} placeholder={tr("Login or org/team")} placeholderTextColor={c.foregroundMuted}
+      <TextInput accessibilityLabel={repo ? `Add a reviewer for ${repo}` : tr("Add a default reviewer")} value={value} placeholder={tr("Login or org/team")} placeholderTextColor={c.foregroundMuted}
         autoCapitalize="none" autoCorrect={false} onFocus={() => { setFocused(true); setOpen(true); }} onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyPress={e => { if (e.nativeEvent.key === "Escape") setOpen(false); }} onChangeText={v => { setValue(v); setOpen(true); }} onSubmitEditing={() => { if (typed) add({ login: q, name: null }); }}
         style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
@@ -97,12 +97,12 @@ function ReviewerList({ repo, list, theme, compact, fallback, first, titled = tr
   const action = adding ? <Button theme={theme} compact={compact} kind="ghost" icon="Check" title={tr("Done")} accessibilityLabel={`Done adding to ${repo ?? "the default list"}`} onPress={() => setAdding(false)} />
     : list.length < MAX_REVIEWERS ? <Button theme={theme} compact={compact} kind="ghost" icon="UserPlus" title={tr("Add reviewer")} accessibilityLabel={`Add reviewer to ${repo ?? "the default list"}`} onPress={() => setAdding(true)} /> : null;
   const chips = list.length > 0 ? list.map((r, i) => <ReviewerChip key={r.login} r={r} theme={theme} compact={compact} onRemove={change.isPending ? undefined : () => change.mutate(list.filter((_, j) => j !== i))} />)
-    : <Text style={[t.meta, titled ? null : { flex: 1, minWidth: 0 }]}>{fallback ?? "Nobody yet. Add reviewers opens a picker."}</Text>;
+    : <Text style={[t.meta, titled ? null : { flex: 1, minWidth: 0 }]}>{fallback ?? tr("Nobody yet. Add reviewers opens a picker.")}</Text>;
   return <View style={{ gap: 8, paddingHorizontal: 14, paddingVertical: titled ? 12 : 8, paddingLeft: titled ? 14 : 58, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
     {titled ? <>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Icon name={repo ? "GitPullRequest" : "Globe"} size={13} color={c.foregroundMuted} />
-        <Text numberOfLines={1} style={[t.label, { flex: 1, minWidth: 0 }]}>{repo ?? "Default for all repos"}</Text>
+        <Text numberOfLines={1} style={[t.label, { flex: 1, minWidth: 0 }]}>{repo ?? tr("Default for all repos")}</Text>
         {action}
       </View>
       {list.length > 0 ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{chips}</View> : chips}
@@ -113,7 +113,7 @@ function ReviewerList({ repo, list, theme, compact, fallback, first, titled = tr
 }
 
 /**
- * Settings → Reviewers: who "Add reviewers" asks. The default list stays open; the repositories fold away behind one
+ * Settings → Reviewers: who tr("Add reviewers") asks. The default list stays open; the repositories fold away behind one
  * line ("3 with their own list · 5 use the default"), collapsed by default once anything is set. Inside, each
  * repository with a list folds to its names, and the ones on the default fold together.
  */
@@ -208,7 +208,7 @@ export function ReviewerPicker({ repo, author, theme, compact, busy, onCancel, o
       hint={tr("Saves the checked reviewers as this repository's list.")} />}
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       <Button shortcut theme={theme} compact={compact} kind="primary" icon="UserPlus" loading={busy} disabled={!picked.length || busy}
-        title={picked.length ? `Request ${picked.length === 1 ? reviewerLabel(picked[0]) : `${picked.length} reviewers`}` : "Request reviewers"}
+        title={picked.length ? `Request ${picked.length === 1 ? reviewerLabel(picked[0]) : `${picked.length} reviewers`}` : tr("Request reviewers")}
         accessibilityLabel={`Request ${picked.map(reviewerLabel).join(", ") || "nobody"}`} onPress={() => onRequest(picked, remember && !sameAsSaved)} />
       <Button theme={theme} compact={compact} kind="ghost" title={tr("Cancel")} disabled={busy} onPress={onCancel} />
     </View>

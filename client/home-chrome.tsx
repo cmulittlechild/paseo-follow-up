@@ -191,7 +191,7 @@ export function QueryField({ theme, value, onChange, placeholder, icon, dense, i
 /** `onEnter`: the active result, or null when the query is empty (Home then opens its selection). */
 export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { theme: Theme; omnibox: Omnibox; dense: boolean; onEnter: (item: OmniboxItem | null) => void; anywhereKey?: string | null }) {
   const { query, setQuery, results, active, move, inputRef, askOn } = omnibox;
-  const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
+  const placeholder = askOn ? dense ? tr("Search or ask the Overseer") : tr("Search, or ask the Overseer") : tr("Search workspaces, branches, PRs");
   // The bar stays one line: a paste or drop lands here, and Home draws the thumbnails on their own line under it.
   if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} attach="inline" style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} onLayout={omnibox.onSearchLayout} slashHint={anywhereKey || "/"}
     trailing={<AttachImageButton model={omnibox.images} theme={theme} compact={dense} label={tr("Add image for the Overseer")} />}
@@ -251,9 +251,9 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
     setOpen(false);
     try {
       const r = await onRerank();
-      if (!r.ok) toast.error(r.error ?? "Couldn't re-rank.");
-      else if (r.skipped === "busy") toast.show("Still ranking; Home updates when it's done");
-      else toast.show(r.skipped === "same" ? "Nothing new in Linear, Slack, GitHub or the plan since the last ranking" : r.top?.[0] ? `Re-ranked · ${r.top[0].title} first` : "Re-ranked", { variant: "success" });
+      if (!r.ok) toast.error(r.error ?? tr("Couldn't re-rank."));
+      else if (r.skipped === "busy") toast.show(tr("Still ranking; Home updates when it's done"));
+      else toast.show(r.skipped === "same" ? tr("Nothing new in Linear, Slack, GitHub or the plan since the last ranking") : r.top?.[0] ? `Re-ranked · ${r.top[0].title} first` : "Re-ranked", { variant: "success" });
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
   };
   // "Ranked 12m ago": only when the ranking last ran (and a failed run's reason); never its cost.
@@ -277,7 +277,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
       <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 2 }}>
         {rank?.enabled && onRerank && <Pressable accessibilityRole="menuitem" accessibilityState={{ busy: running, disabled: running }} disabled={running} onPress={() => void rerank()}
           style={state => ({ ...menuItemRow(touch), minHeight: touch ? 48 : 34, paddingHorizontal: touch ? 12 : 10, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-          <MenuItemContent theme={theme} touch={touch} glyph={running ? <Spinner color={c.foregroundMuted} size={menuGlyph(touch).size - 2} label={tr("Ranking")} /> : "RefreshCw"} label={running ? "Ranking…" : "Re-rank now"} muted={running} />
+          <MenuItemContent theme={theme} touch={touch} glyph={running ? <Spinner color={c.foregroundMuted} size={menuGlyph(touch).size - 2} label={tr("Ranking")} /> : "RefreshCw"} label={running ? "Ranking…" : tr("Re-rank now")} muted={running} />
         </Pressable>}
         {note && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: touch ? 12 : 10, paddingTop: 4, paddingBottom: 6 }}>{note}</Text>}
       </View>

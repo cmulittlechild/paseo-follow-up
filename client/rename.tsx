@@ -81,14 +81,14 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
   const canRename = check.ok && (phase !== "suggesting" || edited);
   const refresh = () => { void cache.invalidateQueries({ queryKey: overviewKey }); void cache.invalidateQueries({ queryKey: ["follow-up"] }); };
 
-  const undo = (workspaceId: string) => void runAction({ label: "Undo rename", toast, run: () => rename({ workspaceId, undo: true }),
-    success: r => `Name back to ${r.title}`, onSuccess: refresh, failure: "Couldn't undo the rename" }, `rename:${workspaceId}`);
+  const undo = (workspaceId: string) => void runAction({ label: tr("Undo rename"), toast, run: () => rename({ workspaceId, undo: true }),
+    success: r => `Name back to ${r.title}`, onSuccess: refresh, failure: tr("Couldn't undo the rename") }, `rename:${workspaceId}`);
 
   const apply = () => {
     if (!check.ok) return;
     const title = check.name; const workspaceId = request.workspaceId;
     onClose();
-    void runAction({ label: tr("Rename"), toast, run: () => rename({ workspaceId, title }), onSuccess: refresh, failure: "Couldn't rename the workspace",
+    void runAction({ label: tr("Rename"), toast, run: () => rename({ workspaceId, title }), onSuccess: refresh, failure: tr("Couldn't rename the workspace"),
       success: r => {
         if (!hasToastHost()) return `Renamed to ${r.title}`;
         pushToast("success", `Renamed to ${r.title}`, [{ label: tr("Undo"), onPress: () => undo(workspaceId) }], { durationMs: RENAME_UNDO_MS, keep: true });
@@ -116,7 +116,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
           </View>
           <View>
             <TextInput ref={input} accessibilityLabel={tr("New name")} accessibilityHint="Suggested from the Summary, PRs and linked items" value={name} autoFocus={!compact} selectTextOnFocus
-              placeholder={waiting ? "" : "Type a name"} placeholderTextColor={c.foregroundMuted}
+              placeholder={waiting ? "" : tr("Type a name")} placeholderTextColor={c.foregroundMuted}
               onChangeText={v => { typed.current = true; setName(v); setEdited(true); }} autoCapitalize="sentences" maxLength={NAME_MAX_CHARS + 20} style={field} />
             {waiting && <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: "absolute", left: 10, top: 0, bottom: 0, flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Spinner color={c.foregroundMuted} size={12} />
@@ -126,7 +126,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
           {phase === "error" && !edited && <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 6 }}>
             <View style={{ paddingTop: 2 }}><Icon name="TriangleAlert" size={13} color={c.statusWarning} /></View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[t.meta, { color: c.statusWarning }]}>{jobFailed ? "Couldn't suggest a name. Type one, or try again." : error || "Couldn't load this workspace. Type a name, or try again."}</Text>
+              <Text style={[t.meta, { color: c.statusWarning }]}>{jobFailed ? tr("Couldn't suggest a name. Type one, or try again.") : error || tr("Couldn't load this workspace. Type a name, or try again.")}</Text>
               {jobFailed && !!error && (details
                 ? <Text selectable style={t.small}>{error}</Text>
                 : <Pressable accessibilityRole="button" onPress={() => setDetails(true)} style={{ alignSelf: "flex-start" }}><Text style={[t.small, { textDecorationLine: "underline" }]}>{tr("Details")}</Text></Pressable>)}
@@ -145,7 +145,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
             ? <Button theme={theme} compact={compact} kind="primary" icon="RefreshCw" title={tr("Try again")} onPress={() => void suggest()} />
             : <>
               <Button shortcut={canRename} theme={theme} compact={compact} kind="primary" icon="Check" title={tr("Rename")} disabled={!canRename} onPress={apply} />
-              <Button theme={theme} compact={compact} kind="ghost" icon="RefreshCw" title={phase === "error" ? tr("Try again") : "Suggest another"} disabled={phase === "suggesting"} onPress={() => void suggest()} />
+              <Button theme={theme} compact={compact} kind="ghost" icon="RefreshCw" title={phase === "error" ? tr("Try again") : tr("Suggest another")} disabled={phase === "suggesting"} onPress={() => void suggest()} />
             </>}
         </View>
         {info?.last && <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: compact ? 12 : 10, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

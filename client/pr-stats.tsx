@@ -141,7 +141,7 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
         <Text style={[t.body, { color: c.foregroundMuted }]}>{`No PRs opened or reviewed ${period === "week" ? "this week" : period === "last-week" ? "last week" : `in the last ${period === "30d" ? 30 : 90} days`}.`}</Text>
         {out.sync?.error
           ? onSettings && <Button theme={theme} compact={compact} title={tr("Open settings")} onPress={onSettings} />
-          : period !== "90d" && <Button theme={theme} compact={compact} title={period === "30d" ? "Show 90 days" : "Show 30 days"} onPress={() => onPeriod(period === "30d" ? "90d" : "30d")} />}
+          : period !== "90d" && <Button theme={theme} compact={compact} title={period === "30d" ? tr("Show 90 days") : tr("Show 30 days")} onPress={() => onPeriod(period === "30d" ? "90d" : "30d")} />}
       </View>
       : model.people.length === 1
       ? <View style={{ gap: 10 }}><Text style={[t.body, { fontWeight: "600" }]}>{model.people[0]!.login}</Text><PersonLoader theme={theme} compact={compact} repo={out.repo!} period={period} login={model.people[0]!.login} /></View>

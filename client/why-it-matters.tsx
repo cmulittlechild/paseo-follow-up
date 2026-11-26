@@ -31,7 +31,7 @@ function dateChoices(now = new Date()): { label: string; day: string | null }[] 
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const plus = (n: number) => { const d = new Date(now); d.setDate(d.getDate() + n); return d; };
   const friday = plus((5 - now.getDay() + 7) % 7 || 7);
-  return [{ label: "Today", day: iso(now) }, { label: "Tomorrow", day: iso(plus(1)) }, { label: "Friday", day: iso(friday) }, { label: "In a week", day: iso(plus(7)) }, { label: "No date", day: null }];
+  return [{ label: "Today", day: iso(now) }, { label: "Tomorrow", day: iso(plus(1)) }, { label: "Friday", day: iso(friday) }, { label: tr("In a week"), day: iso(plus(7)) }, { label: tr("No date"), day: null }];
 }
 
 /**
@@ -81,15 +81,15 @@ function NoteCard({ note: n, view: v, workspace, theme, compact, openAgent }: { 
   const composer = useChatComposer(v.overseer ?? null);
   const source = v.settings.sources.find(s => s.id === n.source);
   const place = source?.places.find(p => `${p.kind}:${p.id}` === n.place);
-  const label = n.source === HAND_SOURCE ? HAND_LABEL : source?.label ?? "A removed source";
+  const label = n.source === HAND_SOURCE ? HAND_LABEL : source?.label ?? tr("A removed source");
   const meta = [label, when(n.at), where(place), n.until ? `until ${dayOf(n.until)}` : null].filter(Boolean).join(" · ");
   const change = useMutation({
     mutationFn: async (a: NoteAction) => await act(a) as { told: { agentId: string } | null },
     onSuccess: (r, a) => {
       setOpen(null);
       void cache.invalidateQueries({ queryKey: compassKey });
-      if (a.action === "tell") toast.show("Sent to the main agent", { variant: "success" });
-      else if (a.action === "unpin") toast.show("Unpinned. It leaves AI priority now.", { variant: "success" });
+      if (a.action === "tell") toast.show(tr("Sent to the main agent"), { variant: "success" });
+      else if (a.action === "unpin") toast.show(tr("Unpinned. It leaves AI priority now."), { variant: "success" });
       else if (a.action === "edit" && a.workspace) toast.show("Moved", { variant: "success" });
       void r;
     },
@@ -104,7 +104,7 @@ function NoteCard({ note: n, view: v, workspace, theme, compact, openAgent }: { 
       if (v.overseer) openAgent?.(v.overseer);
     } catch {
       await copyText(words).catch(() => undefined);
-      toast.show("Copied. Paste it to the Overseer.", { variant: "success" });
+      toast.show(tr("Copied. Paste it to the Overseer."), { variant: "success" });
     }
   };
   const busy = change.isPending;
@@ -115,21 +115,21 @@ function NoteCard({ note: n, view: v, workspace, theme, compact, openAgent }: { 
     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 4 }}>
       <View style={{ flex: 1, minWidth: 0 }}><RichText plain style={[t.body, { color: c.foreground }]}>{n.what}</RichText></View>
       <View style={{ marginVertical: compact ? -10 : -4, marginRight: compact ? -10 : -4 }}>
-        <IconButton icon="Ellipsis" label={open === "menu" ? "Hide note actions" : "More actions for this note"} onPress={() => setOpen(o => o ? null : "menu")} theme={theme} compact={compact} />
+        <IconButton icon="Ellipsis" label={open === "menu" ? tr("Hide note actions") : tr("More actions for this note")} onPress={() => setOpen(o => o ? null : "menu")} theme={theme} compact={compact} />
       </View>
     </View>
-    {n.quote && <Pressable accessibilityRole="button" accessibilityLabel={full ? "Show less of the quote" : "Show the whole quote"} onPress={() => setFull(f => !f)}>
+    {n.quote && <Pressable accessibilityRole="button" accessibilityLabel={full ? tr("Show less of the quote") : tr("Show the whole quote")} onPress={() => setFull(f => !f)}>
       <RichText plain numberOfLines={full ? undefined : 2} style={[t.meta, { fontStyle: "italic" }]}>{`“${n.quote}”`}</RichText>
     </Pressable>}
     <Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{meta}</Text>
     {(n.link || v.overseer) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, marginLeft: compact ? -12 : -8 }}>
-      {n.link && action("Open message", "ExternalLink", () => { void import("@getpaseo/plugin/client").then(m => m.openExternalUrl(n.link!)).catch(() => undefined); })}
-      {v.overseer && action("Ask the Overseer", "MessageSquare", () => void ask())}
+      {n.link && action(tr("Open message"), "ExternalLink", () => { void import("@getpaseo/plugin/client").then(m => m.openExternalUrl(n.link!)).catch(() => undefined); })}
+      {v.overseer && action(tr("Ask the Overseer"), "MessageSquare", () => void ask())}
     </View>}
     {open === "menu" && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginLeft: compact ? -12 : -8 }}>
-      {action("Tell the agent", tr("Send"), () => change.mutate({ action: "tell", id: n.id }))}
+      {action(tr("Tell the agent"), tr("Send"), () => change.mutate({ action: "tell", id: n.id }))}
       {action("Edit", "Pencil", () => setOpen("edit"))}
-      {action("Move to another workspace", "ArrowRightLeft", () => setOpen("move"))}
+      {action(tr("Move to another workspace"), "ArrowRightLeft", () => setOpen("move"))}
       {action(tr("Unpin"), "PinOff", () => setOpen("unpin"))}
     </View>}
     {open === "edit" && <NoteEditor note={n} busy={busy} theme={theme} compact={compact} onCancel={() => setOpen(null)} onSave={a => change.mutate({ action: "edit", id: n.id, ...a })} />}
@@ -190,6 +190,6 @@ function MovePicker({ current, busy, onPick, onCancel, theme, compact }: { curre
       style={state => ({ minHeight: compact ? 44 : 32, paddingHorizontal: 10, justifyContent: "center", borderRadius: 6, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
       <RichText plain style={t.body}>{w.title}</RichText>
     </Pressable>)}
-    {all.data && !found.length && <Text style={t.meta}>{q.trim() ? `No workspace matches "${q.trim()}".` : "No other workspace to move it to."}</Text>}
+    {all.data && !found.length && <Text style={t.meta}>{q.trim() ? `No workspace matches "${q.trim()}".` : tr("No other workspace to move it to.")}</Text>}
   </View>;
 }

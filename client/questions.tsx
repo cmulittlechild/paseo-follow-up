@@ -46,14 +46,14 @@ const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !
 export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAnswer | null | undefined): { icon: string; color: (c: Colors) => string; text: string } {
   if (pending?.error) return { icon: "CircleAlert", color: c => c.statusDanger, text: `Your answer wasn't sent: ${sentence(pending.error)} Open it to retry; your words are kept.` };
   if (pending) return { icon: tr("Send"), color: c => c.foregroundMuted, text: "Sending your answer…" };
-  if (q.taskId && q.need === "action") return { icon: tr("Clock"), color: c => c.foregroundMuted, text: "A task waits on this. The agent works on the rest meanwhile." };
-  if (q.taskId && !q.options.length) return { icon: tr("Clock"), color: c => c.foregroundMuted, text: "A task is blocked on this. The agent works on the rest." };
+  if (q.taskId && q.need === "action") return { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("A task waits on this. The agent works on the rest meanwhile.") };
+  if (q.taskId && !q.options.length) return { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("A task is blocked on this. The agent works on the rest.") };
   switch (questionState(q)) {
-    case "stopped": return { icon: "CirclePause", color: c => c.statusWarning, text: q.big ? `The agent stopped and waits for your answer. Big question: ${q.big}.` : "The agent stopped and waits for your answer." };
+    case "stopped": return { icon: "CirclePause", color: c => c.statusWarning, text: q.big ? `The agent stopped and waits for your answer. Big question: ${q.big}.` : tr("The agent stopped and waits for your answer.") };
     case "building": return { icon: "Hammer", color: c => c.foregroundMuted, text: `The agent is building ${q.recommend} while you decide. Pick another option and it undoes that first.` };
     default: return q.big
       ? { icon: "Hand", color: c => c.statusWarning, text: `Big question: ${q.big}. The agent builds nothing this affects until you answer.` }
-      : { icon: tr("Clock"), color: c => c.foregroundMuted, text: "The agent holds what this affects and keeps working on the rest." };
+      : { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("The agent holds what this affects and keeps working on the rest.") };
   }
 }
 
@@ -208,7 +208,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
     onClose?.();
     void putInChatOrCopy(composer, message, {
       inChat: () => quick("chat"),
-      copy: () => { toast.show("Couldn't open the agent's chat, so your answer was copied instead.", { variant: "info" }); quick("copy"); },
+      copy: () => { toast.show(tr("Couldn't open the agent's chat, so your answer was copied instead."), { variant: "info" }); quick("copy"); },
     });
   };
   const quick = (action: "send" | "copy" | "chat", pick?: { choice: string; words?: string }) => {
@@ -320,7 +320,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {q.options.map(o => <OptionCard key={o.letter} theme={theme} compact={compact} dense={dense} letter={o.letter} label={o.label} consequence={o.consequence} recommended={q.recommend === o.letter}
         selected={(open ? choice : q.answer?.choice) === o.letter} disabled={!open || run.isPending} onPress={() => setChoice(o.letter)} />)}
       {/* Built in on every question with options, after the agent's own: the developer's own answer. */}
-      {(open || isOther(q.answer?.choice)) && <OptionCard theme={theme} compact={compact} dense={dense} own label={OTHER_LABEL} consequence={open && !dense ? "Write your own answer" : undefined} recommended={false}
+      {(open || isOther(q.answer?.choice)) && <OptionCard theme={theme} compact={compact} dense={dense} own label={OTHER_LABEL} consequence={open && !dense ? tr("Write your own answer") : undefined} recommended={false}
         selected={open ? other : isOther(q.answer?.choice)} disabled={!open || run.isPending} onPress={() => setChoice(OTHER)} />}
     </View>}
     {/* Not sent yet (copied, or in the agent's message box) never reads as answered: no check, no green. Only a
@@ -354,14 +354,14 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
         onPress={() => { setChoice(TASK_DONE.letter); setNoteOpen(true); }} />}
       {doneOnly && <NoteLink icon="Reply" label={tr("Reply instead")} a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}
-      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title={tr("Send to agent")} accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={img.blocked ? img.blocked : other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending || !!img.blocked} onPress={() => quick("send")} />}
+      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title={tr("Send to agent")} accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={img.blocked ? img.blocked : other && !words.trim() ? tr("Write your answer first") : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending || !!img.blocked} onPress={() => quick("send")} />}
       {open && !doneOnly && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title={tr("Put in chat")} accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
       {/* Paseo 0.16: Copy steps back to an icon beside Put in chat (both move the words without sending). 0.15 keeps the label. */}
       {open && !doneOnly && !composer && <Button theme={theme} compact={compact} icon="Copy" title={tr("Copy")} accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {open && !doneOnly && composer && <IconButton theme={theme} compact={compact} icon="Copy" label={tr("Copy answer")} tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
       {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title={tr("Send to agent")} accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
       {q.answer && resendTitle(q.answer.delivery) && <Button theme={theme} compact={compact} kind={q.answer.delivery.state === "failed" ? "primary" : undefined} icon="RotateCcw" title={resendTitle(q.answer.delivery)!} accessibilityLabel={q.answer.delivery.state === "failed" ? `Send the ${q.id} answer again` : `Try sending the ${q.id} answer now`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
-      {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title={tr("Copy")} accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
+      {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title={tr("Copy")} accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error(tr("Couldn't copy here"))); }} />}
       {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title={tr("Open chat")} accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
       {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title={tr("Open agent")} onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
       {dense && onDetails && <IconButton theme={theme} compact={compact} icon="Maximize2" label={`Open ${q.id} with its links and full context`} onPress={onDetails} />}
@@ -450,7 +450,7 @@ export function QuestionStepper({ workspace: w, theme, compact, openAgent, onAns
       <RichText accessibilityRole="header" numberOfLines={2} style={[t.label, { flex: 1 }]}>{`${q.id} · ${q.title}`}</RichText>
       {open.length > 1 && <>
         <Text accessibilityLabel={`Question ${at + 1} of ${open.length}`} style={[t.small, { marginLeft: 4 }]}>{at + 1} of {open.length}</Text>
-        {arrow("ChevronLeft", "Previous question", -1)}{arrow("ChevronRight", "Next question", 1)}
+        {arrow("ChevronLeft", tr("Previous question"), -1)}{arrow("ChevronRight", tr("Next question"), 1)}
       </>}
       <QuestionDismissX workspaceId={w.id} questionId={q.id} theme={theme} compact={compact} onDismissed={onAnswered} dismiss={dismiss} />
     </View>
@@ -482,7 +482,7 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
     </Pressable>;
   };
   const list = found[tab];
-  // While searching, "Show all" is ignored: every match shows.
+  // While searching, tr("Show all") is ignored: every match shows.
   const shown = all || hits ? list : list.slice(0, LIMIT);
   const tabs = (counts: boolean) => <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline", counts ? found.timeline.length : undefined)}{tabButton("questions", tr("Questions"), found.questions.length)}</View>;
   return <Card theme={theme} compact={compact} icon="Activity" title={tr("Activity")} search={search.header}
@@ -534,6 +534,6 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
         </View>
       </CardRow>;
     })}
-    {!hits && list.length > LIMIT && <FoldRow theme={theme} compact={compact} open={all} onPress={() => toggle("activity")} icon="History" iconColor={c.foregroundMuted} label={all ? "Show less" : `Show all ${list.length}`} />}
+    {!hits && list.length > LIMIT && <FoldRow theme={theme} compact={compact} open={all} onPress={() => toggle("activity")} icon="History" iconColor={c.foregroundMuted} label={all ? tr("Show less") : `Show all ${list.length}`} />}
   </Card>;
 }

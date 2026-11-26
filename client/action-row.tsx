@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -61,13 +62,13 @@ export function ActionRow({ bar, c, compact, onAction, onOpen, more: moreProp, s
   if (bar.kind === "existing") {
     const off = !!bar.disabled;
     const moreOthers = bar.more.length > 0 && <BarBtn c={c} compact={compact} primary={false} disabled={off} trailing b={{ name: "More", icon: more ? "ChevronUp" : "ChevronDown", key: null }} onPress={() => setMore(!more)} />;
-    const open = <BarBtn c={c} compact={compact} primary disabled={false} onPress={() => onOpen(bar.workspaceId)} b={{ name: "Open it", icon: "ExternalLink", key: "↵" }} />;
+    const open = <BarBtn c={c} compact={compact} primary disabled={false} onPress={() => onOpen(bar.workspaceId)} b={{ name: tr("Open it"), icon: "ExternalLink", key: "↵" }} />;
     const others = bar.others.map(b => <BarBtn key={b.id} c={c} compact={compact} primary={false} disabled={off} b={b} grow={compact} onPress={() => onAction(b.id)} />);
     return <View style={{ gap: 8 }}>
       {more && !off && <Choices c={c} compact={compact} items={bar.more.map(b => ({ id: b.id, label: b.name }))} onPick={id => { setMore(false); onAction(id); }} />}
       {compact ? <>
         {open}
-        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{off ? `Or start another workspace: ${bar.disabled}` : "Or start another workspace:"}</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{off ? `Or start another workspace: ${bar.disabled}` : tr("Or start another workspace:")}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{others}{moreOthers}</View>
       </> : <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         {open}

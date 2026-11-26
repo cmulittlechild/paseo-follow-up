@@ -26,7 +26,7 @@ export function shippingInfo(view: PrWorkflowView | undefined): string {
   const graphite = !!view && (view.gt.installed || view.repos.some(r => r.effective === "graphite" || r.detected === "graphite"));
   return graphite ? `${base} It picks Graphite where the gt CLI is signed in and the repository is initialised, and only reads files to decide.` : base;
 }
-const BUILTIN_HINT = "Agents read the unresolved threads with gh, fix and push, then reply to each thread and resolve it.";
+const BUILTIN_HINT = tr("Agents read the unresolved threads with gh, fix and push, then reply to each thread and resolve it.");
 
 /** Where a nested fold's title starts (Disclosure: 36 in, 14 chevron, 8 gap) less a settings row's own 16 padding. */
 const REPO_INSET = 36 + 14 + 8 - 16;
@@ -37,7 +37,7 @@ export function ShippingSettings({ theme, compact }: { theme: Theme; compact: bo
   const c = theme.colors; const t = text(c, compact);
   const read = useRpc(prWorkflowRpc); const write = useRpc(setPrWorkflowRpc); const cache = useQueryClient(); const toast = useToast();
   const query = useQuery({ queryKey: shippingKey, queryFn: () => read({}), staleTime: 60_000 });
-  const recheck = useMutation({ mutationFn: () => read({ refresh: true }), onSuccess: v => { cache.setQueryData(shippingKey, v); toast.show("Checked again", { variant: "success" }); }, onError: e => toast.error(errorText(e)) });
+  const recheck = useMutation({ mutationFn: () => read({ refresh: true }), onSuccess: v => { cache.setQueryData(shippingKey, v); toast.show(tr("Checked again"), { variant: "success" }); }, onError: e => toast.error(errorText(e)) });
   const change = useMutation({
     mutationFn: (input: Write & { toast?: string }) => { const { toast: _, ...rest } = input; return write(rest); },
     onSuccess: (v, input) => { cache.setQueryData(shippingKey, v); if (input.toast) toast.show(input.toast, { variant: "success" }); void cache.invalidateQueries({ queryKey: ["follow-up", "workspace"] });
@@ -67,7 +67,7 @@ export function ShippingSettings({ theme, compact }: { theme: Theme; compact: bo
           </Disclosure>
         </View>)}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: compact ? 16 : 14, paddingVertical: 8 }}>
-          <Text style={[t.meta, { flex: 1 }]}>{`${checked ? `Checked ${checked}` : "Not checked yet"} · looks at what's installed and how each repository is set up.`}</Text>
+          <Text style={[t.meta, { flex: 1 }]}>{`${checked ? `Checked ${checked}` : tr("Not checked yet")} · looks at what's installed and how each repository is set up.`}</Text>
           <Button theme={theme} compact={compact} title={recheck.isPending ? "Checking…" : tr("Check again")} disabled={recheck.isPending} loading={recheck.isPending} onPress={() => recheck.mutate()} />
         </View>
       </Disclosure> : <Text style={t.meta}>{tr("Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote.")}</Text>}
@@ -82,7 +82,7 @@ function defaultHint(view: PrWorkflowView): string {
 /** Only when a repository is on Graphite and the CLI can't merge for it; a missing gt is normal otherwise. */
 function signInWarning(view: PrWorkflowView): string | null {
   if (!view.repos.some(r => r.effective === "graphite") || view.gt.installed && view.gt.signedIn) return null;
-  return view.gt.installed ? "The Graphite CLI isn't signed in on this machine. Run gt auth, or merges in Graphite repositories will fail." : "A repository is set to Graphite, but the gt CLI isn't installed on this machine.";
+  return view.gt.installed ? tr("The Graphite CLI isn't signed in on this machine. Run gt auth, or merges in Graphite repositories will fail.") : tr("A repository is set to Graphite, but the gt CLI isn't installed on this machine.");
 }
 
 function RepoShipping({ row, view, theme, compact, busy, set }: { row: RepoWorkflowView; view: PrWorkflowView; theme: Theme; compact: boolean; busy: boolean; set: (input: Omit<Write, "repo">, label: string) => void }) {
@@ -92,7 +92,7 @@ function RepoShipping({ row, view, theme, compact, busy, set }: { row: RepoWorkf
   const preferred = row.github?.preferred ?? methods[0] ?? null;
   // A hairline that starts on the text column, without shifting the row under it.
   const rule = <View style={{ height: 1, backgroundColor: c.border, marginLeft: 16 }} />;
-  const autoMerge = row.effective !== "github" || !row.github ? undefined : row.github.autoMerge ? "Auto-merge is available for PRs here." : "Auto-merge is off in this repository's GitHub settings, so its PRs have no Auto-merge switch.";
+  const autoMerge = row.effective !== "github" || !row.github ? undefined : row.github.autoMerge ? tr("Auto-merge is available for PRs here.") : tr("Auto-merge is off in this repository's GitHub settings, so its PRs have no Auto-merge switch.");
   const pinned = !row.inherits && row.setting !== "auto";
   const reason = pinned ? `Set here.${row.detected !== row.effective ? ` Auto would use ${workflowName(row.detected)}.` : ""}` : row.reason;
   // Flat rows inside the fold: no inner card. Text and hairlines start on the repository name's column.
@@ -104,10 +104,10 @@ function RepoShipping({ row, view, theme, compact, busy, set }: { row: RepoWorkf
     {row.effective === "github" && <View>{rule}{row.github?.mergeQueue
       ? <SettingsAction label={tr("Merge method")} hint={tr("This repository merges through a merge queue, which picks the method.")} actionLabel="GitHub" disabled onPress={() => undefined} />
       : <SettingsSelect<"default" | MergeMethod> label={tr("Merge method")} disabled={busy || !row.github}
-        hint={!row.github ? "Shows after Follow-up reads a PR here." : `This repository allows ${listMethods(methods)}.`}
+        hint={!row.github ? tr("Shows after Follow-up reads a PR here.") : `This repository allows ${listMethods(methods)}.`}
         value={row.mergeMethod && methods.includes(row.mergeMethod) ? row.mergeMethod : "default"}
         options={[{ value: "default", label: preferred ? `Default · ${MERGE_METHOD_SHORT[preferred]}` : tr("Repository default") }, ...methods.map(m => ({ value: m, label: MERGE_METHOD_LABELS[m] }))]}
-        onValueChange={value => set({ mergeMethod: value === "default" ? null : value }, value === "default" ? "GitHub's default merge method" : MERGE_METHOD_LABELS[value])} />}</View>}
+        onValueChange={value => set({ mergeMethod: value === "default" ? null : value }, value === "default" ? tr("GitHub's default merge method") : MERGE_METHOD_LABELS[value])} />}</View>}
     <View style={{ zIndex: 2 }}>{rule}<ReviewModeRow repo={row.repo} value={row.review} theme={theme} compact={compact} busy={busy}
       onChange={mode => set({ review: mode === "team" ? null : mode }, mode === "none" ? `no review. ${REVIEW_MODE_LABELS.none.hint}` : `team review. ${REVIEW_MODE_LABELS.team.hint}`)} /></View>
     <View>{rule}<ReviewFixSelect label={tr("Review comments")} value={row.reviewFix} inherited={view.reviewFix} theme={theme} compact={compact} busy={busy}
@@ -127,7 +127,7 @@ function DeployCheckRow({ deploy, theme, compact }: { deploy: RepoWorkflowView["
     ? `Merged PRs show Deployed once the ${services} in ${deploy.gcpProject} serve them.`
     : "Merged PRs stay Merged. An agent sets it up with set_pr_workflow."}>
     {/* Narrow: too wide to sit beside the hint, so the row wraps it to its own line, where the other rows put their control. */}
-    <Text style={[t.body, { color: deploy ? c.foreground : c.foregroundMuted }, narrow && { minWidth: 240 }]} numberOfLines={1}>{deploy ? `Production · ${deploy.gcpProject}` : "Not set up"}</Text>
+    <Text style={[t.body, { color: deploy ? c.foreground : c.foregroundMuted }, narrow && { minWidth: 240 }]} numberOfLines={1}>{deploy ? `Production · ${deploy.gcpProject}` : tr("Not set up")}</Text>
   </SettingsRow>;
 }
 /** "squash", "squash and rebase", "squash, merge commits and rebase". */
@@ -137,8 +137,8 @@ function listMethods(methods: MergeMethod[]): string {
 }
 
 /**
- * Built-in steps or a skill/command name. Choosing "A skill or command" opens a one-line field with Save; an
- * inherited row (`inherited` set) adds "Same as default".
+ * Built-in steps or a skill/command name. Choosing tr("A skill or command") opens a one-line field with Save; an
+ * inherited row (`inherited` set) adds tr("Same as default").
  */
 function ReviewFixSelect({ label, value, inherited, theme, compact, busy, onSave }: { label: string; value: ReviewFix | null; inherited?: ReviewFix; theme: Theme; compact: boolean; busy: boolean; onSave: (fix: ReviewFix | null) => void }) {
   const c = theme.colors; const t = text(c, compact);
@@ -147,10 +147,10 @@ function ReviewFixSelect({ label, value, inherited, theme, compact, busy, onSave
   const [draft, setDraft] = useState(value && commandName(value) || "");
   const valid = /^\/?[\w:.-]{1,80}$/.test(draft.trim());
   const shown = editing ? "command" : current;
-  const hint = shown === "inherit" ? `Uses the default: ${reviewFixLabel(inherited!)}.` : shown === "builtin" ? BUILTIN_HINT : value?.kind === "command" && !editing ? `Agents run ${commandName(value)} for review comments.` : "The skill or slash command agents run for review comments, such as /fix-pr.";
+  const hint = shown === "inherit" ? `Uses the default: ${reviewFixLabel(inherited!)}.` : shown === "builtin" ? BUILTIN_HINT : value?.kind === "command" && !editing ? `Agents run ${commandName(value)} for review comments.` : tr("The skill or slash command agents run for review comments, such as /fix-pr.");
   return <View>
     <SettingsSelect<"inherit" | "builtin" | "command"> label={label} hint={hint} value={shown} disabled={busy}
-      options={[...(inherited ? [{ value: "inherit" as const, label: `Default · ${reviewFixLabel(inherited)}` }] : []), { value: "builtin" as const, label: "Built-in steps" }, { value: "command" as const, label: value?.kind === "command" ? commandName(value)! : "A skill or command…" }]}
+      options={[...(inherited ? [{ value: "inherit" as const, label: `Default · ${reviewFixLabel(inherited)}` }] : []), { value: "builtin" as const, label: tr("Built-in steps") }, { value: "command" as const, label: value?.kind === "command" ? commandName(value)! : "A skill or command…" }]}
       onValueChange={next => { if (next === "command") { setEditing(true); return; } setEditing(false); onSave(next === "inherit" ? null : { kind: "builtin" }); }} />
     {/* Phones: the field gets the full width and Save / Cancel split the row under it. */}
     {editing && <SubmitScope enabled={valid && !busy} onSubmit={() => { onSave({ kind: "command", command: draft.trim() }); setEditing(false); }} style={compact ? { gap: 8, paddingHorizontal: 16, paddingBottom: 12 } : { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingBottom: 12 }}>
@@ -166,7 +166,7 @@ function ReviewFixSelect({ label, value, inherited, theme, compact, busy, onSave
 }
 
 /**
- * Setup's "How do you ship PRs?" step: one row per repository with what Auto picked and why, and a select that writes
+ * Setup's tr("How do you ship PRs?") step: one row per repository with what Auto picked and why, and a select that writes
  * the same setting as Settings. Graphite is named only as an option, or on a repository that already ships with it.
  */
 export function ShippingStep({ theme, compact }: { theme: Theme; compact: boolean }) {

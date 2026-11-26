@@ -163,7 +163,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         {plan.where.candidates.length > CHOICES_SHOWN && <Chip c={c} compact={compact} label={tr("Other…")} open={open === "project"} accessibilityLabel={tr("Another project")} onPress={() => { loadProjects(); toggle("project"); }} />}
       </View>
     </View>
-      : <Field c={c} compact={compact} label={tr("Project")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
+      : <Field c={c} compact={compact} label={tr("Project")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? tr("Guess: last used project") : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
         <Chip c={c} compact={compact} icon="Folder" label={plan.where.projectName ?? "Pick"} dashed={plan.where.guess} open={open === "project"} accessibilityLabel={`Project: ${plan.where.projectName}. Change`} onPress={() => { loadProjects(); toggle("project"); }} />
       </Field>}
     {open === "project" && <Choices c={c} compact={compact} items={candidates} onPick={id => { set({ projectId: id }); setOpen(null); }} />}
@@ -173,9 +173,9 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
           : <Chip c={c} compact={compact} label={plan.base.name} icon="GitBranch" accessibilityLabel={`Base branch ${plan.base.name}. Change`} onPress={() => toggle("base")} />}
       </Field>}
       {!pr && <Field c={c} compact={compact} label={tr("Workspace")}>
-        <Chip c={c} compact={compact} icon={plan.workspace === "local" ? "Folder" : "GitFork"} label={plan.workspace === "local" ? "Project directory" : "New worktree"} open={open === "workspace"} accessibilityLabel={tr("Workspace. Change")} onPress={() => toggle("workspace")} />
+        <Chip c={c} compact={compact} icon={plan.workspace === "local" ? "Folder" : "GitFork"} label={plan.workspace === "local" ? tr("Project directory") : tr("New worktree")} open={open === "workspace"} accessibilityLabel={tr("Workspace. Change")} onPress={() => toggle("workspace")} />
       </Field>}
-      {open === "workspace" && <Choices c={c} compact={compact} items={[{ id: "worktree" as const, label: "New worktree", hint: "its own branch and folder", on: plan.workspace === "worktree" }, { id: "local" as const, label: "Project directory", hint: "work in the checkout itself", on: plan.workspace === "local" }]} onPick={id => { set({ workspace: id }); setOpen(null); }} />}
+      {open === "workspace" && <Choices c={c} compact={compact} items={[{ id: "worktree" as const, label: tr("New worktree"), hint: "its own branch and folder", on: plan.workspace === "worktree" }, { id: "local" as const, label: tr("Project directory"), hint: "work in the checkout itself", on: plan.workspace === "local" }]} onPick={id => { set({ workspace: id }); setOpen(null); }} />}
       {plan.branch && <Field c={c} compact={compact} label={tr("Branch")}>
         {open === "branch" ? <EditLine c={c} compact={compact} mono label={tr("Branch")} value={plan.branch} onDone={v => { setOpen(null); if (v && v !== plan.branch) set({ branch: v }); }} />
           : <Pressable accessibilityRole="button" accessibilityLabel={`Branch ${plan.branch}. Edit`} onPress={() => toggle("branch")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 30, flexShrink: 1 }}>
@@ -188,7 +188,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
             <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 14 : 13, flexShrink: 1 }}>{plan.title}</Text><Icon name="Pencil" size={13} color={c.foregroundMuted} />
           </Pressable>}
       </Field>
-      <Field c={c} compact={compact} label={tr("Agent")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.agentPick.isDefault ? "Follow-up's default" : "For this one"}</Text>}>
+      <Field c={c} compact={compact} label={tr("Agent")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.agentPick.isDefault ? tr("Follow-up's default") : tr("For this one")}</Text>}>
         <Chip c={c} compact={compact} icon="Bot" label={agentText(plan)} open={open === "agent"} accessibilityLabel={`Agent ${agentText(plan)}. Change`} onPress={() => { loadCatalog(); toggle("agent"); }} />
       </Field>
       {open === "agent" && (!catalog ? <View style={{ padding: 10 }}><Spinner color={c.foregroundMuted} size={14} label={tr("Loading agents")} /></View> : <View style={{ gap: 6 }}>
@@ -196,12 +196,12 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         {provider && provider.models.length > 0 && <Choices c={c} compact={compact} items={provider.models.map(m => ({ id: m.id, label: m.label, on: m.id === (overrides.agent?.model ?? plan.agentPick.picked?.model) }))} onPick={id => set({ agent: { ...overrides.agent, provider: provider.id, model: id } })} />}
         {provider && provider.modes.length > 0 && <Choices c={c} compact={compact} items={provider.modes.map(m => ({ id: m.id, label: m.label, on: m.id === (overrides.agent?.mode ?? plan.agentPick.picked?.mode) }))} onPick={id => { set({ agent: { ...overrides.agent, provider: provider.id, mode: id } }); setOpen(null); }} />}
       </View>)}
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: instructions }} accessibilityLabel={instructions ? "Hide instructions" : "Show instructions"} onPress={() => setInstructions(!instructions)}
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: instructions }} accessibilityLabel={instructions ? tr("Hide instructions") : tr("Show instructions")} onPress={() => setInstructions(!instructions)}
         style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}>
         <Icon name={instructions ? "ChevronDown" : "ChevronRight"} size={15} color={c.foreground} />
-        <Text style={{ color: c.foreground, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{instructions ? "Hide instructions" : "Show instructions"}</Text>
+        <Text style={{ color: c.foreground, fontSize: compact ? 14 : 13, fontWeight: "500" }}>{instructions ? "Hide instructions" : tr("Show instructions")}</Text>
         {!compact && <Text style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>what the agent gets as its first message</Text>}
-        {!compact && <Kbd c={c} label={isMac() ? "⌘I" : "Ctrl I"} />}
+        {!compact && <Kbd c={c} label={isMac() ? "⌘I" : tr("Ctrl I")} />}
       </Pressable>
       {instructions && <View style={{ borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border, padding: 12, gap: 8 }}>
         {/* Its own scroll past ~16 lines, so opening it always shows the start and the pane scrolls to it (NewDialog). */}
@@ -258,7 +258,7 @@ function RecordPane({ record, c, compact, now }: { record: DispatchRecord; c: Co
   return <View style={{ gap: 14, padding: 16, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
     <Text style={{ color: c.foreground, fontSize: 15, fontWeight: "600" }}>Starting {record.title}</Text>
     <StepList steps={steps} c={c} />
-    <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{record.state === "queued" && record.error ? "Paseo can't be reached; Follow-up retries until it can. " : ""}You can close this; Follow-up finishes it.</Text>
+    <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{record.state === "queued" && record.error ? tr("Paseo can't be reached; Follow-up retries until it can. ") : ""}You can close this; Follow-up finishes it.</Text>
   </View>;
 }
 
@@ -288,7 +288,7 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
     {chevron && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
   </Pressable>;
   // a-taken-issue-is-not-a-suggestion: the issues a live workspace already has, folded into one quiet last row.
-  if (row.kind === "fold") return <Pressable accessibilityRole="button" accessibilityState={{ expanded: row.open, selected }} accessibilityLabel={`${row.title}. ${row.open ? "Hide them" : "Show them"}`} onPress={onPress}
+  if (row.kind === "fold") return <Pressable accessibilityRole="button" accessibilityState={{ expanded: row.open, selected }} accessibilityLabel={`${row.title}. ${row.open ? tr("Hide them") : tr("Show them")}`} onPress={onPress}
     style={(s: Hover) => ({ ...base(s), alignItems: "center", marginTop: compact ? 0 : 6 })}>
     <Icon name={row.open ? "ChevronDown" : "ChevronRight"} size={15} color={c.foregroundMuted} />
     <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: compact ? 14 : 12, flex: 1 }}>{row.title}</Text>
@@ -316,7 +316,7 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
 
 /** Task field heights: a real task fits, and it grows with what's written up to `max`, then scrolls. */
 /** What the field takes, under it while empty; the phone's fits one line at 390. */
-const FIELD_HINT = { desktop: "A Linear key or link, a GitHub issue or PR, any link, or a sentence", phone: "A Linear key, an issue or PR, a link or a sentence" };
+const FIELD_HINT = { desktop: tr("A Linear key or link, a GitHub issue or PR, any link, or a sentence"), phone: tr("A Linear key, an issue or PR, a link or a sentence") };
 const FIELD_LINES = { desktop: { min: 96, max: 176 }, phone: { min: 88, max: 160 } };
 /**
  * The task field, Dispatch's main element (2026-11-25, the developer: "the main text area … should be bigger … centered
@@ -348,7 +348,7 @@ function TaskField({ query, setQuery, img, c, compact }: { query: string; setQue
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
         <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, paddingLeft: 8 }}>{query ? (compact ? "" : "⇧↵ new line") : FIELD_HINT[compact ? "phone" : "desktop"]}</Text>
         {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
-        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
+        {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : tr("Ctrl V")} />}
         <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={tr("Clear")} onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
       </View>
@@ -368,7 +368,7 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
   return <View style={{ flex: 1, minHeight: 0 }}>
     {field && <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}><TaskField query={query} setQuery={setQuery} img={img} c={c} compact={compact} /></View>}
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
-      <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? tr("Start from") : "My issues"}</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? tr("Start from") : tr("My issues")}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>{searching ? `· “${searching}”` : status === "missing" ? "· a link or your words" : compact ? "· Linear" : "· Linear · in progress and todo"}</Text>
       {status === "ok" && <Pressable accessibilityRole="button" accessibilityLabel={tr("Read Linear again")} hitSlop={8} onPress={onRefresh} style={{ width: compact ? 44 : 28, height: compact ? 44 : 28, alignItems: "center", justifyContent: "center" }}><Icon name="RefreshCw" size={14} color={c.foregroundMuted} /></Pressable>}
     </View>
@@ -595,11 +595,11 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Pick an issue or write the task above. What will start shows here first: the project, branch, agent and the agent's first message.</Text>
     </View>;
   const recordBar = phase.kind === "record" && record ? <View style={{ flexDirection: compact ? "column" : "row", gap: 8, alignItems: compact ? "stretch" : "center" }}>
-    {created && record.workspaceId && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: "Open workspace", icon: "ExternalLink", key: isMac() ? "⌘↵" : "Ctrl ↵" }} onPress={() => openWorkspace(record.workspaceId!)} />}
-    {created && recordLine(record, now).undo && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Undo"), icon: "Undo2", key: isMac() ? "⌘Z" : "Ctrl Z" }} onPress={() => void undo()} />}
+    {created && record.workspaceId && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: tr("Open workspace"), icon: "ExternalLink", key: isMac() ? "⌘↵" : "Ctrl ↵" }} onPress={() => openWorkspace(record.workspaceId!)} />}
+    {created && recordLine(record, now).undo && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Undo"), icon: "Undo2", key: isMac() ? "⌘Z" : tr("Ctrl Z") }} onPress={() => void undo()} />}
     {failed && remedy && <BarBtn c={c} compact={compact} primary disabled={false} b={{ name: remedy.label, icon: remedy.field === "agent" ? "Bot" : "GitBranch", key: null }} onPress={() => { setReopen(remedy.field); setPhase({ kind: "edit" }); setRecord(null); if (compact) setScreen("preview"); }} />}
     {failed && <BarBtn c={c} compact={compact} primary={!remedy} disabled={false} b={{ name: tr("Try again"), icon: "RotateCw", key: null }} onPress={() => { setReopen(null); setPhase({ kind: "edit" }); setRecord(null); if (compact) setScreen("preview"); }} />}
-    {(created || failed) && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: "Start another", icon: "Plus", key: null }} onPress={another} />}
+    {(created || failed) && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Start another"), icon: "Plus", key: null }} onPress={another} />}
     {!created && !failed && <BarBtn c={c} compact={compact} primary={false} disabled={false} b={{ name: tr("Close"), icon: "X", key: null }} onPress={onClose} />}
     {created && !compact && <Text style={{ color: c.foregroundMuted, fontSize: 12, flex: 1, textAlign: "right" }}>Start another keeps {record.projectName} and {record.actionName} first.</Text>}
   </View> : null;

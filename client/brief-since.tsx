@@ -135,7 +135,7 @@ export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, r
     <Text style={[t.small, { color: c.foreground, textDecorationLine: "underline" }]}>{b.link}</Text>
     <Icon name="ChevronRight" size={14} color={c.foregroundMuted} />
   </Pressable>;
-  // The section gap after the last line too, so "Waiting on others" doesn't run on from it.
+  // The section gap after the last line too, so tr("Waiting on others") doesn't run on from it.
   return <View style={{ gap: 4, marginTop: 6, marginBottom: compact ? 8 : 16 }}>
     <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "flex-start" : "center", gap: compact ? 0 : 8 }}>
       <Text accessibilityRole="header" style={[t.section, { flex: compact ? undefined : 1 }]}>{b.title}</Text>
@@ -152,7 +152,7 @@ export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, r
 
 const FILTERS: { id: Filter; label: string; count: (v: QueueViewData) => number }[] = [
   { id: "all", label: "All", count: v => v.counts.all },
-  { id: "no-workspace", label: "No workspace", count: v => v.counts.noWorkspace },
+  { id: "no-workspace", label: tr("No workspace"), count: v => v.counts.noWorkspace },
   { id: "changed", label: "Changed", count: v => v.counts.changed },
 ];
 
@@ -232,7 +232,7 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
       for (let n = 0; n < 40; n++) {
         await new Promise(r => setTimeout(r, 3000));
         const v = await reload();
-        if (!v?.status.running) { if (v?.status.last && !v.status.last.ok) toast.error(v.status.last.error ?? "The sweep failed."); break; }
+        if (!v?.status.running) { if (v?.status.last && !v.status.last.ok) toast.error(v.status.last.error ?? tr("The sweep failed.")); break; }
       }
     } catch (e) { toast.error(errorText(e)); } finally { setSweeping(false); }
   };
@@ -244,7 +244,7 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
       {!compact && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowLeft" title={tr("Brief")} onPress={onHome} />}
       <Text accessibilityRole="header" style={[t.title, { fontSize: 20, lineHeight: 26, flex: 1 }]}>{tr("Your Linear queue")}</Text>
       {!compact && <Text style={t.meta}>{swept}</Text>}
-      <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title={sweeping || view?.status.running ? "Sweeping…" : "Sweep now"} loading={sweeping} disabled={sweeping} onPress={() => void sweepNow()} />
+      <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title={sweeping || view?.status.running ? "Sweeping…" : tr("Sweep now")} loading={sweeping} disabled={sweeping} onPress={() => void sweepNow()} />
     </View>
     {compact && <Text style={[t.meta, { marginTop: -6 }]}>{swept}{view ? ` · ${view.counts.all} issue${view.counts.all === 1 ? "" : "s"}` : ""}</Text>}
     {view?.status.last && !view.status.last.ok && <Text style={[t.meta, { color: c.statusWarning }]}>The last sweep failed{view.status.last.error ? `: ${view.status.last.error}` : ""}. This is {view.status.sweptAt ? `${hhmm(view.status.sweptAt, tz)}'s` : "the last"} queue.</Text>}
@@ -259,7 +259,7 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
     </View>
     {error && <Text style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     {!view && !error && <Text style={t.meta}>{tr("Reading the queue…")}</Text>}
-    {view && !view.groups.length && <Text style={t.meta}>{filter === "all" ? "Nothing is assigned to you in the queue's states." : filter === "changed" ? "Nothing changed since you last read the brief." : "Every issue in your queue has a workspace."}</Text>}
+    {view && !view.groups.length && <Text style={t.meta}>{filter === "all" ? tr("Nothing is assigned to you in the queue's states.") : filter === "changed" ? tr("Nothing changed since you last read the brief.") : tr("Every issue in your queue has a workspace.")}</Text>}
     {view?.groups.map(g => <View key={g.priority} style={{ gap: 0 }}>
       <Text accessibilityRole="header" style={[t.section, { marginTop: 8 }]}>{g.name} · {g.count}</Text>
       {g.issues.map(i => <QueueRow key={i.key} i={i} change={changes.get(i.key)} c={c} compact={compact} timeZone={tz} navigation={navigation} />)}
@@ -270,8 +270,8 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
 // ---------- "Nobody's on it": raised issues and urgent Compass asks in Needs you ----------
 
 /**
- * "Nobody's on it" rows (nobody-s-on-it-is-needs-you), shaped like Home's: an amber ↑ for a raise or the compass glyph
- * for a Compass ask, the key, "Nobody's on it", then "title · due Thu"; under it the reason
+ * tr("Nobody's on it") rows (nobody-s-on-it-is-needs-you), shaped like Home's: an amber ↑ for a raise or the compass glyph
+ * for a Compass ask, the key, tr("Nobody's on it"), then "title · due Thu"; under it the reason
  * line with its source, as Home's rows carry AI priority's ("Dana: renewal call Thu · Compass", "Linear  Raised Low →
  * Urgent"). One Start… (New on the issue, `{why}` filled) and the two-click Remove of every Needs-you item (invariant
  * 59: follow.dismiss `issue`, which takes the raise and every Compass ask on it).

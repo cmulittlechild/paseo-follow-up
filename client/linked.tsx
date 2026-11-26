@@ -125,7 +125,7 @@ export function LinkedItemsRow({ workspace: w, theme, compact }: { workspace: Wo
   const query = useLinked(w.id);
   const sheets = useLinkedSheets(w, theme, compact);
   const model = linkedChip(query.data?.counts as LinkedView["counts"] | undefined, 6);
-  const line = query.error ? `Couldn't load: ${errorText(query.error)}` : query.isPending ? "Loading…" : model ? model.tooltip : "None yet. Agents link the issues and threads they start from.";
+  const line = query.error ? `Couldn't load: ${errorText(query.error)}` : query.isPending ? "Loading…" : model ? model.tooltip : tr("None yet. Agents link the issues and threads they start from.");
   return <CardRow theme={theme} compact={compact}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <View style={{ flex: 1, minWidth: 160, gap: 2 }}>
@@ -133,7 +133,7 @@ export function LinkedItemsRow({ workspace: w, theme, compact }: { workspace: Wo
         <Text numberOfLines={2} style={t.meta}>{line}</Text>
       </View>
       <Button theme={theme} compact={compact} icon={model ? "List" : "Plus"} title={model ? tr("Open") : tr("Add")}
-        accessibilityLabel={model ? "Open linked items" : "Add a linked item"} onPress={sheets.open} />
+        accessibilityLabel={model ? tr("Open linked items") : tr("Add a linked item")} onPress={sheets.open} />
     </View>
     {sheets.element}
   </CardRow>;
@@ -301,7 +301,7 @@ function LinkedRow({ item: i, mainAgentId, theme, compact, gutter, menuOpen, onM
       </View>
     </View>
     {menuOpen && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingLeft: gutter + 28, paddingRight: gutter, paddingBottom: 10 }}>
-      {url && <Button theme={theme} compact={compact} icon="Copy" title={tr("Copy link")} onPress={() => { void copyText(url).then(() => toast.show("Link copied"), () => toast.error("Couldn't copy the link")); onMenu(); }} />}
+      {url && <Button theme={theme} compact={compact} icon="Copy" title={tr("Copy link")} onPress={() => { void copyText(url).then(() => toast.show(tr("Link copied")), () => toast.error(tr("Couldn't copy the link"))); onMenu(); }} />}
       {r.spec ? <Button theme={theme} compact={compact} icon="Pencil" title={tr("Edit spec link…")} onPress={onEditSpec} />
         : <Button theme={theme} compact={compact} kind="danger" icon="Trash2" title={tr("Remove")} accessibilityLabel={`Remove ${r.label}`} onPress={() => onRemove(r.label)} />}
     </View>}

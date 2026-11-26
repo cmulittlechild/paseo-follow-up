@@ -19,7 +19,7 @@ import { RichText } from "./rich-text";
 // so it has its own card, shown only while a message is queued or out, or a repair waits.
 
 /** The one-line hint under a repair's Auto-send switch (the approved mock). */
-const AUTO_OFF_HINT = "Off: it stays here for you";
+const AUTO_OFF_HINT = tr("Off: it stays here for you");
 /** "14:32": a time on this device's clock. */
 const clock = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 
@@ -46,8 +46,8 @@ function StripRow({ strip, w, theme, compact, onPreview, openAgent }: { strip: M
     try {
       const result = await send({ workspaceId: w.id, batchId: strip.batchId });
       const b = result.batches.find(x => x.id === strip.batchId);
-      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${strip.to}` : b.state === "pending" ? "Queued. It goes out when the main agent is free." : b.result || "The message couldn't be sent.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
-    } catch (error) { toast.error(error instanceof Error ? error.message : "The message couldn't be sent."); }
+      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${strip.to}` : b.state === "pending" ? tr("Queued. It goes out when the main agent is free.") : b.result || tr("The message couldn't be sent."), { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
+    } catch (error) { toast.error(error instanceof Error ? error.message : tr("The message couldn't be sent.")); }
     finally { setBusy(false); void cache.invalidateQueries(); }
   };
   // The why is the point of the row (a-repair-goes-to-a-free-main-agent): it keeps a readable width, and the buttons
@@ -119,8 +119,8 @@ function RepairSheet({ row, w, strip, theme, compact, onClose }: { row: RepairRo
   const setAuto = async (auto: boolean) => {
     if (!row) return;
     setSaving(true);
-    try { await control({ workspaceId: w.id, taskAuto: { key: row.task.key, auto } }); toast.show(auto ? "Follow-up sends this repair" : "This repair stays with you"); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "Couldn't change Auto-send for this repair."); }
+    try { await control({ workspaceId: w.id, taskAuto: { key: row.task.key, auto } }); toast.show(auto ? tr("Follow-up sends this repair") : tr("This repair stays with you")); }
+    catch (error) { toast.error(error instanceof Error ? error.message : tr("Couldn't change Auto-send for this repair.")); }
     finally { setSaving(false); void cache.invalidateQueries(); }
   };
   const where = row?.state === "queued" && strip?.phase === "queued" ? ` · in the next message to ${strip.to}${strip.reason === SETTLE_REASON && strip.at ? `, at ${clock(strip.at)}` : ""}` : row?.state === "sent" && strip?.phase === "sent" ? ` · ${stripLine(strip).lead.toLowerCase()}${strip.at ? ` at ${clock(strip.at)}` : ""}` : "";

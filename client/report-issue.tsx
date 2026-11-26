@@ -35,8 +35,8 @@ const close = () => slot.close();
 
 const KINDS: { id: ReportKind; label: string; icon: string; placeholder: string }[] = [
   { id: "bug", label: "Bug", icon: "Bug", placeholder: "What went wrong, and what did you expect?" },
-  { id: "feature", label: "Idea", icon: "Lightbulb", placeholder: "What would you like Follow-up to do?" },
-  { id: "feedback", label: "Feedback", icon: "MessageCircle", placeholder: "What's working, what isn't?" },
+  { id: "feature", label: "Idea", icon: "Lightbulb", placeholder: tr("What would you like Follow-up to do?") },
+  { id: "feedback", label: "Feedback", icon: "MessageCircle", placeholder: tr("What's working, what isn't?") },
 ];
 export const TRUST_LINE = "The agent gathers versions and recent errors, removes private names, and shows you the issue before filing it. Nothing is posted without your yes.";
 
@@ -89,7 +89,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
   const chosenRow = [...rows.pinned, ...rows.agents].find(r => r.id === chosen) ?? null;
   const nowhere = !!targets && !targets.agents.length && !targets.newAgentWorkspace && !targets.newWorkspace;
   const empty = !words.trim() && !error;
-  const placeholder = error ? "Anything else? What were you doing when it happened?" : KINDS.find(k => k.id === kind)!.placeholder;
+  const placeholder = error ? tr("Anything else? What were you doing when it happened?") : KINDS.find(k => k.id === kind)!.placeholder;
   const submit = async () => {
     if (empty || phase.kind === "sending" || !chosen) return;
     setPhase({ kind: "sending" });
@@ -173,7 +173,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
     <Footer compact={compact} theme={theme}>
       <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
       {nowhere ? <Button title={tr("Open on GitHub")} icon="ExternalLink" kind="primary" theme={theme} compact={compact} grow={compact} disabled={empty} onPress={() => void openGithub()} />
-        : <Button title={chosen === NEW_WORKSPACE ? "Start workspace and send" : chosen === NEW_AGENT ? "Start agent and send" : tr("Send to agent")} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
+        : <Button title={chosen === NEW_WORKSPACE ? tr("Start workspace and send") : chosen === NEW_AGENT ? tr("Start agent and send") : tr("Send to agent")} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
     </Footer>
   </SubmitScope></Modal.Content>;
 }

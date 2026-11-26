@@ -48,14 +48,14 @@ export function FollowLarge(props: PluginScreenProps & PanelLinks & { live?: Liv
   if (!w) return <View style={{ flex: 1, backgroundColor: c.surface0, padding: layout.compact ? 16 : 24 }}>
     <Card theme={theme} compact={layout.compact} icon={FOLLOW_UP_ICON} title={tr("Nothing to show here")} style={{ marginHorizontal: 0, marginTop: 0, maxWidth: 520 }}>
       <CardRow theme={theme}>
-        <Text style={[text(c).meta, { marginBottom: 10 }]}>{query.error ? `Couldn't read Follow-up: ${errorText(query.error)}` : "Follow-up has nothing on this workspace yet, or it no longer exists."}</Text>
+        <Text style={[text(c).meta, { marginBottom: 10 }]}>{query.error ? `Couldn't read Follow-up: ${errorText(query.error)}` : tr("Follow-up has nothing on this workspace yet, or it no longer exists.")}</Text>
         {navigation && workspaceId ? <Button theme={theme} icon="ArrowLeft" title={tr("Back to the workspace")} onPress={back} /> : null}
       </CardRow>
     </Card>
   </View>;
   return <WorkspaceView theme={theme} layout={layout} host={props.host} navigation={navigation} workspace={w} large
-    loadError={query.error ? "Refresh failed. Showing the last saved state." : query.loadError}
+    loadError={query.error ? tr("Refresh failed. Showing the last saved state.") : query.loadError}
     openSettings={props.openSettings} openOverview={props.openOverview} folds={folds}
     top={<PanelTop theme={theme} compact={layout.compact} openOverview={props.openOverview} openSettings={props.openSettings} />}
-    resize={navigation ? { icon: "Minimize2", label: "Back to the workspace (Esc)", onPress: back } : null} />;
+    resize={navigation ? { icon: "Minimize2", label: tr("Back to the workspace (Esc)"), onPress: back } : null} />;
 }

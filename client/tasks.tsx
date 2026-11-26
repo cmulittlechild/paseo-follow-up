@@ -31,11 +31,11 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
   // Quick action: Save doesn't wait on the server; a toast confirms it, or says what failed with Retry.
   const save = { isPending: false, mutate: () => void runAction({
     label: "Schedule", toast, run: () => rpc({ workspaceId: workspace.id, obligationId: o.id, expectedRevision: o.revision, afterPrs: event === "now" ? [] : prs, trigger: event === "manual" ? null : { event, delayDays: gated ? Number(days) : 0 } }),
-    success: () => ({ message: "Schedule saved" }), onSuccess: () => { void cache.invalidateQueries(); }, onError: () => { void cache.invalidateQueries(); },
+    success: () => ({ message: tr("Schedule saved") }), onSuccess: () => { void cache.invalidateQueries(); }, onError: () => { void cache.invalidateQueries(); },
     failure: `Schedule for ${o.title} not saved`,
   }) };
   const busy = save.isPending;
-  const options = [["manual", "Not sent"], ["now", tr("Now")], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
+  const options = [["manual", tr("Not sent")], ["now", tr("Now")], ["merge", tr("After merge")], ["deploy", tr("After deploy")]] as const;
   return <SubmitScope enabled={!busy && valid} onSubmit={() => save.mutate()} style={{ gap: 10 }}>
     <View style={{ gap: 4 }}>
       <Text style={t.label}>{tr("Send to the agent")}</Text>
@@ -124,7 +124,7 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
   const prs = o.afterPrs.map(p => `#${p.split("#")[1]}`).join(", ");
   return <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: detail ? c.surface1 : "transparent" }}>
     <Pressable accessibilityRole="button" aria-expanded={inNeeds ? undefined : open} accessibilityState={inNeeds ? undefined : { expanded: open }}
-      accessibilityLabel={`Task: ${o.title}. ${row.meta}. ${inNeeds ? "Open it in Needs you" : open ? "Hide details" : "Show details"}`} onPress={onPress}
+      accessibilityLabel={`Task: ${o.title}. ${row.meta}. ${inNeeds ? tr("Open it in Needs you") : open ? tr("Hide details") : tr("Show details")}`} onPress={onPress}
       style={state => ({ flexDirection: "row", gap: 10, paddingHorizontal: compact ? 14 : 12, paddingVertical: 9, minHeight: compact ? 52 : 44, backgroundColor: state.pressed ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
       <View style={{ width: 16, paddingTop: 2, alignItems: "center" }}><TaskGlyph row={row} w={w} colors={c} /></View>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>

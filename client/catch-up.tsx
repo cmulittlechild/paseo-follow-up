@@ -64,13 +64,13 @@ export function cardLabel(card: DeckCard, w: ListWorkspace | undefined): string 
 /** The card's own word: a workspace row's word names its first item, the card names its own. */
 function cardWord(card: DeckCard): string {
   if (card.kind === "permission") return "Permission";
-  if (card.kind === "question") return card.item?.kind === "question" && card.item.state === "stopped" ? "Agent stopped" : "Question";
+  if (card.kind === "question") return card.item?.kind === "question" && card.item.state === "stopped" ? tr("Agent stopped") : "Question";
   if (card.kind === "finished") return "Finished";
   if (card.kind === "brief") return card.s.word ?? "Ask";
   switch (card.item?.kind) {
-    case "merge": return "Merge"; case "reviewers": return "Add reviewers"; case "send": return tr("Send"); case "answer": return "Your answer";
+    case "merge": return "Merge"; case "reviewers": return tr("Add reviewers"); case "send": return tr("Send"); case "answer": return tr("Your answer");
     case "hold": return "Paused"; case "retry": case "capped": case "message": return tr("Retry"); case "check": return tr("Check"); case "decision": return "Blocked";
-    case "person": return card.item.review ? "Re-review" : "Someone else";
+    case "person": return card.item.review ? "Re-review" : tr("Someone else");
     default: return card.s.word ?? tr("Needs you");
   }
 }
@@ -100,7 +100,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   const liveCards = useMemo(() => deckCards({ model, rows, items: id => { const w = live.get(id); return w ? needsYou(w as unknown as Workspace) : []; } }),
     [model, rows, version, live]); // eslint-disable-line react-hooks/exhaustive-deps
   const byKey = useMemo(() => new Map(liveCards.map(x => [x.key, x])), [liveCards]);
-  // A card that left Needs you keeps its last copy, so it can say "Handled elsewhere" in place.
+  // A card that left Needs you keeps its last copy, so it can say tr("Handled elsewhere") in place.
   const seen = useRef(new Map<string, DeckCard>());
   for (const card of liveCards) seen.current.set(card.key, card);
   const cardOf = (k: string | undefined) => k ? byKey.get(k) ?? seen.current.get(k) ?? null : null;
@@ -272,7 +272,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
   </View>;
   const progress = <View style={{ gap: 6, paddingHorizontal: compact ? 16 : 20, paddingTop: compact ? 8 : 14, paddingBottom: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, minHeight: compact ? 44 : 32 }}>
-      {/* Phones: the host header's ← is the only back control (DESIGN.md "One header"). */}
+      {/* Phones: the host header's ← is the only back control (DESIGN.md tr("One header")). */}
       {!compact && <IconButton theme={theme} compact={compact} icon="X" label={`Leave ${MODE.name} (X)`} tooltip onPress={onExit} />}
       <Text accessibilityRole="header" style={[t.title, { flex: 1 }]}>{finished || !total ? MODE.name : <>{MODE.name} <Text style={{ color: c.foregroundMuted, fontWeight: "400", fontVariant: ["tabular-nums"] }}>{MODE.progress(session.pos + 1, total).slice(MODE.name.length + 1)}</Text></>}</Text>
       {waitingChip}
@@ -506,7 +506,7 @@ function BriefAsk({ s, theme, compact, deps, onDismissed }: { s: DeckCard["s"]; 
 
 export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { theme: Theme; compact: boolean; stats: ReturnType<typeof statsOf>; empty: boolean; onHome: () => void; onSkipped: () => void }) {
   const c = theme.colors; const t = text(c, compact);
-  // "All caught up" only when it is true: a skipped or waiting card means the developer is not, so the end says so.
+  // tr("All caught up") only when it is true: a skipped or waiting card means the developer is not, so the end says so.
   const caughtUp = !stats.skipped && !stats.waiting;
   const icon = caughtUp ? tr("Check") : stats.waiting ? "Hourglass" : "CornerUpRight";
   const tone = caughtUp ? c.statusSuccess : stats.waiting ? c.statusWarning : c.foregroundMuted;
@@ -517,7 +517,7 @@ export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { 
     </View>
     <Text accessibilityRole="header" style={t.headline}>{empty ? MODE.empty : caughtUp ? MODE.finished : MODE.endOfDeck}</Text>
     {!!line && <Text style={[t.body, { color: c.foregroundMuted, textAlign: "center" }]}>{line}</Text>}
-    {stats.waiting > 0 && <Text style={[t.body, { textAlign: "center" }]}>{`${MODE.waiting(stats.waiting)}. ${stats.waiting === 1 ? "It comes" : "They come"} back here when the answer is ready; Back reaches ${stats.waiting === 1 ? "it" : "them"} now.`}</Text>}
+    {stats.waiting > 0 && <Text style={[t.body, { textAlign: "center" }]}>{`${MODE.waiting(stats.waiting)}. ${stats.waiting === 1 ? tr("It comes") : tr("They come")} back here when the answer is ready; Back reaches ${stats.waiting === 1 ? "it" : "them"} now.`}</Text>}
     {stats.done > 0 && <Text style={[t.meta, { textAlign: "center", maxWidth: 420 }]}>{tr("Your answers are on their way; agents pick them up as soon as they're free. Anything new shows in Needs you and the pill.")}</Text>}
     <View style={{ flexDirection: compact ? "column" : "row", alignSelf: compact ? "stretch" : "center", gap: 8, marginTop: 6 }}>
       {stats.skipped > 0 && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="CornerUpRight" title={`Catch up on ${stats.skipped} skipped`} onPress={onSkipped} />}
@@ -553,9 +553,9 @@ export function KeysSheet({ theme, onClose, label = tr("Catch up keys"), section
 }
 /** Catch up's sheet: the dictation key only where the host has a mic. */
 const catchUpSections = (dictation: boolean): readonly KeySection[] => [
-  { title: "On a card", keys: CATCH_UP_KEYS.filter(k => !k.when && (!k.needs || dictation)) },
-  { title: "In More context", keys: CATCH_UP_KEYS.filter(k => k.when === "more") },
-  { title: "In the queue", keys: CATCH_UP_KEYS.filter(k => k.when === "rail") },
+  { title: tr("On a card"), keys: CATCH_UP_KEYS.filter(k => !k.when && (!k.needs || dictation)) },
+  { title: tr("In More context"), keys: CATCH_UP_KEYS.filter(k => k.when === "more") },
+  { title: tr("In the queue"), keys: CATCH_UP_KEYS.filter(k => k.when === "rail") },
 ];
 
 /** A desktop hover title on any control (react-native-web drops `title` on a Pressable; IconButton does the same). */

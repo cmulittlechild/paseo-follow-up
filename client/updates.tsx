@@ -39,16 +39,16 @@ export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; c
   if (!n) return null;
   const rolled = n.kind === "rolled-back";
   const title = rolled ? `Update to ${n.version} failed, rolled back` : `Follow-up ${n.version} is available`;
-  const detail = rolled ? `You're on ${n.from} again. Nothing to do.` : "Installing reloads Follow-up for a few seconds.";
+  const detail = rolled ? `You're on ${n.from} again. Nothing to do.` : tr("Installing reloads Follow-up for a few seconds.");
   return <View accessibilityRole="summary" style={{ marginHorizontal: compact ? space(true).gutter : 24, marginTop: 8, marginBottom: 4, borderRadius: 8, borderWidth: 1,
     borderColor: rolled ? withAlpha(c.statusWarning, 0.6) : c.border, backgroundColor: c.surface1, paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
       <View style={{ paddingTop: 2 }}><Icon name={rolled ? "Undo2" : "CircleArrowUp"} size={15} color={rolled ? c.statusWarning : c.foregroundMuted} /></View>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={t.label}>{title}</Text>
-        <Text style={t.meta}>{confirm ? "Some agents are mid-turn. Open agent chats lose Follow-up's tools until you reopen them; their work and history are kept." : detail}</Text>
+        <Text style={t.meta}>{confirm ? tr("Some agents are mid-turn. Open agent chats lose Follow-up's tools until you reopen them; their work and history are kept.") : detail}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={rolled ? tr("Dismiss") : "Not now"} hitSlop={8} onPress={() => run.mutate(() => dismiss({ id: n.id }))}
+      <Pressable accessibilityRole="button" accessibilityLabel={rolled ? tr("Dismiss") : tr("Not now")} hitSlop={8} onPress={() => run.mutate(() => dismiss({ id: n.id }))}
         style={state => ({ width: compact ? 44 : 32, height: compact ? 44 : 32, marginTop: compact ? -12 : -6, marginRight: compact ? -12 : -8, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
         <Icon name="X" size={14} color={c.foregroundMuted} />
       </Pressable>
@@ -76,14 +76,14 @@ function StatusCard({ view, theme, compact, onWhatsNew }: { view: UpdatesView; t
   const p = view.phase;
   const version = "version" in p ? p.version : view.version;
   const act: Record<StatusAction, { title: string; onPress: () => void; icon?: string }> = {
-    check: { title: "Check now", onPress: () => run.mutate(() => read({ check: "manual" })) },
+    check: { title: tr("Check now"), onPress: () => run.mutate(() => read({ check: "manual" })) },
     install: { title: tr("Install now"), onPress: () => run.mutate(async () => { const v = await install({ version }); if (v.phase.kind === "waiting" && v.phase.busy) setConfirm(true); return v; }) },
-    "install-anyway": { title: "Install now anyway", onPress: () => setConfirm(true) },
+    "install-anyway": { title: tr("Install now anyway"), onPress: () => setConfirm(true) },
     retry: { title: tr("Try again"), onPress: () => run.mutate(() => install({ version })) },
-    "copy-details": { title: "Copy details", onPress: () => void copyText(`${s.title}\n${s.detail}`).then(() => toast.show("Copied"), () => toast.error("Couldn't copy")) },
-    "copy-command": { title: "Copy install command", onPress: () => void copyText(copyCommand(version)).then(() => toast.show("Copied. Run it on the computer running Paseo."), () => toast.error("Couldn't copy")) },
-    "view-npm": { title: "View on npm", onPress: () => void openExternalUrl(`https://www.npmjs.com/package/paseo-follow-up/v/${encodeURIComponent(version)}`).catch(() => undefined) },
-    "whats-new": { title: "What's new", onPress: onWhatsNew },
+    "copy-details": { title: tr("Copy details"), onPress: () => void copyText(`${s.title}\n${s.detail}`).then(() => toast.show("Copied"), () => toast.error(tr("Couldn't copy"))) },
+    "copy-command": { title: tr("Copy install command"), onPress: () => void copyText(copyCommand(version)).then(() => toast.show(tr("Copied. Run it on the computer running Paseo.")), () => toast.error(tr("Couldn't copy"))) },
+    "view-npm": { title: tr("View on npm"), onPress: () => void openExternalUrl(`https://www.npmjs.com/package/paseo-follow-up/v/${encodeURIComponent(version)}`).catch(() => undefined) },
+    "whats-new": { title: tr("What's new"), onPress: onWhatsNew },
   };
   const checking = run.isPending && run.variables != null;
   const pending = view.pendingNotes;
@@ -92,7 +92,7 @@ function StatusCard({ view, theme, compact, onWhatsNew }: { view: UpdatesView; t
       <View style={{ width: 16, paddingTop: 1, alignItems: "center" }}>{s.spinning ? <Spinner color={color} size={14} /> : <Icon name={s.icon} size={16} color={color} />}</View>
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <Text style={t.label}>{s.title}</Text>
-        <Text style={t.meta}>{confirm ? "Open agent chats lose Follow-up's tools until you reopen them. Their work and history are kept." : s.detail}</Text>
+        <Text style={t.meta}>{confirm ? tr("Open agent chats lose Follow-up's tools until you reopen them. Their work and history are kept.") : s.detail}</Text>
       </View>
     </View>
     {(confirm || s.primary || s.secondary.length > 0 || view.installKind === "npm") && <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8, marginTop: 10, paddingLeft: 26 }}>
@@ -130,7 +130,7 @@ function MoveLine({ view, theme, compact }: { view: UpdatesView; theme: Theme; c
   </View>;
 }
 
-const HISTORY_RESULT: Record<string, string> = { updated: "Updated", "rolled-back": "Rolled back", failed: "Failed", skipped: tr("Skipped") };
+const HISTORY_RESULT: Record<string, string> = { updated: "Updated", "rolled-back": tr("Rolled back"), failed: "Failed", skipped: tr("Skipped") };
 const stamp = (at: number) => { const d = new Date(at); return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 /**
@@ -147,20 +147,20 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
   const save = useMutation({ mutationFn: (input: UpdatesChange) => write(input), onSuccess: (v, input) => { cache.setQueryData(updatesKey, v); if (input.enable_whats_new != null) void cache.invalidateQueries({ queryKey: releaseNotesKey }); }, onError: e => toast.error(errorText(e)) });
   const view = query.data;
   if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label={tr("Loading updates")} />;
-  if (!view) return <SettingsSection title={tr("Updates")}><Text accessibilityRole="alert" style={{ color: c.statusDanger }}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text></SettingsSection>;
+  if (!view) return <SettingsSection title={tr("Updates")}><Text accessibilityRole="alert" style={{ color: c.statusDanger }}>{query.error ? errorText(query.error) : tr("Couldn't load updates.")}</Text></SettingsSection>;
   return <View style={{ gap: 18 }}>
     <SettingsSection title={tr("Updates")}>
       <StatusCard view={view} theme={theme} compact={compact} onWhatsNew={() => setSheet(false)} />
       <MoveLine view={view} theme={theme} compact={compact} />
     </SettingsSection>
-    <SettingsSection title={view.installKind === "npm" ? "How Follow-up updates" : tr("Release notes")}>
+    <SettingsSection title={view.installKind === "npm" ? tr("How Follow-up updates") : tr("Release notes")}>
       <SettingsCard>
         {view.installKind === "npm" && <>
         <SettingsSelect<UpdateMode> label={tr("When a new version is out")} hint={MODE_HINT[view.mode]} value={view.mode} disabled={save.isPending}
           options={UPDATE_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onValueChange={mode => save.mutate({ mode })} />
         <SettingsSelect<Channel> label={tr("Channel")} hint={channelHint(view)} value={view.channel} disabled={save.isPending}
           options={[{ value: "stable", label: "Stable" }, { value: "beta", label: tr("Beta") }]}
-          onValueChange={channel => save.mutate({ channel }, { onSuccess: () => toast.show(channel === "stable" ? "Switched to Stable. Nothing changes until a newer stable is out." : "Switched to Beta. The next check looks for betas.") })} />
+          onValueChange={channel => save.mutate({ channel }, { onSuccess: () => toast.show(channel === "stable" ? tr("Switched to Stable. Nothing changes until a newer stable is out.") : tr("Switched to Beta. The next check looks for betas.")) })} />
         </>}
         <SettingsSwitch label={WHATS_NEW_LABEL} hint={whatsNewHint(view.enable_whats_new)} value={view.enable_whats_new} disabled={save.isPending} onValueChange={enable_whats_new => save.mutate({ enable_whats_new })} />
         <SettingsAction label={tr("Release notes")} hint={`Every version up to ${view.version}, newest first.`} actionLabel="See all" onPress={() => setSheet(true)} />
@@ -177,8 +177,8 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
 }
 
 const SETUP_CARDS: { mode: UpdateMode; hint: string }[] = [
-  { mode: "auto", hint: "Waits until your agents are idle. Rolls back if the new version fails." },
-  { mode: "notify", hint: "Shows new stable versions on Home. You choose when to install." },
+  { mode: "auto", hint: tr("Waits until your agents are idle. Rolls back if the new version fails.") },
+  { mode: "notify", hint: tr("Shows new stable versions on Home. You choose when to install.") },
   { mode: "off", hint: "No checks. You can check from Settings → General." },
 ];
 /**
@@ -192,7 +192,7 @@ export function UpdatesStep({ theme, compact }: { theme: Theme; compact: boolean
   const save = useMutation({ mutationFn: (input: { mode?: UpdateMode; channel?: Channel }) => write(input), onSuccess: v => cache.setQueryData(updatesKey, v), onError: e => toast.error(errorText(e)) });
   const view = query.data;
   if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label={tr("Loading updates")} />;
-  if (!view) return <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text>;
+  if (!view) return <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{query.error ? errorText(query.error) : tr("Couldn't load updates.")}</Text>;
   if (view.installKind !== "npm") return <Text style={t.body}>{tr("Updates are managed by your checkout. Pull and rebuild to update.")}</Text>;
   return <View style={{ gap: 12 }}>
     <View accessibilityRole="radiogroup" accessibilityLabel={tr("Updates")} style={{ gap: 6 }}>

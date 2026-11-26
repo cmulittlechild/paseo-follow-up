@@ -225,7 +225,7 @@ function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect, sel
   const icon = o.state === "running" ? <Spinner color={tone} size={13} label={tr("Overseer working")} /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />;
   const lineColor = o.state === "asks" || o.state === "error" ? tone : c.foregroundMuted;
   // Wide Home: one line, the phone's shorter start line. Stacked (the sidebar view): the whole line, wrapping to two.
-  const line = marks(!stacked && touch && o.state === "start" ? "Ask about any workspace" : o.line, stacked || !(touch && o.state === "start") ? o.ranges : null, c);
+  const line = marks(!stacked && touch && o.state === "start" ? tr("Ask about any workspace") : o.line, stacked || !(touch && o.state === "start") ? o.ranges : null, c);
   return <Pressable nativeID={rowDomId(OVERSEER_KEY)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Overseer. ${o.line}`} onPress={() => onSelect(OVERSEER_KEY)}
     style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: stacked ? "flex-start" : "center", gap: 10, minHeight: touch ? 52 : 40, paddingLeft: 14, paddingRight: 16, paddingVertical: stacked ? (touch ? 12 : 8) : 0, borderBottomWidth: 1, borderBottomColor: c.border,
       // Its ask isn't a Needs-you row (it's yours to route), so the edge marks it the way blocking rows are marked.
@@ -250,7 +250,7 @@ function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect, sel
  * uses the host accent and success green, both fill colours at about 3:1 as 12px text.
  */
 /** The row's hint, the same on Home rows and search results. */
-export const quickActionsHint = (touch: boolean) => touch ? "Long-press for quick actions" : "Quick actions: Shift+F10";
+export const quickActionsHint = (touch: boolean) => touch ? tr("Long-press for quick actions") : "Quick actions: Shift+F10";
 
 export function glyphColor(s: Pick<Workstream, "tone">, c: Colors, text = false): string {
   const base = s.tone === "running" ? runningColor(c) : s.tone === "success" ? c.statusSuccess : headlineColor(s.tone, c);
@@ -345,7 +345,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
   const line: ReactNode = s.word && s.group !== "needs" ? (s.line ? <>{s.word} · {shownLine}</> : s.word) : shownLine;
   const via = hit?.via ? (() => { const e = excerpt(hit.via.text, hit.via.ranges, touch ? 90 : dense ? 90 : 44); return <>{FIELD_LABEL[hit.via.field]} · {marks(e.text, e.ranges, c)}</>; })() : null;
   const title = <>{marks(s.title, hit?.titleRanges, c)}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{" › "}{marks(s.agent, hit?.agentRanges, c)}</Text> : null}</>;
-  // Phones: tr("Working") under every row of a "Running 9" group says nothing the header didn't; one line per row instead.
+  // Phones: tr("Working") under every row of a tr("Running 9") group says nothing the header didn't; one line per row instead.
   const generic = touch && !s.word && s.line === "Working";
   // The reason line: AI priority's, else the workspace's first live Compass note (a live note is a reason).
   const why = s.priority?.reason ? { reason: s.priority.reason, source: s.priority.source } : s.compass ? { reason: s.compass, source: { kind: "compass" as const, label: "Compass" } } : null;

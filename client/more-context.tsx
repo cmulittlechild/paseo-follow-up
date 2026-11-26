@@ -2,7 +2,7 @@ import { tr } from "./i18n-text";
 // More context, the one component and the one request path for every surface that answers a question
 // (more-context-is-the-same-on-every-surface, docs/needs-you.md#more-context): Catch up's card (its move bar opens
 // MorePanel), and QuestionBody everywhere else: the panel's Needs you card, Home's detail pane, the question dialog, the
-// pill, phones. "I don't get it" first, then your own words; the ask goes to the card's workspace's main agent
+// pill, phones. tr("I don't get it") first, then your own words; the ask goes to the card's workspace's main agent
 // (follow.context-ask, the same request ask_context makes), and the answer shows on the question wherever you look at it,
 // because every reader matches it with `contextFor` (shared/catch-up.ts).
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -21,7 +21,7 @@ import { PRIMARY_FORM } from "./dock";
 import { ImageField, useImageAttachments } from "./image-attach";
 import type { ImageTarget, ImageUpload } from "../shared/images";
 
-const CATCH_UP_FOOTNOTE = "This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.";
+const CATCH_UP_FOOTNOTE = tr("This workspace steps aside while you keep going, and comes back as your next card with the answer. Back reaches it any time.");
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test((navigator as { platform?: string }).platform ?? "");
 
 /**
@@ -98,7 +98,7 @@ export function MoveResult({ place, theme, label, width, inset = false, children
     const t = setTimeout(() => {
       const node = ref.current as unknown as { querySelector?(q: string): { focus?(o?: object): void } | null; scrollIntoView?(o: object): void } | null;
       node?.scrollIntoView?.({ block: "nearest" });
-      // The first choice: More context's suggestions ("I don't get it" leads), else Later's first time.
+      // The first choice: More context's suggestions (tr("I don't get it") leads), else Later's first time.
       (node?.querySelector?.('[role="radio"]') ?? node?.querySelector?.('[role="menu"] [role="button"]'))?.focus?.({ preventScroll: true });
     }, 0);
     return () => clearTimeout(t);
@@ -116,7 +116,7 @@ export function MoveResult({ place, theme, label, width, inset = false, children
 export function ContextAnswer({ theme, compact, request, waiting, agent, openChat, openAgent, onQuestion = false, chatDisabled = false }: { theme: Theme; compact: boolean; request: ContextRequest; waiting: boolean; agent: string; openChat: () => void; openAgent?: (agentId: string) => void;
   /** On a question card outside Catch up: a pending ask says where its answer will show. */ onQuestion?: boolean; chatDisabled?: boolean }) {
   const c = theme.colors; const t = text(c, compact);
-  const who = request.target === "overseer" ? tr("Overseer") : agent === "the agent" ? "The agent" : agent;
+  const who = request.target === "overseer" ? tr("Overseer") : agent === "the agent" ? tr("The agent") : agent;
   const asking = request.state === "asking";
   return <View accessibilityLiveRegion="polite" style={{ gap: 8, padding: compact ? 14 : 16, borderRadius: 12, borderWidth: 1, borderColor: asking ? c.border : withAlpha(c.statusSuccess, 0.4), backgroundColor: c.surface1 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -125,18 +125,18 @@ export function ContextAnswer({ theme, compact, request, waiting, agent, openCha
     </View>
     {request.state === "answered" && request.answer && <RichText selectable style={t.body}>{request.answer}</RichText>}
     {request.state === "chat" && <View style={{ gap: 8 }}>
-      <Text style={t.body}>{who === "Overseer" ? "The Overseer answered in its own chat, not here: it can't reply on a card." : `${who} answered in its chat.`}</Text>
+      <Text style={t.body}>{who === "Overseer" ? tr("The Overseer answered in its own chat, not here: it can't reply on a card.") : `${who} answered in its chat.`}</Text>
       {/* A 2.2.0-beta.3 ask of the Overseer: its answer is in the Overseer's chat (an-ask-goes-only-to-an-agent-that-can-answer-it). */}
       <View style={{ flexDirection: "row" }}>{who === "Overseer"
         ? <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open Overseer")} disabled={!request.askedOf || !openAgent} onPress={() => request.askedOf && openAgent?.(request.askedOf)} />
         : <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open chat")} disabled={chatDisabled} onPress={openChat} />}</View>
     </View>}
-    {request.state === "failed" && <Text style={t.body}>{request.error ?? "The ask didn't go through. Try again, or open the chat."}</Text>}
+    {request.state === "failed" && <Text style={t.body}>{request.error ?? tr("The ask didn't go through. Try again, or open the chat.")}</Text>}
   </View>;
 }
 
 /**
- * More context: "I don't get it" first (most asks just need explaining), then the developer's own words, to one place:
+ * More context: tr("I don't get it") first (most asks just need explaining), then the developer's own words, to one place:
  * the card's workspace's main agent, the one that can answer on the card (an-ask-goes-only-to-an-agent-that-can-answer-
  * it). It may wake, because the developer asked. The deck moves on and this workspace comes back when the answer is ready.
  */
@@ -176,7 +176,7 @@ export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_
     {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     <View {...({ dataSet: { askAgent: "1" } } as object)} style={{ flexDirection: "row" }}>
       <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title={tr("Ask the agent")} loading={busy} disabled={!words.trim() || busy || !!img.blocked}
-        accessibilityHint={compact ? "Asks this workspace's main agent, which may wake it" : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
+        accessibilityHint={compact ? tr("Asks this workspace's main agent, which may wake it") : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
     </View>
     </View>
     <Text style={t.small}>{footnote}</Text>

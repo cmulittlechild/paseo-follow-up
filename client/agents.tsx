@@ -33,7 +33,7 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
   const notes = data?.catalog ? providerNotes(data.catalog.providers, data.roles.find(r => r.role === "about")?.provider ?? null) : null;
   const more: JobExtra = {
     // The toggle names what's inside, so nobody opens it to find out.
-    label: r => r.role === "ranker" ? "Schedule, limits and reset" : isJobRole(r.role) ? "Limits and reset" : r.same ? null : "Permissions and reset",
+    label: r => r.role === "ranker" ? tr("Schedule, limits and reset") : isJobRole(r.role) ? tr("Limits and reset") : r.same ? null : tr("Permissions and reset"),
     render: (r, save, busy) => <RoleMore r={r} save={save} busy={busy} theme={theme} compact={compact} invalid={!!data?.invalid.includes(r.role)} />,
   };
   const info = "Which agent Follow-up uses for each of its own jobs. Recommended picks come from what Paseo has: with Claude, Haiku for summaries, Sonnet for AI priority, the newest Opus for the Overseer and the main agent's setup for recovery; otherwise a model of the size each job needs. Summaries and AI priority are one-shot jobs: on a provider other than Claude or Codex, each runs as a short hidden agent that's archived when it answers. Changes apply from the next call; the Overseer switches when you restart it.";
@@ -51,7 +51,7 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
  * Settings → Agents → Wait for background jobs: one switch, on by default. Shares the Agents screen's query, so it
  * costs no extra read. When the switch is on but Wait isn't attached (the standalone plugin is installed, or the host
  * doesn't serve plugin tools), an amber alert under it says so and what to do; the hint stays. On Paseo 0.16 (reason
- * `host`) the card leads with "Paseo runs background jobs itself" and the switch only adds that guidance to sessions.
+ * `host`) the card leads with tr("Paseo runs background jobs itself") and the switch only adds that guidance to sessions.
  */
 export function WaitSettings({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const c = theme.colors; const t = text(c);
@@ -119,5 +119,5 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
   </>;
 }
 
-const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "dispatch" ? "the Overseer's agent" : role === "overseer" ? "Claude, newest Opus" : role === "about" ? "Claude Haiku" : "Claude Sonnet, hourly";
+const roleDefaultText = (role: AgentRole) => role === "recovery" ? "the main agent's setup" : role === "dispatch" ? "the Overseer's agent" : role === "overseer" ? tr("Claude, newest Opus") : role === "about" ? tr("Claude Haiku") : tr("Claude Sonnet, hourly");
 const withCurrent = (list: number[], value: number) => [...new Set([...list, value])].sort((a, b) => a - b);

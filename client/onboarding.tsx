@@ -20,7 +20,7 @@ import { raised, runningColor, tint, withAlpha, type Colors } from "./theme";
 
 /**
  * Getting started: the steps that take a fresh install to a configured Follow-up. Shown in Home's place while the
- * server says so (fresh install, or "Set up Follow-up again"), never forced on an existing install.
+ * server says so (fresh install, or tr("Set up Follow-up again")), never forced on an existing install.
  * Every switch writes through the Settings screen's own RPC or settings document as it changes; the flow itself only
  * saves which step it's on, so a reload resumes there.
  */
@@ -41,14 +41,14 @@ export type SetupDeps = {
 };
 
 const TITLES: Record<OnboardingStep, string> = {
-  intro: "Follow-up keeps your agents' PRs moving",
-  checks: "Check your setup",
-  defaults: "What Follow-up does without asking",
-  shipping: "How do you ship PRs?",
-  reviewers: "Who should review your PRs?",
-  updates: "Keep Follow-up up to date",
+  intro: tr("Follow-up keeps your agents' PRs moving"),
+  checks: tr("Check your setup"),
+  defaults: tr("What Follow-up does without asking"),
+  shipping: tr("How do you ship PRs?"),
+  reviewers: tr("Who should review your PRs?"),
+  updates: tr("Keep Follow-up up to date"),
   helpers: tr("Helper agents"),
-  tour: "Where to find things",
+  tour: tr("Where to find things"),
 };
 
 /** Bottom clearance on phones. TODO(rebase): kit.tsx's bottomInset from the mobile rework replaces this. */
@@ -77,7 +77,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
     const n = follow.data?.workspaces.filter(w => w.enable_tracking && !w.optedOut).length ?? 0;
     toast.show(n ? `Set up. Following ${n} workspace${n === 1 ? "" : "s"}.` : "Set up. Follow-up starts with your next workspace.", { variant: "success" });
   } });
-  const skip = () => move.mutate({ action: "skip" }, { onSuccess: () => toast.show("Setup skipped. Set it up any time from Follow-up settings, General.") });
+  const skip = () => move.mutate({ action: "skip" }, { onSuccess: () => toast.show(tr("Setup skipped. Set it up any time from Follow-up settings, General.")) });
   const last = index === ONBOARDING_STEPS.length - 1;
   const failing = step === "checks" && checks.data ? checksSummary(checks.data.checks).state === "fail" : false;
 
@@ -92,12 +92,12 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
   const lead: Record<OnboardingStep, string> = {
     intro: "It follows your agents' pull requests until the work is done, sends what needs fixing back to them as repairs, and asks you only for decisions.",
     checks: "Helper agents run on the providers you pick. GitHub is optional: with the GitHub CLI, Follow-up also follows your PRs. Checking is free.",
-    defaults: "These are on now. Change anything here; it saves as you go, and Settings has the same switches.",
-    shipping: "Follow-up merges and tracks PRs the way each repository already works. It picked these; change one if it's wrong.",
+    defaults: tr("These are on now. Change anything here; it saves as you go, and Settings has the same switches."),
+    shipping: tr("Follow-up merges and tracks PRs the way each repository already works. It picked these; change one if it's wrong."),
     reviewers: "When you press Add reviewers on a PR, Follow-up asks these people. Set a default for all repositories, or a list for one. Until then, PRs without reviewers show in Needs you.",
     updates: "New versions fix problems and add features. Follow-up can install them for you, at a moment when no agent is using it, and goes back to the old version if something breaks.",
-    helpers: "Follow-up's own agents. They read, summarise and rank. They never change code or message anyone.",
-    tour: "Four places worth knowing. Everything else is in Settings.",
+    helpers: tr("Follow-up's own agents. They read, summarise and rank. They never change code or message anyone."),
+    tour: tr("Four places worth knowing. Everything else is in Settings."),
   };
   const column: ViewStyle = { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: compact ? 16 : 24 };
 
@@ -115,7 +115,7 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
         {!compact && <View style={{ flex: 1 }} />}
         {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title={tr("Skip, set later")} onPress={() => go(ONBOARDING_STEPS[index + 1])} />}
         <Button theme={theme} compact={compact} grow={compact} kind="primary" icon={last ? tr("Check") : undefined}
-          title={last ? "Finish" : failing ? "Continue anyway" : "Continue"} loading={last && move.isPending}
+          title={last ? "Finish" : failing ? tr("Continue anyway") : "Continue"} loading={last && move.isPending}
           onPress={() => last ? finish() : go(ONBOARDING_STEPS[index + 1])} />
       </View>
     </View>}>
@@ -173,7 +173,7 @@ const Panel = ({ c, children }: { c: Colors; children: ReactNode }) =>
 // ---------- 1. what it is ----------
 
 const EXAMPLE = [
-  { glyph: "CircleX", tone: "danger", line: "Checks failed on #418", caption: "Follow-up notices" },
+  { glyph: "CircleX", tone: "danger", line: "Checks failed on #418", caption: tr("Follow-up notices") },
   { glyph: "spinner", tone: "running", line: "Repair sent to the agent · 2m", caption: "and sends it as a repair to the agent that made the PR" },
   { glyph: "CircleCheck", tone: "success", dot: "warning", line: "#418 approved", caption: "then asks you only for the decision" },
 ] as const;
@@ -221,9 +221,9 @@ function IntroStep({ theme, compact, follow }: { theme: Theme; compact: boolean;
     </Panel>
     <View style={{ gap: 4 }}>
       {[
-        ["Inbox", tr("Needs you"), "One list of what only you can decide: a merge, a question, a permission."],
-        ["Send", "Repairs", "Review comments, conflicts and failed checks become repairs and go to the workspace's agent in one message."],
-        ["MessageCircleQuestion", tr("Questions"), "Agents ask you here, with options and a recommendation. Your answer goes to their chat."],
+        ["Inbox", tr("Needs you"), tr("One list of what only you can decide: a merge, a question, a permission.")],
+        ["Send", "Repairs", tr("Review comments, conflicts and failed checks become repairs and go to the workspace's agent in one message.")],
+        ["MessageCircleQuestion", tr("Questions"), tr("Agents ask you here, with options and a recommendation. Your answer goes to their chat.")],
       ].map(([icon, title, line]) => <View key={title} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
         <Icon name={icon} size={16} color={c.foregroundMuted} />
         <View style={{ flex: 1, gap: 1 }}><Text style={t.label}>{title}</Text><Text style={t.meta}>{line}</Text></View>
@@ -253,7 +253,7 @@ function ChecksStep({ theme, compact, checks, deps }: { theme: Theme; compact: b
     {(checks.error || again.error) && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{errorText(checks.error ?? again.error)}</Text>}
     <Panel c={c}>
       {rows ? rows.map((row, i) => <CheckRow key={row.id} theme={theme} compact={compact} row={row} first={i === 0} checking={again.isPending} deps={deps} />)
-        : ["GitHub", "Claude", "Codex", "Agent tools"].map((label, i) => <CheckRow key={label} theme={theme} compact={compact} first={i === 0} checking deps={deps} row={{ id: label, label, state: "pending", detail: "Checking…", fix: null }} />)}
+        : ["GitHub", "Claude", "Codex", tr("Agent tools")].map((label, i) => <CheckRow key={label} theme={theme} compact={compact} first={i === 0} checking deps={deps} row={{ id: label, label, state: "pending", detail: "Checking…", fix: null }} />)}
     </Panel>
     {summary?.state === "fail" && <Text style={t.meta}>{tr("You can continue anyway. Following and Needs you work without what's missing; each row says what it affects.")}</Text>}
   </View>;
@@ -274,10 +274,10 @@ function CheckRow({ theme, compact, row, first, checking, deps }: { theme: Theme
       </Pressable>}
       {row.fix && (row.state !== "warn" || open) && <View style={{ gap: 6, marginTop: 4 }}>
         <Text style={[t.meta, { color: c.foreground }]}>{row.fix.text}</Text>
-        {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title={tr("Get the GitHub CLI")} accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error("Couldn't open the link here")); }} />}
+        {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title={tr("Get the GitHub CLI")} accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error(tr("Couldn't open the link here"))); }} />}
         {row.fix.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
           <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: Platform.OS === "ios" ? "Menlo" : "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{row.fix.command}</Text>
-          <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.fix.command}`} onPress={() => { void copyText(row.fix!.command!).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />
+          <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.fix.command}`} onPress={() => { void copyText(row.fix!.command!).then(() => toast.show("Copied", { variant: "success" }), () => toast.error(tr("Couldn't copy here"))); }} />
         </View>}
         {row.fix.settings && <Button theme={theme} compact={compact} kind="ghost" icon="Settings" title={tr("Open Settings → Agents")} onPress={() => deps.openSettings(row.fix!.settings!)} />}
       </View>}
@@ -337,7 +337,7 @@ function DefaultsStep({ theme, compact, held }: { theme: Theme; compact: boolean
               onPress={() => change.mutate([{ workspace: { workspaceId: w.id, follow: !on } }])}
               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 10, minHeight: compact ? 44 : 32, paddingRight: compact ? 14 : 16, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: pressed ? c.surface2 : "transparent" })}>
               <Text style={[t.body, { flex: 1, color: on ? c.foreground : c.foregroundMuted }]}>{w.title}</Text>
-              {(!on || w.dormant) && <Text style={t.small}>{on ? "Resting" : "Not followed"}</Text>}
+              {(!on || w.dormant) && <Text style={t.small}>{on ? "Resting" : tr("Not followed")}</Text>}
               <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accent : "transparent", alignItems: "center", justifyContent: "center" }}>
                 {on && <Icon name="Check" size={12} color={c.accentForeground} />}
               </View>
@@ -380,7 +380,7 @@ function TourStep({ theme, compact }: { theme: Theme; compact: boolean }) {
   return <View style={{ gap: 2 }}>
     <TourRow theme={theme} thumb={<ThumbHome c={theme.colors} />} title={tr("Home")} line="Follow-up in the sidebar. Every workspace, with what needs you at the top." />
     <TourRow theme={theme} thumb={<ThumbPanel c={theme.colors} />} title={tr("Workspace panel")}
-      line={compact ? "Tap Follow-up at the top of any workspace: its PRs, tasks and what the agent is doing." : "The Follow-up button in a workspace's header docks its PRs, tasks and what the agent is doing beside the chat."} />
+      line={compact ? tr("Tap Follow-up at the top of any workspace: its PRs, tasks and what the agent is doing.") : tr("The Follow-up button in a workspace's header docks its PRs, tasks and what the agent is doing beside the chat.")} />
     <TourRow theme={theme} thumb={<ThumbNeeds c={theme.colors} />} title={tr("Needs you")} line="The decisions only you can make, one button each. A pill above the chat shows the same." />
     <TourRow theme={theme} thumb={<ThumbAbout c={theme.colors} />} title={tr("Summary")} line="One sentence under a workspace's title saying what it's for." />
   </View>;
@@ -435,7 +435,7 @@ export function SetupOffer({ theme, compact, view }: { theme: Theme; compact: bo
   </View>;
 }
 
-/** Settings and ⌘K: "Set up Follow-up again" starts the flow from the top and shows it on Home. */
+/** Settings and ⌘K: tr("Set up Follow-up again") starts the flow from the top and shows it on Home. */
 export function useRestartSetup() {
   const act = useRpc(setOnboardingRpc); const cache = useQueryClient();
   return useMemo(() => async () => { const next = await act({ action: "restart" }); cache.setQueryData(onboardingKey, next); return next; }, [act, cache]);

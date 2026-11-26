@@ -95,7 +95,7 @@ const usePicks = (briefId: string) => useSyncExternalStore(pickStore.subscribe, 
  * One option. `send` answers on tap (a single-decision card); `select` marks it as this decision's pick (a card with
  * several decisions, sent together); `readonly` shows a past card, the chosen option marked and the rest dimmed.
  */
-function OptionRow({ option, recommended, sending, disabled, tight, open, onToggle, onPress, c, compact, mode = "send", selected = false, answered = false, other = false, answerLabel = "Your answer", withNote = false }: {
+function OptionRow({ option, recommended, sending, disabled, tight, open, onToggle, onPress, c, compact, mode = "send", selected = false, answered = false, other = false, answerLabel = tr("Your answer"), withNote = false }: {
   option: BriefDecision["options"][number]; recommended: boolean; sending: boolean; disabled: boolean; tight: boolean; open: boolean; onToggle: () => void; onPress: () => void; c: Colors; compact: boolean;
   mode?: "send" | "select" | "readonly"; selected?: boolean; answered?: boolean; other?: boolean; answerLabel?: string;
   /** A single-decision card with a note typed: the tap sends this letter with it, and the row says so. */
@@ -121,7 +121,7 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
   </View> : null;
   const label = noted ? `Send ${option.letter} with your note: ${option.label}${recommended ? " (recommended)" : ""}` : other ? `${option.label}${readonly ? `: ${option.consequence ?? ""}` : ", write your own answer"}` : mode === "select" ? `${option.letter}: ${option.label}${recommended ? " (recommended)" : ""}` : readonly ? `${option.letter}: ${option.label}${selected ? " (your answer)" : ""}` : `Answer ${option.letter}: ${option.label}${recommended ? " (recommended)" : ""}`;
   return <View style={{ flexDirection: "row", alignItems: "stretch", borderRadius: 8, borderWidth: 1, borderColor: noted ? withAlpha(c.accent, recommended ? 0.9 : 0.5) : border, backgroundColor: marked && !readonly ? withAlpha(c.accent, isLight(c) ? 0.06 : 0.1) : "transparent", opacity: dim ? 0.45 : 1, overflow: "hidden" }}>
-    <Pressable accessibilityRole={mode === "select" || other && !readonly ? "radio" : readonly ? "text" : "button"} accessibilityLabel={label} accessibilityHint={mode === "select" && selected ? "Tap again to clear" : option.consequence ?? undefined}
+    <Pressable accessibilityRole={mode === "select" || other && !readonly ? "radio" : readonly ? "text" : "button"} accessibilityLabel={label} accessibilityHint={mode === "select" && selected ? tr("Tap again to clear") : option.consequence ?? undefined}
       accessibilityState={mode === "select" || other && !readonly ? { checked: selected, disabled } : { disabled: disabled || readonly, busy: sending }} disabled={disabled || readonly} onPress={onPress}
       style={({ hovered, pressed, focused }: { hovered?: boolean; pressed: boolean; focused?: boolean }) => ({ ...ring(focused, c), flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: readonly ? (compact ? 8 : 7) : compact ? 11 : 9, paddingHorizontal: 10, minHeight: readonly ? 0 : compact ? 44 : 0,
         backgroundColor: readonly ? "transparent" : pressed ? c.surface2 : hovered && !disabled ? withAlpha(c.foreground, 0.05) : "transparent" })}>
@@ -184,8 +184,8 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
   const [focusNote, setFocusNote] = useState<string | null>(null);
   const [contextWidth, setContextWidth] = useState(0);
   const readonly = mode === "readonly";
-  // An agent's brief_action answered this card for the developer: say whose answer it is, never "Your answer".
-  const answerLabel = b.answeredBy?.startsWith("agent:") ? `${b.answeredByTitle ?? "An agent"}'s answer` : "Your answer";
+  // An agent's brief_action answered this card for the developer: say whose answer it is, never tr("Your answer").
+  const answerLabel = b.answeredBy?.startsWith("agent:") ? `${b.answeredByTitle ?? tr("An agent")}'s answer` : tr("Your answer");
   const extra = !!b.context || b.facts.length > 0 || b.links.length > 0;
   const showExtra = readonly || !tight || details || extrasFit(b, height);
   const numbered = b.decisions.length > 1;
@@ -210,14 +210,14 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? tr("Sending…") : "Send answer"} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy || !!img?.blocked} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
+            <Btn shortcut label={busy === `${d.id}:${OTHER}` ? tr("Sending…") : tr("Send answer")} icon="Send" primary disabled={!words[d.id]?.trim() || !!busy || !!img?.blocked} onPress={() => onSendOther?.(d.id)} c={c} compact={compact} />
             {!words[d.id]?.trim() && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{OWN_ANSWER_HINT}</Text>}
           </View>}
         </View>}
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}
         {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View {...PRIMARY_FORM} style={{ gap: 6, marginTop: 2 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{tr("Note")}</Text>
-          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? tr("Sent with your pick for this decision") : tr("Sent with the option you tap")}
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           <NoteLink icon="X" label={tr("Remove note")} a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
@@ -228,15 +228,15 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
       </View>}
       {readonly && !!d.chosen && !isOther(d.chosen) && !!d.words && <RichText selectable linkColor={c.foreground} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{`Note: ${d.words}`}</RichText>}
       {readonly && b.state === "answered" && d.options.length > 0 && !d.chosen && numbered && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{tr("Skipped")}</Text>}
-      {!readonly && mode === "send" && !tight && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
-      {!readonly && (mode === "select" || tight) && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
+      {!readonly && mode === "send" && !tight && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? tr("Reply below.") : tr("Reply in the composer.")}</Text>}
+      {!readonly && (mode === "select" || tight) && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? tr("Reply below.") : tr("Reply in the composer.")}</Text>}
     </View>; })}
 
     {!!b.mono && !b.ask.endsWith(b.mono) && <View style={{ borderRadius: 8, backgroundColor: withAlpha(c.statusDanger, isLight(c) ? 0.07 : 0.1), paddingHorizontal: 10, paddingVertical: 8 }}>
       <RichText selectable numberOfLines={tight && !readonly ? 3 : undefined} style={{ color: c.foreground, fontFamily: mono(), fontSize: 12, lineHeight: 18 }}>{b.mono}</RichText>
     </View>}
 
-    {!readonly && extra && tight && !extrasFit(b, height) && <Pressable accessibilityRole="button" aria-expanded={details} accessibilityLabel={details ? "Hide details" : "Show details"} onPress={() => setDetails(v => !v)} hitSlop={6}
+    {!readonly && extra && tight && !extrasFit(b, height) && <Pressable accessibilityRole="button" aria-expanded={details} accessibilityLabel={details ? tr("Hide details") : tr("Show details")} onPress={() => setDetails(v => !v)} hitSlop={6}
       style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 24 }}>
       <View style={{ transform: [{ rotate: details ? "90deg" : "0deg" }] }}><Icon name="ChevronRight" size={14} color={c.foregroundMuted} /></View>
       <Text style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "500" }}>{tr("Details")}</Text>
@@ -295,7 +295,7 @@ function Reveal({ label, openLabel, open, onPress, c, compact }: { label: string
 
 /**
  * A card that's no longer open keeps its question (1.4.0). Answered: the ask, each decision with what was picked, and
- * tr("Show full question") opens the original read-only. Superseded or signed off: the one muted line, plus "Show original".
+ * tr("Show full question") opens the original read-only. Superseded or signed off: the one muted line, plus tr("Show original").
  */
 function Past({ b, c, now, compact, height, pending = false, onResend, resending = false, questions = [] }: { b: Brief; c: Colors; now: number; compact: boolean; height: number; pending?: boolean; onResend?: () => void; resending?: boolean; questions?: readonly ListQuestion[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -323,7 +323,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
   // Failed (the rare loud case) says so with Retry; a timer's wait (Queued, Retrying) offers Try now; Cancelled says why.
   const undelivered = (indent: number) => delivery && !pending && (failed || cancelled || delivery.action === "try-now") && <View style={{ paddingLeft: indent, gap: 8, alignItems: "flex-start" }}>
     <Text accessibilityRole={failed ? "alert" : undefined} style={{ color: failed ? c.statusWarning : c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{failed ? `${delivery.detail} Your answer is kept.` : delivery.detail}</Text>
-    {onResend && delivery.action && <Btn label={resending ? tr("Sending…") : delivery.action === "retry" ? tr("Retry") : "Try now"} icon="RotateCcw" primary={delivery.action === "retry"} onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? "Sends the same answer again" : "Tries sending it now"} />}
+    {onResend && delivery.action && <Btn label={resending ? tr("Sending…") : delivery.action === "retry" ? tr("Retry") : tr("Try now")} icon="RotateCcw" primary={delivery.action === "retry"} onPress={onResend} disabled={resending} c={c} compact={compact} hint={delivery.action === "retry" ? tr("Sends the same answer again") : tr("Tries sending it now")} />}
   </View>;
   const body = expanded && <View style={{ gap: 10, paddingTop: 4 }}>
     <BriefBody b={b} c={c} compact={compact} tight={false} embedded height={height} mode="readonly" picks={{}} onPick={() => undefined} busy={null} />
@@ -340,7 +340,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
       <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{right}</Text>
     </View>
     {undelivered(25)}
-    {hasOriginal(b) && <View style={{ paddingLeft: 25 }}><Reveal label={answered ? (b.kind === "action" ? "Show full ask" : tr("Show full question")) : "Show original"} open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>}
+    {hasOriginal(b) && <View style={{ paddingLeft: 25 }}><Reveal label={answered ? (b.kind === "action" ? tr("Show full ask") : tr("Show full question")) : tr("Show original")} open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>}
     {body}
   </View>;
   // Answered with picks: the ask, then each decision's question and the picked option, so the answer is never
@@ -430,7 +430,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   const resend = () => {
     // Only a send in flight blocks it: a resolved card is never "actionable", but its undelivered answer can go again.
     if (sending || !b.answerId) return; setBusy("resend");
-    void runAction({ label: tr("Answer"), toast, run: () => act({ agentId, briefId: b.id, answerId: b.answerId! }), success: () => null, reconcile, failure: "Your answer wasn't sent again" }).finally(() => setBusy(null));
+    void runAction({ label: tr("Answer"), toast, run: () => act({ agentId, briefId: b.id, answerId: b.answerId! }), success: () => null, reconcile, failure: tr("Your answer wasn't sent again") }).finally(() => setBusy(null));
   };
   // An add-reviewers card for a PR the agent merges itself isn't an ask: gone the moment the repository flips to No
   // review, back on Undo (invariant a-no-review-repo-never-asks-for-review-or-merge).
@@ -454,7 +454,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // Every send from the card (a pick, Something else, Send answers, the keyboard's Send) goes through runAction: the
   // card keeps the picks and words and says what failed, and the toast offers Retry. Success is the card itself.
   // One answerId per Send: the toast's Retry runs the same closure, so it repeats this answer instead of sending a second.
-  const run = async (key: string, work: (answerId: string) => Promise<unknown>, failure = "Your answer wasn't sent") => {
+  const run = async (key: string, work: (answerId: string) => Promise<unknown>, failure = tr("Your answer wasn't sent")) => {
     if (busy) return; setBusy(key); setError(null);
     const answerId = newAnswerId();
     await runAction({ label: tr("Brief"), toast, run: () => work(answerId), success: () => null, onError: e => setError(errorText(e)), reconcile, failure });
@@ -469,14 +469,14 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     if (busy || marked) return;
     setError(null); setSent(false); setMarked(new Date().toISOString());
     const doneId = newAnswerId();
-    const id = runUndoable("Telling the agent it's done", { label: tr("Done"), toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), ...withImages(), action: "send" })
-      : act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: "Marked done. The agent has it.",
-      failure: "Done not sent", open: () => deps.openAgent(agentId), onSuccess: () => setSent(true), onError: e => { setMarked(null); setError(errorText(e)); }, reconcile: e => { setMarked(null); reconcile(e); } }, () => setMarked(null), `done:${b.id}`, () => deps.endDone?.(agentId));
+    const id = runUndoable(tr("Telling the agent it's done"), { label: tr("Done"), toast, run: async (): Promise<unknown> => doneQ && workspace ? answerQuestion({ workspaceId: workspace.id, questionId: doneQ.id, choice: TASK_DONE.letter, ...(notesOpen[doneQ.id] && notes[doneQ.id]?.trim() ? { words: notes[doneQ.id].trim() } : {}), ...withImages(), action: "send" })
+      : act({ agentId, briefId: b.id, move: "done", answerId: doneId }), success: tr("Marked done. The agent has it."),
+      failure: tr("Done not sent"), open: () => deps.openAgent(agentId), onSuccess: () => setSent(true), onError: e => { setMarked(null); setError(errorText(e)); }, reconcile: e => { setMarked(null); reconcile(e); } }, () => setMarked(null), `done:${b.id}`, () => deps.endDone?.(agentId));
     // The pill's Undo is this toast's Undo: it closes the toast (so nothing is sent) and reopens the card.
     if (id !== null) deps.noteDone?.(agentId, () => { dismissToast(id); setMarked(null); });
   };
-  // A merge move reads what its click merges ("Merge 3 PRs"), then "Merging…".
-  // An add-reviewers move that names whom it asks reads "Add reviewers", "Requesting…", then "Requested"
+  // A merge move reads what its click merges (tr("Merge 3 PRs")), then "Merging…".
+  // An add-reviewers move that names whom it asks reads tr("Add reviewers"), "Requesting…", then "Requested"
   // (a-click-on-add-reviewers-asks), and a move that is done stays done.
   const oneClick = (m: BriefMove) => !m.prKey ? null : m.kind === "merge" ? merges.view(m.prKey) : m.kind === "add_reviewers" ? asks.view(m.prKey) : null;
   const moveLabel = (m: BriefMove) => (m.kind === "merge" || m.kind === "add_reviewers" ? oneClick(m)?.label : null) ?? (busy === m.kind ? `${m.label}…` : m.label);
@@ -492,7 +492,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
     else if ((m.kind === "merge" || m.kind === "add_reviewers") && m.prKey) { if (workspace?.prs.some(p => p.key === m.prKey)) setSheet({ key: m.prKey, intent: m.kind === "merge" ? "merge" : "reviewers" }); else if (b.workspaceId) deps.openPanel(b.workspaceId); }
     else if (m.kind === "open_pr" && m.url) void openExternalUrl(m.url).catch(() => undefined);
     else if (m.kind === "sign_off_next") { deps.signOff(agentId); deps.openNext(agentId); }
-    else if (m.kind === "retry") void run("retry", answerId => act({ agentId, briefId: b.id, move: "retry", answerId }), "Retry didn't start");
+    else if (m.kind === "retry") void run("retry", answerId => act({ agentId, briefId: b.id, move: "retry", answerId }), tr("Retry didn't start"));
     else if (m.kind === "done") markDone();
     else if (m.kind === "copy_error" && b.mono) void copyText(b.mono).catch(() => undefined);
     else if (m.kind === "open_subagent" && m.agentId) deps.openAgent(m.agentId);
@@ -502,7 +502,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // A decision brief that folded into an action card still gets the card's one Done, first.
   const moves: BriefMove[] = doneQ && !tracked.some(m => m.kind === "done") ? [{ kind: "done", label: tr("Done"), prKey: null, url: null, agentId: null }, ...tracked] : tracked;
 
-  // F7: "Nothing needed" is one muted line, no buttons. Paseo's own running and idle state says the rest.
+  // F7: tr("Nothing needed") is one muted line, no buttons. Paseo's own running and idle state says the rest.
   if (b.kind === "done" && b.source === "agent" && !b.flagged) return <View accessibilityRole="summary" accessibilityLabel={nothingNeededLine(b.ask)}
     style={{ marginVertical: 6, flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28, paddingHorizontal: 4 }}>
     <Icon name="Check" size={13} color={c.foregroundMuted} />
@@ -513,13 +513,13 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   if (b.slim) {
     // Permission: Paseo's own prompt below is the control (F9). Fallback: the paragraph is right above.
     // The label and age share the top line so the ask always gets the full width; at a narrow panel the move wraps under it.
-    return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? "Needs you: " : ""}${askText}. ${b.sourceLine}`}
+    return <RevealScope accessibilityRole="summary" accessibilityLabel={`${acts ? tr("Needs you: ") : ""}${askText}. ${b.sourceLine}`}
       style={[{ marginVertical: embedded ? 0 : 10, gap: 4, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: border }, bare && BARE]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
         <Icon name={ICON[b.kind]} size={14} color={tone} />
         <Text numberOfLines={1} style={{ flexShrink: 1, color: acts ? attention : tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{acts && !bare ? tr("Needs you") : flaggedAct && !bare ? tr("Later") : word(b.kind)}</Text>
         <View style={{ flex: 1 }} />
-        {/* In Later the age would read as a second clock beside "Later until"; the pane header keeps it. */}
+        {/* In Later the age would read as a second clock beside tr("Later until"); the pane header keeps it. */}
         {!snoozed && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{ageText}</Text>}
         {x}
       </View>
@@ -572,10 +572,10 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
           {flaggedAct && !bare && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{word(b.kind)}</Text>}
           {multi && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>· {pickedCount(b, sendable)} of {askedDecisions(b).length} picked</Text>}
           <View style={{ flex: 1 }} />
-          {/* In Later the age would read as a second clock beside "Later until"; the pane header keeps it. */}
+          {/* In Later the age would read as a second clock beside tr("Later until"); the pane header keeps it. */}
         {!snoozed && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontVariant: ["tabular-nums"] }}>{ageText}</Text>}
           {/* Phones: where the card's facts come from sits behind ⓘ instead of a footer under every card. */}
-          {compact && <Pressable accessibilityRole="button" accessibilityLabel={why ? "Hide where this comes from" : "Where this comes from"} aria-expanded={why} accessibilityState={{ expanded: why }}
+          {compact && <Pressable accessibilityRole="button" accessibilityLabel={why ? tr("Hide where this comes from") : tr("Where this comes from")} aria-expanded={why} accessibilityState={{ expanded: why }}
             onPress={() => setWhy(v => !v)} style={{ width: 44, height: 44, marginVertical: -15, marginRight: x ? -10 : -14, alignItems: "center", justifyContent: "center" }}>
             <Icon name="Info" size={14} color={why ? c.foreground : c.foregroundMuted} />
           </Pressable>}
@@ -618,7 +618,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
 }
 
 const BARE = { marginVertical: 0, borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" } as const;
-const MOVE_HINT: Partial<Record<BriefMove["kind"], string>> = { done: "Tells the agent you did this. Undo for 6 seconds." };
+const MOVE_HINT: Partial<Record<BriefMove["kind"], string>> = { done: tr("Tells the agent you did this. Undo for 6 seconds.") };
 const MOVE_ICON: Record<BriefMove["kind"], string> = { merge: "GitMerge", open_pr: "ExternalLink", sign_off_next: "ArrowRight", retry: "RotateCcw", copy_error: tr("Copy"), open_subagent: "SquareArrowOutUpRight", add_reviewers: "UserPlus", done: tr("Check") };
 
 export function contributeBrief(client: PluginClientContext, deps: BriefDeps) {

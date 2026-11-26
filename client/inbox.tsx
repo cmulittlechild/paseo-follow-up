@@ -50,7 +50,7 @@ export function UndoBar({ store, theme, touch }: { store: InboxStore; theme: The
     return () => doc.removeEventListener("keydown", onKey);
   }, [recent, focused, store]);
   if (!recent) return null;
-  const what = recent.kind === "sign_off" ? "Signed off" : `Later ${laterLabel(recent.until, Date.now())}`;
+  const what = recent.kind === "sign_off" ? tr("Signed off") : `Later ${laterLabel(recent.until, Date.now())}`;
   const restored = recent.kind === "later_ws" ? recent.key : recent.agentIds[0] ? `agent:${recent.agentIds[0]}` : undefined;
   const undo = () => { void store.undo().then(() => { if (restored) focusSoon(rowDomId(restored)); }); };
   return <View role="status" accessibilityLiveRegion="polite" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch ? 52 : 40, paddingLeft: 12, paddingRight: 4, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border, ...raised(c) }}>
@@ -84,15 +84,15 @@ export function useSidebarViewActive(): boolean {
 /** ⌘K items and /ok. The keyboard path is ⌘K, "ok", Enter. */
 export function contributeInboxCommands(client: PluginClientContext, store: InboxStore, openNext: (from: string | null) => void) {
   const removers = [
-    client.addCommandCenterItem({ id: "inbox-sign-off-next", title: "Follow-up: Sign off & next", icon: "ArrowRight", keywords: ["ok", "done", "ack", "needs you", "sign off", "next"], context: "agent",
+    client.addCommandCenterItem({ id: "inbox-sign-off-next", title: tr("Follow-up: Sign off & next"), icon: "ArrowRight", keywords: ["ok", "done", "ack", "needs you", "sign off", "next"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); openNext(agent.id); } }),
-    client.addCommandCenterItem({ id: "inbox-sign-off", title: "Follow-up: sign off", icon: tr("Check"), keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
+    client.addCommandCenterItem({ id: "inbox-sign-off", title: tr("Follow-up: sign off"), icon: tr("Check"), keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); } }),
-    client.addCommandCenterItem({ id: "inbox-later", title: "Follow-up: Later (tomorrow 09:00)", icon: "AlarmClock", keywords: ["ok", "snooze", "later", "needs you"], context: "agent",
+    client.addCommandCenterItem({ id: "inbox-later", title: tr("Follow-up: Later (tomorrow 09:00)"), icon: "AlarmClock", keywords: ["ok", "snooze", "later", "needs you"], context: "agent",
       onSelect({ agent }) { void store.snooze([agent.id], snoozeUntil("tomorrow", new Date())); } }),
-    client.addCommandCenterItem({ id: "inbox-undo", title: "Follow-up: undo last sign-off or Later", icon: "Undo2", keywords: ["ok", "undo", "needs you", "sign off", "later", "snooze"], context: "global",
+    client.addCommandCenterItem({ id: "inbox-undo", title: tr("Follow-up: undo last sign-off or Later"), icon: "Undo2", keywords: ["ok", "undo", "needs you", "sign off", "later", "snooze"], context: "global",
       onSelect() { void store.undo(); } }),
-    client.addCommandCenterItem({ id: "inbox-next", title: "Follow-up: Next needs-you", icon: "Inbox", keywords: ["ok", "next", "needs you", "inbox"], context: "global",
+    client.addCommandCenterItem({ id: "inbox-next", title: tr("Follow-up: Next needs-you"), icon: "Inbox", keywords: ["ok", "next", "needs you", "inbox"], context: "global",
       onSelect() { openNext(null); } }),
     client.addSlashCommand({ name: "ok", description: "Sign off this agent (Needs you). /ok next opens the next one", argumentHint: "[next]", context: "agent",
       onSubmit({ agent, args }) { void store.signOff([agent.id]); if (/^\s*next\b/i.test(args)) openNext(agent.id); } }),

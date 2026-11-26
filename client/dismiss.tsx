@@ -42,7 +42,7 @@ export const DISMISS_ARM_MS = 4_000;
 /** How long the pointer may be off the armed x's card before it disarms (a wobble isn't leaving). */
 export const DISMISS_LEAVE_GRACE_MS = 600;
 /** What a screen reader hears when the x arms. */
-export const DISMISS_CONFIRM = "Remove, or Keep to cancel";
+export const DISMISS_CONFIRM = tr("Remove, or Keep to cancel");
 
 /** The one armed x, app-wide: arming another disarms this one. */
 let armedX: object | null = null;
@@ -76,7 +76,7 @@ export function useDismiss(after?: () => void): (target: DismissTarget, options?
     success: () => `${name.charAt(0).toUpperCase()}${name.slice(1)} is back in Needs you`, failure: `Couldn't bring back ${name}` }, `dismiss:${targetKey(t)}`);
   return (t, options = {}) => {
     options.onDismissed?.();
-    void runAction({ label: tr("Remove"), toast, run: () => call(t, false), onSuccess: () => refresh(t), failure: "Couldn't remove it",
+    void runAction({ label: tr("Remove"), toast, run: () => call(t, false), onSuccess: () => refresh(t), failure: tr("Couldn't remove it"),
       // Already gone (merged, answered, sent elsewhere): nothing to say, the surface shows what happened.
       reconcile: () => refresh(t),
       success: r => {
@@ -112,7 +112,7 @@ export function RevealScope({ children, style, ...rest }: { children: ReactNode;
 }
 
 
-/** The armed pair's quiet button names the same item: "Remove Q1" → "Keep Q1". */
+/** The armed pair's quiet button names the same item: tr("Remove Q1") → tr("Keep Q1"). */
 export const keepLabel = (label: string) => /^Remove\b/.test(label) ? label.replace(/^Remove\b/, tr("Keep")) : `Keep ${label}`;
 
 type PressEvent = { detail?: number; relatedTarget?: unknown; nativeEvent?: { detail?: number; relatedTarget?: unknown } } | undefined;
@@ -120,7 +120,7 @@ type PressEvent = { detail?: number; relatedTarget?: unknown; nativeEvent?: { de
 const clickCount = (e: PressEvent) => e?.nativeEvent?.detail ?? e?.detail ?? 0;
 
 /**
- * The small x. `label` names what it removes ("Remove Q1", "Remove #12 is approved"); the hint follows it. Quiet by
+ * The small x. `label` names what it removes (tr("Remove Q1"), "Remove #12 is approved"); the hint follows it. Quiet by
  * design: the muted foreground at 14 px (16 on phones), no fill until hovered, never the size or colour of an action.
  * Armed (the first click), it is a quiet tr("Keep") and a red tr("Remove") in the same place; Remove calls `onPress`.
  */

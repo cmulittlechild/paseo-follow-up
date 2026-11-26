@@ -103,7 +103,7 @@ export type HomeDeps = {
 const PANE_PRIMARY = "follow-up-pane-primary";
 
 export function FollowHome(props: PluginScreenProps & { deps: HomeDeps }) {
-  // Getting started takes Home's place on a fresh install (or after "Set up Follow-up again") until finished or skipped.
+  // Getting started takes Home's place on a fresh install (or after tr("Set up Follow-up again")) until finished or skipped.
   const onboarding = useOnboarding();
   // Opened from "Set up again": read the flow's state afresh.
   const { refetch } = onboarding;
@@ -117,7 +117,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const { inbox } = deps.sources;
   const c = theme.colors;
   const compact = layout.compact;
-  // "Nobody's on it" (raised issues, urgent Compass asks) are Needs-you items with no workspace row. The worker sends
+  // tr("Nobody's on it") (raised issues, urgent Compass asks) are Needs-you items with no workspace row. The worker sends
   // them on the home feed; the model counts them (model.raised) and they head the group. Catch up's deck and
   // model.needs stay workspaces.
   const model = useHomeModel(deps.sources);
@@ -167,10 +167,10 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     try {
       const after = await send({ workspaceId: s.workspaceId, batchId: s.sendNow.batchId });
       const b = after.batches.find(x => x.id === s.sendNow!.batchId);
-      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${s.title}` : b.result || "Queued. It goes out when the main agent is free.", { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
+      toast.show(!b || ["sent", "sending", "completed"].includes(b.state) ? `Sent to ${s.title}` : b.result || tr("Queued. It goes out when the main agent is free."), { variant: !b || ["sent", "sending", "completed"].includes(b.state) ? "success" : "info" });
     } catch (e) { toast.error(errorText(e)); } finally { deps.sources.live.refresh(); }
   }, [send, toast, deps.sources.live]);
-  // The omnibox's "Ask the Overseer" row: send, then show the conversation it lands in.
+  // The omnibox's tr("Ask the Overseer") row: send, then show the conversation it lands in.
   const [asking, setAsking] = useState(false);
   const [pendingAsk, setPendingAsk] = useState<string | null>(null);
   // Enter in the search (the-selected-workspace-opens-with-enter): the first press shows the result in the pane, a
@@ -195,7 +195,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
     catch (e) { toast.error(errorText(e)); } finally { setAsking(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asking, deps.sources.extras, omnibox, inbox, toast, route, model]);
-  // ⌘K "Follow-up: Ask the Overseer" opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
+  // ⌘K tr("Follow-up: Ask the Overseer") opens Home with `?ask=<nonce>`: select it and focus its reply box. A param, not
   // shared state, so it works whether Home was already open or mounts fresh.
   // New (client/new.tsx): every entry point opens Home with `?new=<nonce>` (and `source` when it carries one).
   // It never navigates again: the request already brought Home here (new-opens-where-you-are).
@@ -211,11 +211,11 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
   const [replyFocus, setReplyFocus] = useState(0);
   useEffect(() => {
     if (!params.ask) return;
-    if (overseerStatus && !overseerStatus.enabled) { toast.show("The Overseer is off. Turn it on in Follow-up settings."); return; }
+    if (overseerStatus && !overseerStatus.enabled) { toast.show(tr("The Overseer is off. Turn it on in Follow-up settings.")); return; }
     setSelected(OVERSEER_KEY); setReplyFocus(n => n + 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.ask]);
-  const briefLine = [pane.counts.needs ? `${pane.counts.needs} need you` : "Nothing needs you", pane.counts.sending ? `${pane.counts.sending} sending` : "", pane.away.count ? `${pane.away.count} done while away` : "", queue.heard ?? ""].filter(Boolean).join(" · ");
+  const briefLine = [pane.counts.needs ? `${pane.counts.needs} need you` : tr("Nothing needs you"), pane.counts.sending ? `${pane.counts.sending} sending` : "", pane.away.count ? `${pane.away.count} done while away` : "", queue.heard ?? ""].filter(Boolean).join(" · ");
 
   const openFull = useCallback((s: Workstream) => {
     if (!navigation) return;
@@ -305,7 +305,7 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       {/* Images pasted on the search ride the Overseer ask; their own line, so the search row stays one line. */}
       {(!!omnibox.images.images.length || !!omnibox.images.refusal) && <View style={{ paddingHorizontal: 16, gap: 4 }}>
         <ImageAttachmentsRow model={omnibox.images} theme={theme} compact={compact} />
-        {!!omnibox.images.images.length && !omnibox.images.blocked && <Text style={text(theme.colors, compact).small}>{omnibox.query.trim() ? "Sent with your ask to the Overseer." : "Type your ask; these go with it to the Overseer."}</Text>}
+        {!!omnibox.images.images.length && !omnibox.images.blocked && <Text style={text(theme.colors, compact).small}>{omnibox.query.trim() ? tr("Sent with your ask to the Overseer.") : tr("Type your ask; these go with it to the Overseer.")}</Text>}
       </View>}
       <View style={{ paddingHorizontal: 16 }}><LayoutNotice theme={theme} query={omnibox.layoutHint} dense={compact} /></View>
       {!omnibox.results && dispatchRows}
@@ -337,8 +337,8 @@ function HomeBody(props: PluginScreenProps & { deps: HomeDeps; onboarding: Onboa
       <View style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}><UndoBar store={inbox} theme={theme} touch={false} /></View>
     </View>} />
     {keysOpen && <KeysSheet theme={theme} label={tr("Home keys")} keyWidth={104} onClose={() => setKeysOpen(false)} sections={[
-      { title: "In the list", keys: HOME_KEYS.filter(k => !k.when) },
-      { title: "In the search", keys: HOME_KEYS.filter(k => k.when === "search").map(k => k.key === "/" && anywhereKey ? { ...k, key: `/ or ${anywhereKey}` } : k) },
+      { title: tr("In the list"), keys: HOME_KEYS.filter(k => !k.when) },
+      { title: tr("In the search"), keys: HOME_KEYS.filter(k => k.when === "search").map(k => k.key === "/" && anywhereKey ? { ...k, key: `/ or ${anywhereKey}` } : k) },
       { title: "Answering", keys: HOME_KEYS.filter(k => k.when === "pane") },
     ]} />}
     {newHost}
@@ -371,7 +371,7 @@ export function DisplaySplit({ theme, main, side, field, defaultFraction, range,
     setPushed(next);
     const client: DisplayClient = { rpc: (contract, input) => (contract as unknown) === displayRpc.read ? readDisplay(input as never) : saveDisplay(input as never) };
     void writeDisplay(client, { [field]: next })
-      .then(ok => { if (!ok) toast.error("Couldn't save the pane's width. It resets when this screen reopens."); })
+      .then(ok => { if (!ok) toast.error(tr("Couldn't save the pane's width. It resets when this screen reopens.")); })
       .catch(e => toast.error(errorText(e)));
   };
   return <ResizableSplit theme={theme} main={main} side={side} testID={testID} label={label}
@@ -476,7 +476,7 @@ function DetailSendNow({ s, theme, compact, deps }: { s: Workstream; theme: Them
       const after = await send({ workspaceId: s.workspaceId, batchId: s.sendNow.batchId });
       const b = after.batches.find(x => x.id === s.sendNow!.batchId);
       const out = !b || ["sent", "sending", "completed"].includes(b.state);
-      toast.show(out ? `Sent to ${s.title}` : b.result || "Queued. It goes out when the main agent is free.", { variant: out ? "success" : "info" });
+      toast.show(out ? `Sent to ${s.title}` : b.result || tr("Queued. It goes out when the main agent is free."), { variant: out ? "success" : "info" });
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); deps.sources.live.refresh(); }
   };
   return <View style={{ flexDirection: "row" }}>
@@ -607,8 +607,8 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   // The header already says "Later until …", so each row says when it's back and offers Bring back now with a name
   // that tells the two apart. Bring back removes its row, so focus moves to the pane's Sign off.
   const laterRows = [
-    later && { key: "bring_back", who: wsUnder ? "This agent" : null, until: later.until, label: `Bring back ${s.title} now`, back: later.back },
-    wsUnder && w && { key: "bring_back_ws", who: "Workspace items", until: wsUnder.until, label: `Bring back ${s.title}'s workspace items now`,
+    later && { key: "bring_back", who: wsUnder ? tr("This agent") : null, until: later.until, label: `Bring back ${s.title} now`, back: later.back },
+    wsUnder && w && { key: "bring_back_ws", who: tr("Workspace items"), until: wsUnder.until, label: `Bring back ${s.title}'s workspace items now`,
       back: async () => { await control({ workspaceId: w.id, snooze: null }); live.refresh(); } },
   ].filter(Boolean) as { key: string; who: string | null; until: string; label: string; back: () => Promise<unknown> }[];
   const laterBlock = laterRows.length > 0 && <View style={{ gap: compact ? 10 : 6 }}>
@@ -652,7 +652,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       <Text style={compact ? t.section : [t.small, { fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" }]}>{tail.asleep && tail.seenAt ? `Last seen · ${age(new Date(tail.seenAt).toISOString(), Date.now()) === "now" ? "just now" : `${age(new Date(tail.seenAt).toISOString(), Date.now())} ago`}` : tail.steps?.length ? `Recent · last ${tail.steps.length} steps` : tr("Recent steps")}</Text>
       {!!tail.error && <Text style={t.meta}>{`Couldn't load the agent's steps: ${tail.error}`}</Text>}
       {tail.steps === null ? <Spinner color={c.foregroundMuted} size={12} label={tr("Loading the agent's steps")} />
-        : tail.steps.length === 0 ? (tail.error ? null : <Text style={t.meta}>{tail.asleep ? "This agent isn't loaded, so its steps aren't shown." : "No steps yet."}</Text>)
+        : tail.steps.length === 0 ? (tail.error ? null : <Text style={t.meta}>{tail.asleep ? tr("This agent isn't loaded, so its steps aren't shown.") : tr("No steps yet.")}</Text>)
         : <PrLinksProvider prs={w ? prLinksByNumber(w.prs) : undefined}>{tail.steps.map((step, i) => <Step key={i} step={step} c={c} last={i === tail.steps!.length - 1} />)}</PrLinksProvider>}
       {(tail.asleep || (tail.woken && tail.loading)) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         <Button theme={theme} compact={compact} kind="secondary" title={tail.loading ? "Loading…" : tr("Load recent steps")} loading={tail.loading} disabled={tail.loading} onPress={tail.load} />
@@ -661,7 +661,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
       {!compact && !!tail.steps?.length && <Text style={t.small}>{tr("A preview, not the whole session. Open full for the chat.")}</Text>}
     </>}
   </View>;
-  // "No ask stated" only repeats the chat; the panel already hides it, and on a phone it's dead weight above the ask.
+  // tr("No ask stated") only repeats the chat; the panel already hides it, and on a phone it's dead weight above the ask.
   // Nor beside a drawn Needs-you item (shared briefCardShown, a-brief-without-an-ask-never-sits-beside-needs-you).
   const showBrief = b && s.agentId && briefCardShown(b, row, asks.length) && !(b.kind === "permission" && agent.permissions.length) && !(compact && b.source === "none");
   // A flagged ask in a tracked workspace is part of its one Needs you block (shared/needs-block.ts): folded into the
@@ -673,7 +673,7 @@ function DetailPane({ s, model, theme, compact, deps, openFull, signOffNext, ask
   return <DismissReveal.Provider value="always"><DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16, paddingBottom: 24 }}
     dock={({ yields, typingInContent }) => s.agentId && !typingInContent && <View nativeID={compact ? TOAST_ANCHOR : undefined} style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0 }, bottomInset(compact)]}>
       {!yields && moves}
-      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? "Reply to the agent" : undefined} target={{ kind: "agent", agentId: s.agentId }} onSend={async (text, images) => {
+      <ReplyBox theme={theme} compact={compact} agentName={s.title} placeholder={compact ? tr("Reply to the agent") : undefined} target={{ kind: "agent", agentId: s.agentId }} onSend={async (text, images) => {
         await agent.handle!.send(text, images?.length ? { images } : undefined);
         inbox.refresh();
       }} />
@@ -720,7 +720,7 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
   };
   const start = async () => {
     if (starting) return; setStarting(true);
-    try { await extras.startOverseer(); toast.show("The Overseer is ready", { variant: "success" }); } catch (e) { toast.error(errorText(e)); } finally { setStarting(false); }
+    try { await extras.startOverseer(); toast.show(tr("The Overseer is ready"), { variant: "success" }); } catch (e) { toast.error(errorText(e)); } finally { setStarting(false); }
   };
   const restartRow = agentId && restartWith && (compact
     // Phones: one row, the why on the left and a short Restart on the right; the full target is the a11y label.
@@ -736,7 +736,7 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
     <Text accessibilityRole="header" style={t.title}>{tr("Overseer")}</Text>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 }}>
       <Icon name="MessagesSquare" size={14} color={c.foregroundMuted} />
-      <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0 }]}>{model ?? configured ?? "Not started"}</Text>
+      <Text numberOfLines={1} style={[t.meta, { flex: 1, minWidth: 0 }]}>{model ?? configured ?? tr("Not started")}</Text>
       {agentId && navigation && <IconButton theme={theme} compact icon="PanelRightOpen" label={tr("Open full")} onPress={() => navigation.openAgent({ agentId })} />}
     </View>
     {restartRow}
@@ -763,17 +763,17 @@ function OverseerPane({ theme, compact, o, focus = 0, pending = null, agentId, m
   </View>;
   return <DockedPane compact={compact} header={header} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 20, gap: 12, paddingBottom: 24 }}
     dock={({ typingInContent }) => agentId && !typingInContent && <View style={[{ borderTopWidth: 1, borderTopColor: c.border }, bottomInset(compact)]}>
-      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? "Ask or give a task" : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus} target={{ kind: "overseer" }}
+      <ReplyBox theme={theme} compact={compact} agentName="the Overseer" placeholder={compact ? tr("Ask or give a task") : "Ask or give a task: “assign reviewers on all ready PRs”"} hint={null} focus={focus} target={{ kind: "overseer" }}
         onSend={async (message, images) => { await agent.handle!.send(message, images?.length ? { images } : undefined); inbox.refresh(); }} />
     </View>}>
       {o.state === "error" && <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{o.line}</Text>}
       {tail.steps === null ? <Spinner color={c.foregroundMuted} size={12} label={tr("Loading the conversation")} />
-        : tail.steps.length === 0 ? <Text style={t.meta}>{tail.error ? `Couldn't load the conversation: ${tail.error}` : "Nothing yet. Ask it what needs you, or give it a task for one of your agents."}</Text>
+        : tail.steps.length === 0 ? <Text style={t.meta}>{tail.error ? `Couldn't load the conversation: ${tail.error}` : tr("Nothing yet. Ask it what needs you, or give it a task for one of your agents.")}</Text>
         : tail.steps.map((step, i) => <Step key={i} step={step} c={c} last={i === tail.steps!.length - 1} />)}
       {/* An ask just sent from the omnibox, until the conversation shows it. */}
       {pending && tail.steps && !tail.steps.some(x => x.kind === "you" && x.text.trim() === pending) && <Step step={{ kind: "you", text: pending }} c={c} last={false} />}
       {(o.state === "running" || pending && tail.steps && !tail.steps.some(x => x.kind === "you" && x.text.trim() === pending)) && <Spinner color={c.foregroundMuted} size={12} label={tr("The Overseer is working")} />}
-      {/* Its open ask, after the conversation that led to it. Only something Tom can act on; never "No ask stated". */}
+      {/* Its open ask, after the conversation that led to it. Only something Tom can act on; never tr("No ask stated"). */}
       {b && agentId && (b.kind === "decision" && b.decisions.some(d => d.options.length) || b.kind === "action") ? <BriefCard {...({ embedded: true, item: { data: b }, theme, layout: { compact }, agentId, deps: deps.briefDeps } as unknown as Parameters<typeof BriefCard>[0])} /> : null}
   </DockedPane>;
 }
@@ -808,7 +808,7 @@ function permissionText(p: Permission): string {
 export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }: { p: Permission; theme: Theme; compact: boolean; busy: boolean; primary: boolean; onRespond: (r: { behavior: "allow" | "deny"; selectedActionId?: string; message?: string }) => void }) {
   const c = theme.colors; const t = text(c, compact);
   const command = permissionText(p);
-  // Provider-defined choices ("Always for this session") show as extra secondaries; Allow and Deny always exist.
+  // Provider-defined choices (tr("Always for this session")) show as extra secondaries; Allow and Deny always exist.
   const extra = (p.actions ?? []).filter(a => !/^(allow|deny|reject)$/i.test(a.label.trim()));
   return <View accessibilityRole="alert" style={{ padding: 14, gap: 10, borderRadius: 10, borderWidth: 1, borderColor: withAlpha(c.statusWarning, 0.5), backgroundColor: withAlpha(c.statusWarning, isLight(c) ? 0.06 : 0.08) }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -833,7 +833,7 @@ export function PermissionBlock({ p, theme, compact, busy, primary, onRespond }:
 }
 
 /** The reply box. Sending is the developer writing to the agent, which clears Needs you (binding rule). */
-const REPLY_HINT = "Sending clears Needs you. Sign off & next moves on without a reply.";
+const REPLY_HINT = tr("Sending clears Needs you. Sign off & next moves on without a reply.");
 export function ReplyBox({ theme, compact, agentName, onSend, placeholder = tr("Answer in your own words"), hint = REPLY_HINT, focus = 0, onFocusChange, docked = true, target }: { theme: Theme; compact: boolean; agentName: string;
   /** `images`: the pasted images (every-agent-field-takes-images), sent with the words through Paseo's own send. */
   onSend: (text: string, images?: { data: string; mimeType: string }[]) => Promise<void>; placeholder?: string; hint?: string | null; focus?: number; onFocusChange?: (focused: boolean) => void; docked?: boolean;
@@ -940,7 +940,7 @@ function BriefPane({ theme, compact, pane, onSelect, openLog, sources, catchUp, 
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>{dot(offline === null)}<Text style={t.meta}>Paseo {offline === null ? "live" : `offline ${age(new Date(offline).toISOString(), now)}`}</Text></View>
       {githubOff
-        ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.foregroundMuted }} /><Text style={t.meta}>{githubOff === "missing" ? "GitHub not connected" : "GitHub signed out"}</Text></View>
+        ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.foregroundMuted }} /><Text style={t.meta}>{githubOff === "missing" ? tr("GitHub not connected") : tr("GitHub signed out")}</Text></View>
         : <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>{dot(!!observed && now - Date.parse(observed) < 15 * 60_000)}<Text style={t.meta}>GitHub {observed ? age(observed, now) : "no PRs yet"}</Text></View>}
     </View>
   </ScrollView>;

@@ -25,8 +25,8 @@ import { QuestionSheet, QuestionStepper } from "./questions";
 import { useReviewerSettings } from "./reviewers";
 
 export const PILL_ID = "follow-up";
-/** The pill's title in a move's Undo window; the label itself comes from pillState ("Signed off", tr("Later"), tr("Done")). */
-const UNDO_TITLE: Record<string, string> = { sign_off: "Signed off", later: "Moved to Later" };
+/** The pill's title in a move's Undo window; the label itself comes from pillState (tr("Signed off"), tr("Later"), tr("Done")). */
+const UNDO_TITLE: Record<string, string> = { sign_off: tr("Signed off"), later: tr("Moved to Later") };
 
 
 type Deps = { inbox: InboxStore; live: LiveStore; openPanel: (workspaceId: string) => void; openNext: (from: string) => void };
@@ -64,7 +64,7 @@ function useTarget(deps: Deps, agentId: string, workspaceId: string) {
 
 /**
  * Follow-up's one composer pill. It exists only while something needs you on this agent, leads with the
- * decisive word ("Decision 4m", "Merge #812", "2 questions"), and opens one popover with the sign-off,
+ * decisive word (tr("Decision 4m"), "Merge #812", "2 questions"), and opens one popover with the sign-off,
  * Later… and, when relevant, the workspace's questions and PR actions.
  */
 export function contributeFollowUpPill(client: PluginClientContext, deps: Deps) {
@@ -99,7 +99,7 @@ export function contributeFollowUpPill(client: PluginClientContext, deps: Deps) 
       const label = undo ? state.label : state.headline.label;
       // The tooltip (and accessible name) says whose pill it is and what kind of ask. On phones the host shows it as the
       // sheet's title right above the popover, which carries the ask itself in full, so the title doesn't repeat it.
-      const title = undo ? `Follow-up · ${state.label === "Done" ? tr("Done") : UNDO_TITLE[recent?.kind ?? "sign_off"] ?? "Signed off"}` : `Follow-up · ${state.headline.label}`;
+      const title = undo ? `Follow-up · ${state.label === "Done" ? tr("Done") : UNDO_TITLE[recent?.kind ?? "sign_off"] ?? tr("Signed off")}` : `Follow-up · ${state.headline.label}`;
       const key = `${state.mode}|${label}|${title}`;
       // Always a popover, Undo included: Paseo 0.16 draws a chevron on popover pills, so switching kinds for the undo
       // window made the chevron and the pill's width jump (tests/pill-popover.test.ts).
@@ -183,10 +183,10 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
   if (state?.mode === "undo") return <View style={{ width: 380, maxWidth: "100%", gap: 10, marginTop: touch ? -12 : 0 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
       <Icon name="Check" size={14} color={c.foregroundMuted} />
-      <Text style={t.meta}>{doneWindow ? "Done. The agent hears it in a few seconds." : "Signed off. It leaves Needs you in a few seconds."}</Text>
+      <Text style={t.meta}>{doneWindow ? tr("Done. The agent hears it in a few seconds.") : tr("Signed off. It leaves Needs you in a few seconds.")}</Text>
     </View>
     <View style={{ flexDirection: "row" }}>
-      <Button theme={props.theme} compact={touch} grow={touch} kind="secondary" icon="Undo2" title={tr("Undo")} accessibilityHint={doneWindow ? "Keeps the ask open; nothing is sent" : "Puts this agent back in Needs you"}
+      <Button theme={props.theme} compact={touch} grow={touch} kind="secondary" icon="Undo2" title={tr("Undo")} accessibilityHint={doneWindow ? tr("Keeps the ask open; nothing is sent") : tr("Puts this agent back in Needs you")}
         onPress={() => done(() => void deps.inbox.undo([agentId]))} />
     </View>
   </View>;
@@ -198,7 +198,7 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
         <Icon name={HEADLINE_ICON[headline.key]} size={14} color={tone} />
         {/* Phones: the host's sheet title already says "Follow-up · <label>", so the meta line doesn't repeat it. */}
         {touch
-          ? <Text style={t.small}>{main ? tr("Main agent") : "This agent"}{count.meta ? ` · ${countText} in this workspace` : ""}</Text>
+          ? <Text style={t.small}>{main ? tr("Main agent") : tr("This agent")}{count.meta ? ` · ${countText} in this workspace` : ""}</Text>
           : <>
             <Text style={{ color: tone, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{headline.label}</Text>
             {count.meta && <Text style={t.small}>· {countText} in this workspace</Text>}
@@ -245,7 +245,7 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
     {/* 4. Quiet footer. */}
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 2, rowGap: 0, marginHorizontal: -6, paddingTop: 8, borderTopWidth: 1, borderTopColor: withAlpha(c.border, 0.8) }}>
       {flagged && running && <FooterLink theme={props.theme} compact={touch} icon="BellOff" title={tr("Sign off & mute this turn")} onPress={() => done(() => void deps.inbox.signOff([agentId], { muteTurn: true }))} />}
-      {row && <FooterLink theme={props.theme} compact={touch} icon={row.enable_finish_flags ? "BellMinus" : "Bell"} title={row.enable_finish_flags ? "Don't flag finishes" : "Flag finishes again"}
+      {row && <FooterLink theme={props.theme} compact={touch} icon={row.enable_finish_flags ? "BellMinus" : "Bell"} title={row.enable_finish_flags ? tr("Don't flag finishes") : tr("Flag finishes again")}
         hint={tr("Permission prompts and errors still flag this agent")} onPress={() => void deps.inbox.setFinishFlags(agentId, !row.enable_finish_flags)} />}
       <View style={{ flex: 1 }} />
       <FooterLink theme={props.theme} compact={touch} icon="PanelRight" title={tr("Open Follow-up")} onPress={() => done(() => deps.openPanel(props.workspaceId))} />

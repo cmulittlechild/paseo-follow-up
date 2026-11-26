@@ -46,10 +46,10 @@ export function PrRow({ pr, theme, first, last, showRepo, onOpen, compact, wide 
   const c = theme.colors; const t = text(c);
   const s = pr.snapshot;
   const status = compactPrStatus(pr);
-  const label = mergeQueued(pr) ? "Queued to merge" : status.label;
+  const label = mergeQueued(pr) ? tr("Queued to merge") : status.label;
   const line = c.border;
   const extras = [
-    s?.state === "OPEN" && reviewersMissing(pr) ? "No reviewers" : null,
+    s?.state === "OPEN" && reviewersMissing(pr) ? tr("No reviewers") : null,
     s?.state === "OPEN" && s.mergeWhenReady === "on" && !mergeQueued(pr) ? isGithubFlow(s) ? "Auto-merge" : tr("Merge when ready") : null,
   ].filter(Boolean) as string[];
   const titleText = s?.title ?? `${pr.repo} pull request`;
@@ -134,7 +134,7 @@ function StackRows({ name, prs, theme, open, toggle, onOpen, compact, showRepo, 
           <Icon name={showDone ? "ChevronUp" : "GitMerge"} size={10} color={showDone ? c.foregroundMuted : mergedColor(c)} />
         </View>
       </View>
-      <Text style={[t.meta, { paddingTop: 7, fontVariant: ["tabular-nums"] }]}>{showDone ? "Hide merged" : `${done.length} merged below`}</Text>
+      <Text style={[t.meta, { paddingTop: 7, fontVariant: ["tabular-nums"] }]}>{showDone ? tr("Hide merged") : `${done.length} merged below`}</Text>
     </Pressable>}
     <View style={{ height: 6 }} />
   </View>;

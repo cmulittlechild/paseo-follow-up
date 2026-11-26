@@ -78,7 +78,7 @@ function NoteImage({ block, theme, compact }: { block: Extract<NoteBlock, { kind
 /**
  * One version's notes. Shared by What's new, the release notes and Settings. A curated section (headings, paragraphs
  * and images, like 2.0.0) reads in full as written: its opening paragraph a step larger as the intro, and whatever
- * follows a `---` rule (the credits) as a quiet footnote. A list of bullets folds past `max` behind "Show all N".
+ * follows a `---` rule (the credits) as a quiet footnote. A list of bullets folds past `max` behind tr("Show all N").
  */
 export function VersionNotes({ note, theme, compact = false, max = 8 }: { note: ReleaseNote; theme: Theme; compact?: boolean; max?: number }) {
   const c = theme.colors; const t = text(c, compact);
@@ -182,8 +182,8 @@ function NotesScroll({ theme, style, contentContainerStyle, children }: { theme:
 }
 
 /**
- * The notes' titles name the plugin, from its manifest (the view's `name`): "What's new in Follow-up 2.0.0", and
- * "Follow-up release notes" for every version. Exported for the tests.
+ * The notes' titles name the plugin, from its manifest (the view's `name`): tr("What's new in Follow-up 2.0.0"), and
+ * tr("Follow-up release notes") for every version. Exported for the tests.
  */
 export const notesTitle = (name: string, version: string | null) => version ? `What's new in ${name} ${version}` : `${name} release notes`;
 
@@ -290,7 +290,7 @@ const claimVersion = () => claimedBy;
 const subscribeClaim = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 
 /**
- * Shows "What's new" once per device per version, on whichever Follow-up surface mounts first (Home, the workspace
+ * Shows tr("What's new") once per device per version, on whichever Follow-up surface mounts first (Home, the workspace
  * panel or the sidebar item), after an update with notes (shared/changelog.ts `whatsNew`). Never on a first install,
  * after a beta, with Settings → General's switch off, or while setup is showing or still loading.
  */

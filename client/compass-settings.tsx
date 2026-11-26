@@ -40,7 +40,7 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-d
 const placeName = (p: Place) => p.kind === "conversation" ? (p.sub === "dm" ? `DM with ${p.name}` : `#${p.name}`)
   : p.kind === "tracker" ? `${trackerRef(p.id)?.tracker === "github" ? tr("GitHub") : "Linear"} ${p.scope} ${p.name}` : p.kind === "doc" && p.path ? `${p.name} (this machine)` : p.kind === "calendar" && p.filter === "with-guests" ? `${p.name}, meetings with guests` : p.name;
 /**
- * "DM with Dana" when the source is one person read in their DM; "Dana in #planning"; "Everyone in #team"; a tracker
+ * tr("DM with Dana") when the source is one person read in their DM; "Dana in #planning"; "Everyone in #team"; a tracker
  * or calendar place alone (its items are read by rule, so nobody's words are picked).
  */
 const whoWhere = (s: CompassSource) => s.who.kind === "person" && s.places.length === 1 && s.places[0].kind === "conversation" && s.places[0].sub === "dm" && s.places[0].id === s.who.person.id
@@ -124,7 +124,7 @@ export function CompassReading({ theme, compact }: { theme: Theme; compact: bool
 }
 
 /** The daytime read's choices (the-brief-has-one-timer): only while Follow-up is open, on workdays 08:00-20:00. */
-const CADENCE_LABEL: Record<CompassSettings["cadence"], string> = { off: "Mornings only", "1h": "Every hour", "2h": "Every 2 hours", "4h": "Every 4 hours" };
+const CADENCE_LABEL: Record<CompassSettings["cadence"], string> = { off: tr("Mornings only"), "1h": tr("Every hour"), "2h": tr("Every 2 hours"), "4h": tr("Every 4 hours") };
 /** Where Compass's suggestions go: an issue nobody started that a source said matters. */
 const ROUTING_LABEL: Record<CompassSettings["routing"]["suggestions"], string> = { "needs-you-and-new": `Needs you and ${NEW_NAME}`, "new-only": `${NEW_NAME} only`, off: tr("Off") };
 
@@ -138,9 +138,9 @@ export function CompassWhen({ theme, compact, part }: { theme: Theme; compact: b
   if (!data || !data.settings.sources.length) return null;
   const s = data.settings;
   // One row each, so the settings card draws its divider between them.
-  if (part === "cadence") return <SettingsSelect label={tr("During the day")} hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
+  if (part === "cadence") return <SettingsSelect label={tr("During the day")} hint={s.cadence === "off" ? tr("Compass reads once, at the morning read. Read now reads at once.") : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
     value={s.cadence} disabled={change.isPending} options={CADENCES.map(v => ({ value: v, label: CADENCE_LABEL[v] }))} onValueChange={cadence => change.mutate({ cadence: cadence as CompassSettings["cadence"] })} />;
-  return <SettingsSelect label={tr("Issues nobody's on")} hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? `Listed first in ${NEW_OF} My issues, with why.` : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in ${NEW_NAME}.`}
+  return <SettingsSelect label={tr("Issues nobody's on")} hint={s.routing.suggestions === "off" ? tr("Compass notes still reorder AI priority; none suggests an issue.") : s.routing.suggestions === "new-only" ? `Listed first in ${NEW_OF} My issues, with why.` : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in ${NEW_NAME}.`}
     value={s.routing.suggestions} disabled={change.isPending} options={(Object.keys(ROUTING_LABEL) as CompassSettings["routing"]["suggestions"][]).map(v => ({ value: v, label: ROUTING_LABEL[v] }))}
     onValueChange={suggestions => change.mutate({ routing: { suggestions: suggestions as CompassSettings["routing"]["suggestions"] } })} />;
 }
@@ -149,7 +149,7 @@ export function CompassWhen({ theme, compact, part }: { theme: Theme; compact: b
 function statusLine(v: View_): string {
   if (v.running) return "Reading…";
   // One source already shows its count on its row; the total is news only with several.
-  const parts = [v.lastRead ? `Read ${clock(v.lastRead.at)}` : "Not read yet", ...(v.settings.sources.length > 1 ? [`${v.notes.length} note${v.notes.length === 1 ? "" : "s"} live`] : [])];
+  const parts = [v.lastRead ? `Read ${clock(v.lastRead.at)}` : tr("Not read yet"), ...(v.settings.sources.length > 1 ? [`${v.notes.length} note${v.notes.length === 1 ? "" : "s"} live`] : [])];
   if (v.unplaced) parts.push(`${v.unplaced} not matched to a workspace`);
   if (v.today.extractions >= v.today.cap) parts.push(`paused until tomorrow: ${v.today.cap} reads today`);
   return parts.join(" · ");
@@ -208,7 +208,7 @@ function PlanLine({ source, plan, theme, compact }: { source: CompassSource; pla
   const posted = mine?.postedAt ? new Date(mine.postedAt).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : null;
   const last = inUse && plan.previous?.url === mine?.url && !plan.found;
   const line = inUse ? `Shared ${last ? "last week's plan" : "this week's plan"}${plan.read?.title ? `, ${plan.read.title}` : ""}${posted ? ` · ${posted}` : ""}`
-    : mine ? "Shared a plan; a pasted link is in use instead" : "No plan shared yet: the newest claude.ai artifact becomes the plan";
+    : mine ? tr("Shared a plan; a pasted link is in use instead") : tr("No plan shared yet: the newest claude.ai artifact becomes the plan");
   return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
     <View style={{ paddingTop: compact ? 4 : 3 }}><Icon name={inUse ? tr("Check") : "Map"} size={12} color={inUse ? c.statusSuccess : c.foregroundMuted} /></View>
     <RichText plain style={[t.meta, { flexShrink: 1, minWidth: 0 }]}>{line}</RichText>
@@ -246,10 +246,10 @@ function NoteList({ notes, view, theme, compact }: { notes: CompassNote[]; view:
 
 /** What the editor picks places with, by the kind of place a source reads. */
 const PICKS: Record<Place["kind"], { kinds: FindKind[]; first: string; more: string }> = {
-  conversation: { kinds: ["channels"], first: "Pick a channel", more: tr("Add") },
-  doc: { kinds: ["docs", "file"], first: "Pick a doc", more: tr("Add") },
-  tracker: { kinds: ["trackers"], first: "Pick a project or label", more: tr("Add") },
-  calendar: { kinds: ["calendars"], first: "Pick a calendar", more: tr("Add") },
+  conversation: { kinds: ["channels"], first: tr("Pick a channel"), more: tr("Add") },
+  doc: { kinds: ["docs", "file"], first: tr("Pick a doc"), more: tr("Add") },
+  tracker: { kinds: ["trackers"], first: tr("Pick a project or label"), more: tr("Add") },
+  calendar: { kinds: ["calendars"], first: tr("Pick a calendar"), more: tr("Add") },
 };
 type WhoMode = "people" | "anyone" | "me";
 
@@ -280,7 +280,7 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
     if (dmOnly) setPlaces(ps => ps.some(p => p.id === f.id) ? ps : [...ps, f.place].slice(0, COMPASS.places));
     if (!label && !source) setLabel(f.name);
   };
-  const addPlace = (f: Found) => { setPicking(null); setPlaces(ps => ps.some(p => p.kind === f.place.kind && p.id === f.place.id) ? ps : [...ps, f.place].slice(0, COMPASS.places)); if (!label && !source && (ruled || mode !== "people")) setLabel(kind === "calendar" ? "Calendar deadlines" : f.name); };
+  const addPlace = (f: Found) => { setPicking(null); setPlaces(ps => ps.some(p => p.kind === f.place.kind && p.id === f.place.id) ? ps : [...ps, f.place].slice(0, COMPASS.places)); if (!label && !source && (ruled || mode !== "people")) setLabel(kind === "calendar" ? tr("Calendar deadlines") : f.name); };
   // Trackers and calendars are read by rule: their items, whoever wrote them (a calendar is yours).
   const who: Who | null = ruled ? (kind === "calendar" ? { kind: "me" } : { kind: "anyone" }) : mode === "me" ? { kind: "me" } : mode === "anyone" ? { kind: "anyone" }
     : people.length === 1 ? { kind: "person", person: { id: people[0].id, name: people[0].name } } : people.length > 1 ? { kind: "people", people: people.map(p => ({ id: p.id, name: p.name })) } : null;
@@ -319,13 +319,13 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
     </View>}
     {!ruled && <View style={{ gap: 6 }}>
       {!dmOnly && <View style={row}>
-        {labelCol("Whose words")}
-        {(["people", "anyone", "me"] as const).map(m => pill(mode === m, m === "people" ? "Some people" : m === "anyone" ? "Everyone there" : "Yours", () => { setMode(m); if (m !== "people") { setPeople([]); setPicking(null); } }, "radio", m))}
+        {labelCol(tr("Whose words"))}
+        {(["people", "anyone", "me"] as const).map(m => pill(mode === m, m === "people" ? tr("Some people") : m === "anyone" ? tr("Everyone there") : "Yours", () => { setMode(m); if (m !== "people") { setPeople([]); setPicking(null); } }, "radio", m))}
       </View>}
       {mode === "people" && <View style={row}>
-        {dmOnly ? labelCol("Whose words") : !compact && labelCol("")}
+        {dmOnly ? labelCol(tr("Whose words")) : !compact && labelCol("")}
         {people.map(p => chip(p.name, () => { setPeople(ps => ps.filter(x => x.id !== p.id)); if (dmOnly) setPlaces(ps => ps.filter(x => x.id !== p.id)); }, p.id))}
-        {people.length < COMPASS.people && <Button title={people.length ? "Add a person" : "Pick a person"} icon="Plus" kind={people.length ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === "people" ? null : "people")} />}
+        {people.length < COMPASS.people && <Button title={people.length ? tr("Add a person") : tr("Pick a person")} icon="Plus" kind={people.length ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === "people" ? null : "people")} />}
       </View>}
       {mode === "anyone" && <Text style={t.meta}>{`Everyone's messages there, the newest ${COMPASS.items} a read. Your reading notes can narrow it ("only the leads").`}</Text>}
     </View>}
@@ -333,18 +333,18 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
     <View style={row}>
       {labelCol("Where")}
       {places.map(p => chip(placeName(p), () => setPlaces(ps => ps.filter(x => x !== p)), `${p.kind}:${p.id}`))}
-      {places.length < COMPASS.places && !dmOnly && picks.map((k, i) => <Button key={k} title={k === "file" ? "A file on this machine" : places.length ? PICKS[kind].more : PICKS[kind].first} icon={k === "file" ? "FileText" : "Plus"}
+      {places.length < COMPASS.places && !dmOnly && picks.map((k, i) => <Button key={k} title={k === "file" ? tr("A file on this machine") : places.length ? PICKS[kind].more : PICKS[kind].first} icon={k === "file" ? "FileText" : "Plus"}
         kind={places.length || i > 0 ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === k ? null : k)} />)}
       {dmOnly && !places.length && <Text style={t.meta}>{tr("Their DM with you, once you pick them.")}</Text>}
     </View>
     {picking && picking !== "people" && <FindPicker kind={picking} theme={theme} compact={compact} onCancel={() => setPicking(null)} onPick={addPlace} />}
     {kind === "calendar" && places.length > 0 && <View style={row}>
-      {labelCol("Which events")}
-      {(["with-guests", "all"] as const).map(f => pill((places[0].kind === "calendar" ? places[0].filter ?? "all" : "all") === f, f === "with-guests" ? "Meetings with guests" : "All events",
+      {labelCol(tr("Which events"))}
+      {(["with-guests", "all"] as const).map(f => pill((places[0].kind === "calendar" ? places[0].filter ?? "all" : "all") === f, f === "with-guests" ? tr("Meetings with guests") : tr("All events"),
         () => setPlaces(ps => ps.map(p => p.kind === "calendar" ? { ...p, filter: f } : p)), "radio", f))}
     </View>}
     {ruled && <Text style={t.meta}>{kind === "tracker"
-      ? "Read by rule, with no model: each open issue in it is a note quoting its own fields, and one that leaves it ends its note."
+      ? tr("Read by rule, with no model: each open issue in it is a note quoting its own fields, and one that leaves it ends its note.")
       : "Read by rule, with no model: a meeting in the next two weeks lends its date to the work it matches; one about nothing here isn't kept."}</Text>}
     <View style={{ gap: 6 }}>
       <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("What it tells you")}</Text>
@@ -354,32 +354,32 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
     </View>
     {!ruled && <View style={{ gap: 6 }}>
       <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("How to read this")}</Text>
-      <TextInput accessibilityLabel={tr("How to read this source")} multiline value={notes} onChangeText={v => setNotes(v.slice(0, COMPASS.sourceInstructions))} placeholder={kind === "doc" ? "Lines under 'This week' are the plan. A line starting with ! is urgent." : "P0 means today, P1 this week. Ignore hiring talk."}
+      <TextInput accessibilityLabel={tr("How to read this source")} multiline value={notes} onChangeText={v => setNotes(v.slice(0, COMPASS.sourceInstructions))} placeholder={kind === "doc" ? tr("Lines under 'This week' are the plan. A line starting with ! is urgent.") : tr("P0 means today, P1 this week. Ignore hiring talk.")}
         placeholderTextColor={c.foregroundMuted} style={{ minHeight: 64, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
       <Text style={t.meta}>{`Your words for the model that reads it. They change how it is read, never what is read. ${notes.length}/${COMPASS.sourceInstructions}`}</Text>
     </View>}
     <View style={row}>
       {labelCol(tr("Name"))}
-      <TextInput accessibilityLabel={tr("Source name")} value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? tr("Now") : kind === "calendar" ? "Calendar deadlines" : "Dana · product"} placeholderTextColor={c.foregroundMuted}
+      <TextInput accessibilityLabel={tr("Source name")} value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? tr("Now") : kind === "calendar" ? tr("Calendar deadlines") : "Dana · product"} placeholderTextColor={c.foregroundMuted}
         style={{ flex: 1, minWidth: 160, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
     </View>
     <View style={[row, { justifyContent: "space-between" }]}>
       <View style={row}>
-        <Button title={source ? tr("Save") : "Add source"} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
+        <Button title={source ? tr("Save") : tr("Add source")} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
         <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
       </View>
       {onRemove && <Button title={tr("Remove source")} kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}
     </View>
-    {!ready && <Text style={t.meta}>{!who ? "Pick whose words count." : !places.length ? "Pick where to read." : "Give it at least one role."}</Text>}
+    {!ready && <Text style={t.meta}>{!who ? tr("Pick whose words count.") : !places.length ? tr("Pick where to read.") : tr("Give it at least one role.")}</Text>}
   </SubmitScope>;
 }
 
 const FIND_COPY: Record<FindKind, { label: string; placeholder: string }> = {
-  people: { label: "Search people", placeholder: "Search people by name" },
-  channels: { label: "Search channels", placeholder: "Search channels by name" },
-  docs: { label: "Search docs", placeholder: "Search pages by title" },
-  file: { label: "File path", placeholder: "/home/you/notes/now.md" },
-  trackers: { label: "Search trackers", placeholder: "A Linear project, or owner/repo for GitHub" },
+  people: { label: tr("Search people"), placeholder: tr("Search people by name") },
+  channels: { label: tr("Search channels"), placeholder: tr("Search channels by name") },
+  docs: { label: tr("Search docs"), placeholder: tr("Search pages by title") },
+  file: { label: tr("File path"), placeholder: "/home/you/notes/now.md" },
+  trackers: { label: tr("Search trackers"), placeholder: tr("A Linear project, or owner/repo for GitHub") },
   calendars: { label: "Calendars", placeholder: "" },
 };
 
@@ -400,7 +400,7 @@ function FindPicker({ kind, onPick, onCancel, theme, compact }: { kind: FindKind
   // Its own scope: Enter checks a file here, and never reaches the editor's scope around it (which would swallow it).
   return <SubmitScope enabled={file && q.trim().length >= 2} onSubmit={() => setDebounced(q.trim())} style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0, overflow: "hidden" }}>
     <View style={{ flexDirection: "row", gap: 8, padding: 8, alignItems: "center" }}>
-      {auto ? <Text style={[t.meta, { flex: 1 }]}>{results.isFetching ? "Looking…" : "The calendars your calendar tool lists"}</Text>
+      {auto ? <Text style={[t.meta, { flex: 1 }]}>{results.isFetching ? "Looking…" : tr("The calendars your calendar tool lists")}</Text>
         : <TextInput autoFocus accessibilityLabel={copy.label} value={q} onChangeText={setQ} placeholder={copy.placeholder}
           placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
           style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface1, ...(file && q ? { fontFamily: "ui-monospace, Menlo, monospace" } : {}) }} />}

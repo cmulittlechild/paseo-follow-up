@@ -22,10 +22,10 @@ export const PR_STATS_INFO = "PR statistics show who opens PRs and whose PRs wai
  * GitHub share are host-wide.
  */
 let openStatsPage: (() => void) | null = null;
-/** index.client.tsx: how Settings opens the PR stats page ("Open PR stats"). */
+/** index.client.tsx: how Settings opens the PR stats page (tr("Open PR stats")). */
 export function setOpenStats(open: () => void): void { openStatsPage = open; }
 
-export function PrStatsSettings({ theme, compact, onPage = false }: { theme: Theme; compact: boolean; /** Drawn on the page itself (no "Open PR stats"). */ onPage?: boolean }) {
+export function PrStatsSettings({ theme, compact, onPage = false }: { theme: Theme; compact: boolean; /** Drawn on the page itself (no tr("Open PR stats")). */ onPage?: boolean }) {
   const c = theme.colors; const t = text(c, compact);
   const read = useRpc(prStatsSettingsRpc); const write = useRpc(setPrStatsRpc); const cache = useQueryClient(); const toast = useToast();
   const query = useQuery({ queryKey: prStatsSettingsKey, queryFn: () => read({}), staleTime: 30_000, refetchInterval: 60_000 });
@@ -78,9 +78,9 @@ export function PrStatsSettings({ theme, compact, onPage = false }: { theme: The
         <SettingsSelect label={tr("GitHub share for stats")} hint={tr("At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left.")} value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
           options={["1", "2", "5", "10"].map(v => ({ value: v, label: `${v}%` }))} onValueChange={v => change.mutate({ slice: Number(v) / 100, toast: `Stats may use ${v}% of GitHub's limit` })} />
         <SettingsSelect<"calendar" | "working"> label={tr("Clock")} hint={`Working hours use one schedule for everyone: ${hoursWords(data.hours)}, ${data.timeZone}.`} value={data.settings.clock} disabled={change.isPending}
-          options={[{ value: "calendar", label: "Calendar time" }, { value: "working", label: "Working hours" }]} onValueChange={v => change.mutate({ clock: v, toast: v === "working" ? "Stats count working hours" : "Stats count calendar time" })} />
+          options={[{ value: "calendar", label: tr("Calendar time") }, { value: "working", label: tr("Working hours") }]} onValueChange={v => change.mutate({ clock: v, toast: v === "working" ? tr("Stats count working hours") : tr("Stats count calendar time") })} />
         <SettingsSwitch label={tr("Count stacks fairly")} hint={tr("A stacked PR's review clock starts when its parent got a first review or merged, not while it waits its turn.")} value={data.settings.enable_stack_aware} disabled={change.isPending}
-          onValueChange={v => change.mutate({ enable_stack_aware: v, toast: v ? "Stacked PRs start their clocks when reached" : "Stacked PRs start their clocks when asked" })} />
+          onValueChange={v => change.mutate({ enable_stack_aware: v, toast: v ? tr("Stacked PRs start their clocks when reached") : tr("Stacked PRs start their clocks when asked") })} />
       </SettingsCard>}
     </>}
     {optIn && <OptInSheet repo={optIn} theme={theme} compact={compact} onClose={() => setOptIn(null)}
@@ -157,13 +157,13 @@ function RepoOptions({ row, theme, compact, busy, set }: { row: Row; theme: Them
   const [hidden, setHidden] = useState(s.ignore.join(", "));
   const members = s.status?.teamMembers;
   const teamHint = s.team.kind === "github" && members?.team === s.team.team && members.error ? `Can't read the team @${s.team.team} with this GitHub account, so stats show everyone. Pick people instead, or give gh read:org.`
-    : teamKind === "people" ? "Logins, separated by commas." : teamKind === "github" ? "org/team-slug, read once a day." : "Everyone who opened or reviewed a PR here, minus bots and hidden people.";
+    : teamKind === "people" ? tr("Logins, separated by commas.") : teamKind === "github" ? "org/team-slug, read once a day." : tr("Everyone who opened or reviewed a PR here, minus bots and hidden people.");
   const logins = (v: string) => [...new Set(v.split(/[\s,]+/).map(x => x.trim().replace(/^@/, "")).filter(Boolean))];
   const field = { flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: compact ? 15 : 13, backgroundColor: c.surface0 } as const;
   const slug = teamDraft.trim().replace(/^@/, "");
   const draftTeam: StatsTeam | null = teamKind === "people" ? (logins(teamDraft).length ? { kind: "people", logins: logins(teamDraft) } : null)
     : teamKind === "github" ? (/^[\w.-]+\/[\w.-]+$/.test(slug) ? { kind: "github", team: slug } : null) : { kind: "everyone" };
-  const teamProblem = teamDraft.trim() && !draftTeam ? (teamKind === "people" ? "Add at least one login." : "Use org/team-slug, like example/backend.") : null;
+  const teamProblem = teamDraft.trim() && !draftTeam ? (teamKind === "people" ? tr("Add at least one login.") : tr("Use org/team-slug, like example/backend.")) : null;
   const teamChanged = !!draftTeam && JSON.stringify(draftTeam) !== JSON.stringify(s.team);
   const saveTeam = () => { if (draftTeam && teamChanged) set({ team: draftTeam }, draftTeam.kind === "people" ? `team: ${draftTeam.logins.length} people` : draftTeam.kind === "github" ? `team: @${draftTeam.team}` : "team: everyone"); };
   const hiddenChanged = logins(hidden).join(",") !== s.ignore.join(",");
@@ -172,13 +172,13 @@ function RepoOptions({ row, theme, compact, busy, set }: { row: Row; theme: Them
     <SettingsSelect label={tr("History")} hint={tr("How far back stats read. Longer reads more once, then costs the same to keep current.")} value={String(s.windowDays)} disabled={busy}
       options={[30, 90, 180].map(d => ({ value: String(d), label: `${d} days` }))} onValueChange={v => set({ windowDays: Number(v) as 30 | 90 | 180 }, `${v} days of history`)} />
     <SettingsSelect<StatsTeam["kind"]> label={tr("Team")} hint={teamHint} value={teamKind} disabled={busy}
-      options={[{ value: "everyone", label: "Everyone" }, { value: "people", label: "Picked people" }, { value: "github", label: "A GitHub team" }]}
+      options={[{ value: "everyone", label: "Everyone" }, { value: "people", label: tr("Picked people") }, { value: "github", label: tr("A GitHub team") }]}
       onValueChange={v => { setTeamKind(v); setTeamDraft(v === s.team.kind ? (s.team.kind === "people" ? s.team.logins.join(", ") : s.team.kind === "github" ? s.team.team : "") : ""); if (v === "everyone") set({ team: { kind: "everyone" } }, "team: everyone"); }} />
     {teamKind !== "everyone" && <SubmitScope enabled={!busy && teamChanged} onSubmit={saveTeam} style={[pad, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
-      <TextInput accessibilityLabel={teamKind === "people" ? "Team logins" : "GitHub team, org/slug"} value={teamDraft} onChangeText={setTeamDraft} placeholder={teamKind === "people" ? "alice, bob, carol" : "example/backend"} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field} />
+      <TextInput accessibilityLabel={teamKind === "people" ? tr("Team logins") : tr("GitHub team, org/slug")} value={teamDraft} onChangeText={setTeamDraft} placeholder={teamKind === "people" ? "alice, bob, carol" : "example/backend"} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field} />
       <Button theme={theme} compact={compact} title={tr("Save")} disabled={busy || !teamChanged} onPress={saveTeam} />
     </SubmitScope>}
-    {teamKind !== "everyone" && (teamProblem || teamKind !== s.team.kind) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4, color: teamProblem ? c.statusDanger : c.foregroundMuted }]}>{teamProblem ?? "Not saved yet: stats show the saved team until you Save."}</Text>}
+    {teamKind !== "everyone" && (teamProblem || teamKind !== s.team.kind) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4, color: teamProblem ? c.statusDanger : c.foregroundMuted }]}>{teamProblem ?? tr("Not saved yet: stats show the saved team until you Save.")}</Text>}
     <View style={{ height: 1, backgroundColor: c.border }} />
     <View style={{ paddingHorizontal: compact ? 16 : 14, paddingTop: 10, gap: 4 }}>
       <Text style={t.body}>{tr("Hidden from stats")}</Text>
@@ -240,7 +240,7 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
         {/* What turning on means doesn't depend on the count: shown whenever Turn on is offered. */}
         {facts && <>
           {/* The budget-low reason already says the 40% rule; say it once. */}
-          {e?.wait?.reason !== "budget" && point("CirclePause", "Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first.")}
+          {e?.wait?.reason !== "budget" && point("CirclePause", tr("Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first."))}
           {point("Lock", `Stored on this machine only${e?.bytes ? `, about ${sizeWords(e.bytes)}` : ""}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
           <Text style={t.meta}>{tr("90 days · everyone · calendar time. Change these in the repository's options.")}</Text>
         </>}

@@ -18,9 +18,9 @@ const openUrl = (url: string) => { void openExternalUrl(url).catch(() => undefin
 export function specSource(w: Workspace): string {
   const s = w.spec;
   if (!s) return "";
-  if (s.source === "developer") return "Set by you";
-  if (s.source === "agent") return "Registered by the main agent";
-  return s.by && s.by !== w.mainAgentId ? "Published from a root session" : "Published by the main agent";
+  if (s.source === "developer") return tr("Set by you");
+  if (s.source === "agent") return tr("Registered by the main agent");
+  return s.by && s.by !== w.mainAgentId ? tr("Published from a root session") : tr("Published by the main agent");
 }
 
 /** The header link to the workspace's spec. Calm: a quiet chip that opens the page in the browser. */
@@ -49,12 +49,12 @@ export function SpecRow({ workspace: w, theme, compact, onEdit }: { workspace: W
         <Text style={t.label}>{tr("Spec")}</Text>
         <Text numberOfLines={2} style={t.meta}>{url
           ? `${specLabel(w.spec!)} · ${specSource(w)}${others ? ` · ${others} other artifact${others === 1 ? "" : "s"}` : ""}`
-          : w.spec?.source === "developer" ? "You removed the link. Agents can't set it until you add one or hand it back."
-          : "No link yet. The main agent registers its spec artifact, or add one."}</Text>
+          : w.spec?.source === "developer" ? tr("You removed the link. Agents can't set it until you add one or hand it back.")
+          : tr("No link yet. The main agent registers its spec artifact, or add one.")}</Text>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
         {url && <Button theme={theme} compact={compact} icon="ArrowUpRight" title={tr("Open")} accessibilityLabel={tr("Open the spec")} onPress={() => openUrl(url)} />}
-        <Button theme={theme} compact={compact} kind={url ? "ghost" : "secondary"} icon={url ? "Pencil" : tr("Link")} title={url ? "Edit" : "Add link"} accessibilityLabel={url ? "Edit the spec link" : "Add a spec link"} onPress={onEdit} />
+        <Button theme={theme} compact={compact} kind={url ? "ghost" : "secondary"} icon={url ? "Pencil" : tr("Link")} title={url ? "Edit" : tr("Add link")} accessibilityLabel={url ? tr("Edit the spec link") : tr("Add a spec link")} onPress={onEdit} />
       </View>
     </View>
   </CardRow>;
@@ -73,13 +73,13 @@ export function SpecSheet({ workspace: w, open, theme, compact, onClose }: { wor
     onClose();
     void runAction({
       label: tr("Spec link"), toast, run: () => save({ workspaceId: w.id, ...input }),
-      success: () => ({ message: input.action === "set" ? "Spec link saved" : input.action === "remove" ? "Spec link removed" : "Spec link handed back to the agent" }),
+      success: () => ({ message: input.action === "set" ? tr("Spec link saved") : input.action === "remove" ? tr("Spec link removed") : tr("Spec link handed back to the agent") }),
       onSuccess: () => {
         void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey });
         // The spec is a linked item too (derived in the view), so the Linked sheet re-reads.
         void cache.invalidateQueries({ queryKey: ["follow-up", "linked", w.id] });
       },
-      failure: input.action === "set" ? "Spec link not saved" : "Spec link not changed",
+      failure: input.action === "set" ? tr("Spec link not saved") : tr("Spec link not changed"),
     });
   };
   const valid = validSpecUrl(url);
@@ -110,8 +110,8 @@ export function SpecSheet({ workspace: w, open, theme, compact, onClose }: { wor
         {others.map(a => <View key={a.url} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Icon name="FileText" size={13} color={c.foregroundMuted} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={t.body}>{a.title ?? "Claude artifact"}</Text>
-            <Text numberOfLines={1} style={t.small}>{a.publishes > 1 ? `Published ${a.publishes} times` : "Published once"}{a.lastAt ? ` · ${ago(a.lastAt)}` : ""}</Text>
+            <Text numberOfLines={1} style={t.body}>{a.title ?? tr("Claude artifact")}</Text>
+            <Text numberOfLines={1} style={t.small}>{a.publishes > 1 ? `Published ${a.publishes} times` : tr("Published once")}{a.lastAt ? ` · ${ago(a.lastAt)}` : ""}</Text>
           </View>
           <Button theme={theme} compact={compact} kind="ghost" icon="ArrowUpRight" title={tr("Open")} accessibilityLabel={`Open ${a.title ?? "artifact"}`} onPress={() => openUrl(a.url)} />
           <Button theme={theme} compact={compact} title={tr("Use")} accessibilityLabel={`Use ${a.title ?? "this artifact"} as the spec`} onPress={() => act({ action: "set", url: a.url, title: a.title })} />

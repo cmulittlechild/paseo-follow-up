@@ -164,7 +164,7 @@ function WorkspacesFold({ theme, compact, all, autoDefault, busy, set }: { theme
         {open && <View style={{ paddingLeft: 14, paddingRight: 14, paddingBottom: 10, gap: 4 }}>
           <Switch theme={theme} compact={compact} label={tr("Follow this workspace")} value={followed} disabled={busy}
             onChange={value => set({ workspaceId: w.id, follow: value }, value ? `Following ${w.title}` : `Stopped following ${w.title}`)} />
-          {followed && <Switch theme={theme} compact={compact} label={tr("Send repairs automatically")} hint={w.parked ? "Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick." : w.dormant ? "Resting. Nothing is sent until you start a turn there." : undefined}
+          {followed && <Switch theme={theme} compact={compact} label={tr("Send repairs automatically")} hint={w.parked ? tr("Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick.") : w.dormant ? tr("Resting. Nothing is sent until you start a turn there.") : undefined}
             value={w.enable_auto_sends} disabled={busy} onChange={value => set({ workspaceId: w.id, enable_auto_sends: value })} />}
         </View>}
       </View>;
@@ -187,7 +187,7 @@ function AgentsCategory({ theme, compact }: { theme: Theme; compact: boolean }) 
 
 /**
  * General: setup and the installed version with its release notes. Auto-update adds its Updates section here.
- * "Set up Follow-up again" is the first row, so it's on the first screen Settings opens on.
+ * tr("Set up Follow-up again") is the first row, so it's on the first screen Settings opens on.
  */
 function GeneralCategory({ theme, compact, setup, openReport }: { theme: Theme; compact: boolean; setup?: { entry: SetupEntry; open: () => void }; openReport?: () => void }) {
   return <>
@@ -206,11 +206,11 @@ function GeneralCategory({ theme, compact, setup, openReport }: { theme: Theme; 
 function agentsSummary(agents: AgentSettingsView, changed: number): string {
   if (agents.catalog?.providers.length && !agents.catalog.error) {
     const header = jobsHeader(agents.roles.map(r => jobRow(r, agents.catalog)), agents.catalog, false);
-    if (header.action === "check") return "No provider is ready";
+    if (header.action === "check") return tr("No provider is ready");
     // The same words as the rows' header, so the tab line and the card never disagree.
     return header.differ ? header.text.replace(/\.$/, "") : "All on the recommended models";
   }
-  return changed ? `${changed} of ${agents.roles.length} changed from the defaults` : "Every agent on its default";
+  return changed ? `${changed} of ${agents.roles.length} changed from the defaults` : tr("Every agent on its default");
 }
 
 /** Each category's one line, from data already loaded (never fetched for it). */
@@ -244,7 +244,7 @@ function useSummaries(): Partial<Record<SettingsCategory, string | null>> {
 const REVIEWERS_INFO = "Who Add reviewers asks on a PR: a list per repository, or the default for every repository without one. A login is a GitHub user (octocat) or a team (org/team). Teammates each keep their own lists.";
 
 /** Settings → General → Help → Report a bug. */
-export const REPORT_HINT = "Or an idea or feedback. An agent writes it up and shows you the issue before filing it.";
+export const REPORT_HINT = tr("Or an idea or feedback. An agent writes it up and shows you the issue before filing it.");
 
 export function FollowSettings({ theme, layout, openSetup, openReport, openSettings, category: only }: PluginSurfaceProps & { openSetup?: (resume?: boolean) => void; openReport?: () => void; openSettings?: (category: SettingsCategory) => void;
   /** Paseo 0.16: this screen is one category, and Paseo's own tabs switch between them (client/settings-screens.ts). */
@@ -255,7 +255,7 @@ export function FollowSettings({ theme, layout, openSetup, openReport, openSetti
   // device document takes over when it loads, never the default in between.
   useViewSync(); useViewVersion();
   const category = only ?? readCategory();
-  // A category screen remembers itself, so "Follow-up: settings" and the gear reopen the tab last shown on this device.
+  // A category screen remembers itself, so tr("Follow-up: settings") and the gear reopen the tab last shown on this device.
   useEffect(() => { if (only && readCategory() !== only) writeCategory(only); }, [only]);
   // The phone reopens in the last category, like desktop; before any pick it starts on the list. Until the developer
   // drills in or out, that follows storage too (the phone's document loads after the first paint).
@@ -263,7 +263,7 @@ export function FollowSettings({ theme, layout, openSetup, openReport, openSetti
   const drilled = chosen ?? hasSavedCategory();
   const summaries = useSummaries();
   const pick = (id: SettingsCategory) => writeCategory(id);
-  // "Set up Follow-up again" leads General, the first category: what it says depends on where setup stands.
+  // tr("Set up Follow-up again") leads General, the first category: what it says depends on where setup stands.
   const onboarding = useOnboarding();
   const entry = setupEntry(onboarding.data);
   const setup = openSetup ? { entry, open: () => openSetup(entry.resume) } : undefined;

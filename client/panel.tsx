@@ -72,7 +72,7 @@ function PanelBody(props: PanelProps) {
     </Card>
   </View>;
   if (!query.workspace) return <NothingYet {...props} loadError={query.loadError} />;
-  return <PanelWorkspace {...props} workspace={query.workspace} loadError={query.error ? "Refresh failed. Showing the last saved state." : query.loadError} />;
+  return <PanelWorkspace {...props} workspace={query.workspace} loadError={query.error ? tr("Refresh failed. Showing the last saved state.") : query.loadError} />;
 }
 
 function PanelSkeleton({ theme, compact }: { theme: Theme; compact: boolean }) {
@@ -106,9 +106,9 @@ function NothingYet({ theme, layout, loadError, openOverview, openSettings }: Pa
   // Phones: teach with the panel's own rail instead of one line of small print at the top of an empty screen.
   const tp = text(c, true);
   const steps: [string, string, string, string][] = [
-    ["GitPullRequest", mergedColor(c), "Pull requests, as a stack", "Each PR the agent opens, in merge order, with checks and reviews."],
-    ["CircleAlert", c.statusWarning, "What needs you", "Questions, reviews and merges, one action each."],
-    ["CircleCheck", c.statusSuccess, "When it's done", "The agent declares Done once every PR and task settles."],
+    ["GitPullRequest", mergedColor(c), tr("Pull requests, as a stack"), tr("Each PR the agent opens, in merge order, with checks and reviews.")],
+    ["CircleAlert", c.statusWarning, tr("What needs you"), tr("Questions, reviews and merges, one action each.")],
+    ["CircleCheck", c.statusSuccess, tr("When it's done"), tr("The agent declares Done once every PR and task settles.")],
   ];
   return <View style={{ flex: 1, backgroundColor: c.surface0 }}>
     <PanelTop theme={theme} compact={compact} openOverview={openOverview} openSettings={openSettings} />
@@ -156,7 +156,7 @@ function useMainBrief(w: Workspace, inbox: InboxStore | undefined): Brief | null
   const readBrief = useRpc(inboxBriefRpc);
   const brief = useQuery({ queryKey: ["follow-up", "home-brief", w.mainAgentId, row?.seq ?? 0], queryFn: () => readBrief({ agentId: w.mainAgentId }), enabled: !!inbox && !!row?.needs && !!row?.brief });
   const b = liveBrief(brief.data?.brief);
-  // Only a real ask (shared briefAsks): not "No ask stated", which repeats the chat, nor a done brief's "Nothing needed".
+  // Only a real ask (shared briefAsks): not tr("No ask stated"), which repeats the chat, nor a done brief's tr("Nothing needed").
   return row?.snooze || !briefAsks(b, row) ? null : b;
 }
 
@@ -169,7 +169,7 @@ function PanelWorkspace(props: PanelProps & { workspace: Workspace; loadError?: 
   const top = <PanelTop theme={props.theme} compact={compact} openOverview={props.openOverview} openSettings={props.openSettings} />;
   const brief = useMainBrief(props.workspace, props.briefDeps ? props.inbox : undefined);
   const ask = brief && props.briefDeps ? { brief, card: <BriefCard {...({ item: { data: brief }, theme: props.theme, layout: { compact }, agentId: props.workspace.mainAgentId, deps: props.briefDeps, bare: true } as unknown as Parameters<typeof BriefCard>[0])} /> } : null;
-  return <WorkspaceView {...props} top={top} ask={ask} folds={{ isOpen, toggle }} resize={openLarge ? { icon: "Maximize2", label: "Open the larger view", onPress: () => openLarge(props.workspaceId) } : null} />;
+  return <WorkspaceView {...props} top={top} ask={ask} folds={{ isOpen, toggle }} resize={openLarge ? { icon: "Maximize2", label: tr("Open the larger view"), onPress: () => openLarge(props.workspaceId) } : null} />;
 }
 
 
@@ -209,7 +209,7 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
   const retry = useMutation({ mutationFn: (batchId: string) => control({ workspaceId: w.id, retryBatchId: batchId }), onSuccess: invalidate, onError: fail });
   const last = w.batches.filter(b => recoveryBatch(b) && b.state !== "cancelled").at(-1);
   const actions = recoveryActions(last, { archived: w.archived, starting: recovery.isPending });
-  const recoveryState = last ? last.state === "sent" ? "Recovery is running" : last.state === "completed" ? "Last recovery finished" : last.state === "pending" ? "Recovery is ready to run" : last.state === "sending" ? "Starting recovery" : "Recovery needs a check" : null;
+  const recoveryState = last ? last.state === "sent" ? tr("Recovery is running") : last.state === "completed" ? tr("Last recovery finished") : last.state === "pending" ? tr("Recovery is ready to run") : last.state === "sending" ? tr("Starting recovery") : tr("Recovery needs a check") : null;
   const active = w.prs.some(p => !settledForDisplay(p));
   const shown = open("workspace");
   const openUrl = (url: string) => { void openExternalUrl(url).catch(() => undefined); };
@@ -369,7 +369,7 @@ export function WorkspaceView({ theme, layout, workspace: w, navigation, loadErr
   const browser = useQuery({ queryKey: browserKey, queryFn: () => browserRead({}), staleTime: 0, refetchOnMount: "always" });
   useEffect(() => { if (sheet) void browser.refetch(); }, [sheet?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const invalidated = () => { void cache.invalidateQueries({ queryKey: workspaceKey(w.id) }); void cache.invalidateQueries({ queryKey: overviewKey }); };
-  const auto = useMutation({ mutationFn: (next: boolean) => control({ workspaceId: w.id, enable_auto_sends: next }), onSuccess: (_, next) => { toast.show(next ? "Auto-send on for this workspace" : "Auto-send off · repairs wait for your Send"); invalidated(); }, onError: e => toast.error(errorText(e)) });
+  const auto = useMutation({ mutationFn: (next: boolean) => control({ workspaceId: w.id, enable_auto_sends: next }), onSuccess: (_, next) => { toast.show(next ? tr("Auto-send on for this workspace") : "Auto-send off · repairs wait for your Send"); invalidated(); }, onError: e => toast.error(errorText(e)) });
   // Opening a workspace reads its PRs now: background polling backs off for settled repositories (server/github.ts).
   useEffect(() => { const t = setTimeout(invalidated, 1500); void refresh({ workspaceId: w.id }).catch(() => undefined); return () => clearTimeout(t); }, [w.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const update = useMutation({ mutationFn: () => refresh({ workspaceId: w.id }), onSuccess: () => setTimeout(invalidated, 1200), onError: e => toast.error(errorText(e)) });

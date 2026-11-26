@@ -24,7 +24,7 @@ type Control = { button: ReactNode; notice: ReactNode; label: string | null };
 /**
  * Every Merge button (a Needs-you row, the composer pill, Home, a brief, the PR card): one click merges what the
  * button names (a-click-on-merge-merges, shared/merge-click.ts). The button says "Merging…" while it runs; then the
- * button and a toast say the same outcome (mergeWords: "Merged", "Queued", "Merge requested"),
+ * button and a toast say the same outcome (mergeWords: "Merged", "Queued", tr("Merge requested")),
  * and the row clears on the next read. A blocker found at click time merges nothing and comes back
  * as `notice`, for the surface to put under its row. One hook per surface (a list draws many rows), so `control`
  * is a plain function. `fallback` is the PR sheet's confirm, only for a PR whose scope can't be known (mergeScope is

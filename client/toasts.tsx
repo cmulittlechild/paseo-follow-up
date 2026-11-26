@@ -32,7 +32,7 @@ const GAP = 8;
 let hostTop = 0;
 /**
  * Phones: the bottom dock a screen marks with this nativeID (Home's moves and reply). Follow-up's toasts sit just above
- * it, in thumb reach, never over the screen's heading (a toast at the top covered "WEB-17 Saved search filters").
+ * it, in thumb reach, never over the screen's heading (a toast at the top covered tr("WEB-17 Saved search filters")).
  */
 export const TOAST_ANCHOR = "follow-up-toast-anchor";
 function anchorTop(): number {

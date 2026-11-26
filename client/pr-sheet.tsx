@@ -29,7 +29,7 @@ export function PrSheet({ workspace: w, prKey, intent, theme, compact, browserRe
   const stack = pr ? stackOrder(w.prs.filter(p => p.stack === pr.stack)) : [];
   const parent = pr?.parent ? w.prs.find(p => p.key === pr.parent) : null;
   const reviewers = s?.reviewers?.complete ? [...new Set([...s.reviewers.requested, ...s.reviewers.teams.map(team => `team/${team}`), ...s.reviewers.reviewed])] : [];
-  return <Modal title={pr ? `Pull request #${pr.number}` : "Pull request"} icon={<Icon name={tone === "merged" ? "GitMerge" : "GitPullRequest"} size={18} color={toneColor(c, tone)} />} open={!!pr} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={pr ? `Pull request #${pr.number}` : tr("Pull request")} icon={<Icon name={tone === "merged" ? "GitMerge" : "GitPullRequest"} size={18} color={toneColor(c, tone)} />} open={!!pr} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: compact ? 16 : 14, ...(compact ? { paddingBottom: 24 } : null) }}>
       {pr && <>
         <View style={{ gap: 6 }}>

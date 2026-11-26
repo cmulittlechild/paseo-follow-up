@@ -95,8 +95,8 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
       <Text style={[t.meta, { flex: 1, color: c.statusWarning }]}>{notice}</Text>
     </View>}
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, minHeight: compact ? 44 : 28 }}>
-      <Text numberOfLines={1} style={[t.small, { flexShrink: 1 }, stale && !w.githubOff ? { color: c.statusWarning } : null]}>{w.githubOff ? "Not checking GitHub" : checked ? `Checked ${ago(checked, now)}${stale ? " · may be out of date" : ""}` : "Checks GitHub every 15s"}</Text>
-      <IconButton icon="RefreshCw" label={w.githubOff ? "Check GitHub again" : "Refresh PR status"} onPress={onRefresh} theme={theme} compact={compact} disabled={refreshing} spinning={refreshing} />
+      <Text numberOfLines={1} style={[t.small, { flexShrink: 1 }, stale && !w.githubOff ? { color: c.statusWarning } : null]}>{w.githubOff ? tr("Not checking GitHub") : checked ? `Checked ${ago(checked, now)}${stale ? " · may be out of date" : ""}` : "Checks GitHub every 15s"}</Text>
+      <IconButton icon="RefreshCw" label={w.githubOff ? tr("Check GitHub again") : tr("Refresh PR status")} onPress={onRefresh} theme={theme} compact={compact} disabled={refreshing} spinning={refreshing} />
       <View style={{ flex: 1 }} />
       <Switch theme={theme} compact={compact} label={tr("Auto-send")} accessibilityLabel={tr("Auto-send repairs")} hint={tr("Send repairs to the main agent on its own when the agent is idle. Off means each message waits for your click.")}
         value={w.enable_auto_sends} disabled={autoPending} onChange={onAuto} />
