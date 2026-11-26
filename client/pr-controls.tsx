@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Text } from "./text";
@@ -83,7 +84,7 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
     {missingReviewers && compact && <View style={{ gap: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Icon name="UserX" size={14} color={c.statusWarning} />
-        <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>No reviewers yet<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : "No reviewers yet"}</Text>
+        <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>{tr("No reviewers yet")}<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : "No reviewers yet"}</Text>
       </View>
       {!pr.snapshot?.draft && !picking && reviewerSettings.data && <View style={{ flexDirection: "row", gap: 8 }}>
         {reviewers.length > 0 && <Button grow title={reviewRequest.isPending ? "Requesting…" : "Add reviewers"} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
@@ -92,7 +93,7 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
     </View>}
     {missingReviewers && !compact && <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
       <Icon name="UserX" size={14} color={c.statusWarning} />
-      <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>No reviewers yet<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : "No reviewers yet"}</Text>
+      <Text style={[t.meta, { flex: 1, minWidth: 120, color: c.statusWarning }]}>{!pr.snapshot?.draft && !picking && reviewers.length ? <>{tr("No reviewers yet")}<Text style={{ color: c.foregroundMuted }}>{` · will ask ${willAsk(reviewers)}`}</Text></> : "No reviewers yet"}</Text>
       {!pr.snapshot?.draft && !picking && reviewerSettings.data && <>
         {reviewers.length > 0 && <Button title={reviewRequest.isPending ? "Requesting…" : "Add reviewers"} accessibilityLabel={`Add reviewers: ${willAsk(reviewers)} for ${pr.repo} pull request ${pr.number}`} icon="UserPlus" theme={theme} compact={compact} disabled={disabled} loading={reviewRequest.isPending} onPress={() => { setNotice(null); reviewRequest.mutate(undefined); }} />}
         <Button title={reviewers.length ? "Choose others…" : "Add reviewers…"} kind={reviewers.length ? "ghost" : "secondary"} icon={reviewers.length ? undefined : "UserPlus"} accessibilityLabel={reviewers.length ? "Pick different reviewers for this PR" : `Pick reviewers for ${pr.repo} pull request ${pr.number}`} theme={theme} compact={compact} disabled={disabled} onPress={() => { setNotice(null); setPicking(true); }} />
@@ -116,7 +117,7 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
     </View>}
     {!plan && mergeOne.notice}
     {!plan && scopeLine && <Text style={t.meta}>{scopeLine}</Text>}
-    {!plan && autoMergeOff && <Text style={t.meta}>Auto-merge is off for this repository. Turn on Allow auto-merge in its GitHub settings.</Text>}
+    {!plan && autoMergeOff && <Text style={t.meta}>{tr("Auto-merge is off for this repository. Turn on Allow auto-merge in its GitHub settings.")}</Text>}
     {error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     {notice && <Text accessibilityLiveRegion="polite" style={t.meta}>{notice}</Text>}
     {plan && (plan.kind === "merge" || browserReady) && <View accessibilityRole="summary" style={{ gap: 8 }}>
@@ -133,8 +134,8 @@ export function PrControls({ pr, workspace, theme, compact, browserReady: compan
       {/* Phones: the confirm is full width with Cancel under it; desktop keeps one row. */}
       <View style={compact ? { gap: 8, marginTop: 4 } : { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
         <Button grow={compact} title={plan.kind === "merge" ? plan.mergeQueue ? `Add #${plan.prs[0].number} to merge queue` : plan.prs.length > 1 ? `Merge all ${plan.prs.length} PRs` : `Merge #${pr.number}` : `${plan.kind === "enable_mwr" ? "Enable" : "Disable"} for all ${plan.prs.length} PRs`} kind="primary" theme={theme} compact={compact} loading={submit.isPending} disabled={submit.isPending || scopeBlocked("downstack")} onPress={() => act("downstack")} />
-        {plan.kind !== "merge" && plan.prs.length > 1 && <Button grow={compact} title="Just this PR" theme={theme} compact={compact} disabled={submit.isPending || scopeBlocked("target")} onPress={() => act("target")} />}
-        <Button grow={compact} title="Cancel" kind="ghost" theme={theme} compact={compact} disabled={submit.isPending} onPress={() => { setPlan(null); checking.reset(); submit.reset(); }} />
+        {plan.kind !== "merge" && plan.prs.length > 1 && <Button grow={compact} title={tr("Just this PR")} theme={theme} compact={compact} disabled={submit.isPending || scopeBlocked("target")} onPress={() => act("target")} />}
+        <Button grow={compact} title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} disabled={submit.isPending} onPress={() => { setPlan(null); checking.reset(); submit.reset(); }} />
       </View>
     </View>}
   </View>;

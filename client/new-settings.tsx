@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { NEW_ROW } from "../shared/new-name";
 import { useNewRowSetting } from "./new-entry";
@@ -38,7 +39,7 @@ export function NewWorkCategory({ theme, compact, openAgents }: { theme: Theme; 
     <SidebarSection theme={theme} compact={compact} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 4, paddingHorizontal: 4 }}>
       <Text style={t.meta}>{`${NEW_OF} agent is set in Agents → ${NEW_WORK}.`}</Text>
-      {openAgents && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowRight" title="Open Agents" accessibilityLabel="Open Settings, Agents" onPress={openAgents} />}
+      {openAgents && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowRight" title={tr("Open Agents")} accessibilityLabel={tr("Open Settings, Agents")} onPress={openAgents} />}
     </View>
   </>;
 }
@@ -47,7 +48,7 @@ export function NewWorkCategory({ theme, compact, openAgents }: { theme: Theme; 
 function SidebarSection({ theme, compact }: { theme: Theme; compact: boolean }) {
   const t = text(theme.colors, compact);
   const row = useNewRowSetting();
-  return <SettingsSection title="Sidebar">
+  return <SettingsSection title={tr("Sidebar")}>
     <SettingsCard>
       <SettingsSwitch label={NEW_ROW.label} hint={NEW_ROW.hint(row.key, isMac() ? "⌘K" : "Ctrl K")} value={row.value ?? true} disabled={row.value === null || row.saving} onValueChange={row.set} />
     </SettingsCard>
@@ -77,7 +78,7 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
   const rows = query.data ? actionRows(query.data.actions) : [];
   const [confirm, setConfirm] = useState<string | null>(null);
   const added = query.data?.actions.filter(a => !a.builtin).length ?? 0;
-  return <SettingsSection title="Actions" info={info}>
+  return <SettingsSection title={tr("Actions")} info={info}>
     {query.isPending && <ActivityIndicator accessibilityLabel={`Loading ${NEW_OF} actions`} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label={`Couldn't load ${NEW_OF} actions`} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {query.data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
@@ -91,9 +92,9 @@ function ActionsSection({ theme, compact }: { theme: Theme; compact: boolean }) 
       {confirm === RESET_ALL
         ? <>
           <Button theme={theme} compact={compact} kind="danger" icon="RotateCcw" title={added ? `Reset and remove ${added} added` : "Reset all"} disabled={change.isPending} onPress={() => { setConfirm(null); change.mutate({ op: "reset-all" }); }} />
-          <Button theme={theme} compact={compact} kind="ghost" title="Keep them" onPress={() => setConfirm(null)} />
+          <Button theme={theme} compact={compact} kind="ghost" title={tr("Keep them")} onPress={() => setConfirm(null)} />
         </>
-        : <Button theme={theme} compact={compact} icon="RotateCcw" title="Reset all to built-in" disabled={change.isPending} onPress={() => setConfirm(RESET_ALL)} />}
+        : <Button theme={theme} compact={compact} icon="RotateCcw" title={tr("Reset all to built-in")} disabled={change.isPending} onPress={() => setConfirm(RESET_ALL)} />}
       <Text style={[t.meta, { flexShrink: 1 }]}>{added ? `Restores the built-in order and text, and removes ${added === 1 ? "the action" : `the ${added} actions`} added here.` : "Restores the built-in order and text."}</Text>
     </View>}
   </SettingsSection>;
@@ -124,13 +125,13 @@ function ActionRowView({ row, first, index, theme, compact, busy, confirming, on
       <Switch theme={theme} compact={compact} label="" accessibilityLabel={`Show ${row.name} in ${NEW_NAME}`} value={!row.hidden} disabled={busy} onChange={on => onChange({ op: "hide", id: row.id, hidden: !on })} />
     </View>
     {(row.canReset || row.canDelete) && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingLeft: 16 }}>
-      {row.canReset && <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title="Reset to built-in" disabled={busy} onPress={() => onChange({ op: "reset", id: row.id })} />}
+      {row.canReset && <Button theme={theme} compact={compact} kind="ghost" icon="RotateCcw" title={tr("Reset to built-in")} disabled={busy} onPress={() => onChange({ op: "reset", id: row.id })} />}
       {row.canDelete && (confirming
         ? <>
           <Button theme={theme} compact={compact} kind="danger" icon="Trash2" title={`Delete ${row.name}`} disabled={busy} onPress={() => onChange({ op: "delete", id: row.id })} />
-          <Button theme={theme} compact={compact} kind="ghost" title="Keep it" onPress={() => onConfirm(false)} />
+          <Button theme={theme} compact={compact} kind="ghost" title={tr("Keep it")} onPress={() => onConfirm(false)} />
         </>
-        : <Button theme={theme} compact={compact} kind="ghost" icon="Trash2" title="Delete" disabled={busy} onPress={() => onConfirm(true)} />)}
+        : <Button theme={theme} compact={compact} kind="ghost" icon="Trash2" title={tr("Delete")} disabled={busy} onPress={() => onConfirm(true)} />)}
     </View>}
   </View>;
 }
@@ -156,12 +157,12 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
   const key = teamKey(team);
   // The fields clear only once the rule is saved: a failed save keeps what was typed.
   const add = () => change.mutate({ rules: { [key]: project } }, { onSuccess: () => { setTeam(""); setProject(PICK); } });
-  return <SettingsSection title="Where work goes" info={info}>
+  return <SettingsSection title={tr("Where work goes")} info={info}>
     {query.isPending && <ActivityIndicator accessibilityLabel={`Loading where ${NEW_NAME} starts work`} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <SettingsCard><SettingsAction label={`Couldn't load ${NEW_OF} rules`} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {view && <>
       <SettingsCard>
-        <SettingsSelect label="Everything else" hint="Issues from a team without a rule or a clear history, links and your words." value={view.noTeam} disabled={change.isPending}
+        <SettingsSelect label={tr("Everything else")} hint={tr("Issues from a team without a rule or a clear history, links and your words.")} value={view.noTeam} disabled={change.isPending}
           options={[{ value: "last", label: "The project you used last" }, { value: "ask", label: "Ask which project" }]} onValueChange={noTeam => change.mutate({ noTeam })} />
       </SettingsCard>
       <SettingsCard>
@@ -174,18 +175,18 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, paddingHorizontal: 12, paddingBottom: 8, marginTop: -4 }}>
             {removing === rule.team
               ? <>
-                <Button theme={theme} compact={compact} kind="ghost" title="Keep" onPress={() => setRemoving(null)} />
+                <Button theme={theme} compact={compact} kind="ghost" title={tr("Keep")} onPress={() => setRemoving(null)} />
                 <Button theme={theme} compact={compact} kind="danger" title={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => { setRemoving(null); change.mutate({ rules: { [rule.team]: null } }); }} />
               </>
-              : <Button theme={theme} compact={compact} kind="ghost" title="Remove" accessibilityLabel={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => setRemoving(rule.team)} />}
+              : <Button theme={theme} compact={compact} kind="ghost" title={tr("Remove")} accessibilityLabel={`Remove ${rule.team}'s rule`} disabled={change.isPending} onPress={() => setRemoving(rule.team)} />}
           </View>
         </View>)}
         {!view.rules.length && <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}><Text style={t.meta}>No team rules yet. {NEW_NAME} learns from where each team's work went; add a rule to fix one.</Text></View>}
         {/* Three native rows, never one row of nested fields: a select squeezed beside an input cuts "Pick a project". */}
-        <SettingsRow label="Add a rule" hint="A Linear team's key, like ACME.">
+        <SettingsRow label={tr("Add a rule")} hint={tr("A Linear team's key, like ACME.")}>
           <TeamInput theme={theme} compact={compact} value={team} onChange={setTeam} />
         </SettingsRow>
-        <SettingsSelect label="Its project" value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
+        <SettingsSelect label={tr("Its project")} value={project} options={[{ value: PICK, label: "Pick a project" }, ...projectOptions]} onValueChange={setProject} />
         <SettingsAction label={!key ? "Type a team key and pick its project" : project === PICK ? `Pick ${key}'s project` : `${key} issues → ${projectOptions.find(o => o.value === project)?.label ?? project}`}
           actionLabel="Add rule" disabled={!key || project === PICK || change.isPending} onPress={add} />
       </SettingsCard>
@@ -199,7 +200,7 @@ function WhereSection({ theme, compact }: { theme: Theme; compact: boolean }) {
 
 function TeamInput({ theme, compact, value, onChange }: { theme: Theme; compact: boolean; value: string; onChange: (v: string) => void }) {
   const c = theme.colors; const [focused, setFocused] = useState(false);
-  return <TextInput value={value} onChangeText={onChange} placeholder="Team key" placeholderTextColor={c.foregroundMuted} accessibilityLabel="Team key" autoCapitalize="characters" autoCorrect={false}
+  return <TextInput value={value} onChangeText={onChange} placeholder={tr("Team key")} placeholderTextColor={c.foregroundMuted} accessibilityLabel={tr("Team key")} autoCapitalize="characters" autoCorrect={false}
     onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
     style={{ minWidth: 120, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: focused ? c.accent : c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: compact ? 15 : 13, ...focusRing(c, false) }} />;
 }
@@ -211,7 +212,7 @@ function BasesSection({ theme, compact }: { theme: Theme; compact: boolean }) {
   const view = query.data;
   if (!view) return null;
   const worktrees = view.projects.filter(p => p.worktree);
-  return <SettingsSection title="Bases" info="The branch a new worktree starts from. Empty: the repository's default branch. The dialog can change it for one start; that saves it here too.">
+  return <SettingsSection title={tr("Bases")} info="The branch a new worktree starts from. Empty: the repository's default branch. The dialog can change it for one start; that saves it here too.">
     <SettingsCard>
       {worktrees.map(p => <BaseRow key={p.id} theme={theme} compact={compact} name={p.name} saved={view.bases.find(b => b.projectId === p.id)?.base ?? ""} busy={change.isPending}
         onSave={(base, done) => change.mutate({ bases: { [p.id]: base || null } }, { onSuccess: done })} />)}
@@ -230,10 +231,10 @@ function BaseRow({ theme, compact, name, saved, busy, onSave }: { theme: Theme; 
   const save = () => { if (dirty) onSave(draft!.trim(), () => setDraft(null)); else setDraft(null); };
   return <SettingsRow label={name}>
     <SubmitScope enabled={dirty && !busy} onSubmit={save} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <TextInput value={value} onChangeText={setDraft} placeholder="Repository default" placeholderTextColor={c.foregroundMuted} accessibilityLabel={`Base for ${name}`} autoCapitalize="none" autoCorrect={false}
+      <TextInput value={value} onChangeText={setDraft} placeholder={tr("Repository default")} placeholderTextColor={c.foregroundMuted} accessibilityLabel={`Base for ${name}`} autoCapitalize="none" autoCorrect={false}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onSubmitEditing={save}
         style={{ minWidth: compact ? 140 : 180, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: focused ? c.accent : c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: compact ? 15 : 13, fontFamily: "ui-monospace, Menlo, monospace" }} />
-      {dirty && <Button theme={theme} compact={compact} kind="primary" shortcut title="Save" disabled={busy} onPress={save} />}
+      {dirty && <Button theme={theme} compact={compact} kind="primary" shortcut title={tr("Save")} disabled={busy} onPress={save} />}
     </SubmitScope>
   </SettingsRow>;
 }

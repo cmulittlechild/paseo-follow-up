@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -54,9 +55,9 @@ function StripRow({ strip, w, theme, compact, onPreview, openAgent }: { strip: M
   return <View accessibilityRole="summary" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, rowGap: 8, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 12 : 8, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
     <Text style={[t.meta, { flexGrow: 1, flexShrink: 1, flexBasis: compact ? "80%" : 240, minWidth: 0 }]}><Text style={{ color: c.foreground, fontWeight: "500" }}>{line.lead}</Text>{line.rest}</Text>
     <View style={{ flexDirection: "row", gap: 8, marginLeft: "auto" }}>
-      {strip.phase === "queued" && <Button theme={theme} compact={compact} title="Preview" accessibilityLabel={`Preview the next message to ${strip.to}`} onPress={onPreview} />}
-      {strip.phase === "queued" && strip.sendNow && <Button theme={theme} compact={compact} title="Send now" accessibilityLabel={`Send ${strip.what} to ${strip.to} now`} loading={busy} disabled={busy} onPress={() => void sendNow()} />}
-      {strip.phase === "sent" && openAgent && <Button theme={theme} compact={compact} title="Open agent" accessibilityLabel={`Open ${strip.to}`} onPress={() => openAgent(strip.recipientId)} />}
+      {strip.phase === "queued" && <Button theme={theme} compact={compact} title={tr("Preview")} accessibilityLabel={`Preview the next message to ${strip.to}`} onPress={onPreview} />}
+      {strip.phase === "queued" && strip.sendNow && <Button theme={theme} compact={compact} title={tr("Send now")} accessibilityLabel={`Send ${strip.what} to ${strip.to} now`} loading={busy} disabled={busy} onPress={() => void sendNow()} />}
+      {strip.phase === "sent" && openAgent && <Button theme={theme} compact={compact} title={tr("Open agent")} accessibilityLabel={`Open ${strip.to}`} onPress={() => openAgent(strip.recipientId)} />}
     </View>
   </View>;
 }
@@ -71,7 +72,7 @@ function MessageText({ text: body, highlight, theme }: { text: string; highlight
 
 function PreviewSheet({ open, w, strip, theme, compact, onClose }: { open: boolean; w: Workspace; strip: MessageStrip | null; theme: Theme; compact: boolean; onClose: () => void }) {
   const t = text(theme.colors, compact);
-  return <Modal title="Next message" icon={<Icon name="Send" size={18} color={theme.colors.foreground} />} open={open} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={tr("Next message")} icon={<Icon name="Send" size={18} color={theme.colors.foreground} />} open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 12 }}>
       {strip && <Text style={t.meta}>{stripLine(strip).lead}{stripLine(strip).rest}</Text>}
       <MessageText text={w.nextMessage ?? ""} theme={theme} />
@@ -123,7 +124,7 @@ function RepairSheet({ row, w, strip, theme, compact, onClose }: { row: RepairRo
     finally { setSaving(false); void cache.invalidateQueries(); }
   };
   const where = row?.state === "queued" && strip?.phase === "queued" ? ` · in the next message to ${strip.to}${strip.reason === SETTLE_REASON && strip.at ? `, at ${clock(strip.at)}` : ""}` : row?.state === "sent" && strip?.phase === "sent" ? ` · ${stripLine(strip).lead.toLowerCase()}${strip.at ? ` at ${clock(strip.at)}` : ""}` : "";
-  return <Modal title="Repair" icon={<Icon name="Wrench" size={18} color={c.foreground} />} open={!!row} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={tr("Repair")} icon={<Icon name="Wrench" size={18} color={c.foreground} />} open={!!row} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 14 }}>
       {row && <>
         <View style={{ gap: 6 }}>
@@ -134,12 +135,12 @@ function RepairSheet({ row, w, strip, theme, compact, onClose }: { row: RepairRo
           </View>
         </View>
         {row.state !== "done" && row.state !== "sent" && <View style={{ paddingTop: 12, gap: 4, borderTopWidth: 1, borderTopColor: c.border }}>
-          <Switch theme={theme} compact={compact} label="Auto-send" value={!manual} disabled={saving} accessibilityLabel={`Auto-send ${row.task.title}`}
+          <Switch theme={theme} compact={compact} label={tr("Auto-send")} value={!manual} disabled={saving} accessibilityLabel={`Auto-send ${row.task.title}`}
             hint={`Follow-up sends this to ${strip?.to ?? w.mainAgentTitle ?? "the main agent"}. ${AUTO_OFF_HINT}.`} onChange={next => void setAuto(next)} />
           <Text style={t.meta}>{AUTO_OFF_HINT}</Text>
         </View>}
         {row.state === "queued" && !!w.nextMessage && <View style={{ gap: 6 }}>
-          <Text style={t.label}>Next message</Text>
+          <Text style={t.label}>{tr("Next message")}</Text>
           <MessageText text={w.nextMessage} highlight={row.task.title} theme={theme} />
         </View>}
       </>}
@@ -156,7 +157,7 @@ export function MessagesCard({ workspace: w, theme, compact, openAgent, now = Da
   if (!strip && !repairs.open.length) return null;
   const repairRow = repairs.open.find(r => r.task.key === repair) ?? null;
   // The card's title and icon say what it is; the strip under it says to whom, how many, when and why.
-  return <Card theme={theme} compact={compact} icon="Send" title="Messages to the agent">
+  return <Card theme={theme} compact={compact} icon="Send" title={tr("Messages to the agent")}>
     {strip && <StripRow strip={strip} w={w} theme={theme} compact={compact} onPreview={() => setPreview(true)} openAgent={openAgent} />}
     {repairs.open.map(r => <RepairTaskRow key={r.task.key} row={r} w={w} theme={theme} compact={compact} onOpen={() => setRepair(r.task.key)} />)}
     <RepairSheet row={repairRow} w={w} strip={strip} theme={theme} compact={compact} onClose={() => setRepair(null)} />

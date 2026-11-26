@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import * as sdk from "@getpaseo/plugin/client";
 import type { PluginClientContext, PluginHostProps } from "@getpaseo/plugin/client";
 import { useCallback, useMemo, useSyncExternalStore, type ComponentType } from "react";
@@ -83,7 +84,7 @@ export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => v
     // The row menu, as on Home (rename among it). No omnibox here, so no Ask; Open and Answer go to the chat.
     const openKey = (s: Workstream) => onSelect(s.key);
     const menu = useRowMenu({ sources, openFull: openKey, openQuestion: openKey, overseerOn: false });
-    if (!sources.inbox.enabled()) return <View style={{ padding: 12 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>The Needs-you inbox is off. Turn it on in Follow-up's display settings.</Text></View>;
+    if (!sources.inbox.enabled()) return <View style={{ padding: 12 }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("The Needs-you inbox is off. Turn it on in Follow-up's display settings.")}</Text></View>;
     return <View style={{ flex: 1 }}>
       <HomeList model={model} hits={filter.hits} theme={view.theme} dense touch={touch} selectedKey={selectedKey} onSelect={onSelect} menu={menu} overseer={overseer} stackOverseer
         // Each open loads a chat and moves the main pane, so the keys move the focus and Enter opens.
@@ -97,7 +98,7 @@ export function inboxSidebarView(sources: HomeSources, openOverseerHome: () => v
           <SortMenu theme={view.theme} mode={full.sort} onChange={sources.extras.setSort} rankedAt={full.rankedAt} touch={touch} compact rank={rank} onRerank={sources.extras.rankNow} /></View>
           <LayoutNotice theme={view.theme} query={filter.layoutHint} dense={touch} />
         </View>}
-        footer={filter.hits && !touch ? <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 32 }}>Filtering this list · Esc clears</Text> : undefined} />
+        footer={filter.hits && !touch ? <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 32 }}>{tr("Filtering this list · Esc clears")}</Text> : undefined} />
       <View style={{ position: "absolute", left: 8, right: 8, bottom: 8 }}><UndoBar store={sources.inbox} theme={view.theme} touch={touch} /></View>
       <RenameHost theme={view.theme} compact={touch} />
     </View>;

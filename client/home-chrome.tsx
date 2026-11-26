@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, TextInput, View } from "react-native";
 import { AttachImageButton, ImageField, useImageAttachments, type ImageAttachments } from "./image-attach";
@@ -193,7 +194,7 @@ export function SearchField({ theme, omnibox, dense, onEnter, anywhereKey }: { t
   const placeholder = askOn ? dense ? "Search or ask the Overseer" : "Search, or ask the Overseer" : "Search workspaces, branches, PRs";
   // The bar stays one line: a paste or drop lands here, and Home draws the thumbnails on their own line under it.
   if (askOn) return <ImageField model={omnibox.images} theme={theme} compact={dense} row={false} attach="inline" style={{ flex: 1, minWidth: 0 }}><QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} onLayout={omnibox.onSearchLayout} slashHint={anywhereKey || "/"}
-    trailing={<AttachImageButton model={omnibox.images} theme={theme} compact={dense} label="Add image for the Overseer" />}
+    trailing={<AttachImageButton model={omnibox.images} theme={theme} compact={dense} label={tr("Add image for the Overseer")} />}
     slashTitle={anywhereKey ? `${anywhereKey} from anywhere · / on Home` : "/ focuses the search"}
     onSubmit={() => { const item = results?.[active]; if (item || !query.trim()) onEnter(item ?? null); }} onArrow={move} listKeys={!query.trim()} /></ImageField>;
   return <QueryField theme={theme} onLayoutQuery={omnibox.setPhysical} value={query} onChange={setQuery} placeholder={placeholder} icon="Search" dense={dense} inputRef={inputRef} onLayout={omnibox.onSearchLayout} slashHint={anywhereKey || "/"}
@@ -224,7 +225,7 @@ export function useListFilter(model: HomeModel, sources: HomeSources): ListFilte
 }
 /** "Filter workspaces": a filter icon and no key binding, so it never reads as Paseo's own Search (the Command Center, ⌘K). */
 export function FilterField({ theme, filter, dense }: { theme: Theme; filter: ListFilter; dense: boolean }) {
-  return <QueryField theme={theme} onLayoutQuery={filter.setPhysical} value={filter.query} onChange={filter.setQuery} placeholder="Filter workspaces" icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys />;
+  return <QueryField theme={theme} onLayoutQuery={filter.setPhysical} value={filter.query} onChange={filter.setQuery} placeholder={tr("Filter workspaces")} icon="ListFilter" dense={dense} inputRef={filter.inputRef} slashHint={false} listKeys />;
 }
 
 /** Kept outside the textbox: never changes the query or adds a decision to the search flow. */
@@ -261,7 +262,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
     <Pressable accessibilityRole="button" accessibilityLabel={`Sort: ${SORT_LABEL[mode]}${running ? ", ranking" : ""}`} aria-expanded={open} accessibilityState={{ expanded: open }} onPress={() => setOpen(o => !o)}
       style={state => ({ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, height: touch ? 44 : compact ? 32 : 30, minWidth: touch ? 44 : compact ? 32 : undefined, paddingHorizontal: compact ? 0 : 8, borderRadius: touch ? 8 : 6, backgroundColor: open || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
       {/* Phones and the sidebar view: an icon; the mode's name lives in the menu (and the accessible name). */}
-      {running ? <Spinner color={c.foreground} size={12} label="Ranking" /> : <Icon name="ArrowUpDown" size={touch ? 18 : compact ? 14 : 13} color={compact && mode !== DEFAULT_SORT ? c.foreground : c.foregroundMuted} />}
+      {running ? <Spinner color={c.foreground} size={12} label={tr("Ranking")} /> : <Icon name="ArrowUpDown" size={touch ? 18 : compact ? 14 : 13} color={compact && mode !== DEFAULT_SORT ? c.foreground : c.foregroundMuted} />}
       {/* The icon carries no label, so a non-default sort shows as a dot on it. */}
       {compact && mode !== DEFAULT_SORT && <View style={{ position: "absolute", top: touch ? 9 : 5, right: touch ? 9 : 5, width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent }} />}
       {!compact && <Text numberOfLines={1} style={{ color: c.foreground, fontSize: 12 }}>{SORT_LABEL[mode]}</Text>}
@@ -276,7 +277,7 @@ export function SortMenu({ theme, mode, onChange, rankedAt, touch, rank = null, 
       <View style={{ marginTop: 4, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 2 }}>
         {rank?.enabled && onRerank && <Pressable accessibilityRole="menuitem" accessibilityState={{ busy: running, disabled: running }} disabled={running} onPress={() => void rerank()}
           style={state => ({ ...menuItemRow(touch), minHeight: touch ? 48 : 34, paddingHorizontal: touch ? 12 : 10, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
-          <MenuItemContent theme={theme} touch={touch} glyph={running ? <Spinner color={c.foregroundMuted} size={menuGlyph(touch).size - 2} label="Ranking" /> : "RefreshCw"} label={running ? "Ranking…" : "Re-rank now"} muted={running} />
+          <MenuItemContent theme={theme} touch={touch} glyph={running ? <Spinner color={c.foregroundMuted} size={menuGlyph(touch).size - 2} label={tr("Ranking")} /> : "RefreshCw"} label={running ? "Ranking…" : "Re-rank now"} muted={running} />
         </Pressable>}
         {note && <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: touch ? 12 : 10, paddingTop: 4, paddingBottom: 6 }}>{note}</Text>}
       </View>
@@ -322,9 +323,9 @@ export function StatusStrip({ theme, model, filter, onFilter, touch, dense }: { 
     {counts.archivable > 0 && <Text style={{ color: c.statusSuccess, fontSize: 12, paddingHorizontal: 6 }}>{counts.archivable} to archive</Text>}
   </>;
   // Phones: only groups that have something, on one line that scrolls sideways instead of wrapping.
-  if (touch) return <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="toolbar" accessibilityLabel="Status"
+  if (touch) return <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="toolbar" accessibilityLabel={tr("Status")}
     contentContainerStyle={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 2 }}>{chips}</ScrollView>;
-  return <View accessibilityRole="toolbar" accessibilityLabel="Status" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: dense ? 0 : 2, rowGap: 2, paddingHorizontal: dense ? 4 : 10 }}>
+  return <View accessibilityRole="toolbar" accessibilityLabel={tr("Status")} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: dense ? 0 : 2, rowGap: 2, paddingHorizontal: dense ? 4 : 10 }}>
     {chips}
   </View>;
 }
@@ -397,10 +398,10 @@ export function AskRow({ ask, theme, active, dense, touch, sending, onPress }: {
       borderLeftWidth: 2, borderLeftColor: active ? withAlpha(c.foreground, 0.5) : "transparent",
       backgroundColor: active ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <Text numberOfLines={dense ? 2 : 1} style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18 }}>
-      <Text style={{ color: c.foregroundMuted }}>Ask the Overseer: </Text>
+      <Text style={{ color: c.foregroundMuted }}>{tr("Ask the Overseer:")}  </Text>
       <Text style={{ color: c.foreground, fontWeight: "500" }}>{ask}</Text>
     </Text>
-    {sending ? <Spinner color={c.foregroundMuted} size={12} label="Sending to the Overseer" />
+    {sending ? <Spinner color={c.foregroundMuted} size={12} label={tr("Sending to the Overseer")} />
       : active && Platform.OS === "web" && !touch ? <Text style={{ color: c.foregroundMuted, fontSize: 11, paddingHorizontal: 4, borderRadius: 3, borderWidth: 1, borderColor: withAlpha(c.foreground, 0.2) }}>↵</Text> : null}
     <Icon name="MessagesSquare" size={14} color={active ? c.foreground : c.foregroundMuted} />
   </Pressable>;

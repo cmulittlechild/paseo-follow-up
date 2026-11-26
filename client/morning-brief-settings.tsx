@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -31,8 +32,8 @@ export function MorningBriefCategory({ theme, compact }: { theme: Theme; compact
   const read = useRpc(briefSettingsRpc);
   const query = useQuery({ queryKey: briefSettingsKey, queryFn: async () => await read({}) as BriefSettingsView, refetchInterval: 15_000 });
   const sources = useSourcesView();
-  if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading Compass settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
-  if (query.error || !query.data) return <SettingsCard><SettingsAction label="Couldn't load Compass settings" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
+  if (query.isPending) return <ActivityIndicator accessibilityLabel={tr("Loading Compass settings")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
+  if (query.error || !query.data) return <SettingsCard><SettingsAction label={tr("Couldn't load Compass settings")} hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
   return <>
     <CompassSection theme={theme} compact={compact} after={<InputRows view={query.data} sources={sources} theme={theme} compact={compact} />} />
     <PlanSection view={query.data} theme={theme} compact={compact} />
@@ -85,25 +86,25 @@ function InputRows({ view, sources, theme, compact }: { view: BriefSettingsView;
   const toastCopy = (command: string) => { void copyText(command).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); };
   const q = view.queue;
   const detail = (row: BriefSource): { line: string; body: ReactNode } | null => {
-    if (row.recipe === "linear") return { line: q.states.map(queueStateLabel).join(", "), body: <ChipGroup label="Counts as the queue" hint="Issues assigned to you in these states. At least one."
+    if (row.recipe === "linear") return { line: q.states.map(queueStateLabel).join(", "), body: <ChipGroup label={tr("Counts as the queue")} hint={tr("Issues assigned to you in these states. At least one.")}
       options={QUEUE_STATE_TYPES.map(st => ({ value: st, label: queueStateLabel(st) }))} value={q.states} disabled={windows.isPending}
       onChange={states => windows.mutate({ states: states as typeof q.states })} theme={theme} compact={compact} /> };
-    if (row.recipe === "chat") return { line: `last ${q.chatHours} h`, body: <SettingsCard><SettingsSelect label="Chat window" hint="How far back AI priority reads DMs and mentions." value={String(q.chatHours)} disabled={windows.isPending}
+    if (row.recipe === "chat") return { line: `last ${q.chatHours} h`, body: <SettingsCard><SettingsSelect label={tr("Chat window")} hint={tr("How far back AI priority reads DMs and mentions.")} value={String(q.chatHours)} disabled={windows.isPending}
       options={[24, 48, 72].map(h => ({ value: String(h), label: `Last ${h} h` }))} onValueChange={v => windows.mutate({ chatHours: Number(v) as 24 | 48 | 72 })} /></SettingsCard> };
-    if (row.recipe === "calendar") return { line: q.calendarDays === 2 ? "today and tomorrow" : "today", body: <SettingsCard><SettingsSelect label="Meetings" hint="Which meetings AI priority reads." value={String(q.calendarDays)} disabled={windows.isPending}
+    if (row.recipe === "calendar") return { line: q.calendarDays === 2 ? "today and tomorrow" : "today", body: <SettingsCard><SettingsSelect label={tr("Meetings")} hint={tr("Which meetings AI priority reads.")} value={String(q.calendarDays)} disabled={windows.isPending}
       options={[{ value: "1", label: "Today" }, { value: "2", label: "Today and tomorrow" }]} onValueChange={v => windows.mutate({ calendarDays: Number(v) as 1 | 2 })} /></SettingsCard> };
     return null;
   };
   return <>
-    {query.isPending && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><ActivityIndicator accessibilityLabel="Checking sources" color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View>}
-    {query.error && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><Warning text={`Couldn't read the built-in sources: ${errorText(query.error)}`} action={<Button title="Retry" kind="ghost" theme={theme} compact={compact} onPress={() => void query.refetch()} />} theme={theme} compact={compact} /></View>}
+    {query.isPending && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><ActivityIndicator accessibilityLabel={tr("Checking sources")} color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View>}
+    {query.error && <View style={{ padding: compact ? 14 : 12, borderTopWidth: 1, borderTopColor: c.border }}><Warning text={`Couldn't read the built-in sources: ${errorText(query.error)}`} action={<Button title={tr("Retry")} kind="ghost" theme={theme} compact={compact} onPress={() => void query.refetch()} />} theme={theme} compact={compact} /></View>}
     {used.length > 0 && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border }}>
-      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Built in</Text>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("Built in")}</Text>
     </View>}
     {[...used, ...askable].map((row, i) => <View key={row.id}>
       {i === used.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingTop: 12, paddingBottom: 2, borderTopWidth: 1, borderTopColor: c.border, gap: 2 }}>
-        <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Other servers on mcpproxy</Text>
-        <Text style={t.meta}>No recipe fits these. Preview one to see what a fast model would pick out for you.</Text>
+        <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("Other servers on mcpproxy")}</Text>
+        <Text style={t.meta}>{tr("No recipe fits these. Preview one to see what a fast model would pick out for you.")}</Text>
       </View>}
       <SourceRow row={row} first={false} theme={theme} compact={compact} checking={checking} sweepAt={q.sweepAt} detail={detail(row)}
         busy={data!.retrying.includes(row.id) || (!!pending && (pending.retry === row.id || (pending.on ? row.id in pending.on : false)))}
@@ -126,7 +127,7 @@ function ConnectionsSection({ sources, theme, compact }: { sources: SourcesState
   if (!data) return null;
   const notRead = data.sources.filter(r => r.kind === "skipped");
   const checking = !!data.checking || !!(change.isPending && change.variables?.check);
-  return <SettingsSection title="Connections" info="What mcpproxy and GitHub let Follow-up read. Each source is found by the tools mcpproxy offers, never by its name, and only its read-only tools are ever called.">
+  return <SettingsSection title={tr("Connections")} info="What mcpproxy and GitHub let Follow-up read. Each source is found by the tools mcpproxy offers, never by its name, and only its read-only tools are ever called.">
     {/* Each input's own failure is on its row above; Connections says only what no row can: mcpproxy itself failing. */}
     {data.error ? <Warning text={data.error} theme={theme} compact={compact} /> : <Text style={t.meta}>{connectionsLine(data.sources)}</Text>}
     {notRead.length > 0 && <View style={{ gap: 6 }}>
@@ -141,8 +142,8 @@ function ConnectionsSection({ sources, theme, compact }: { sources: SourcesState
       </View>)}
     </View>}
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <Button title="Check sources again" icon="RotateCcw" theme={theme} compact={compact} loading={checking} onPress={() => change.mutate({ check: true })} />
-      {data.checking ? <Text style={t.meta}>Asking mcpproxy…</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${clock(data.checkedAt)}`}</Text>}
+      <Button title={tr("Check sources again")} icon="RotateCcw" theme={theme} compact={compact} loading={checking} onPress={() => change.mutate({ check: true })} />
+      {data.checking ? <Text style={t.meta}>{tr("Asking mcpproxy…")}</Text> : data.checkedAt && <Text style={t.meta}>{`Checked ${clock(data.checkedAt)}`}</Text>}
     </View>
   </SettingsSection>;
 }
@@ -219,10 +220,10 @@ function SourceRow({ row, first, busy, checking, previewing, sweepAt, detail, on
     </View>
     {detail && <IconButton theme={theme} compact={compact} icon={open ? "ChevronUp" : "ChevronDown"} label={`${open ? "Hide" : "Show"} ${label}'s setting`} onPress={() => setOpen(o => !o)} />}
     {ask && !row.on
-      ? <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Off</Text>
+      ? <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>{tr("Off")}</Text>
       : row.canToggle
       ? <Switch theme={theme} compact={compact} label={compact ? "" : row.on ? "On" : "Off"} accessibilityLabel={`Read ${label}`} value={row.on} disabled={busy} onChange={onToggle} />
-      : <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>Always</Text>}
+      : <Text style={[t.meta, { minHeight: compact ? 44 : 28, lineHeight: compact ? 44 : 28 }]}>{tr("Always")}</Text>}
   </View>;
 }
 
@@ -262,12 +263,12 @@ function AskPreview({ row, previewing, fresh, sweepAt, onPreview, onToggle, busy
               ? <Pressable key={i} accessibilityRole="link" accessibilityLabel={`Open ${it.title} in ${row.label}`} onPress={() => void openExternalUrl(it.url!).catch(() => undefined)} style={{ gap: 1, minHeight: compact ? 44 : undefined, justifyContent: "center" }}>{body}</Pressable>
               : <View key={i} style={{ gap: 1 }}>{body}</View>;
           })}
-          <Text style={t.meta}>{a.tools.length ? <>Read with <Text style={[t.meta, MONO]}>{a.tools.slice(0, 3).join(", ")}</Text>{` · read-only · previewed ${clock(a.at)}`}</> : `No lookups fit · previewed ${clock(a.at)}`}</Text>
+          <Text style={t.meta}>{a.tools.length ? <>{tr("Read with")}  <Text style={[t.meta, MONO]}>{a.tools.slice(0, 3).join(", ")}</Text>{` · read-only · previewed ${clock(a.at)}`}</> : `No lookups fit · previewed ${clock(a.at)}`}</Text>
           {stale && <Text style={t.meta}>{`This preview is over a day old. Preview again to turn ${row.label} on.`}</Text>}
         </>}
     {!previewing && <View style={{ gap: 6 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        {a && !a.error && fresh && <Button title="Turn on" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onToggle(true)} accessibilityLabel={`Turn on Ask for ${row.label}`} />}
+        {a && !a.error && fresh && <Button title={tr("Turn on")} kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onToggle(true)} accessibilityLabel={`Turn on Ask for ${row.label}`} />}
         <Button title={a ? "Preview again" : "Preview"} kind={stale ? "primary" : "ghost"} icon={a?.error ? "RotateCcw" : "Eye"} theme={theme} compact={compact} onPress={onPreview} />
       </View>
       {a && !a.error && fresh && <Text style={t.meta}>{`Then asked once each workday morning, after the ${sweepAt} sweep, with ${ASK_COST}.`}</Text>}
@@ -304,15 +305,15 @@ function PlanSection({ view, theme, compact }: { view: BriefSettingsView; theme:
   };
   const reading = !!plan.url && !plan.read && change.isSuccess;
   const card = planCard({ ...plan, mode }, Date.now(), view.clock.timeZone, reading);
-  return <SettingsSection title="This week's plan" info="AI priority ranks your work with it, and the brief shows it. A Compass source with Posts the plan brings it: the newest claude.ai artifact they share, read as soon as Compass sees it. Agents can set it too.">
+  return <SettingsSection title={tr("This week's plan")} info="AI priority ranks your work with it, and the brief shows it. A Compass source with Posts the plan brings it: the newest claude.ai artifact they share, read as soon as Compass sees it. Agents can set it too.">
     {env
-      ? <Text style={t.meta}>Set by the environment (FOLLOW_UP_PLAN_URL), which wins over these settings. Unset it to choose here.</Text>
-      : <Segmented<PlanMode> label="Where the plan comes from" value={mode} options={PLAN_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onChange={choose} disabled={change.isPending} theme={theme} compact={compact} />}
+      ? <Text style={t.meta}>{tr("Set by the environment (FOLLOW_UP_PLAN_URL), which wins over these settings. Unset it to choose here.")}</Text>
+      : <Segmented<PlanMode> label={tr("Where the plan comes from")} value={mode} options={PLAN_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onChange={choose} disabled={change.isPending} theme={theme} compact={compact} />}
     {!env && mode === "link" && <LinkField initial={plan.link ?? ""} busy={change.isPending} onUse={link => change.mutate({ link, mode: "link" })} theme={theme} compact={compact} />}
     {card && <PlanCardView card={card} busy={change.isPending} theme={theme} compact={compact} onAnother={() => setPicked("link")} onPaste={link => change.mutate({ link, mode: "link" })} />}
     {!env && plan.unmoved.length > 0 && <Warning text={`Who posts the plan moved into Compass as a source, but chat search couldn't find ${plan.unmoved.join(", ")}. Add them to a source with Posts the plan.`} theme={theme} compact={compact} />}
     {!env && mode === "link" && plan.sources.length > 0 && <SettingsCard>
-      <SettingsSwitch label="Replace when a newer one arrives" hint={`A plan that ${plan.sources.map(x => `“${x.label}”`).join(" or ")} shares after you pasted this one takes over.`} value={plan.replaceWhenNewer} disabled={change.isPending}
+      <SettingsSwitch label={tr("Replace when a newer one arrives")} hint={`A plan that ${plan.sources.map(x => `“${x.label}”`).join(" or ")} shares after you pasted this one takes over.`} value={plan.replaceWhenNewer} disabled={change.isPending}
         onValueChange={value => change.mutate({ replaceWhenNewer: value })} />
     </SettingsCard>}
   </SettingsSection>;
@@ -345,10 +346,10 @@ function LinkField({ initial, busy, onUse, theme, compact, placeholder = "https:
   useEffect(() => setValue(initial), [initial]);
   const dirty = value.trim() !== initial && value.trim().length > 0;
   return <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-    <TextInput accessibilityLabel="The plan's link" value={value} onChangeText={setValue} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
+    <TextInput accessibilityLabel={tr("The plan's link")} value={value} onChangeText={setValue} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
       onSubmitEditing={() => dirty && onUse(value.trim())} style={field(theme, compact, value.length > 0)} />
     {/* Shown once there's something new to use: then it's the screen's one primary action. */}
-    {dirty && <Button title="Use it" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onUse(value.trim())} />}
+    {dirty && <Button title={tr("Use it")} kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => onUse(value.trim())} />}
   </View>;
 }
 
@@ -364,13 +365,13 @@ function PlanCardView({ card, busy, onAnother, onPaste, theme, compact }: { card
       <Text style={t.meta}>{card.line}</Text>
       {warn && card.inUse && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 4 }}>
         <Text style={t.meta}>{card.inUse.line}</Text>
-        <Button title="Open" kind="ghost" icon="ExternalLink" theme={theme} compact={compact} onPress={() => void openExternalUrl(card.inUse!.url).catch(() => undefined)} />
+        <Button title={tr("Open")} kind="ghost" icon="ExternalLink" theme={theme} compact={compact} onPress={() => void openExternalUrl(card.inUse!.url).catch(() => undefined)} />
       </View>}
       {card.tone === "ok" && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {card.actions.includes("open") && <Button title="Open" icon="ExternalLink" grow={compact} theme={theme} compact={compact} onPress={() => void openExternalUrl(card.url).catch(() => undefined)} />}
-        {card.actions.includes("another") && <Button title="Use another link" grow={compact} theme={theme} compact={compact} onPress={onAnother} />}
+        {card.actions.includes("open") && <Button title={tr("Open")} icon="ExternalLink" grow={compact} theme={theme} compact={compact} onPress={() => void openExternalUrl(card.url).catch(() => undefined)} />}
+        {card.actions.includes("another") && <Button title={tr("Use another link")} grow={compact} theme={theme} compact={compact} onPress={onAnother} />}
       </View>}
-      {warn && card.paste && <LinkField initial="" busy={busy} onUse={onPaste} theme={theme} compact={compact} placeholder="Paste this week's link" />}
+      {warn && card.paste && <LinkField initial="" busy={busy} onUse={onPaste} theme={theme} compact={compact} placeholder={tr("Paste this week's link")} />}
     </View>
   </View>;
 }
@@ -393,17 +394,17 @@ function WhenSection({ view, theme, compact }: { view: BriefSettingsView; theme:
   const times = [...new Set([...SWEEP_TIMES, q.sweepAt])].sort();
   const zoneFrom = view.clock.zoneFrom === "setting" ? "set here" : view.clock.zoneFrom === "device" ? "this device's" : "the host's";
   const usual = defaultWorkdays(view.clock.timeZone);
-  return <SettingsSection title="When" info="The morning read: Compass reads its sources, the Linear queue is swept and mcpproxy is asked again, once each workday at this time. During the day Compass reads again while Follow-up is open. The brief's changes are counted from your last read.">
+  return <SettingsSection title={tr("When")} info="The morning read: Compass reads its sources, the Linear queue is swept and mcpproxy is asked again, once each workday at this time. During the day Compass reads again while Follow-up is open. The brief's changes are counted from your last read.">
     <SettingsCard>
-      <SettingsSelect label="Morning read at" hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
+      <SettingsSelect label={tr("Morning read at")} hint={`On workdays, in ${view.clock.timeZone}.`} value={q.sweepAt} disabled={change.isPending}
         options={times.map(v => ({ value: v, label: v }))} onValueChange={sweepAt => change.mutate({ sweepAt })} />
       <CompassWhen theme={theme} compact={compact} part="cadence" />
       <CompassWhen theme={theme} compact={compact} part="routing" />
-      <SettingsSelect label="Changes since" hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
+      <SettingsSelect label={tr("Changes since")} hint={q.since === "read" ? "What moved since you last read the brief; before your first read, since the last workday's sweep." : "What moved since the last workday's sweep, however often you look."}
         value={q.since} disabled={change.isPending} options={[{ value: "read", label: "Your last read" }, { value: "workday", label: "Your last workday" }]} onValueChange={since => change.mutate({ since })} />
     </SettingsCard>
     <ZoneField view={view} zoneFrom={zoneFrom} busy={change.isPending} onChange={timeZone => change.mutate({ timeZone })} theme={theme} compact={compact} />
-    <ChipGroup label="Workdays" hint={q.workdays ? "Set here." : "The zone's usual week."} options={WEEKDAYS.map(d => ({ value: d, label: d }))} value={q.workdays ?? usual} disabled={change.isPending}
+    <ChipGroup label={tr("Workdays")} hint={q.workdays ? "Set here." : "The zone's usual week."} options={WEEKDAYS.map(d => ({ value: d, label: d }))} value={q.workdays ?? usual} disabled={change.isPending}
       onChange={days => change.mutate({ workdays: sameDays(days, usual) ? null : days as Weekday[] })} theme={theme} compact={compact} />
   </SettingsSection>;
 }
@@ -441,10 +442,10 @@ function ZoneField({ view, zoneFrom, busy, onChange, theme, compact }: { view: B
   return <View style={{ gap: 6 }}>
     <Text style={t.meta}>{`Time zone: ${view.clock.timeZone} (${zoneFrom})`}</Text>
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-      <TextInput accessibilityLabel="Time zone" value={value} onChangeText={setValue} placeholder="Automatic: this device's zone" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
+      <TextInput accessibilityLabel={tr("Time zone")} value={value} onChangeText={setValue} placeholder={tr("Automatic: this device's zone")} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
         onSubmitEditing={() => valid && dirty && onChange(v || null)} style={field(theme, compact)} />
       {dirty && <Button title={v ? "Save" : "Use automatic"} theme={theme} compact={compact} disabled={!valid} loading={busy} onPress={() => onChange(v || null)} />}
     </View>
-    {!valid && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>Use an IANA time zone, like Europe/Paris.</Text>}
+    {!valid && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{tr("Use an IANA time zone, like Europe/Paris.")}</Text>}
   </View>;
 }

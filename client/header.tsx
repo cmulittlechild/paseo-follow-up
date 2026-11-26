@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import type { ReactNode } from "react";
 import type { SettingsCategory } from "../shared/settings-nav";
 import { View } from "react-native";
@@ -80,7 +81,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
   const controls = <View style={{ flexDirection: "row", alignItems: "center", gap: 2, marginVertical: compact ? -12 : -4, marginRight: compact ? -10 : -4 }}>
     {resize && <IconButton icon={resize.icon} label={resize.label} onPress={resize.onPress} theme={theme} compact={compact} />}
     {more}
-    <IconButton icon="Settings" label="Follow-up settings" onPress={() => onSettings()} theme={theme} compact={compact} />
+    <IconButton icon="Settings" label={tr("Follow-up settings")} onPress={() => onSettings()} theme={theme} compact={compact} />
   </View>;
   const tail = <>
     <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
@@ -97,7 +98,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
       <Text numberOfLines={1} style={[t.small, { flexShrink: 1 }, stale && !w.githubOff ? { color: c.statusWarning } : null]}>{w.githubOff ? "Not checking GitHub" : checked ? `Checked ${ago(checked, now)}${stale ? " · may be out of date" : ""}` : "Checks GitHub every 15s"}</Text>
       <IconButton icon="RefreshCw" label={w.githubOff ? "Check GitHub again" : "Refresh PR status"} onPress={onRefresh} theme={theme} compact={compact} disabled={refreshing} spinning={refreshing} />
       <View style={{ flex: 1 }} />
-      <Switch theme={theme} compact={compact} label="Auto-send" accessibilityLabel="Auto-send repairs" hint="Send repairs to the main agent on its own when the agent is idle. Off means each message waits for your click."
+      <Switch theme={theme} compact={compact} label={tr("Auto-send")} accessibilityLabel={tr("Auto-send repairs")} hint={tr("Send repairs to the main agent on its own when the agent is idle. Off means each message waits for your click.")}
         value={w.enable_auto_sends} disabled={autoPending} onChange={onAuto} />
     </View>
   </>;
@@ -105,7 +106,7 @@ export function WorkspaceHeader({ workspace: w, theme, compact, now, onSettings,
     {/* One bar: Home on the left, settings on the right. The host header above names the workspace,
         so the Summary (or the goal, until there is one) is the first line under it. */}
     <View style={{ flexDirection: "row", alignItems: "center", minHeight: 44, marginLeft: -14 }}>
-      <Button theme={theme} compact kind="ghost" icon="House" title="Home" accessibilityHint="Opens Follow-up Home with every workspace" onPress={onHome} />
+      <Button theme={theme} compact kind="ghost" icon="House" title={tr("Home")} accessibilityHint="Opens Follow-up Home with every workspace" onPress={onHome} />
       {/* The version sits with Home, as on Home's own title line, not beside the cog. */}
       <View style={{ marginLeft: 8 }}><VersionMark theme={theme} touch openSettings={onSettings} /></View>
       <View style={{ flex: 1 }} />

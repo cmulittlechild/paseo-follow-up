@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -82,13 +83,13 @@ export function CompassSection({ theme, compact, after }: { theme: Theme; compac
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const data = query.data;
   const full = !!data && data.settings.sources.length >= COMPASS.sources;
-  return <SettingsSection title="What sets your priorities" info="Everything AI priority, Needs you and the brief read, in one list. The people you add are read each workday morning, and during the day while Follow-up is open: Follow-up keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads them. Nothing is ever posted. Agents can set it up too.">
-    {query.isPending && <ActivityIndicator accessibilityLabel="Loading Compass" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+  return <SettingsSection title={tr("What sets your priorities")} info="Everything AI priority, Needs you and the brief read, in one list. The people you add are read each workday morning, and during the day while Follow-up is open: Follow-up keeps a note of each priority with their words, and AI priority ranks your work by it. Only the people you pick are read, only through read-only tools, and a fast model with no tools reads them. Nothing is ever posted. Agents can set it up too.">
+    {query.isPending && <ActivityIndicator accessibilityLabel={tr("Loading Compass")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {query.error && <Text style={[t.meta, { color: c.statusWarning }]}>{`Couldn't load Compass: ${errorText(query.error)}`}</Text>}
     {data?.blocked && <Line icon="TriangleAlert" tone={c.statusWarning} text={data.blocked} theme={theme} compact={compact} />}
     {data && <View style={{ ...raised(c), borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
       {data.settings.sources.length === 0 && editing !== "new" && <View style={{ padding: compact ? 14 : 12, paddingBottom: 2, gap: 4 }}>
-        <Text style={[t.label, { color: c.foreground }]}>Nobody sets your priorities here yet</Text>
+        <Text style={[t.label, { color: c.foreground }]}>{tr("Nobody sets your priorities here yet")}</Text>
         <Text style={t.meta}>Add the person, channel, doc, tracker or calendar that decides what you work on first, like your product lead's DM. Or ask the Overseer to set it up for you.</Text>
       </View>}
       {data.settings.sources.map((s, i) => editing === s.id
@@ -102,8 +103,8 @@ export function CompassSection({ theme, compact, after }: { theme: Theme; compac
       {editing !== "new" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingHorizontal: compact ? 14 : 12, paddingVertical: compact ? 10 : 10, borderTopWidth: data.settings.sources.length || editing ? 1 : 0, borderTopColor: c.border }}>
         {full
           ? <Text style={t.meta}>{`Compass holds ${COMPASS.sources} sources. Remove one to add another.`}</Text>
-          : <Button title="Add a source" icon="Plus" theme={theme} compact={compact} disabled={!!editing} onPress={() => setEditing("new")} />}
-        {data.settings.sources.length > 0 && <Button title="Read now" icon="RotateCcw" kind="ghost" theme={theme} compact={compact} loading={reading.isPending || data.running} disabled={!!data.blocked} onPress={() => reading.mutate()} />}
+          : <Button title={tr("Add a source")} icon="Plus" theme={theme} compact={compact} disabled={!!editing} onPress={() => setEditing("new")} />}
+        {data.settings.sources.length > 0 && <Button title={tr("Read now")} icon="RotateCcw" kind="ghost" theme={theme} compact={compact} loading={reading.isPending || data.running} disabled={!!data.blocked} onPress={() => reading.mutate()} />}
         {data.settings.sources.length > 0 && <Text style={[t.meta, { flexShrink: 1 }]}>{statusLine(data)}</Text>}
       </View>}
       {after}
@@ -116,7 +117,7 @@ export function CompassReading({ theme, compact }: { theme: Theme; compact: bool
   const query = useCompassView(); const change = useCompassChange();
   const data = query.data;
   if (!data) return null;
-  return <SettingsSection title="How to read your Compass" info="Words every source is read with; each source's own How to read this comes after them. They change how messages are understood, never what is read.">
+  return <SettingsSection title={tr("How to read your Compass")} info="Words every source is read with; each source's own How to read this comes after them. They change how messages are understood, never what is read.">
     <ReadingNotes value={data.settings.instructions} busy={change.isPending} theme={theme} compact={compact} onSave={v => change.mutate({ instructions: v })} />
     <Glossary entries={data.settings.glossary} busy={change.isPending} theme={theme} compact={compact} onSave={g => change.mutate({ glossary: g })} />
   </SettingsSection>;
@@ -137,9 +138,9 @@ export function CompassWhen({ theme, compact, part }: { theme: Theme; compact: b
   if (!data || !data.settings.sources.length) return null;
   const s = data.settings;
   // One row each, so the settings card draws its divider between them.
-  if (part === "cadence") return <SettingsSelect label="During the day" hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
+  if (part === "cadence") return <SettingsSelect label={tr("During the day")} hint={s.cadence === "off" ? "Compass reads once, at the morning read. Read now reads at once." : "While Follow-up is open, on workdays from 08:00 to 20:00. Each read takes only what's new, and nothing is read while the app is closed."}
     value={s.cadence} disabled={change.isPending} options={CADENCES.map(v => ({ value: v, label: CADENCE_LABEL[v] }))} onValueChange={cadence => change.mutate({ cadence: cadence as CompassSettings["cadence"] })} />;
-  return <SettingsSelect label="Issues nobody's on" hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? `Listed first in ${NEW_OF} My issues, with why.` : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in ${NEW_NAME}.`}
+  return <SettingsSelect label={tr("Issues nobody's on")} hint={s.routing.suggestions === "off" ? "Compass notes still reorder AI priority; none suggests an issue." : s.routing.suggestions === "new-only" ? `Listed first in ${NEW_OF} My issues, with why.` : `A strong ask due within ${s.routing.urgentWithinWorkdays} workdays goes to Needs you, from a source with Needs you on. The rest are first in ${NEW_NAME}.`}
     value={s.routing.suggestions} disabled={change.isPending} options={(Object.keys(ROUTING_LABEL) as CompassSettings["routing"]["suggestions"][]).map(v => ({ value: v, label: ROUTING_LABEL[v] }))}
     onValueChange={suggestions => change.mutate({ routing: { suggestions: suggestions as CompassSettings["routing"]["suggestions"] } })} />;
 }
@@ -185,9 +186,9 @@ function SourceRow({ view, source, first, busy, onEdit, onToggle, theme, compact
       {source.enabled && !bad && info && <Text style={t.meta}>{info}</Text>}
       {open && <View style={{ gap: 8, paddingTop: 8 }}>
         {source.enabled && source.roles.includes("plan") && <PlanLine source={source} plan={view.plan} theme={theme} compact={compact} />}
-        {source.instructions ? <RichText plain style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</RichText> : source.places.every(p => p.kind === "tracker" || p.kind === "calendar") ? <Text style={t.meta}>Read by rule, with no model.</Text> : <Text style={t.meta}>No reading notes: read with its roles' notes and yours.</Text>}
+        {source.instructions ? <RichText plain style={[t.meta, { fontStyle: "italic" }]}>{`“${source.instructions}”`}</RichText> : source.places.every(p => p.kind === "tracker" || p.kind === "calendar") ? <Text style={t.meta}>{tr("Read by rule, with no model.")}</Text> : <Text style={t.meta}>{tr("No reading notes: read with its roles' notes and yours.")}</Text>}
         {source.enabled && live > 0 && <NoteList notes={notes} view={view} theme={theme} compact={compact} />}
-        <View style={{ flexDirection: "row" }}><Button title="Edit source" icon="Pencil" theme={theme} compact={compact} disabled={busy} onPress={onEdit} accessibilityLabel={`Edit ${source.label}`} /></View>
+        <View style={{ flexDirection: "row" }}><Button title={tr("Edit source")} icon="Pencil" theme={theme} compact={compact} disabled={busy} onPress={onEdit} accessibilityLabel={`Edit ${source.label}`} /></View>
       </View>}
     </View>
     <IconButton theme={theme} compact={compact} icon={open ? "ChevronUp" : "ChevronDown"} label={`${open ? "Hide" : "Show"} ${source.label}'s notes and settings`} onPress={() => setOpen(o => !o)} />
@@ -213,7 +214,7 @@ function PlanLine({ source, plan, theme, compact }: { source: CompassSource; pla
     <RichText plain style={[t.meta, { flexShrink: 1, minWidth: 0 }]}>{line}</RichText>
     {inUse && <Pressable accessibilityRole="link" accessibilityLabel={`Open this week's plan from ${source.label}`} onPress={() => void openExternalUrl(mine!.url).catch(() => undefined)} hitSlop={compact ? 0 : 6}
       style={{ minHeight: compact ? 44 : 20, marginTop: compact ? -12 : 0, justifyContent: compact ? "center" : "flex-start" }}>
-      <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>Open</Text>
+      <Text style={[t.meta, { color: c.accent, fontWeight: "600" }]}>{tr("Open")}</Text>
     </Pressable>}
   </View>;
 }
@@ -302,9 +303,9 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
   const picks = PICKS[kind].kinds.filter(k => k !== "docs" || view.readers.doc);
   const missing = view.presets.filter(p => !p.offered);
   return <SubmitScope enabled={ready && !busy} onSubmit={save} style={{ padding: compact ? 14 : 12, gap: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border, backgroundColor: c.surface1 }}>
-    {!source && <Text accessibilityRole="header" style={[t.body, { color: c.foreground, fontWeight: "600" }]}>New source</Text>}
+    {!source && <Text accessibilityRole="header" style={[t.body, { color: c.foreground, fontWeight: "600" }]}>{tr("New source")}</Text>}
     {!source && <View style={{ gap: 6 }}>
-      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Start from</Text>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("Start from")}</Text>
       <View style={row}>
         {view.presets.filter(p => p.offered).map(p => <Pressable key={p.id} accessibilityRole="radio" accessibilityState={{ checked: preset?.id === p.id }} onPress={() => usePreset(p)}
           style={state => ({ minHeight: compact ? 44 : 30, paddingHorizontal: 12, borderRadius: 6, justifyContent: "center", borderWidth: 1, borderColor: preset?.id === p.id ? c.accent : c.border,
@@ -334,7 +335,7 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
       {places.map(p => chip(placeName(p), () => setPlaces(ps => ps.filter(x => x !== p)), `${p.kind}:${p.id}`))}
       {places.length < COMPASS.places && !dmOnly && picks.map((k, i) => <Button key={k} title={k === "file" ? "A file on this machine" : places.length ? PICKS[kind].more : PICKS[kind].first} icon={k === "file" ? "FileText" : "Plus"}
         kind={places.length || i > 0 ? "ghost" : "secondary"} theme={theme} compact={compact} onPress={() => setPicking(picking === k ? null : k)} />)}
-      {dmOnly && !places.length && <Text style={t.meta}>Their DM with you, once you pick them.</Text>}
+      {dmOnly && !places.length && <Text style={t.meta}>{tr("Their DM with you, once you pick them.")}</Text>}
     </View>
     {picking && picking !== "people" && <FindPicker kind={picking} theme={theme} compact={compact} onCancel={() => setPicking(null)} onPick={addPlace} />}
     {kind === "calendar" && places.length > 0 && <View style={row}>
@@ -346,28 +347,28 @@ function SourceEditor({ view, source, first, busy, onSave, onCancel, onRemove, t
       ? "Read by rule, with no model: each open issue in it is a note quoting its own fields, and one that leaves it ends its note."
       : "Read by rule, with no model: a meeting in the next two weeks lends its date to the work it matches; one about nothing here isn't kept."}</Text>}
     <View style={{ gap: 6 }}>
-      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>What it tells you</Text>
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("What it tells you")}</Text>
       <View style={row}>
         {ROLES.map(r => { const on = roles.includes(r); return pill(on, ROLE_INFO[r].label, () => setRoles(rs => on ? rs.filter(x => x !== r) : [...rs, r]), "checkbox", r); })}
       </View>
     </View>
     {!ruled && <View style={{ gap: 6 }}>
-      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>How to read this</Text>
-      <TextInput accessibilityLabel="How to read this source" multiline value={notes} onChangeText={v => setNotes(v.slice(0, COMPASS.sourceInstructions))} placeholder={kind === "doc" ? "Lines under 'This week' are the plan. A line starting with ! is urgent." : "P0 means today, P1 this week. Ignore hiring talk."}
+      <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("How to read this")}</Text>
+      <TextInput accessibilityLabel={tr("How to read this source")} multiline value={notes} onChangeText={v => setNotes(v.slice(0, COMPASS.sourceInstructions))} placeholder={kind === "doc" ? "Lines under 'This week' are the plan. A line starting with ! is urgent." : "P0 means today, P1 this week. Ignore hiring talk."}
         placeholderTextColor={c.foregroundMuted} style={{ minHeight: 64, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
       <Text style={t.meta}>{`Your words for the model that reads it. They change how it is read, never what is read. ${notes.length}/${COMPASS.sourceInstructions}`}</Text>
     </View>}
     <View style={row}>
       {labelCol("Name")}
-      <TextInput accessibilityLabel="Source name" value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? "Now" : kind === "calendar" ? "Calendar deadlines" : "Dana · product"} placeholderTextColor={c.foregroundMuted}
+      <TextInput accessibilityLabel={tr("Source name")} value={label} onChangeText={setLabel} placeholder={kind === "tracker" ? "priority/high" : kind === "doc" ? "Now" : kind === "calendar" ? "Calendar deadlines" : "Dana · product"} placeholderTextColor={c.foregroundMuted}
         style={{ flex: 1, minWidth: 160, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
     </View>
     <View style={[row, { justifyContent: "space-between" }]}>
       <View style={row}>
         <Button title={source ? "Save" : "Add source"} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!ready} onPress={save} />
-        <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+        <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
       </View>
-      {onRemove && <Button title="Remove source" kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}
+      {onRemove && <Button title={tr("Remove source")} kind="ghost" icon="Trash2" theme={theme} compact={compact} disabled={busy} onPress={onRemove} />}
     </View>
     {!ready && <Text style={t.meta}>{!who ? "Pick whose words count." : !places.length ? "Pick where to read." : "Give it at least one role."}</Text>}
   </SubmitScope>;
@@ -403,11 +404,11 @@ function FindPicker({ kind, onPick, onCancel, theme, compact }: { kind: FindKind
         : <TextInput autoFocus accessibilityLabel={copy.label} value={q} onChangeText={setQ} placeholder={copy.placeholder}
           placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
           style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface1, ...(file && q ? { fontFamily: "ui-monospace, Menlo, monospace" } : {}) }} />}
-      {file && <Button title="Check" theme={theme} compact={compact} disabled={q.trim().length < 2} loading={results.isFetching} onPress={() => setDebounced(q.trim())} />}
-      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+      {file && <Button title={tr("Check")} theme={theme} compact={compact} disabled={q.trim().length < 2} loading={results.isFetching} onPress={() => setDebounced(q.trim())} />}
+      <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
     </View>
-    {file && !debounced && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>A Markdown or text file, up to 64 KB. Compass reads it only when it changes, and its path never leaves this machine.</Text>}
-    {!file && !auto && results.isFetching && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>Searching…</Text>}
+    {file && !debounced && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>{tr("A Markdown or text file, up to 64 KB. Compass reads it only when it changes, and its path never leaves this machine.")}</Text>}
+    {!file && !auto && results.isFetching && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8 }]}>{tr("Searching…")}</Text>}
     {results.data?.error && <Text style={[t.meta, { paddingHorizontal: 12, paddingBottom: 8, color: c.statusWarning }]}>{results.data.error}</Text>}
     {(results.data?.results ?? []).map(r => <Pressable key={r.id} accessibilityRole="button" onPress={() => onPick(r)}
       style={state => ({ minHeight: compact ? 44 : 34, paddingHorizontal: 12, paddingVertical: 6, justifyContent: "center", borderTopWidth: 1, borderTopColor: c.border, backgroundColor: state.pressed || (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>
@@ -425,11 +426,11 @@ function ReadingNotes({ value, busy, onSave, theme, compact }: { value: string; 
   useEffect(() => setDraft(value), [value]);
   const dirty = draft.trim() !== value.trim();
   return <SubmitScope enabled={dirty && !busy} onSubmit={() => onSave(draft)} style={{ gap: 6 }}>
-    <TextInput accessibilityLabel="How to read your Compass" multiline value={draft} onChangeText={v => setDraft(v.slice(0, COMPASS.instructions))} placeholder="P0 means today. 'The renewal' is the acme renewal. Customer asks wait for the plan unless they name a date."
+    <TextInput accessibilityLabel={tr("How to read your Compass")} multiline value={draft} onChangeText={v => setDraft(v.slice(0, COMPASS.instructions))} placeholder={tr("P0 means today. 'The renewal' is the acme renewal. Customer asks wait for the plan unless they name a date.")}
       placeholderTextColor={c.foregroundMuted} style={{ minHeight: 72, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0, textAlignVertical: "top" }} />
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       <Text style={[t.meta, { flex: 1, minWidth: 180 }]}>{`For every source. ${draft.length}/${COMPASS.instructions}`}</Text>
-      {dirty && <Button title="Save" kind="primary" shortcut theme={theme} compact={compact} loading={busy} onPress={() => onSave(draft)} />}
+      {dirty && <Button title={tr("Save")} kind="primary" shortcut theme={theme} compact={compact} loading={busy} onPress={() => onSave(draft)} />}
     </View>
   </SubmitScope>;
 }
@@ -442,8 +443,8 @@ function Glossary({ entries, busy, onSave, theme, compact }: { entries: Glossary
   const field = { minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 } as const;
   const add = () => { onSave([...entries, { words: words.trim(), means: { issue: key.trim().toUpperCase() } }]); setWords(""); setKey(""); };
   return <View style={{ gap: 6 }}>
-    <Text style={[t.label, { color: c.foreground }]}>Glossary</Text>
-    <Text style={t.meta}>Your own words for your work. When a note says one, it goes to that issue's workspace.</Text>
+    <Text style={[t.label, { color: c.foreground }]}>{tr("Glossary")}</Text>
+    <Text style={t.meta}>{tr("Your own words for your work. When a note says one, it goes to that issue's workspace.")}</Text>
     {entries.map(g => <View key={g.words} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 28 }}>
       <RichText plain style={[t.body, { color: c.foreground }]}>{`“${g.words}”`}</RichText>
       <Icon name="ArrowRight" size={12} color={c.foregroundMuted} />
@@ -454,10 +455,10 @@ function Glossary({ entries, busy, onSave, theme, compact }: { entries: Glossary
       </Pressable>
     </View>)}
     {entries.length < COMPASS.glossary && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <TextInput accessibilityLabel="Word" value={words} onChangeText={setWords} placeholder="Phoenix" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 120, minWidth: 0 }]} />
+      <TextInput accessibilityLabel={tr("Word")} value={words} onChangeText={setWords} placeholder="Phoenix" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 120, minWidth: 0 }]} />
       <Icon name="ArrowRight" size={12} color={c.foregroundMuted} />
-      <TextInput accessibilityLabel="Issue key" value={key} onChangeText={setKey} placeholder="ACME-40" autoCapitalize="characters" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 100, minWidth: 0, fontFamily: "ui-monospace, Menlo, monospace" }]} />
-      <Button title="Add" icon="Plus" theme={theme} compact={compact} loading={busy} disabled={words.trim().length < 2 || key.trim().length < 3} onPress={add} />
+      <TextInput accessibilityLabel={tr("Issue key")} value={key} onChangeText={setKey} placeholder="ACME-40" autoCapitalize="characters" placeholderTextColor={c.foregroundMuted} style={[field, { flexGrow: 1, flexBasis: 100, minWidth: 0, fontFamily: "ui-monospace, Menlo, monospace" }]} />
+      <Button title={tr("Add")} icon="Plus" theme={theme} compact={compact} loading={busy} disabled={words.trim().length < 2 || key.trim().length < 3} onPress={add} />
     </View>}
   </View>;
 }

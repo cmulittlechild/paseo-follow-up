@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { createContext, useContext, useEffect, useRef } from "react";
 import { Animated, Image, Modal as RNModal, Platform, ScrollView, View, useWindowDimensions, type ViewStyle } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/ui";
@@ -46,7 +47,7 @@ export function ImageViewer({ image, onClose, inline }: { image: ViewedImage; on
         <Pressable accessible={false} onPress={onClose}>{picture}</Pressable>
       </ScrollView>
       : <View pointerEvents="none" style={{ marginTop: phone ? 36 : 0 }}>{picture}</View>}
-    <Pressable ref={close} accessibilityRole="button" accessibilityLabel="Close image" onPress={onClose} hitSlop={8}
+    <Pressable ref={close} accessibilityRole="button" accessibilityLabel={tr("Close image")} onPress={onClose} hitSlop={8}
       style={state => ({ position: "absolute", top: phone ? 8 : 12, right: phone ? 8 : 12, width: phone ? 44 : 36, height: phone ? 44 : 36, borderRadius: 8, alignItems: "center", justifyContent: "center",
         backgroundColor: state.pressed ? "rgba(255,255,255,0.18)" : (state as { hovered?: boolean }).hovered ? "rgba(255,255,255,0.1)" : "transparent" })}>
       <Icon name="X" size={phone ? 22 : 18} color="#ffffff" />

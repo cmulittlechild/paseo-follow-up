@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform, useWindowDimensions, View, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
@@ -228,7 +229,7 @@ function ConfirmBody({ theme, item, touch = false, onCancel, onConfirm, cancelRe
   return <View ref={cancelRef as never} style={{ gap: touch ? 14 : 10, paddingHorizontal: touch ? 0 : 12, paddingVertical: touch ? 8 : 8 }}>
     <ConfirmText theme={theme} item={item} touch={touch} />
     <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-      <Button theme={theme} compact={touch} kind="ghost" title="Cancel" onPress={onCancel} />
+      <Button theme={theme} compact={touch} kind="ghost" title={tr("Cancel")} onPress={onCancel} />
       <Button theme={theme} compact={touch} kind="danger" title={item.label.replace(/…$/, "")} onPress={onConfirm} />
     </View>
   </View>;

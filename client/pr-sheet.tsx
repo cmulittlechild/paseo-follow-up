@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { View } from "react-native";
 import { Text } from "./text";
 import { openExternalUrl } from "@getpaseo/plugin/client";
@@ -42,12 +43,12 @@ export function PrSheet({ workspace: w, prKey, intent, theme, compact, browserRe
           {/* A known status stays; a failed read after it only makes the Checked line say how old it is. */}
           {pr.error && !s?.complete && <Fact theme={theme} icon="TriangleAlert" color={c.statusWarning}>{pr.error}</Fact>}
           {parent && <Fact theme={theme} icon="CornerLeftDown">Stacked on #{parent.number} · {parent.snapshot?.title ?? parent.stack}</Fact>}
-          {s?.conflict && <Fact theme={theme} icon="TriangleAlert" color={c.statusDanger}>Conflicts with its base branch</Fact>}
+          {s?.conflict && <Fact theme={theme} icon="TriangleAlert" color={c.statusDanger}>{tr("Conflicts with its base branch")}</Fact>}
           {!!s?.failedChecks.length && <Fact theme={theme} icon="CircleX" color={c.statusDanger}>Required checks failed: {s.failedChecks.join(", ")}</Fact>}
           {!!s?.otherFailedChecks?.length && <Fact theme={theme} icon="CircleX" color={c.statusWarning}>Optional checks failed (not required to merge): {s.otherFailedChecks.join(", ")}</Fact>}
-          {s?.state === "OPEN" && s.checksPending && <Fact theme={theme} icon="LoaderCircle">Required checks are still running</Fact>}
+          {s?.state === "OPEN" && s.checksPending && <Fact theme={theme} icon="LoaderCircle">{tr("Required checks are still running")}</Fact>}
           {!!s?.threads.length && <Fact theme={theme} icon="MessageSquare" color={c.statusWarning}>{s.threads.length} unresolved review thread{s.threads.length === 1 ? "" : "s"}</Fact>}
-          {s?.reviewDecision === "CHANGES_REQUESTED" && <Fact theme={theme} icon="MessageSquareWarning" color={c.statusWarning}>Changes requested</Fact>}
+          {s?.reviewDecision === "CHANGES_REQUESTED" && <Fact theme={theme} icon="MessageSquareWarning" color={c.statusWarning}>{tr("Changes requested")}</Fact>}
           {reviewers.length > 0 && <Fact theme={theme} icon="Users">Reviewers: {reviewers.join(", ")}</Fact>}
           {s?.deployment?.environment && <Fact theme={theme} icon="Rocket">{s.deployment.evidence}</Fact>}
           {s?.observedAt && <Fact theme={theme} icon="Clock">{staleHint(pr, ago) ?? `Checked ${ago(s.observedAt)}`}</Fact>}
@@ -57,9 +58,9 @@ export function PrSheet({ workspace: w, prKey, intent, theme, compact, browserRe
         </View>}
         {/* Phones: the links split the row evenly. GitHub-mode repositories have no Graphite link; GitHub is the link. */}
         <View style={{ flexDirection: "row", flexWrap: compact ? "nowrap" : "wrap", gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border }}>
-          {s?.prWorkflow !== "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} icon="ExternalLink" title="Open in Graphite" accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} in Graphite`} onPress={() => open(graphitePrUrl(pr))} /></View>}
-          {s?.url && s.prWorkflow === "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} icon="ExternalLink" title="Open on GitHub" accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} on GitHub`} onPress={() => open(s.url)} /></View>}
-          {s?.url && s.prWorkflow !== "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} kind={compact ? "secondary" : "ghost"} icon="Github" title="GitHub" accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} on GitHub`} onPress={() => open(s.url)} /></View>}
+          {s?.prWorkflow !== "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} icon="ExternalLink" title={tr("Open in Graphite")} accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} in Graphite`} onPress={() => open(graphitePrUrl(pr))} /></View>}
+          {s?.url && s.prWorkflow === "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} icon="ExternalLink" title={tr("Open on GitHub")} accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} on GitHub`} onPress={() => open(s.url)} /></View>}
+          {s?.url && s.prWorkflow !== "github" && <View style={compact ? { flex: 1 } : undefined}><Button theme={theme} compact={compact} grow={compact} kind={compact ? "secondary" : "ghost"} icon="Github" title={tr("GitHub")} accessibilityLabel={`Open ${pr.repo} pull request ${pr.number} on GitHub`} onPress={() => open(s.url)} /></View>}
         </View>
       </>}
     </Modal.Content>

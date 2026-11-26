@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -122,7 +123,7 @@ export function SinceBlock({ theme, compact, openQueue, onStarted, navigation, r
   useEffect(() => { if (seen.current === revision) return; seen.current = revision; void reload(); }, [revision, reload]);
   const actions = useActions();
   if (error && !view) return <View style={{ gap: 4, marginTop: 6 }}>
-    <Text accessibilityRole="header" style={t.section}>Your Linear queue</Text>
+    <Text accessibilityRole="header" style={t.section}>{tr("Your Linear queue")}</Text>
     <Text style={t.meta}>Couldn't read it: {error}</Text>
   </View>;
   // Nothing swept yet and nothing to say: no block (a fresh install before its first sweep, or no Linear).
@@ -206,7 +207,7 @@ function QueueRow({ i, change, c, compact, timeZone, navigation }: { i: QueueIss
     : <Pressable accessibilityRole="button" accessibilityLabel={`Start ${i.key} in ${NEW_NAME}`} onPress={open}
       style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: s.pressed ? c.surface2 : s.hovered ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
       <Icon name="Play" size={13} color={c.foregroundMuted} />
-      <Text style={[t.small, { fontSize: 12, color: c.foreground, fontWeight: "500" }]}>Start…</Text>
+      <Text style={[t.small, { fontSize: 12, color: c.foreground, fontWeight: "500" }]}>{tr("Start…")}</Text>
     </Pressable>;
   return <View accessibilityLabel={label} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
     {body}
@@ -240,8 +241,8 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
   const swept = view?.status.sweptAt ? `Swept ${hhmm(view.status.sweptAt, tz)}${view.status.complete === false ? " · partial" : ""}` : "Not swept yet";
   return <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: compact ? 16 : 28, gap: 12, maxWidth: 880, width: "100%", alignSelf: "center" }}>
     <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-      {!compact && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowLeft" title="Brief" onPress={onHome} />}
-      <Text accessibilityRole="header" style={[t.title, { fontSize: 20, lineHeight: 26, flex: 1 }]}>Your Linear queue</Text>
+      {!compact && <Button theme={theme} compact={compact} kind="ghost" icon="ArrowLeft" title={tr("Brief")} onPress={onHome} />}
+      <Text accessibilityRole="header" style={[t.title, { fontSize: 20, lineHeight: 26, flex: 1 }]}>{tr("Your Linear queue")}</Text>
       {!compact && <Text style={t.meta}>{swept}</Text>}
       <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title={sweeping || view?.status.running ? "Sweeping…" : "Sweep now"} loading={sweeping} disabled={sweeping} onPress={() => void sweepNow()} />
     </View>
@@ -257,7 +258,7 @@ export function QueueScreen({ theme, compact, onHome, navigation }: { theme: The
       })}
     </View>
     {error && <Text style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
-    {!view && !error && <Text style={t.meta}>Reading the queue…</Text>}
+    {!view && !error && <Text style={t.meta}>{tr("Reading the queue…")}</Text>}
     {view && !view.groups.length && <Text style={t.meta}>{filter === "all" ? "Nothing is assigned to you in the queue's states." : filter === "changed" ? "Nothing changed since you last read the brief." : "Every issue in your queue has a workspace."}</Text>}
     {view?.groups.map(g => <View key={g.priority} style={{ gap: 0 }}>
       <Text accessibilityRole="header" style={[t.section, { marginTop: 8 }]}>{g.name} · {g.count}</Text>

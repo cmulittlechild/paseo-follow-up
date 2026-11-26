@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 // Catch up: everything in Needs you, one card at a time (docs/design/catch-up.md, docs/needs-you.md#catch-up). It
 // renders the same components the panel and Home use (QuestionBody, NeedsYouList, BriefCard, the permission block), so
 // the answer flow is the shared one, never a fork (one-answer-flow-for-every-question). The deck's order and every
@@ -170,7 +171,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         case "skip": skip(); break;
         case "skip-workspace": if (wsLeft < 2) return; skipWs(); break;
         case "back": back(); break;
-        case "more": if (!click('[data-catch-up-card-moves] [aria-label="More context"]')) setMore(v => !v); break;
+        case "more": if (!click('[data-catch-up-card-moves] [aria-label="' + tr("More context") + '"]')) setMore(v => !v); break;
         case "keys": setKeysOpen(v => !v); break;
         case "leave": onExit(); break;
         case "pick": inCard(`[role="radio"][aria-label^="${hit.arg}. "]`)?.click?.(); break;
@@ -193,10 +194,10 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
         // The card's own x (client/dismiss.tsx), whatever the card is, so the key does exactly what the click does.
         // Its last button: the x itself, or Remove once armed (so ⇧D twice removes, as two clicks would).
         case "dismiss": { const all = root()?.querySelectorAll('[data-catch-up-card] [data-testid="dismiss-x"] [role="button"]'); const d = all?.length ? all[all.length - 1] : null; if (!d) return; d.click?.(); break; }
-        case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="Tell the agent something"]')?.focus?.(); break; }
+        case "note": { const add = inCard('[aria-label^="Add a note"]'); if (add) add.click?.(); else r.querySelector('[aria-label="' + tr("Tell the agent something") + '"]')?.focus?.(); break; }
         // Its sheet or popover takes focus itself (MoveResult).
-        case "later": if (!click('[aria-label="Later (L)"]')) return; break;
-        case "chat": if (!click('[aria-label="Open chat (O)"]')) return; break;
+        case "later": if (!click('[aria-label="' + tr("Later (L)") + '"]')) return; break;
+        case "chat": if (!click('[aria-label="' + tr("Open chat (O)") + '"]')) return; break;
         case "chip": r.querySelectorAll("[data-catch-up-more] [role=\"radio\"]")[Number(hit.arg) - 1]?.click?.(); break;
         case "ask": if (!click('[data-catch-up-more] [data-ask-agent] [role="button"]')) return; break;
         case "rail": {
@@ -275,7 +276,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       {!compact && <IconButton theme={theme} compact={compact} icon="X" label={`Leave ${MODE.name} (X)`} tooltip onPress={onExit} />}
       <Text accessibilityRole="header" style={[t.title, { flex: 1 }]}>{finished || !total ? MODE.name : <>{MODE.name} <Text style={{ color: c.foregroundMuted, fontWeight: "400", fontVariant: ["tabular-nums"] }}>{MODE.progress(session.pos + 1, total).slice(MODE.name.length + 1)}</Text></>}</Text>
       {waitingChip}
-      {!compact && <Pressable accessibilityRole="button" accessibilityLabel="Show the keys (S)" onPress={() => setKeysOpen(v => !v)}><Text style={t.small}>{finished ? "S keys · X leave" : "J skip card · ⇧J skip workspace · K back · M more context · S keys"}</Text></Pressable>}
+      {!compact && <Pressable accessibilityRole="button" accessibilityLabel={tr("Show the keys (S)")} onPress={() => setKeysOpen(v => !v)}><Text style={t.small}>{finished ? "S keys · X leave" : "J skip card · ⇧J skip workspace · K back · M more context · S keys"}</Text></Pressable>}
     </View>
     {/* One segment per card: done in the foreground colour, skipped hollow, waiting for context amber-tinted, the current one amber. */}
     {total > 0 && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", gap: 3 }}>
@@ -343,7 +344,7 @@ export function CatchUp({ theme, compact, deps, navigation, onExit }: { theme: T
       {/* Desktop: the queue rail beside the card, resizable (side-panes-are-resizable); its width is the Display field catch_up_rail_fraction. */}
       {keysOpen && !compact && <KeysSheet theme={theme} onClose={() => setKeysOpen(false)} />}
       {!compact && total > 0 && !finished
-        ? <DisplaySplit theme={theme} main={main} side={rail} field="catch_up_rail_fraction" testID="follow-up-catch-up-split" label="Resize the queue"
+        ? <DisplaySplit theme={theme} main={main} side={rail} field="catch_up_rail_fraction" testID="follow-up-catch-up-split" label={tr("Resize the queue")}
           defaultFraction={CATCH_UP_RAIL_DEFAULT} range={[CATCH_UP_RAIL_MIN, CATCH_UP_RAIL_MAX]} minSide={RAIL_MIN_PX} minMain={CARD_MIN_PX} />
         : main}
     </View>
@@ -388,7 +389,7 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Text accessibilityRole="header" numberOfLines={2} style={[compact ? t.title : [t.title, { fontSize: 17, lineHeight: 23 }], { flex: 1 }]}>{s.title}{s.agent ? <Text style={{ color: c.foregroundMuted, fontWeight: "400" }}>{` › ${s.agent}`}</Text> : null}</Text>
       {onSkipWorkspace && <View style={{ marginVertical: compact ? -10 : -6, marginRight: compact ? -14 : -11 }}>
-        <Tip label={`${skipWorkspaceHint(wsLeft)} (⇧J)`}><Button theme={theme} compact={compact} kind="ghost" icon="ChevronsRight" title="Skip workspace" accessibilityLabel={skipWorkspaceHint(wsLeft)} accessibilityHint={compact ? undefined : "Shift+J"} onPress={onSkipWorkspace} /></Tip>
+        <Tip label={`${skipWorkspaceHint(wsLeft)} (⇧J)`}><Button theme={theme} compact={compact} kind="ghost" icon="ChevronsRight" title={tr("Skip workspace")} accessibilityLabel={skipWorkspaceHint(wsLeft)} accessibilityHint={compact ? undefined : "Shift+J"} onPress={onSkipWorkspace} /></Tip>
       </View>}
     </View>
     {ws && <SummaryLine key={ws.id} workspace={ws} theme={theme} compact={compact} />}
@@ -402,8 +403,8 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
 
   const goneBanner = gone && <View accessibilityRole="alert" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
     <Icon name="CircleCheck" size={16} color={c.statusSuccess} />
-    <Text style={[t.body, { flex: 1 }]}>Handled elsewhere. Nothing left to do here.</Text>
-    <Button theme={theme} compact={compact} kind="primary" icon="ArrowRight" title="Next" onPress={onSkip} />
+    <Text style={[t.body, { flex: 1 }]}>{tr("Handled elsewhere. Nothing left to do here.")}</Text>
+    <Button theme={theme} compact={compact} kind="primary" icon="ArrowRight" title={tr("Next")} onPress={onSkip} />
   </View>;
 
   const askBlock = card.kind === "question" && q && ws
@@ -423,8 +424,8 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
     : card.kind === "brief" ? <BriefAsk s={s} theme={theme} compact={compact} deps={deps} onDismissed={onDone} />
     : <View style={{ gap: 10 }}>
       <Text style={compact ? t.ask : [t.body, { fontSize: 15, lineHeight: 21, fontWeight: "600" }]}>{s.line || "The agent finished its turn."}</Text>
-      <Text style={t.meta}>Nothing to decide. Sign it off once you've read it, or reply.</Text>
-      <View style={{ flexDirection: "row", gap: 8 }}><Button theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Sign off" onPress={() => { if (s.agentId) void deps.sources.inbox.signOff([s.agentId]); onDone(); }} /></View>
+      <Text style={t.meta}>{tr("Nothing to decide. Sign it off once you've read it, or reply.")}</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}><Button theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title={tr("Sign off")} onPress={() => { if (s.agentId) void deps.sources.inbox.signOff([s.agentId]); onDone(); }} /></View>
     </View>;
 
   // Add context without answering: every card that isn't a question has the agent's reply box (a question has its note).
@@ -435,8 +436,8 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   const closeMore = () => { setMore(false); if (!compact) focusSoon("catch-up-more"); };
   const moreBlock = more && <MorePanel theme={theme} compact={compact} onClose={closeMore} onAsk={onAsk} target={s.workspaceId ? { kind: "workspace", workspaceId: s.workspaceId } : s.agentId ? { kind: "agent", agentId: s.agentId } : null} />;
   const later = (until: string) => { setLaterOpen(false); if (s.agentId) void deps.sources.inbox.snooze([s.agentId], until); onLater(); };
-  const laterBlock = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" accessibilityLabel="Later" style={{ gap: 8 }}>
-    <Text style={[t.small, { fontWeight: "600" }]}>Back in your Needs you</Text>
+  const laterBlock = laterOpen && <View {...({ dataSet: { catchUpLater: "1" } } as object)} accessibilityRole="menu" accessibilityLabel={tr("Later")} style={{ gap: 8 }}>
+    <Text style={[t.small, { fontWeight: "600" }]}>{tr("Back in your Needs you")}</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       {laterChoices(new Date()).map(([k, label]) => <Button key={k} theme={theme} compact={compact} kind="ghost" icon="AlarmClock" title={label} onPress={() => later(snoozeUntil(k, new Date()))} />)}
     </View>
@@ -449,12 +450,12 @@ function CardView({ card, w, theme, compact, deps, navigation, gone, more, setMo
   // agent takes the bar's primary slot: the question's own Send (onSendReady), so one click, one flow. Icon-only moves
   // carry their name for screen readers and as a desktop tooltip.
   const send = ready && (compact
-    ? <View style={{ flex: 1 }}><Button theme={theme} compact grow kind="primary" icon="Send" title="Send" accessibilityLabel="Send to agent" shortcut disabled={ready.busy} onPress={ready.send} /></View>
-    : <Button theme={theme} kind="primary" icon="Send" title="Send to agent" shortcut disabled={ready.busy} onPress={ready.send} />);
+    ? <View style={{ flex: 1 }}><Button theme={theme} compact grow kind="primary" icon="Send" title={tr("Send")} accessibilityLabel={tr("Send to agent")} shortcut disabled={ready.busy} onPress={ready.send} /></View>
+    : <Button theme={theme} kind="primary" icon="Send" title={tr("Send to agent")} shortcut disabled={ready.busy} onPress={ready.send} />);
   const moves = <View {...({ dataSet: { catchUpCardMoves: "1" } } as object)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 12 : 0, paddingTop: compact ? 10 : 4 }}>
     <IconButton theme={theme} compact={compact} icon="ChevronLeft" label={compact ? "Back" : "Back (K or ←)"} tooltip={!compact} disabled={!onBack} onPress={() => onBack?.()} />
-    {compact ? <IconButton theme={theme} compact icon="Sparkles" label="More context" onPress={toggleMore} />
-      : <View>{popover(moreBlock, "More context", 560)}<Tip label="More context (M)"><Button theme={theme} icon="Sparkles" title="More context" accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
+    {compact ? <IconButton theme={theme} compact icon="Sparkles" label={tr("More context")} onPress={toggleMore} />
+      : <View>{popover(moreBlock, "More context", 560)}<Tip label={tr("More context (M)")}><Button theme={theme} icon="Sparkles" title={tr("More context")} accessibilityHint="M" nativeID="catch-up-more" onPress={toggleMore} /></Tip></View>}
     <View>{!compact && popover(laterBlock, "Later", 380)}<IconButton theme={theme} compact={compact} icon="AlarmClock" label={compact ? "Later" : "Later (L)"} tooltip={!compact} disabled={!s.agentId} onPress={toggleLater} /></View>
     <IconButton theme={theme} compact={compact} icon="MessageSquare" label={compact ? "Open chat" : "Open chat (O)"} tooltip={!compact} disabled={!navigation} onPress={openChat} />
     {!compact && <View style={{ flex: 1 }} />}
@@ -517,10 +518,10 @@ export function Finished({ theme, compact, stats, empty, onHome, onSkipped }: { 
     <Text accessibilityRole="header" style={t.headline}>{empty ? MODE.empty : caughtUp ? MODE.finished : MODE.endOfDeck}</Text>
     {!!line && <Text style={[t.body, { color: c.foregroundMuted, textAlign: "center" }]}>{line}</Text>}
     {stats.waiting > 0 && <Text style={[t.body, { textAlign: "center" }]}>{`${MODE.waiting(stats.waiting)}. ${stats.waiting === 1 ? "It comes" : "They come"} back here when the answer is ready; Back reaches ${stats.waiting === 1 ? "it" : "them"} now.`}</Text>}
-    {stats.done > 0 && <Text style={[t.meta, { textAlign: "center", maxWidth: 420 }]}>Your answers are on their way; agents pick them up as soon as they're free. Anything new shows in Needs you and the pill.</Text>}
+    {stats.done > 0 && <Text style={[t.meta, { textAlign: "center", maxWidth: 420 }]}>{tr("Your answers are on their way; agents pick them up as soon as they're free. Anything new shows in Needs you and the pill.")}</Text>}
     <View style={{ flexDirection: compact ? "column" : "row", alignSelf: compact ? "stretch" : "center", gap: 8, marginTop: 6 }}>
       {stats.skipped > 0 && <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="CornerUpRight" title={`Catch up on ${stats.skipped} skipped`} onPress={onSkipped} />}
-      <Button theme={theme} compact={compact} grow={compact} kind={stats.skipped ? "secondary" : "primary"} icon="House" title="Back to Home" onPress={onHome} />
+      <Button theme={theme} compact={compact} grow={compact} kind={stats.skipped ? "secondary" : "primary"} icon="House" title={tr("Back to Home")} onPress={onHome} />
     </View>
   </ScrollView>;
 }
@@ -542,8 +543,8 @@ export function KeysSheet({ theme, onClose, label = "Catch up keys", sections: g
   </View>;
   return <View role="dialog" accessibilityLabel={label} style={{ position: "absolute", zIndex: 10, right: 20, top: 8, width: 236 + keyWidth, padding: 16, gap: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12 }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}>
-      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>Keys</Text>
-      <IconButton theme={theme} compact={false} icon="X" label="Close the keys (S)" tooltip onPress={onClose} />
+      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>{tr("Keys")}</Text>
+      <IconButton theme={theme} compact={false} icon="X" label={tr("Close the keys (S)")} tooltip onPress={onClose} />
     </View>
     {sections.filter(s => s.keys.length).map(s => <View key={s.title} style={{ gap: 6 }}>
       <Text style={[t.small, { fontWeight: "600" }]}>{s.title}</Text>{s.keys.map(row)}
@@ -587,8 +588,8 @@ function NoteRow({ theme, compact, agentId }: { theme: Theme; compact: boolean; 
     void agent.handle?.send(words.trim(), images ? { images } : undefined); setWords(""); img.clear();
   };
   return <ImageField model={img} theme={theme} compact={compact}><View {...PRIMARY_FORM} style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
-    <TextInput accessibilityLabel="Tell the agent something" placeholder="Tell the agent something" placeholderTextColor={c.foregroundMuted} value={words} onChangeText={setWords} multiline
+    <TextInput accessibilityLabel={tr("Tell the agent something")} placeholder={tr("Tell the agent something")} placeholderTextColor={c.foregroundMuted} value={words} onChangeText={setWords} multiline
       style={{ flex: 1, minHeight: compact ? 44 : 36, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} />
-    <IconButton theme={theme} compact={compact} icon="Send" label="Send to the agent" tooltip={!compact} disabled={!words.trim() || !!img.blocked} onPress={send} />
+    <IconButton theme={theme} compact={compact} icon="Send" label={tr("Send to the agent")} tooltip={!compact} disabled={!words.trim() || !!img.blocked} onPress={send} />
   </View></ImageField>;
 }

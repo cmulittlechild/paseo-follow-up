@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -245,7 +246,7 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
         {state => {
           const hot = state.pressed || !!(state as { hovered?: boolean }).hovered;
           return <View style={{ height: pillH, borderRadius: pillH / 2, borderWidth: 1, borderColor: withAlpha(c.foreground, isLight(c) ? 0.18 : 0.28), backgroundColor: hot ? c.surface2 : c.surface0, alignItems: "center", justifyContent: "center" }}>
-            <Text numberOfLines={1} style={{ color: c.foreground, fontSize, lineHeight: 14, fontWeight: "500" }}>Keep</Text>
+            <Text numberOfLines={1} style={{ color: c.foreground, fontSize, lineHeight: 14, fontWeight: "500" }}>{tr("Keep")}</Text>
           </View>;
         }}
       </Pressable>
@@ -261,7 +262,7 @@ export function DismissX({ theme, compact, label, onPress, disabled = false }: {
             <View style={{ flex: 1, borderRadius: pillH / 2, borderWidth: 1, alignItems: "center", justifyContent: "center",
               borderColor: hot ? "transparent" : withAlpha(c.statusDanger, 0.35),
               backgroundColor: hot ? solidFor(c.statusDanger, state.pressed ? 0.82 : 1) : tint(c.statusDanger, c) }}>
-              <Text numberOfLines={1} style={{ color: hot ? "#ffffff" : ink, fontSize, lineHeight: 14, fontWeight: "600" }}>Remove</Text>
+              <Text numberOfLines={1} style={{ color: hot ? "#ffffff" : ink, fontSize, lineHeight: 14, fontWeight: "600" }}>{tr("Remove")}</Text>
             </View>
           </View>;
         }}

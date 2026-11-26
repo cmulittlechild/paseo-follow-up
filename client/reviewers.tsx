@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -67,14 +68,14 @@ function AddReviewer({ repo, theme, compact, taken, onAdd }: { repo: string | nu
   const typed = !!q && valid(q) && !taken.some(l => sameLogin(l, q));
   return <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <TextInput accessibilityLabel={repo ? `Add a reviewer for ${repo}` : "Add a default reviewer"} value={value} placeholder="Login or org/team" placeholderTextColor={c.foregroundMuted}
+      <TextInput accessibilityLabel={repo ? `Add a reviewer for ${repo}` : "Add a default reviewer"} value={value} placeholder={tr("Login or org/team")} placeholderTextColor={c.foregroundMuted}
         autoCapitalize="none" autoCorrect={false} onFocus={() => { setFocused(true); setOpen(true); }} onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyPress={e => { if (e.nativeEvent.key === "Escape") setOpen(false); }} onChangeText={v => { setValue(v); setOpen(true); }} onSubmitEditing={() => { if (typed) add({ login: q, name: null }); }}
         style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
-      <Button theme={theme} compact={compact} icon="Plus" title="Add" disabled={!typed} accessibilityLabel={typed ? `Add ${q}` : "Add reviewer"} onPress={() => add({ login: q, name: null })} />
+      <Button theme={theme} compact={compact} icon="Plus" title={tr("Add")} disabled={!typed} accessibilityLabel={typed ? `Add ${q}` : "Add reviewer"} onPress={() => add({ login: q, name: null })} />
     </View>
-    {!!q && !valid(q) && <Text style={[t.small, { color: c.statusWarning }]}>Use a GitHub login like octocat, or a team as org/team.</Text>}
-    {open && suggestions.isFetching && !suggestions.data && <Text style={t.small}>Loading collaborators…</Text>}
+    {!!q && !valid(q) && <Text style={[t.small, { color: c.statusWarning }]}>{tr("Use a GitHub login like octocat, or a team as org/team.")}</Text>}
+    {open && suggestions.isFetching && !suggestions.data && <Text style={t.small}>{tr("Loading collaborators…")}</Text>}
     {open && suggestions.data?.error && <Text style={t.small}>{suggestions.data.error}</Text>}
     {open && matches.length > 0 && <View style={{ borderRadius: 6, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}>
       {matches.map((s, i) => <Pressable key={s.login} accessibilityRole="button" accessibilityLabel={`Add ${s.name ?? s.login}`} onPress={() => add({ login: s.login, name: s.kind === "team" ? s.name : null })}
@@ -93,8 +94,8 @@ function ReviewerList({ repo, list, theme, compact, fallback, first, titled = tr
   const save = useRpc(saveReviewersRpc); const cache = useQueryClient(); const toast = useToast();
   const [adding, setAdding] = useState(startAdding);
   const change = useMutation({ mutationFn: (next: ReviewerEntry[]) => save({ repo, reviewers: next }), onSuccess: data => { cache.setQueryData(reviewerSettingsKey, data); setReviewerConfig(data.config); }, onError: error => toast.error(errorText(error)) });
-  const action = adding ? <Button theme={theme} compact={compact} kind="ghost" icon="Check" title="Done" accessibilityLabel={`Done adding to ${repo ?? "the default list"}`} onPress={() => setAdding(false)} />
-    : list.length < MAX_REVIEWERS ? <Button theme={theme} compact={compact} kind="ghost" icon="UserPlus" title="Add reviewer" accessibilityLabel={`Add reviewer to ${repo ?? "the default list"}`} onPress={() => setAdding(true)} /> : null;
+  const action = adding ? <Button theme={theme} compact={compact} kind="ghost" icon="Check" title={tr("Done")} accessibilityLabel={`Done adding to ${repo ?? "the default list"}`} onPress={() => setAdding(false)} />
+    : list.length < MAX_REVIEWERS ? <Button theme={theme} compact={compact} kind="ghost" icon="UserPlus" title={tr("Add reviewer")} accessibilityLabel={`Add reviewer to ${repo ?? "the default list"}`} onPress={() => setAdding(true)} /> : null;
   const chips = list.length > 0 ? list.map((r, i) => <ReviewerChip key={r.login} r={r} theme={theme} compact={compact} onRemove={change.isPending ? undefined : () => change.mutate(list.filter((_, j) => j !== i))} />)
     : <Text style={[t.meta, titled ? null : { flex: 1, minWidth: 0 }]}>{fallback ?? "Nobody yet. Add reviewers opens a picker."}</Text>;
   return <View style={{ gap: 8, paddingHorizontal: 14, paddingVertical: titled ? 12 : 8, paddingLeft: titled ? 14 : 58, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
@@ -120,8 +121,8 @@ export function ReviewerSettings({ theme, compact = false }: { theme: Theme; com
   const c = theme.colors; const t = text(c);
   const query = useReviewerSettings();
   const data = query.data;
-  if (query.isPending) return <Text style={t.meta}>Loading reviewers…</Text>;
-  if (query.error || !data) return <SettingsCard><SettingsAction label="Couldn't load reviewers" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
+  if (query.isPending) return <Text style={t.meta}>{tr("Loading reviewers…")}</Text>;
+  if (query.error || !data) return <SettingsCard><SettingsAction label={tr("Couldn't load reviewers")} hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
   const own = data.repos.filter(r => (data.config.repos[r] ?? []).length > 0).sort((a, b) => a.localeCompare(b));
   const rest = data.repos.filter(r => !own.includes(r));
   const fallback = data.config.defaults.length ? `Uses the default: ${data.config.defaults.map(reviewerLabel).join(", ")}` : null;
@@ -129,7 +130,7 @@ export function ReviewerSettings({ theme, compact = false }: { theme: Theme; com
     <View style={{ borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, overflow: "hidden" }}>
       <ReviewerList first repo={null} list={data.config.defaults} theme={theme} compact={compact} fallback="Nobody. Repositories without their own list open the picker." />
     </View>
-    {data.repos.length > 0 ? <Disclosure id="reviewers.repos" title="Repositories" summary={reposSummary(data.repos, data.config)}
+    {data.repos.length > 0 ? <Disclosure id="reviewers.repos" title={tr("Repositories")} summary={reposSummary(data.repos, data.config)}
       defaultOpen={!reviewersConfigured(data.config)} theme={theme} compact={compact}>
       {own.map((repo, i) => <View key={repo} style={{ borderTopWidth: i ? 1 : 0, borderTopColor: c.border }}>
         <Disclosure framed={false} id={`reviewers.repo.${repo}`} title={repo} summary={repoSummary(data.config.repos[repo] ?? [], data.config.defaults)} defaultOpen={false} theme={theme} compact={compact}>
@@ -137,7 +138,7 @@ export function ReviewerSettings({ theme, compact = false }: { theme: Theme; com
         </Disclosure>
       </View>)}
       {rest.length > 0 && <DefaultRepos repos={rest} defaults={data.config.defaults} theme={theme} compact={compact} first={!own.length} />}
-    </Disclosure> : <Text style={t.meta}>Repositories show here once Follow-up has seen a PR in them.</Text>}
+    </Disclosure> : <Text style={t.meta}>{tr("Repositories show here once Follow-up has seen a PR in them.")}</Text>}
   </View>;
 }
 
@@ -185,7 +186,7 @@ export function ReviewerPicker({ repo, author, theme, compact, busy, onCancel, o
   const picked = options.filter(r => checked.includes(r.login.toLowerCase()) && !isAuthor(r));
   const toggle = (r: ReviewerEntry) => setChecked(v => v.includes(r.login.toLowerCase()) ? v.filter(x => x !== r.login.toLowerCase()) : [...v, r.login.toLowerCase()]);
   const sameAsSaved = picked.length === saved.length && picked.every((r, i) => sameLogin(r.login, saved[i].login));
-  return <SubmitScope enabled={picked.length > 0 && !busy} onSubmit={() => onRequest(picked, remember && !sameAsSaved)} accessibilityRole="summary" accessibilityLabel="Pick reviewers for this PR" style={{ gap: 8 }}>
+  return <SubmitScope enabled={picked.length > 0 && !busy} onSubmit={() => onRequest(picked, remember && !sameAsSaved)} accessibilityRole="summary" accessibilityLabel={tr("Pick reviewers for this PR")} style={{ gap: 8 }}>
     {!options.length && <Text style={t.meta}>{`No reviewers set for ${repo}. Add who to ask on this PR.`}</Text>}
     {options.map(r => {
       const on = checked.includes(r.login.toLowerCase()) && !isAuthor(r);
@@ -204,12 +205,12 @@ export function ReviewerPicker({ repo, author, theme, compact, busy, onCancel, o
     {options.length < MAX_REVIEWERS && <AddReviewer repo={repo} theme={theme} compact={compact} taken={[...options.map(r => r.login), ...(author ? [author] : [])]}
       onAdd={r => { setOptions(v => [...v, r]); setChecked(v => [...v, r.login.toLowerCase()]); }} />}
     {picked.length > 0 && !sameAsSaved && <Switch theme={theme} compact={compact} label={saved.length ? `Remember for ${repo}` : `Remember for ${repo} (no list yet)`} value={remember} onChange={setRemember}
-      hint="Saves the checked reviewers as this repository's list." />}
+      hint={tr("Saves the checked reviewers as this repository's list.")} />}
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       <Button shortcut theme={theme} compact={compact} kind="primary" icon="UserPlus" loading={busy} disabled={!picked.length || busy}
         title={picked.length ? `Request ${picked.length === 1 ? reviewerLabel(picked[0]) : `${picked.length} reviewers`}` : "Request reviewers"}
         accessibilityLabel={`Request ${picked.map(reviewerLabel).join(", ") || "nobody"}`} onPress={() => onRequest(picked, remember && !sameAsSaved)} />
-      <Button theme={theme} compact={compact} kind="ghost" title="Cancel" disabled={busy} onPress={onCancel} />
+      <Button theme={theme} compact={compact} kind="ghost" title={tr("Cancel")} disabled={busy} onPress={onCancel} />
     </View>
   </SubmitScope>;
 }

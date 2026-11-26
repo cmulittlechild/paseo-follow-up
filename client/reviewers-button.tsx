@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -95,7 +96,7 @@ export function useReviewerButtons(w: Pick<Workspace, "id" | "prs"> | undefined)
   const control = (prKey: string, { theme, compact, kind = "secondary", fallback, after }: Parameters<ReviewerButtons>[1]): Control | null => {
     const c = theme.colors; const t = text(c, compact);
     const s = stateOf(prKey, compact);
-    if (!s) return fallback ? { done: false, notice: null, button: <Button theme={theme} compact={compact} kind={kind} icon="UserPlus" title="Add reviewers…" accessibilityLabel="Pick reviewers for this PR" onPress={fallback} /> } : null;
+    if (!s) return fallback ? { done: false, notice: null, button: <Button theme={theme} compact={compact} kind={kind} icon="UserPlus" title={tr("Add reviewers…")} accessibilityLabel={tr("Pick reviewers for this PR")} onPress={fallback} /> } : null;
     const { scope, words } = s;
     // As wide as its widest word, so the PR link beside it never moves under the next click.
     const button = <View style={{ minWidth: compact ? 118 : 146 }}><Button theme={theme} compact={compact} kind={kind} icon={words.done ? "Check" : "UserPlus"} title={words.button}

@@ -1,5 +1,6 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
 import { messages } from "./client/i18n";
+import { setI18nLocale } from "./client/i18n-text";
 import { contributeDisplay } from "./client/display";
 import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
 import { requestSearch } from "./client/search-focus";
@@ -51,6 +52,7 @@ const LEGACY_SETTINGS_SCREENS = [LEGACY_SETTINGS_SCREEN, "project-settings", "di
 export default function contribute(host: PluginClientContext) {
   const visibility = withButtonVisibility(host);
   const client = visibility.client;
+  setI18nLocale(client.i18n?.locale);
   const location = () => Dimensions.get("window").width < 768 ? "workspace" as const : "explorer" as const;
   const openPanel = (workspaceId: string) => client.openPanel(PANEL, { workspaceId, location: location() });
   // A category (agents, reviewers, following) is saved first, so settings opens on it (drilled in on a phone).

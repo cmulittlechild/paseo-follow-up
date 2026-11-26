@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { TextInput, View } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -49,10 +50,10 @@ export function WhyItMatters({ workspace, theme, compact, openAgent }: { workspa
   if (!v || (!v.priority && !notes.length)) return null;
   const shown = more ? notes : notes.slice(0, 1);
   const echo = v.priority?.source?.kind === "compass" && notes.length > 0;
-  return <View accessibilityRole="summary" accessibilityLabel="Why it matters" style={{ gap: 8, paddingVertical: 8, paddingHorizontal: compact ? 12 : 10, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
+  return <View accessibilityRole="summary" accessibilityLabel={tr("Why it matters")} style={{ gap: 8, paddingVertical: 8, paddingHorizontal: compact ? 12 : 10, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
       <Icon name="Compass" size={12} color={c.foregroundMuted} />
-      <Text style={[t.small, { color: c.foregroundMuted, fontWeight: "600" }]}>Why it matters</Text>
+      <Text style={[t.small, { color: c.foregroundMuted, fontWeight: "600" }]}>{tr("Why it matters")}</Text>
     </View>
     {v.priority && <Text style={[t.meta, { color: c.foreground }]}>
       {/* "1st of 1" says nothing: with one workspace ranked, it is simply the top. */}
@@ -134,10 +135,10 @@ function NoteCard({ note: n, view: v, workspace, theme, compact, openAgent }: { 
     {open === "edit" && <NoteEditor note={n} busy={busy} theme={theme} compact={compact} onCancel={() => setOpen(null)} onSave={a => change.mutate({ action: "edit", id: n.id, ...a })} />}
     {open === "move" && <MovePicker current={workspace.id} busy={busy} theme={theme} compact={compact} onCancel={() => setOpen(null)} onPick={id => change.mutate({ action: "edit", id: n.id, workspace: id })} />}
     {open === "unpin" && <View style={{ gap: 6 }}>
-      <Text style={t.meta}>Unpin this note? It leaves AI priority now. A later message about it brings a new note.</Text>
+      <Text style={t.meta}>{tr("Unpin this note? It leaves AI priority now. A later message about it brings a new note.")}</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Button title="Unpin" kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => change.mutate({ action: "unpin", id: n.id })} />
-        <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={() => setOpen(null)} />
+        <Button title={tr("Unpin")} kind="primary" theme={theme} compact={compact} loading={busy} onPress={() => change.mutate({ action: "unpin", id: n.id })} />
+        <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={() => setOpen(null)} />
       </View>
     </View>}
   </View>;
@@ -156,16 +157,16 @@ function NoteEditor({ note: n, busy, onSave, onCancel, theme, compact }: { note:
   const dirty = until !== n.until || strength !== n.strength;
   const save = () => onSave({ ...(until !== n.until ? { until } : {}), ...(strength !== n.strength ? { strength } : {}) });
   return <SubmitScope enabled={dirty && !busy} onSubmit={save} style={{ gap: 8, paddingTop: 4 }}>
-    <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>Until</Text>
+    <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("Until")}</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {dates.map(d => chip(d.label, until === d.day, () => setUntil(d.day)))}
       {until && !dates.some(d => d.day === until) && chip(dayOf(until), true, () => undefined)}
     </View>
-    <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>How much it matters</Text>
+    <Text style={[t.meta, { color: c.foreground, fontWeight: "600" }]}>{tr("How much it matters")}</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{STRENGTHS.map(s => chip(STRENGTH_LABEL[s], strength === s, () => setStrength(s)))}</View>
     <View style={{ flexDirection: "row", gap: 8 }}>
-      <Button title="Save" kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!dirty} onPress={save} />
-      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+      <Button title={tr("Save")} kind="primary" shortcut theme={theme} compact={compact} loading={busy} disabled={!dirty} onPress={save} />
+      <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
     </View>
   </SubmitScope>;
 }
@@ -179,11 +180,11 @@ function MovePicker({ current, busy, onPick, onCancel, theme, compact }: { curre
   const found = (all.data ?? []).filter(w => w.title.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
   return <View style={{ gap: 6, paddingTop: 4 }}>
     <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-      <TextInput autoFocus accessibilityLabel="Search workspaces" value={q} onChangeText={setQ} placeholder="Move to which workspace?" placeholderTextColor={c.foregroundMuted}
+      <TextInput autoFocus accessibilityLabel={tr("Search workspaces")} value={q} onChangeText={setQ} placeholder={tr("Move to which workspace?")} placeholderTextColor={c.foregroundMuted}
         style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
-      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
+      <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={onCancel} />
     </View>
-    {all.isPending && <Text style={t.meta}>Loading workspaces…</Text>}
+    {all.isPending && <Text style={t.meta}>{tr("Loading workspaces…")}</Text>}
     {all.error && <Text style={[t.meta, { color: c.statusWarning }]}>{`Couldn't list workspaces: ${errorText(all.error)}`}</Text>}
     {found.map(w => <Pressable key={w.id} accessibilityRole="button" disabled={busy} onPress={() => onPick(w.id)}
       style={state => ({ minHeight: compact ? 44 : 32, paddingHorizontal: 10, justifyContent: "center", borderRadius: 6, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface2 : "transparent" })}>

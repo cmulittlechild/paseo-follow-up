@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect } from "react";
 import { Platform, View } from "react-native";
 import { Text } from "./text";
@@ -40,15 +41,15 @@ export function FollowLarge(props: PluginScreenProps & PanelLinks & { live?: Liv
     return () => doc.removeEventListener("keydown", onKey);
   }, [navigation, workspaceId]);
 
-  if (query.pending && workspaceId) return <View accessibilityLabel="Loading Follow-up" style={{ flex: 1, backgroundColor: c.surface0, padding: 24, gap: 12, maxWidth: 1240, width: "100%", alignSelf: "center" }}>
+  if (query.pending && workspaceId) return <View accessibilityLabel={tr("Loading Follow-up")} style={{ flex: 1, backgroundColor: c.surface0, padding: 24, gap: 12, maxWidth: 1240, width: "100%", alignSelf: "center" }}>
     <Skeleton width="30%" height={16} color={c.surface2} /><Skeleton width="60%" height={10} color={c.surface2} /><Skeleton width="100%" height={6} color={c.surface2} radius={3} />
   </View>;
   const w = query.workspace;
   if (!w) return <View style={{ flex: 1, backgroundColor: c.surface0, padding: layout.compact ? 16 : 24 }}>
-    <Card theme={theme} compact={layout.compact} icon={FOLLOW_UP_ICON} title="Nothing to show here" style={{ marginHorizontal: 0, marginTop: 0, maxWidth: 520 }}>
+    <Card theme={theme} compact={layout.compact} icon={FOLLOW_UP_ICON} title={tr("Nothing to show here")} style={{ marginHorizontal: 0, marginTop: 0, maxWidth: 520 }}>
       <CardRow theme={theme}>
         <Text style={[text(c).meta, { marginBottom: 10 }]}>{query.error ? `Couldn't read Follow-up: ${errorText(query.error)}` : "Follow-up has nothing on this workspace yet, or it no longer exists."}</Text>
-        {navigation && workspaceId ? <Button theme={theme} icon="ArrowLeft" title="Back to the workspace" onPress={back} /> : null}
+        {navigation && workspaceId ? <Button theme={theme} icon="ArrowLeft" title={tr("Back to the workspace")} onPress={back} /> : null}
       </CardRow>
     </Card>
   </View>;

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Image, Platform, Modal as RNModal, View, useWindowDimensions, type ScrollView as NativeScrollView, type StyleProp, type ViewStyle } from "react-native";
 import { Pressable, Text } from "./text";
@@ -209,7 +210,7 @@ function WideDialog({ title, open, onDismiss, theme, width, children, overlay }:
       <View role="dialog" aria-modal aria-label={title} style={{ width, maxHeight: "85%", flexShrink: 1, minHeight: 0, overflow: "hidden", backgroundColor: c.surface0, borderRadius: 12, borderWidth: 1, borderColor: c.surface2 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: c.surface2 }}>
           <Text role="heading" numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foreground, fontSize: 14, fontWeight: "500" }}>{title}</Text>
-          <Pressable ref={close} accessibilityRole="button" accessibilityLabel="Close" onPress={onDismiss} style={state => ({ padding: 8, marginRight: -8, borderRadius: 8, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
+          <Pressable ref={close} accessibilityRole="button" accessibilityLabel={tr("Close")} onPress={onDismiss} style={state => ({ padding: 8, marginRight: -8, borderRadius: 8, backgroundColor: (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
             {state => <Icon name="X" size={16} color={state.pressed ? c.foreground : c.foregroundMuted} />}
           </Pressable>
         </View>
@@ -244,8 +245,8 @@ export function WhatsNewSheet({ open, name, notes, all, theme, compact, onClose,
   </>;
   const footer = (pinned: boolean) => <View style={{ borderTopWidth: 1, borderTopColor: c.border, flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", justifyContent: full ? "flex-end" : "space-between", gap: compact ? 4 : 8,
     ...(pinned ? { backgroundColor: c.surface1, paddingHorizontal: SHEET_INSET - 8, paddingTop: 8, paddingBottom: 12 } : { paddingTop: 12, marginTop: 4 }) }}>
-    {!full && all.length > list.length && <Button title="See all release notes" kind="ghost" theme={theme} compact={compact} grow={compact} onPress={() => setFull(true)} />}
-    <Button title="Close" kind="secondary" theme={theme} compact={compact} grow={compact} onPress={onClose} />
+    {!full && all.length > list.length && <Button title={tr("See all release notes")} kind="ghost" theme={theme} compact={compact} grow={compact} onPress={() => setFull(true)} />}
+    <Button title={tr("Close")} kind="secondary" theme={theme} compact={compact} grow={compact} onPress={onClose} />
   </View>;
   const viewer = viewing && <ImageViewer image={viewing.image} inline={viewerInline(compact)} onClose={closeViewer} />;
   const provide = (children: ReactNode) => <ImageViewerContext.Provider value={(image, from) => setViewing({ image, from })}>

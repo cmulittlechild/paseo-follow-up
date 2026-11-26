@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -88,11 +89,11 @@ export function JobRows({ theme, compact, order, extra, preselect = false }: {
 
   if (query.error) return <View style={{ padding: 16, gap: 8 }}>
     <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning }]}>{`Couldn't load the helper agents: ${errorText(query.error)}`}</Text>
-    <Button theme={theme} compact={compact} title="Retry" onPress={() => void query.refetch()} />
+    <Button theme={theme} compact={compact} title={tr("Retry")} onPress={() => void query.refetch()} />
   </View>;
-  const action = header.action === "use" ? <Button theme={theme} compact={compact} title="Use recommended for all" loading={bulk} disabled={busy} onPress={() => void useAll()} />
-    : header.action === "retry" ? <Button theme={theme} compact={compact} title="Retry" disabled={busy} onPress={() => void refresh()} />
-    : header.action === "check" ? <Button theme={theme} compact={compact} title="Check again" disabled={busy} onPress={() => void refresh()} /> : null;
+  const action = header.action === "use" ? <Button theme={theme} compact={compact} title={tr("Use recommended for all")} loading={bulk} disabled={busy} onPress={() => void useAll()} />
+    : header.action === "retry" ? <Button theme={theme} compact={compact} title={tr("Retry")} disabled={busy} onPress={() => void refresh()} />
+    : header.action === "check" ? <Button theme={theme} compact={compact} title={tr("Check again")} disabled={busy} onPress={() => void refresh()} /> : null;
   return <View>
     <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "flex-start" : "center", gap: compact ? 8 : 12, paddingHorizontal: compact ? 14 : 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
       <View style={{ flex: compact ? undefined : 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -136,23 +137,23 @@ export function JobRow({ row, r, catalog, loading, theme, compact, busy, open, o
           // Nothing here can run it: the state as plain text, not a picker that opens onto choices that can't run it.
           ? <Text style={[t.body, { color: c.foregroundMuted, minHeight: compact ? 44 : 32, textAlignVertical: "center", paddingVertical: compact ? 12 : 6 }]}>{row.pick}</Text>
           : loading
-          ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 32 }}><Spinner color={c.foregroundMuted} size={14} /><Text style={t.meta}>Reading your providers…</Text></View>
+          ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 32 }}><Spinner color={c.foregroundMuted} size={14} /><Text style={t.meta}>{tr("Reading your providers…")}</Text></View>
           : <Pressable accessibilityRole="button" accessibilityLabel={`${row.title} model: ${row.pick}. Change`} accessibilityState={{ expanded: open, disabled: busy }} aria-expanded={open}
               disabled={busy && !open} onPress={onToggle}
               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 32, maxWidth: "100%", paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: pressed ? c.surface2 : c.surface0 })}>
               <Text numberOfLines={1} style={[t.body, { color: c.foreground, flexShrink: 1 }]}>{row.pick}</Text>
               <Icon name={open ? "ChevronUp" : "ChevronDown"} size={14} color={c.foregroundMuted} />
             </Pressable>}
-        {row.recommended && <Chip theme={theme} label="Recommended" color={c.foregroundMuted} />}
+        {row.recommended && <Chip theme={theme} label={tr("Recommended")} color={c.foregroundMuted} />}
       </View>
       {!row.blocked && <Text style={[t.meta, { fontSize: 12, lineHeight: 16 }]}>{row.hint ? `${row.need} ${row.hint}` : row.need}</Text>}
       {row.notice && <View style={{ gap: 6, alignItems: "flex-start" }}>
         <Text accessibilityRole={row.notice.tone === "warning" ? "alert" : undefined} style={[t.meta, { fontSize: 12, lineHeight: 16, color: row.notice.tone === "warning" ? c.statusWarning : c.foregroundMuted }]}>{row.notice.text}</Text>
         {/* Can't run: a real button, the row's one way back. Only differs: the developer chose it, so a quiet link. */}
         {use && (row.notice.tone === "warning"
-          ? <Button theme={theme} compact={compact} kind="secondary" title="Use recommended" accessibilityLabel={`Use ${row.recPick} for ${row.title}`} disabled={busy} onPress={use} />
+          ? <Button theme={theme} compact={compact} kind="secondary" title={tr("Use recommended")} accessibilityLabel={`Use ${row.recPick} for ${row.title}`} disabled={busy} onPress={use} />
           : <Pressable accessibilityRole="button" accessibilityLabel={`Use ${row.recPick} for ${row.title}`} disabled={busy} onPress={use} hitSlop={8} style={{ minHeight: compact ? 44 : 24, justifyContent: "center" }}>
-              <Text style={[t.label, { fontSize: 12, textDecorationLine: "underline" }]}>Use recommended</Text>
+              <Text style={[t.label, { fontSize: 12, textDecorationLine: "underline" }]}>{tr("Use recommended")}</Text>
             </Pressable>)}
       </View>}
       {open && !loading && <View style={{ marginTop: 4, borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: "hidden" }}>
@@ -202,10 +203,10 @@ export function RolePickers({ r, catalog, busy, save }: { r: RoleView; catalog: 
   const thinking = (model ?? providerDefault)?.thinking ?? [];
   const thinkingDefault = thinking.find(o => o.isDefault);
   return <>
-    <SettingsSelect label="Provider" value={r.same ? SAME : r.provider} options={providerOptions} disabled={busy || !catalog.length} onValueChange={pickProvider} />
-    {!r.same && <SettingsSelect label="Model" value={r.model ?? DEFAULT} options={modelOptions} disabled={busy || !catalog.length}
+    <SettingsSelect label={tr("Provider")} value={r.same ? SAME : r.provider} options={providerOptions} disabled={busy || !catalog.length} onValueChange={pickProvider} />
+    {!r.same && <SettingsSelect label={tr("Model")} value={r.model ?? DEFAULT} options={modelOptions} disabled={busy || !catalog.length}
       onValueChange={value => set({ model: value === DEFAULT ? null : value, thinking: null })} />}
-    {!r.same && (thinking.length > 0 || !!r.thinking) && <SettingsSelect label="Effort" value={r.thinking ?? DEFAULT}
+    {!r.same && (thinking.length > 0 || !!r.thinking) && <SettingsSelect label={tr("Effort")} value={r.thinking ?? DEFAULT}
       options={[{ value: DEFAULT, label: thinkingDefault ? `Default (${thinkingDefault.label})` : "Default" }, ...thinking.map(o => ({ value: o.id, label: o.label })), ...(r.thinking && !thinking.some(o => o.id === r.thinking) ? [{ value: r.thinking, label: r.thinking }] : [])]} disabled={busy}
       onValueChange={value => set({ thinking: value === DEFAULT ? null : value })} />}
   </>;

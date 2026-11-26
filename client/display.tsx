@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import type { PluginClientContext, PluginSidebarItemContribution, PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useRpc, useSettings } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
@@ -48,9 +49,9 @@ export function PermissionsSection({ theme }: Pick<PluginSurfaceProps, "theme">)
   const settings = useSettings(displayPreferences);
   if (settings.status !== "ready") return null;
   // The hint stands on its own (the tooltip only adds who still asks); the count sits inside the card, under its switch.
-  return <SettingsSection title="Permissions" info="Agents in any other mode still ask, and so do questions and plan approval.">
+  return <SettingsSection title={tr("Permissions")} info="Agents in any other mode still ask, and so do questions and plan approval.">
     <SettingsCard>
-      <SettingsSwitch label="Trust bypass agents" hint="Claude Code in Bypass and Codex in Full access still stop on some tool calls. This approves them while the agent is in that mode. Questions and plan approval still come to you." value={settings.values.enable_trust_bypass} disabled={settings.saving}
+      <SettingsSwitch label={tr("Trust bypass agents")} hint="Claude Code in Bypass and Codex in Full access still stop on some tool calls. This approves them while the agent is in that mode. Questions and plan approval still come to you." value={settings.values.enable_trust_bypass} disabled={settings.saving}
         onValueChange={enable_trust_bypass => void settings.save({ ...settings.values, enable_trust_bypass }, settings.revision)} />
       {settings.values.enable_trust_bypass && <TrustCount theme={theme} inCard />}
     </SettingsCard>
@@ -61,7 +62,7 @@ export function PermissionsSection({ theme }: Pick<PluginSurfaceProps, "theme">)
 /** A neutral "Beta" chip for section titles. */
 export function BetaChip({ theme }: Pick<PluginSurfaceProps, "theme">) {
   return <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: theme.colors.surface2 }}>
-    <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, lineHeight: 15 }}>Beta</Text>
+    <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{tr("Beta")}</Text>
   </View>;
 }
 
@@ -75,13 +76,13 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
     if (values !== undefined) for (const listener of listeners) listener(values);
   }, [values]);
 
-  if (settings.status === "loading") return <ActivityIndicator accessibilityLabel="Loading display settings" color={theme.colors.foregroundMuted} />;
+  if (settings.status === "loading") return <ActivityIndicator accessibilityLabel={tr("Loading display settings")} color={theme.colors.foregroundMuted} />;
   if (settings.status !== "ready") return (
     <View style={{ gap: 12 }}>
       <Text style={{ color: theme.colors.statusDanger }}>{settings.error}</Text>
       <SettingsCard>
-        <SettingsAction label="Try loading the saved settings again" actionLabel="Retry" onPress={() => void settings.reload()} />
-        {settings.status === "invalid" && <SettingsAction label="Replace invalid display settings with defaults" actionLabel="Reset" disabled={settings.saving} onPress={() => void settings.reset()} />}
+        <SettingsAction label={tr("Try loading the saved settings again")} actionLabel="Retry" onPress={() => void settings.reload()} />
+        {settings.status === "invalid" && <SettingsAction label={tr("Replace invalid display settings with defaults")} actionLabel="Reset" disabled={settings.saving} onPress={() => void settings.reset()} />}
 
       </SettingsCard>
       {settings.saveError && <Text style={{ color: theme.colors.statusDanger }}>{settings.saveError}</Text>}
@@ -91,17 +92,17 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const save = (patch: Partial<Display>) => void settings.save({ ...settings.values, ...patch }, settings.revision);
   return (
     <>
-    <SettingsSection title="Sidebar & pills" info="Where Follow-up shows itself. Command-K (Ctrl-K on Windows and Linux) works whatever you hide here.">
+    <SettingsSection title={tr("Sidebar & pills")} info="Where Follow-up shows itself. Command-K (Ctrl-K on Windows and Linux) works whatever you hide here.">
       <SettingsCard>
-        <SettingsSwitch label="Sidebar item" hint="Opens Follow-up with Needs you first. Its badge counts the agents that need you." value={settings.values.showSidebar} disabled={settings.saving} onValueChange={(showSidebar) => save({ showSidebar })} />
-        <SettingsSwitch label="Workspace header button" hint="An icon in each workspace header. A dot appears when that workspace needs you." value={settings.values.enable_header_button} disabled={settings.saving} onValueChange={(enable_header_button) => save({ enable_header_button })} />
-        <SettingsSwitch label="Composer pill" hint="One pill above the message box, only while that agent or its workspace needs you." value={settings.values.enable_composer_pill} disabled={settings.saving} onValueChange={(enable_composer_pill) => save({ enable_composer_pill })} />
+        <SettingsSwitch label={tr("Sidebar item")} hint={tr("Opens Follow-up with Needs you first. Its badge counts the agents that need you.")} value={settings.values.showSidebar} disabled={settings.saving} onValueChange={(showSidebar) => save({ showSidebar })} />
+        <SettingsSwitch label={tr("Workspace header button")} hint={tr("An icon in each workspace header. A dot appears when that workspace needs you.")} value={settings.values.enable_header_button} disabled={settings.saving} onValueChange={(enable_header_button) => save({ enable_header_button })} />
+        <SettingsSwitch label={tr("Composer pill")} hint={tr("One pill above the message box, only while that agent or its workspace needs you.")} value={settings.values.enable_composer_pill} disabled={settings.saving} onValueChange={(enable_composer_pill) => save({ enable_composer_pill })} />
       </SettingsCard>
       {settings.saveError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger }}>{settings.saveError}</Text>}
     </SettingsSection>
-    {Platform.OS === "web" && <SettingsSection title="Keyboard" info="Follow-up's key never takes one Paseo uses, and inside a code editor the editor keeps it. Pick None to keep it free.">
+    {Platform.OS === "web" && <SettingsSection title={tr("Keyboard")} info="Follow-up's key never takes one Paseo uses, and inside a code editor the editor keeps it. Pick None to keep it free.">
       <SettingsCard>
-        <SettingsSelect label="Search from anywhere" hint="Jumps to Home's search from any screen, even mid-message. On Home, / works too."
+        <SettingsSelect label={tr("Search from anywhere")} hint={tr("Jumps to Home's search from any screen, even mid-message. On Home, / works too.")}
           value={searchShortcutOf(settings.values.search_shortcut)} options={searchShortcutOptions(isMac())} disabled={settings.saving}
           onValueChange={(search_shortcut: SearchShortcut) => save({ search_shortcut })} />
         <SettingsSelect label={`${NEW_NAME} from anywhere`} hint={newShortcutHint(isDesktopApp(), isMac())}
@@ -109,11 +110,11 @@ export function DisplaySections({ theme }: Pick<PluginSurfaceProps, "theme">) {
           onValueChange={(new_shortcut: NewShortcut) => save({ new_shortcut })} />
       </SettingsCard>
     </SettingsSection>}
-    <SettingsSection title="Needs-you inbox" trailing={<BetaChip theme={theme} />} info="Agents stay in Needs you until you sign them off or write to them. Opening an agent doesn't clear it.">
+    <SettingsSection title={tr("Needs-you inbox")} trailing={<BetaChip theme={theme} />} info="Agents stay in Needs you until you sign them off or write to them. Opening an agent doesn't clear it.">
       <SettingsCard>
-        <SettingsSwitch label="Needs-you inbox" hint="Off: no agent is flagged. The pill still shows workspace items, and the sidebar badge counts workspaces instead." value={settings.values.enable_inbox} disabled={settings.saving} onValueChange={(enable_inbox) => save({ enable_inbox })} />
-        <SettingsSwitch label="Flag merged and closed PRs" hint="At the lowest priority, as the cue to archive." value={settings.values.enable_inbox_pr_closed} disabled={settings.saving || !settings.values.enable_inbox} onValueChange={(enable_inbox_pr_closed) => save({ enable_inbox_pr_closed })} />
-        <SettingsSwitch label="Ask agents to state what they need" hint="A Claude Code agent that ends a turn without saying what you need is asked once to state it, for the card at the end of its chat. Other providers only get the instruction." value={settings.values.enable_brief_nudge} disabled={settings.saving || !settings.values.enable_inbox} onValueChange={(enable_brief_nudge) => save({ enable_brief_nudge })} />
+        <SettingsSwitch label={tr("Needs-you inbox")} hint={tr("Off: no agent is flagged. The pill still shows workspace items, and the sidebar badge counts workspaces instead.")} value={settings.values.enable_inbox} disabled={settings.saving} onValueChange={(enable_inbox) => save({ enable_inbox })} />
+        <SettingsSwitch label={tr("Flag merged and closed PRs")} hint={tr("At the lowest priority, as the cue to archive.")} value={settings.values.enable_inbox_pr_closed} disabled={settings.saving || !settings.values.enable_inbox} onValueChange={(enable_inbox_pr_closed) => save({ enable_inbox_pr_closed })} />
+        <SettingsSwitch label={tr("Ask agents to state what they need")} hint="A Claude Code agent that ends a turn without saying what you need is asked once to state it, for the card at the end of its chat. Other providers only get the instruction." value={settings.values.enable_brief_nudge} disabled={settings.saving || !settings.values.enable_inbox} onValueChange={(enable_brief_nudge) => save({ enable_brief_nudge })} />
       </SettingsCard>
       {settings.values.enable_inbox && !!share.data?.briefStats && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 17, paddingHorizontal: 4 }}>{briefShareText(share.data.briefStats)}</Text>}
     </SettingsSection>

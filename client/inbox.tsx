@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import { Text } from "./text";
@@ -62,7 +63,7 @@ export function UndoBar({ store, theme, touch }: { store: InboxStore; theme: The
       <Text numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: touch ? 14 : 12 }}>{recent.label}</Text>
       <Text numberOfLines={1} style={{ flexShrink: 0, color: c.foregroundMuted, fontSize: touch ? 13 : 12 }}>{touch ? what : `\u00a0· ${what}`}</Text>
     </View>
-    <Button theme={theme} compact={touch} kind="ghost" icon="Undo2" title="Undo" accessibilityLabel={`Undo: ${what}, ${recent.label}`} onPress={undo}
+    <Button theme={theme} compact={touch} kind="ghost" icon="Undo2" title={tr("Undo")} accessibilityLabel={`Undo: ${what}, ${recent.label}`} onPress={undo}
       onInteract={e => { if (e === "focus" || e === "blur") setFocused(e === "focus"); else setHovered(e === "hoverIn"); }} />
   </View>;
 }

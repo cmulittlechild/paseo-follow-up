@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 // More context, the one component and the one request path for every surface that answers a question
 // (more-context-is-the-same-on-every-surface, docs/needs-you.md#more-context): Catch up's card (its move bar opens
 // MorePanel), and QuestionBody everywhere else: the panel's Needs you card, Home's detail pane, the question dialog, the
@@ -77,7 +78,7 @@ export function QuestionMoreContext({ workspace: w, question: q, theme, compact,
   return <View {...({ dataSet: { moreContext: q.id } } as object)} style={{ gap: 8 }}>
     {request && <ContextAnswer theme={theme} compact={compact} request={request} waiting={false} onQuestion agent="the agent"
       openChat={() => { if (chatOf) openAgent?.(chatOf); }} chatDisabled={!openAgent || !chatOf} openAgent={openAgent} />}
-    {open && ask && <MoveResult place="sheet" inset theme={theme} label="More context">
+    {open && ask && <MoveResult place="sheet" inset theme={theme} label={tr("More context")}>
       <MorePanel theme={theme} compact={compact} onClose={() => setOpen(false)} onAsk={onAsk} target={{ kind: "workspace", workspaceId: w.id }}
         footnote="Keep going meanwhile: the answer shows on this question here, on Home and in Catch up." />
     </MoveResult>}
@@ -127,8 +128,8 @@ export function ContextAnswer({ theme, compact, request, waiting, agent, openCha
       <Text style={t.body}>{who === "Overseer" ? "The Overseer answered in its own chat, not here: it can't reply on a card." : `${who} answered in its chat.`}</Text>
       {/* A 2.2.0-beta.3 ask of the Overseer: its answer is in the Overseer's chat (an-ask-goes-only-to-an-agent-that-can-answer-it). */}
       <View style={{ flexDirection: "row" }}>{who === "Overseer"
-        ? <Button theme={theme} compact={compact} icon="MessageSquare" title="Open Overseer" disabled={!request.askedOf || !openAgent} onPress={() => request.askedOf && openAgent?.(request.askedOf)} />
-        : <Button theme={theme} compact={compact} icon="MessageSquare" title="Open chat" disabled={chatDisabled} onPress={openChat} />}</View>
+        ? <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open Overseer")} disabled={!request.askedOf || !openAgent} onPress={() => request.askedOf && openAgent?.(request.askedOf)} />
+        : <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open chat")} disabled={chatDisabled} onPress={openChat} />}</View>
     </View>}
     {request.state === "failed" && <Text style={t.body}>{request.error ?? "The ask didn't go through. Try again, or open the chat."}</Text>}
   </View>;
@@ -159,8 +160,8 @@ export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_
   return <View {...({ dataSet: { catchUpMore: "1" } } as object)} style={{ gap: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Icon name="Sparkles" size={14} color={c.foreground} />
-      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>More context</Text>
-      <IconButton theme={theme} compact={compact} icon="X" label="Close more context" onPress={onClose} />
+      <Text style={[t.label, { flex: 1, fontWeight: "600" }]}>{tr("More context")}</Text>
+      <IconButton theme={theme} compact={compact} icon="X" label={tr("Close more context")} onPress={onClose} />
     </View>
     <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {CONTEXT_ASKS.map((x, i) => <Pressable key={x.id} accessibilityLabel={compact ? x.label : `${x.label} (${i + 1})`} accessibilityRole="radio" accessibilityState={{ checked: picked === x.id }} onPress={() => { setPicked(x.id); setWords(x.text); }}
@@ -169,12 +170,12 @@ export function MorePanel({ theme, compact, onClose, onAsk, footnote = CATCH_UP_
       </Pressable>)}
     </View>
     <View {...PRIMARY_FORM} style={{ gap: 10 }}>
-    <ImageField model={img} theme={theme} compact={compact}><TextInput accessibilityLabel="What do you want to know?" placeholder="What do you want to know?" placeholderTextColor={c.foregroundMuted} value={words} multiline
+    <ImageField model={img} theme={theme} compact={compact}><TextInput accessibilityLabel={tr("What do you want to know?")} placeholder={tr("What do you want to know?")} placeholderTextColor={c.foregroundMuted} value={words} multiline
       onChangeText={v => { setWords(v); setPicked(CONTEXT_ASKS.find(x => x.text === v)?.id ?? ""); }}
       style={{ minHeight: compact ? 84 : 76, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0 }} /></ImageField>
     {!!error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
     <View {...({ dataSet: { askAgent: "1" } } as object)} style={{ flexDirection: "row" }}>
-      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title="Ask the agent" loading={busy} disabled={!words.trim() || busy || !!img.blocked}
+      <Button theme={theme} compact={compact} grow={compact} kind="primary" icon="MessageSquareText" title={tr("Ask the agent")} loading={busy} disabled={!words.trim() || busy || !!img.blocked}
         accessibilityHint={compact ? "Asks this workspace's main agent, which may wake it" : `Asks this workspace's main agent, which may wake it. ${keyLabel("⌘↵", isMac())}`} onPress={send} />
     </View>
     </View>

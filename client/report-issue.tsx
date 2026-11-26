@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -53,7 +54,7 @@ function ProviderMark({ provider, mark, theme }: { provider: string | null; mark
 
 function Segmented({ value, onChange, theme, compact }: { value: ReportKind; onChange: (k: ReportKind) => void; theme: Theme; compact: boolean }) {
   const c = theme.colors;
-  return <View accessibilityRole="radiogroup" accessibilityLabel="Kind" style={{ flexDirection: "row", backgroundColor: c.surface2, borderRadius: 8, padding: 2, gap: 2 }}>
+  return <View accessibilityRole="radiogroup" accessibilityLabel={tr("Kind")} style={{ flexDirection: "row", backgroundColor: c.surface2, borderRadius: 8, padding: 2, gap: 2 }}>
     {KINDS.map(k => {
       const on = k.id === value;
       return <Pressable key={k.id} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => onChange(k.id)}
@@ -117,13 +118,13 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
         <Icon name="CircleCheck" size={16} color={c.statusSuccess} />
         <View style={{ flex: 1 }}>
           <Text style={t.label}>{phase.started ? `Started ${phase.title}` : phase.queued ? `Sending to ${phase.title}. Follow-up retries until it lands.` : `Sent to ${phase.title}`}</Text>
-          <Text style={t.body}>It'll ask you anything it needs in that chat, then show you the issue before filing it.</Text>
+          <Text style={t.body}>{tr("It'll ask you anything it needs in that chat, then show you the issue before filing it.")}</Text>
         </View>
       </View>
     </View>
     <Footer compact={compact} theme={theme}>
-      <Button title="Close" kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
-      {openAgent && <Button title="Open the chat" kind="primary" theme={theme} compact={compact} grow={compact} onPress={() => { openAgent(phase.agentId); onClose(); }} />}
+      <Button title={tr("Close")} kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
+      {openAgent && <Button title={tr("Open the chat")} kind="primary" theme={theme} compact={compact} grow={compact} onPress={() => { openAgent(phase.agentId); onClose(); }} />}
     </Footer>
   </Modal.Content>;
 
@@ -136,17 +137,17 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
           <Text style={t.meta}>From the error you saw{request.at ? ` · ${new Date(request.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</Text>
           <Text selectable style={{ color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" }) }}>{error}</Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Remove the error" hitSlop={8} onPress={() => setError(null)}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={tr("Remove the error")} hitSlop={8} onPress={() => setError(null)}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>
       </View>}
-      <TextInput value={words} onChangeText={setWords} multiline autoFocus={!compact} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} accessibilityLabel="Describe it"
+      <TextInput value={words} onChangeText={setWords} multiline autoFocus={!compact} placeholder={placeholder} placeholderTextColor={c.foregroundMuted} accessibilityLabel={tr("Describe it")}
         style={{ minHeight: compact ? 132 : 112, borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0, paddingHorizontal: 12, paddingVertical: 10, color: c.foreground, fontSize: compact ? 14 : 13, lineHeight: compact ? 20 : 18, textAlignVertical: "top" }} />
       {nowhere ? <View style={{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 8, backgroundColor: c.surface2 }}>
         <Icon name="Info" size={14} color={c.foregroundMuted} />
-        <View style={{ flex: 1 }}><Text style={t.label}>No workspace to start an agent in</Text><Text style={t.meta}>Open a project in Paseo and try again, or file it yourself on GitHub. Your text goes into the new issue.</Text></View>
+        <View style={{ flex: 1 }}><Text style={t.label}>{tr("No workspace to start an agent in")}</Text><Text style={t.meta}>{tr("Open a project in Paseo and try again, or file it yourself on GitHub. Your text goes into the new issue.")}</Text></View>
       </View> : <View>
-        <Text style={[t.meta, { marginBottom: 6 }]}>Send to</Text>
-        {!targets ? <View style={{ minHeight: 46, justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: c.border, borderRadius: 8 }}><Spinner color={c.foregroundMuted} size={14} label="Loading agents" /></View>
-          : <Pressable accessibilityRole="button" accessibilityLabel="Send to" accessibilityHint="Pick which agent gets this" onPress={() => setChoosing(v => !v)}
+        <Text style={[t.meta, { marginBottom: 6 }]}>{tr("Send to")}</Text>
+        {!targets ? <View style={{ minHeight: 46, justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: c.border, borderRadius: 8 }}><Spinner color={c.foregroundMuted} size={14} label={tr("Loading agents")} /></View>
+          : <Pressable accessibilityRole="button" accessibilityLabel={tr("Send to")} accessibilityHint="Pick which agent gets this" onPress={() => setChoosing(v => !v)}
             style={{ flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, minHeight: compact ? 48 : 0, backgroundColor: c.surface0 }}>
             <ProviderMark provider={chosenRow?.provider ?? null} mark={chosenRow ? chosenRow.mark : "agent"} theme={theme} />
             <View style={{ flex: 1, minWidth: 0 }}>{shownLines.map((l, i) => <Text key={i} numberOfLines={1} style={i ? t.meta : t.body}>{l}</Text>)}</View>
@@ -156,7 +157,7 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
         {choosing && targets && <View style={{ marginTop: 6, borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface0, overflow: "hidden" }}>
           {rows.pinned.map((r, i) => row(r, i === 0))}
           {!!rows.agents.length && <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, borderTopWidth: rows.pinned.length ? 1 : 0, borderTopColor: c.border, borderBottomWidth: 1, borderBottomColor: c.border }}>
-            <Text style={t.meta}>Agents</Text><Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{rows.agents.length}</Text>
+            <Text style={t.meta}>{tr("Agents")}</Text><Text style={[t.meta, { fontVariant: ["tabular-nums"] }]}>{rows.agents.length}</Text>
           </View>}
           {pickerScrolls(compact)
             ? <ScrollView nestedScrollEnabled style={{ maxHeight: PICKER_MAX(compact), flexGrow: 0 }}>{agentRows}</ScrollView>
@@ -170,8 +171,8 @@ export function ReportSheet({ request, theme, layout, openAgent, onClose }: { re
       {phase.kind === "failed" && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 12, lineHeight: 17 }}>Not sent: {phase.message}</Text>}
     </View>
     <Footer compact={compact} theme={theme}>
-      <Button title="Cancel" kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
-      {nowhere ? <Button title="Open on GitHub" icon="ExternalLink" kind="primary" theme={theme} compact={compact} grow={compact} disabled={empty} onPress={() => void openGithub()} />
+      <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} grow={compact} onPress={onClose} />
+      {nowhere ? <Button title={tr("Open on GitHub")} icon="ExternalLink" kind="primary" theme={theme} compact={compact} grow={compact} disabled={empty} onPress={() => void openGithub()} />
         : <Button title={chosen === NEW_WORKSPACE ? "Start workspace and send" : chosen === NEW_AGENT ? "Start agent and send" : "Send to agent"} kind="primary" theme={theme} compact={compact} grow={compact} shortcut disabled={empty || !chosen} loading={phase.kind === "sending"} onPress={() => void submit()} />}
     </Footer>
   </SubmitScope></Modal.Content>;
@@ -187,7 +188,7 @@ function Footer({ children, compact, theme }: { children: React.ReactNode; compa
 export function ReportSheetHost({ theme, layout, openAgent }: { theme: Theme; layout: PluginHostProps["layout"]; openAgent?: (agentId: string) => void }) {
   const { request, probe } = slot.useHost();
   if (!request) return probe;
-  return <><Modal title="Report an issue" open onOpenChange={next => { if (!next) close(); }}>
+  return <><Modal title={tr("Report an issue")} open onOpenChange={next => { if (!next) close(); }}>
     <ReportSheet key={request.token} request={request} theme={theme} layout={layout} openAgent={openAgent} onClose={close} />
   </Modal>{probe}</>;
 }

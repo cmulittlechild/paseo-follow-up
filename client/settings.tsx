@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useState } from "react";
 import { useViewSync, useViewVersion } from "./view-store";
 import { ActivityIndicator, TextInput, View } from "react-native";
@@ -41,14 +42,14 @@ function QuestionSettings({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const settings = useSettings(questionPreferences);
   const toast = useToast();
   const info = "Agents ask decisions they can't make themselves in Follow-up, with lettered options and a recommendation. The mode tells the agent what to do until you answer, and applies to questions asked from now on. Big questions, ones that would reach outside this computer or that most of the work depends on, always wait.";
-  return <SettingsSection title="Questions" info={info}>
-    {settings.status === "loading" && <ActivityIndicator accessibilityLabel="Loading question settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+  return <SettingsSection title={tr("Questions")} info={info}>
+    {settings.status === "loading" && <ActivityIndicator accessibilityLabel={tr("Loading question settings")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
     {(settings.status === "error" || settings.status === "invalid") && <SettingsCard>
-      <SettingsAction label="Couldn't load the question mode" hint={settings.error} actionLabel="Retry" onPress={() => void settings.reload()} />
-      {settings.status === "invalid" && <SettingsAction label="Use the default, Work around" actionLabel="Reset" disabled={settings.saving} onPress={() => void settings.reset()} />}
+      <SettingsAction label={tr("Couldn't load the question mode")} hint={settings.error} actionLabel="Retry" onPress={() => void settings.reload()} />
+      {settings.status === "invalid" && <SettingsAction label={tr("Use the default, Work around")} actionLabel="Reset" disabled={settings.saving} onPress={() => void settings.reset()} />}
     </SettingsCard>}
     {settings.status === "ready" && <SettingsCard>
-      <SettingsSelect<QuestionMode> label="While a question is open" hint={QUESTION_MODE_RULES[settings.values.mode].hint} value={settings.values.mode} disabled={settings.saving}
+      <SettingsSelect<QuestionMode> label={tr("While a question is open")} hint={QUESTION_MODE_RULES[settings.values.mode].hint} value={settings.values.mode} disabled={settings.saving}
         options={QUESTION_MODES.map(mode => ({ value: mode, label: QUESTION_MODE_RULES[mode].label }))}
         onValueChange={mode => { void settings.save({ ...settings.values, mode }, settings.revision).then(saved => { if (saved) toast.show(`Questions: ${QUESTION_MODE_RULES[mode].label}`, { variant: "success" }); }, () => undefined); }} />
     </SettingsCard>}
@@ -75,15 +76,15 @@ function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean 
   const data = query.data;
   const windowDays = data?.activeWindowDays ?? 3;
   return <>
-    <SettingsSection title="Defaults" info="Follow-up follows every workspace's PR stack and tasks as soon as the workspace has an agent. Turn Follow every workspace off to follow only the projects switched on below. Follow-up never merges, requests reviewers or archives on its own.">
-      {query.isPending && <ActivityIndicator accessibilityLabel="Loading following settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
-      {query.error && <SettingsCard><SettingsAction label="Couldn't load following settings" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
+    <SettingsSection title={tr("Defaults")} info="Follow-up follows every workspace's PR stack and tasks as soon as the workspace has an agent. Turn Follow every workspace off to follow only the projects switched on below. Follow-up never merges, requests reviewers or archives on its own.">
+      {query.isPending && <ActivityIndicator accessibilityLabel={tr("Loading following settings")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+      {query.error && <SettingsCard><SettingsAction label={tr("Couldn't load following settings")} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
       {data && <SettingsCard>
-        <SettingsSwitch label="Follow every workspace" hint="New and existing workspaces, except the ones turned off under Workspaces below." value={data.enable_follow_every} disabled={change.isPending}
+        <SettingsSwitch label={tr("Follow every workspace")} hint={tr("New and existing workspaces, except the ones turned off under Workspaces below.")} value={data.enable_follow_every} disabled={change.isPending}
           onValueChange={value => change.mutate({ enable_follow_every: value })} />
-        <SettingsSwitch label="Send repairs automatically" hint="Repairs (review threads, conflicts, red CI) go to the workspace's agent on their own. Applies to workspaces Follow-up starts following from now on." value={data.enable_auto_sends_default} disabled={change.isPending}
+        <SettingsSwitch label={tr("Send repairs automatically")} hint="Repairs (review threads, conflicts, red CI) go to the workspace's agent on their own. Applies to workspaces Follow-up starts following from now on." value={data.enable_auto_sends_default} disabled={change.isPending}
           onValueChange={value => change.mutate({ enable_auto_sends_default: value })} />
-        <SettingsSelect label="Rest workspaces after" hint="A workspace rests when you haven't messaged it in this long, its agent isn't loaded and it has no open PR. It stays listed, but isn't checked and gets nothing sent until you start a turn there."
+        <SettingsSelect label={tr("Rest workspaces after")} hint="A workspace rests when you haven't messaged it in this long, its agent isn't loaded and it has no open PR. It stays listed, but isn't checked and gets nothing sent until you start a turn there."
           value={String(windowDays)} disabled={change.isPending}
           options={[...new Set([1, 3, 7, 14, windowDays])].sort((a, b) => a - b).map(d => ({ value: String(d), label: d === 1 ? "1 day" : `${d} days` }))}
           onValueChange={value => change.mutate({ activeWindowDays: Number(value) })} />
@@ -96,7 +97,7 @@ function FollowingCategory({ theme, compact }: { theme: Theme; compact: boolean 
     {data && (data.workspaces.length
       ? <WorkspacesFold theme={theme} compact={compact} all={data.workspaces} autoDefault={data.enable_auto_sends_default} busy={change.isPending}
         set={(workspace, label) => change.mutate({ workspace }, { onSuccess: () => { if (label) toast.show(label, { variant: "success" }); } })} />
-      : <Text style={t.meta}>Workspaces appear here once they have an agent.</Text>)}
+      : <Text style={t.meta}>{tr("Workspaces appear here once they have an agent.")}</Text>)}
   </>;
 }
 
@@ -115,10 +116,10 @@ function ProjectsFold({ theme, compact }: { theme: Theme; compact: boolean }) {
     onError: error => toast.error(errorText(error)),
   });
   const projects = query.data?.projects;
-  if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading projects" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
-  if (query.error || !projects) return <SettingsCard><SettingsAction label="Couldn't load projects" hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
-  if (!projects.length) return <Text style={t.meta}>Projects appear here once you add them to Paseo.</Text>;
-  return <Disclosure id="following.projects" title="Projects" summary={projectsSummary(projects)} defaultOpen={projectsOpenByDefault(projects.length)} theme={theme} compact={compact}>
+  if (query.isPending) return <ActivityIndicator accessibilityLabel={tr("Loading projects")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />;
+  if (query.error || !projects) return <SettingsCard><SettingsAction label={tr("Couldn't load projects")} hint={query.error ? errorText(query.error) : undefined} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>;
+  if (!projects.length) return <Text style={t.meta}>{tr("Projects appear here once you add them to Paseo.")}</Text>;
+  return <Disclosure id="following.projects" title={tr("Projects")} summary={projectsSummary(projects)} defaultOpen={projectsOpenByDefault(projects.length)} theme={theme} compact={compact}>
       <Text style={[t.meta, { paddingHorizontal: 14, paddingTop: 10 }]}>With Follow every workspace on, a project that's off stops following its new workspaces; ones already followed stay followed (turn one off under Workspaces). With it off, only the projects on here are followed.</Text>
       <View style={{ padding: 8 }}><SettingsCard>
         {projects.map(project => <SettingsSwitch key={project.id} label={project.name}
@@ -136,9 +137,9 @@ function WorkspacesFold({ theme, compact, all, autoDefault, busy, set }: { theme
   const [cap, setCap] = useState(25);
   const [openId, setOpenId] = useState<string | null>(null);
   const view = workspaceRows(all, autoDefault, q, cap);
-  return <Disclosure id="following.workspaces" title="Workspaces" summary={workspacesSummary(all, autoDefault)} defaultOpen={workspacesOpenByDefault(view.exceptions)} theme={theme} compact={compact}>
+  return <Disclosure id="following.workspaces" title={tr("Workspaces")} summary={workspacesSummary(all, autoDefault)} defaultOpen={workspacesOpenByDefault(view.exceptions)} theme={theme} compact={compact}>
     <View style={{ padding: 10, paddingBottom: 6 }}>
-      <TextInput accessibilityLabel="Search workspaces" value={q} onChangeText={v => { setQ(v); setOpenId(null); }} placeholder={`Search ${all.length} workspaces`} placeholderTextColor={c.foregroundMuted}
+      <TextInput accessibilityLabel={tr("Search workspaces")} value={q} onChangeText={v => { setQ(v); setOpenId(null); }} placeholder={`Search ${all.length} workspaces`} placeholderTextColor={c.foregroundMuted}
         autoCapitalize="none" autoCorrect={false}
         style={{ minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: 13, backgroundColor: c.surface0 }} />
     </View>
@@ -153,7 +154,7 @@ function WorkspacesFold({ theme, compact, all, autoDefault, busy, set }: { theme
           <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
             <Text numberOfLines={1} style={t.body}>{w.title}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              {exception && <View accessibilityLabel="Exception" style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.statusWarning }} />}
+              {exception && <View accessibilityLabel={tr("Exception")} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.statusWarning }} />}
               <Text numberOfLines={1} style={[t.meta, { flex: 1 }]}>{workspaceState(w)}</Text>
             </View>
           </View>
@@ -161,9 +162,9 @@ function WorkspacesFold({ theme, compact, all, autoDefault, busy, set }: { theme
         </Pressable>
         {/* Compact rows: two switches under the open workspace, not two full settings rows. */}
         {open && <View style={{ paddingLeft: 14, paddingRight: 14, paddingBottom: 10, gap: 4 }}>
-          <Switch theme={theme} compact={compact} label="Follow this workspace" value={followed} disabled={busy}
+          <Switch theme={theme} compact={compact} label={tr("Follow this workspace")} value={followed} disabled={busy}
             onChange={value => set({ workspaceId: w.id, follow: value }, value ? `Following ${w.title}` : `Stopped following ${w.title}`)} />
-          {followed && <Switch theme={theme} compact={compact} label="Send repairs automatically" hint={w.parked ? "Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick." : w.dormant ? "Resting. Nothing is sent until you start a turn there." : undefined}
+          {followed && <Switch theme={theme} compact={compact} label={tr("Send repairs automatically")} hint={w.parked ? "Resting. Auto-send was paused and comes back when the workspace is active again. Changing it here makes your choice stick." : w.dormant ? "Resting. Nothing is sent until you start a turn there." : undefined}
             value={w.enable_auto_sends} disabled={busy} onChange={value => set({ workspaceId: w.id, enable_auto_sends: value })} />}
         </View>}
       </View>;
@@ -190,13 +191,13 @@ function AgentsCategory({ theme, compact }: { theme: Theme; compact: boolean }) 
  */
 function GeneralCategory({ theme, compact, setup, openReport }: { theme: Theme; compact: boolean; setup?: { entry: SetupEntry; open: () => void }; openReport?: () => void }) {
   return <>
-    {setup && <SettingsSection title="Setup">
+    {setup && <SettingsSection title={tr("Setup")}>
       <SettingsCard><SettingsAction label={setup.entry.label} hint={setup.entry.hint} actionLabel={setup.entry.action} onPress={setup.open} /></SettingsCard>
     </SettingsSection>}
     <UpdatesSections theme={theme} compact={compact} />
     {/* Report a bug (docs/report-issue.md): findable where people look for it, next to the version and release notes. */}
-    {openReport && <SettingsSection title="Help">
-      <SettingsCard><SettingsAction label="Report a bug" hint={REPORT_HINT} actionLabel="Report" onPress={openReport} /></SettingsCard>
+    {openReport && <SettingsSection title={tr("Help")}>
+      <SettingsCard><SettingsAction label={tr("Report a bug")} hint={REPORT_HINT} actionLabel="Report" onPress={openReport} /></SettingsCard>
     </SettingsSection>}
   </>;
 }
@@ -269,7 +270,7 @@ export function FollowSettings({ theme, layout, openSetup, openReport, openSetti
   const content = category === "general" ? <GeneralCategory theme={theme} compact={compact} setup={setup} openReport={openReport} />
     : category === "following" ? <FollowingCategory theme={theme} compact={compact} />
     // Under Paseo's tabs, Reviewers is a titled section like every other category, its explanation in the info tip.
-    : category === "reviewers" ? only ? <SettingsSection title="Reviewer lists" info={REVIEWERS_INFO}><ReviewerSettings theme={theme} compact={compact} /></SettingsSection>
+    : category === "reviewers" ? only ? <SettingsSection title={tr("Reviewer lists")} info={REVIEWERS_INFO}><ReviewerSettings theme={theme} compact={compact} /></SettingsSection>
     : <View style={{ gap: 8 }}>
       <Text style={t.meta}>{REVIEWERS_INFO}</Text>
       <ReviewerSettings theme={theme} compact={compact} />

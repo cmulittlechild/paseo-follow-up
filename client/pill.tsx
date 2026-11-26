@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState, useSyncExternalStore } from "react";
 import { browserKey } from "./keys";
 import { openRowCopy, useDetailGate, useWorkspace } from "./workspace-data";
@@ -185,7 +186,7 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
       <Text style={t.meta}>{doneWindow ? "Done. The agent hears it in a few seconds." : "Signed off. It leaves Needs you in a few seconds."}</Text>
     </View>
     <View style={{ flexDirection: "row" }}>
-      <Button theme={props.theme} compact={touch} grow={touch} kind="secondary" icon="Undo2" title="Undo" accessibilityHint={doneWindow ? "Keeps the ask open; nothing is sent" : "Puts this agent back in Needs you"}
+      <Button theme={props.theme} compact={touch} grow={touch} kind="secondary" icon="Undo2" title={tr("Undo")} accessibilityHint={doneWindow ? "Keeps the ask open; nothing is sent" : "Puts this agent back in Needs you"}
         onPress={() => done(() => void deps.inbox.undo([agentId]))} />
     </View>
   </View>;
@@ -204,26 +205,26 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
           </>}
       </View>
       <Text numberOfLines={touch ? 3 : 2} style={touch ? t.ask : { color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: "600" }}>{headline.line}</Text>
-    </View> : <Text style={t.meta}>Nothing needs you here right now.</Text>}
+    </View> : <Text style={t.meta}>{tr("Nothing needs you here right now.")}</Text>}
 
     {/* 2. Sign off, with "& next" beside it, then Later. Only for a flagged agent. */}
     {flagged && <View style={{ gap: 10 }}>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Button theme={props.theme} compact={touch} grow={touch} kind={itemFirst ? "secondary" : "primary"} icon="Check" title="Sign off" accessibilityHint="Clears this agent from Needs you"
+        <Button theme={props.theme} compact={touch} grow={touch} kind={itemFirst ? "secondary" : "primary"} icon="Check" title={tr("Sign off")} accessibilityHint="Clears this agent from Needs you"
           onPress={() => done(() => void deps.inbox.signOff([agentId]))} />
-        <Button theme={props.theme} compact={touch} grow={touch} icon="ArrowRight" title="Sign off & next"
+        <Button theme={props.theme} compact={touch} grow={touch} icon="ArrowRight" title={tr("Sign off & next")}
           onPress={() => done(() => { void deps.inbox.signOff([agentId]); deps.openNext(agentId); })} />
       </View>
       {touch
         // Phones: one row that scrolls sideways, never a second line of chips.
         ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={t.meta}>Later</Text>
+          <Text style={t.meta}>{tr("Later")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, paddingRight: 8 }}>
             {laterChoices(new Date()).map(([id, title]) => <Chip key={id} title={title.replace(/^In 1 hour$/, "1 hour")} theme={props.theme} compact onPress={() => done(() => void deps.inbox.snooze([agentId], snoozeUntil(id, new Date())))} />)}
           </ScrollView>
         </View>
         : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-          <Text style={[t.meta, { marginRight: 2 }]}>Later</Text>
+          <Text style={[t.meta, { marginRight: 2 }]}>{tr("Later")}</Text>
           {laterChoices(new Date()).map(([id, title]) => <Chip key={id} title={title} theme={props.theme} compact={touch} onPress={() => done(() => void deps.inbox.snooze([agentId], snoozeUntil(id, new Date())))} />)}
         </View>}
     </View>}
@@ -243,11 +244,11 @@ export function PillPopover(props: PluginButtonContentProps & { deps: Deps }) {
 
     {/* 4. Quiet footer. */}
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 2, rowGap: 0, marginHorizontal: -6, paddingTop: 8, borderTopWidth: 1, borderTopColor: withAlpha(c.border, 0.8) }}>
-      {flagged && running && <FooterLink theme={props.theme} compact={touch} icon="BellOff" title="Sign off & mute this turn" onPress={() => done(() => void deps.inbox.signOff([agentId], { muteTurn: true }))} />}
+      {flagged && running && <FooterLink theme={props.theme} compact={touch} icon="BellOff" title={tr("Sign off & mute this turn")} onPress={() => done(() => void deps.inbox.signOff([agentId], { muteTurn: true }))} />}
       {row && <FooterLink theme={props.theme} compact={touch} icon={row.enable_finish_flags ? "BellMinus" : "Bell"} title={row.enable_finish_flags ? "Don't flag finishes" : "Flag finishes again"}
-        hint="Permission prompts and errors still flag this agent" onPress={() => void deps.inbox.setFinishFlags(agentId, !row.enable_finish_flags)} />}
+        hint={tr("Permission prompts and errors still flag this agent")} onPress={() => void deps.inbox.setFinishFlags(agentId, !row.enable_finish_flags)} />}
       <View style={{ flex: 1 }} />
-      <FooterLink theme={props.theme} compact={touch} icon="PanelRight" title="Open Follow-up" onPress={() => done(() => deps.openPanel(props.workspaceId))} />
+      <FooterLink theme={props.theme} compact={touch} icon="PanelRight" title={tr("Open Follow-up")} onPress={() => done(() => deps.openPanel(props.workspaceId))} />
     </View>
   </View>;
 }

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
 import { openExternalUrl } from "@getpaseo/plugin/client";
@@ -26,7 +27,7 @@ function Node({ pr, colors }: { pr: Pr; colors: Colors }) {
   const color = toneColor(colors, tone);
   const ring = { width: NODE, height: NODE, borderRadius: NODE / 2, alignItems: "center" as const, justifyContent: "center" as const };
   if (tone === "pending") {
-    if (s?.checksPending) return <View style={[ring, { borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface0 }]}><Spinner color={colors.foregroundMuted} size={9} label="Checks running" /></View>;
+    if (s?.checksPending) return <View style={[ring, { borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface0 }]}><Spinner color={colors.foregroundMuted} size={9} label={tr("Checks running")} /></View>;
     return <View style={[ring, { borderWidth: 1.5, borderColor: colors.foregroundMuted, backgroundColor: colors.surface0 }]} />;
   }
   if (tone === "draft") return <View style={[ring, { borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.foregroundMuted, backgroundColor: colors.surface0 }]} />;
@@ -156,7 +157,7 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
   const search = useSectionSearch(w.id, "prs", { theme, compact, items: [...active, ...settled].flatMap(s => stackOrder(s.prs).reverse()), fields: prFields });
   const hits = search.hits;
   const stackRows = (list: typeof stacks, isSettled: boolean) => list.map(s => <StackRows key={s.name} name={s.name} prs={s.prs} theme={theme} open={open} toggle={toggle} onOpen={onOpen} compact={compact} showRepo={showRepo} settled={isSettled} wide={wide} hits={hits} />);
-  return <Card theme={theme} compact={compact} icon="GitPullRequest" title="Pull requests" count={openCount ? `${openCount} open` : undefined} right={search.button} search={search.header}>
+  return <Card theme={theme} compact={compact} icon="GitPullRequest" title={tr("Pull requests")} count={openCount ? `${openCount} open` : undefined} right={search.button} search={search.header}>
     {hits && !hits.size && <NoMatchRow section="prs" query={search.query!} theme={theme} compact={compact} />}
     {!hits && inFlight.map(a => <View key={a.id} style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border }}>
       <View style={{ paddingTop: 3 }}><Spinner color={c.accent} size={12} /></View>
@@ -167,15 +168,15 @@ export function StacksCard({ workspace: w, theme, compact, open, toggle, onOpen,
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={[t.meta, { color: c.foreground, fontVariant: ["tabular-nums"] }]}>{wait.title}</Text>
         <Text style={t.meta}>{wait.detail}</Text>
-        {off?.url && <Pressable accessibilityRole="link" accessibilityLabel="Get the GitHub CLI (opens cli.github.com)" onPress={() => void openExternalUrl(off.url!).catch(() => undefined)} hitSlop={compact ? 10 : 6} style={{ alignSelf: "flex-start", minHeight: compact ? 44 : undefined, justifyContent: "center" }}>
-          <Text style={[t.meta, { color: c.accent }]}>Get the GitHub CLI</Text>
+        {off?.url && <Pressable accessibilityRole="link" accessibilityLabel={tr("Get the GitHub CLI (opens cli.github.com)")} onPress={() => void openExternalUrl(off.url!).catch(() => undefined)} hitSlop={compact ? 10 : 6} style={{ alignSelf: "flex-start", minHeight: compact ? 44 : undefined, justifyContent: "center" }}>
+          <Text style={[t.meta, { color: c.accent }]}>{tr("Get the GitHub CLI")}</Text>
         </Pressable>}
       </View>
     </View>}
     {!hits && <HeldMerges workspace={w} theme={theme} compact={compact} framed />}
     {!hits && !w.prs.length && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border, gap: 4 }}>
-      <Text style={t.body}>No PRs yet</Text>
-      <Text style={t.meta}>The main agent registers each PR it opens, and Follow-up also picks up PRs submitted from this workspace's sessions.</Text>
+      <Text style={t.body}>{tr("No PRs yet")}</Text>
+      <Text style={t.meta}>{tr("The main agent registers each PR it opens, and Follow-up also picks up PRs submitted from this workspace's sessions.")}</Text>
     </View>}
     {stackRows(active, false)}
     {hits && stackRows(settled, true)}

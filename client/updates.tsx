@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -53,11 +54,11 @@ export function UpdateNotice({ theme, compact, openSettings }: { theme: Theme; c
       </Pressable>
     </View>
     <View style={{ flexDirection: "row", gap: 8, paddingLeft: 25 }}>
-      {rolled ? <Button title="Details" theme={theme} compact={compact} onPress={() => openSettings("general")} />
+      {rolled ? <Button title={tr("Details")} theme={theme} compact={compact} onPress={() => openSettings("general")} />
         : confirm ? <>
-          <Button title="Install now" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(() => install({ version: n.version, anyway: true }))} />
-          <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={() => setConfirm(false)} />
-        </> : <Button title="Install" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(async () => { const v = await install({ version: n.version }); if (v.phase.kind === "waiting" && v.phase.busy) setConfirm(true); return v; })} />}
+          <Button title={tr("Install now")} theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(() => install({ version: n.version, anyway: true }))} />
+          <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={() => setConfirm(false)} />
+        </> : <Button title={tr("Install")} theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(async () => { const v = await install({ version: n.version }); if (v.phase.kind === "waiting" && v.phase.busy) setConfirm(true); return v; })} />}
     </View>
   </View>;
 }
@@ -98,8 +99,8 @@ function StatusCard({ view, theme, compact, onWhatsNew }: { view: UpdatesView; t
       {/* Phones: one full-width button per row, so a ghost button below a bordered one doesn't float. */}
       <View style={compact ? { flexDirection: "column", alignItems: "stretch", gap: 8 } : { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 }}>
         {confirm ? <>
-          <Button title="Install now" kind="primary" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(() => install({ version, anyway: true }).finally(() => setConfirm(false)))} />
-          <Button title="Cancel" kind="ghost" theme={theme} compact={compact} onPress={() => setConfirm(false)} />
+          <Button title={tr("Install now")} kind="primary" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate(() => install({ version, anyway: true }).finally(() => setConfirm(false)))} />
+          <Button title={tr("Cancel")} kind="ghost" theme={theme} compact={compact} onPress={() => setConfirm(false)} />
         </> : <>
           {s.primary && <Button title={act[s.primary].title} kind="primary" theme={theme} compact={compact} loading={run.isPending && s.primary === "install"} onPress={act[s.primary].onPress} />}
           {s.secondary.map((a, i) => <Button key={a} title={act[a].title} kind={i === 0 && !s.primary ? "secondary" : "ghost"} theme={theme} compact={compact} loading={a === "check" && checking} onPress={act[a].onPress} />)}
@@ -125,7 +126,7 @@ function MoveLine({ view, theme, compact }: { view: UpdatesView; theme: Theme; c
   const failed = view.move.phase === "rolled-back" || view.move.phase === "failed";
   return <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8, paddingHorizontal: 2 }}>
     <Text style={[t.small, { flex: compact ? undefined : 1, color: failed ? c.statusWarning : c.foregroundMuted }]}>{line}</Text>
-    {failed && <Button title="Try again" kind="ghost" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate()} />}
+    {failed && <Button title={tr("Try again")} kind="ghost" theme={theme} compact={compact} loading={run.isPending} onPress={() => run.mutate()} />}
   </View>;
 }
 
@@ -145,27 +146,27 @@ export function UpdatesSections({ theme, compact }: { theme: Theme; compact: boo
   // The What's new gate reads the switch from the release notes view, so a change refreshes that too.
   const save = useMutation({ mutationFn: (input: UpdatesChange) => write(input), onSuccess: (v, input) => { cache.setQueryData(updatesKey, v); if (input.enable_whats_new != null) void cache.invalidateQueries({ queryKey: releaseNotesKey }); }, onError: e => toast.error(errorText(e)) });
   const view = query.data;
-  if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label="Loading updates" />;
-  if (!view) return <SettingsSection title="Updates"><Text accessibilityRole="alert" style={{ color: c.statusDanger }}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text></SettingsSection>;
+  if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label={tr("Loading updates")} />;
+  if (!view) return <SettingsSection title={tr("Updates")}><Text accessibilityRole="alert" style={{ color: c.statusDanger }}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text></SettingsSection>;
   return <View style={{ gap: 18 }}>
-    <SettingsSection title="Updates">
+    <SettingsSection title={tr("Updates")}>
       <StatusCard view={view} theme={theme} compact={compact} onWhatsNew={() => setSheet(false)} />
       <MoveLine view={view} theme={theme} compact={compact} />
     </SettingsSection>
     <SettingsSection title={view.installKind === "npm" ? "How Follow-up updates" : "Release notes"}>
       <SettingsCard>
         {view.installKind === "npm" && <>
-        <SettingsSelect<UpdateMode> label="When a new version is out" hint={MODE_HINT[view.mode]} value={view.mode} disabled={save.isPending}
+        <SettingsSelect<UpdateMode> label={tr("When a new version is out")} hint={MODE_HINT[view.mode]} value={view.mode} disabled={save.isPending}
           options={UPDATE_MODES.map(m => ({ value: m, label: MODE_LABEL[m] }))} onValueChange={mode => save.mutate({ mode })} />
-        <SettingsSelect<Channel> label="Channel" hint={channelHint(view)} value={view.channel} disabled={save.isPending}
+        <SettingsSelect<Channel> label={tr("Channel")} hint={channelHint(view)} value={view.channel} disabled={save.isPending}
           options={[{ value: "stable", label: "Stable" }, { value: "beta", label: "Beta" }]}
           onValueChange={channel => save.mutate({ channel }, { onSuccess: () => toast.show(channel === "stable" ? "Switched to Stable. Nothing changes until a newer stable is out." : "Switched to Beta. The next check looks for betas.") })} />
         </>}
         <SettingsSwitch label={WHATS_NEW_LABEL} hint={whatsNewHint(view.enable_whats_new)} value={view.enable_whats_new} disabled={save.isPending} onValueChange={enable_whats_new => save.mutate({ enable_whats_new })} />
-        <SettingsAction label="Release notes" hint={`Every version up to ${view.version}, newest first.`} actionLabel="See all" onPress={() => setSheet(true)} />
+        <SettingsAction label={tr("Release notes")} hint={`Every version up to ${view.version}, newest first.`} actionLabel="See all" onPress={() => setSheet(true)} />
       </SettingsCard>
     </SettingsSection>
-    {view.installKind === "npm" && view.history.length > 0 && <Disclosure id="updates.history" title="Update history" summary={`${HISTORY_RESULT[view.history[0]!.result]} ${stamp(view.history[0]!.at)}`} defaultOpen={false} theme={theme} compact={compact}>
+    {view.installKind === "npm" && view.history.length > 0 && <Disclosure id="updates.history" title={tr("Update history")} summary={`${HISTORY_RESULT[view.history[0]!.result]} ${stamp(view.history[0]!.at)}`} defaultOpen={false} theme={theme} compact={compact}>
       {view.history.slice(0, 10).map((h, i) => <View key={i} style={{ paddingHorizontal: compact ? 16 : 14, paddingVertical: 8, borderTopWidth: i ? 1 : 0, borderTopColor: c.border, gap: 2 }}>
         <Text style={t.meta}>{`${stamp(h.at)} · ${h.from} → ${h.to} · ${HISTORY_RESULT[h.result]}`}</Text>
         {h.reason && <Text style={t.small}>{h.reason}</Text>}
@@ -190,19 +191,19 @@ export function UpdatesStep({ theme, compact }: { theme: Theme; compact: boolean
   const write = useRpc(setUpdatesRpc); const cache = useQueryClient(); const toast = useToast();
   const save = useMutation({ mutationFn: (input: { mode?: UpdateMode; channel?: Channel }) => write(input), onSuccess: v => cache.setQueryData(updatesKey, v), onError: e => toast.error(errorText(e)) });
   const view = query.data;
-  if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label="Loading updates" />;
+  if (query.isLoading) return <Spinner color={c.foregroundMuted} size={16} label={tr("Loading updates")} />;
   if (!view) return <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{query.error ? errorText(query.error) : "Couldn't load updates."}</Text>;
-  if (view.installKind !== "npm") return <Text style={t.body}>Updates are managed by your checkout. Pull and rebuild to update.</Text>;
+  if (view.installKind !== "npm") return <Text style={t.body}>{tr("Updates are managed by your checkout. Pull and rebuild to update.")}</Text>;
   return <View style={{ gap: 12 }}>
-    <View accessibilityRole="radiogroup" accessibilityLabel="Updates" style={{ gap: 6 }}>
+    <View accessibilityRole="radiogroup" accessibilityLabel={tr("Updates")} style={{ gap: 6 }}>
       {SETUP_CARDS.map(card => <OptionCard key={card.mode} theme={theme} compact={compact} label={MODE_LABEL[card.mode]} consequence={card.hint} recommended={card.mode === "auto"}
         selected={view.mode === card.mode} disabled={save.isPending} onPress={() => view.mode !== card.mode && save.mutate({ mode: card.mode })} />)}
     </View>
     <SettingsCard>
-      <SettingsSelect<Channel> label="Channel" hint={channelHint(view)} value={view.channel} disabled={save.isPending}
+      <SettingsSelect<Channel> label={tr("Channel")} hint={channelHint(view)} value={view.channel} disabled={save.isPending}
         options={[{ value: "stable", label: "Stable" }, { value: "beta", label: "Beta" }]} onValueChange={channel => save.mutate({ channel })} />
     </SettingsCard>
-    <Text style={t.small}>Follow-up only installs versions npm confirms were built from github.com/tomgrin10/paseo-follow-up.</Text>
+    <Text style={t.small}>{tr("Follow-up only installs versions npm confirms were built from github.com/tomgrin10/paseo-follow-up.")}</Text>
   </View>;
 }
 

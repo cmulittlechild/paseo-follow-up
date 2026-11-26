@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -37,7 +38,7 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
   const options = [["manual", "Not sent"], ["now", "Now"], ["merge", "After merge"], ["deploy", "After deploy"]] as const;
   return <SubmitScope enabled={!busy && valid} onSubmit={() => save.mutate()} style={{ gap: 10 }}>
     <View style={{ gap: 4 }}>
-      <Text style={t.label}>Send to the agent</Text>
+      <Text style={t.label}>{tr("Send to the agent")}</Text>
       <Text style={t.meta}>Not sent: the task comes due when its PRs merge or deploy, or on its re-check date, and the agent is reminded at the end of its turn. Scheduled tasks join the next message to the agent instead, and still follow your Auto-send choice.</Text>
     </View>
     <View accessibilityRole="radiogroup" accessibilityLabel={`Send trigger for ${o.title}`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -48,11 +49,11 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
     </View>
     {gated && <>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text style={t.meta}>Wait</Text>
-        <TextInput accessibilityLabel="Delay in days" inputMode="numeric" value={days} editable={!busy} onChangeText={setDays} style={{ width: 64, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: valid ? c.border : c.statusDanger, color: c.foreground, backgroundColor: c.surface1, fontSize: 13, fontVariant: ["tabular-nums"] }} />
+        <Text style={t.meta}>{tr("Wait")}</Text>
+        <TextInput accessibilityLabel={tr("Delay in days")} inputMode="numeric" value={days} editable={!busy} onChangeText={setDays} style={{ width: 64, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: valid ? c.border : c.statusDanger, color: c.foreground, backgroundColor: c.surface1, fontSize: 13, fontVariant: ["tabular-nums"] }} />
         <Text style={t.meta}>days after every selected PR {event === "merge" ? "merges" : "deploys"}</Text>
       </View>
-      {!workspace.prs.length && <Text style={[t.meta, { color: c.statusWarning }]}>Register a PR before scheduling this task.</Text>}
+      {!workspace.prs.length && <Text style={[t.meta, { color: c.statusWarning }]}>{tr("Register a PR before scheduling this task.")}</Text>}
       <View>
         {workspace.prs.map(p => <Pressable key={p.key} accessibilityRole="checkbox" accessibilityLabel={`Use PR ${p.number} for task trigger`} aria-checked={prs.includes(p.key)} accessibilityState={{ checked: prs.includes(p.key), disabled: busy }} disabled={busy} onPress={() => setPrs(prs.includes(p.key) ? prs.filter(k => k !== p.key) : [...prs, p.key])}
           style={{ minHeight: compact ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -61,7 +62,7 @@ function TriggerEditor({ obligation: o, workspace, theme, compact }: { obligatio
         </Pressable>)}
       </View>
     </>}
-    <Button shortcut title="Save schedule" kind="primary" accessibilityLabel={`Save trigger for ${o.title}`} disabled={busy || !valid} loading={busy} onPress={() => save.mutate()} theme={theme} compact={compact} />
+    <Button shortcut title={tr("Save schedule")} kind="primary" accessibilityLabel={`Save trigger for ${o.title}`} disabled={busy || !valid} loading={busy} onPress={() => save.mutate()} theme={theme} compact={compact} />
   </SubmitScope>;
 }
 
@@ -134,7 +135,7 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
       {inNeeds && <View style={{ paddingTop: 2 }}><Icon name="ArrowUpRight" size={14} color={c.foregroundMuted} /></View>}
     </Pressable>
     {detail && <View style={{ paddingLeft: compact ? 40 : 38, paddingRight: compact ? 14 : 12, paddingBottom: 10, gap: 8 }}>
-      {evidence ? <Note text={evidence} theme={theme} full /> : <Text style={t.meta}>No note yet. The agent adds one when it checks or finishes the task.</Text>}
+      {evidence ? <Note text={evidence} theme={theme} full /> : <Text style={t.meta}>{tr("No note yet. The agent adds one when it checks or finishes the task.")}</Text>}
       {prs ? <Text style={[t.meta, { paddingLeft: 10 }]}>{`Moves with ${prs}`}</Text> : null}
       {/* Lined up with the note's text, past its rule. */}
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingLeft: 10 }}>
@@ -142,7 +143,7 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
         {o.status !== "working" && <><Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }} accessibilityElementsHidden importantForAccessibility="no">{row.status.agentId && openAgent ? "·" : ""}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={`Send ${o.title} to the agent on a schedule`} hitSlop={compact ? 12 : 6} onPress={onSchedule}
             style={state => ({ borderRadius: 4, opacity: state.pressed ? 0.6 : 1, ...((state as { hovered?: boolean }).hovered ? { textDecorationLine: "underline" } : {}) } as object)}>
-            <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }}>Send on a schedule…</Text>
+            <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 17 }}>{tr("Send on a schedule…")}</Text>
           </Pressable></>}
       </View>
     </View>}
@@ -152,7 +153,7 @@ function TaskRow({ row, w, theme, compact, open, onPress, openAgent, onSchedule 
 /** The developer's override: send this task to the agent now, or after its PRs merge or deploy (an agent tool too). */
 function ScheduleSheet({ o, w, theme, compact, onClose }: { o: Obligation | null; w: Workspace; theme: Theme; compact: boolean; onClose: () => void }) {
   const t = text(theme.colors);
-  return <Modal title="Send on a schedule" icon={<Icon name="Clock" size={18} color={theme.colors.foreground} />} open={!!o} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={tr("Send on a schedule")} icon={<Icon name="Clock" size={18} color={theme.colors.foreground} />} open={!!o} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 14 }}>
       {o && <>
         <RichText selectable style={[t.title, { fontSize: 16, lineHeight: 22 }]}>{o.title}</RichText>
@@ -175,7 +176,7 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
   const parts = summaryParts(sum);
   const footer = finishedParts(sum);
   const label = `${parts.neutral}${parts.stale ? ` · ${parts.stale}` : ""}`;
-  return <Card theme={theme} compact={compact} icon="ListTodo" title="Agent's tasks" fold={{ open: shown, onToggle: () => toggle("tasks"), label }}
+  return <Card theme={theme} compact={compact} icon="ListTodo" title={tr("Agent's tasks")} fold={{ open: shown, onToggle: () => toggle("tasks"), label }}
     right={<Text numberOfLines={1} style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontVariant: ["tabular-nums"] }}>{parts.neutral}{parts.stale ? <Text style={{ color: staleColor(c), fontWeight: "600" }}>{` · ${parts.stale}`}</Text> : null}</Text>}>
     {shown && rows.map(r => {
       const q = linkedQuestion(r.o, w);
@@ -183,7 +184,7 @@ export function TasksCard({ workspace: w, theme, compact, open, toggle, onOpenQu
         onPress={() => r.kind === "needs-you" && q && onOpenQuestion ? onOpenQuestion(q.id) : toggle(`task:${r.o.id}`)} />;
     })}
     {shown && !rows.length && <View style={{ paddingHorizontal: compact ? 14 : 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
-      <Text style={t.meta}>Nothing open. The agent records work that outlives a merge here, like a migration to run or a production check.</Text>
+      <Text style={t.meta}>{tr("Nothing open. The agent records work that outlives a merge here, like a migration to run or a production check.")}</Text>
     </View>}
     {shown && footer && (onShowActivity
       // "in Activity" is a link: finished tasks are listed there (tasks-are-the-agent-s). The whole row is the target

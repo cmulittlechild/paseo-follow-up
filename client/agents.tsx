@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { ActivityIndicator, View } from "react-native";
 import { Text } from "./text";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -36,7 +37,7 @@ export function AgentSettings({ theme, compact }: Pick<PluginSurfaceProps, "them
     render: (r, save, busy) => <RoleMore r={r} save={save} busy={busy} theme={theme} compact={compact} invalid={!!data?.invalid.includes(r.role)} />,
   };
   const info = "Which agent Follow-up uses for each of its own jobs. Recommended picks come from what Paseo has: with Claude, Haiku for summaries, Sonnet for AI priority, the newest Opus for the Overseer and the main agent's setup for recovery; otherwise a model of the size each job needs. Summaries and AI priority are one-shot jobs: on a provider other than Claude or Codex, each runs as a short hidden agent that's archived when it answers. Changes apply from the next call; the Overseer switches when you restart it.";
-  return <SettingsSection title="Helper agents" info={info}>
+  return <SettingsSection title={tr("Helper agents")} info={info}>
     <SettingsCard>
       <JobRows theme={theme} compact={compact} order={SETTINGS_ORDER} extra={more} />
     </SettingsCard>
@@ -64,10 +65,10 @@ export function WaitSettings({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const wait = query.data?.wait;
   const note = wait ? waitNote(wait) : null;
   const copy = waitSwitchCopy(wait);
-  return <SettingsSection title="Background jobs">
+  return <SettingsSection title={tr("Background jobs")}>
     {/* The card's place is kept while loading, so the Models section below doesn't jump. */}
-    {query.isPending && <SettingsCard><View style={{ minHeight: 72, justifyContent: "center", paddingHorizontal: 16 }}><ActivityIndicator accessibilityLabel="Loading the background jobs setting" color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View></SettingsCard>}
-    {query.error && <SettingsCard><SettingsAction label="Couldn't load the background jobs setting" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
+    {query.isPending && <SettingsCard><View style={{ minHeight: 72, justifyContent: "center", paddingHorizontal: 16 }}><ActivityIndicator accessibilityLabel={tr("Loading the background jobs setting")} color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} /></View></SettingsCard>}
+    {query.error && <SettingsCard><SettingsAction label={tr("Couldn't load the background jobs setting")} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {wait && <SettingsCard>
       {/* Paseo 0.16 (reason "host"): what the host does comes first and stays whether the switch is on or off; it's
           information, not a problem, so no alert. */}
@@ -98,22 +99,22 @@ function RoleMore({ r, save, busy, theme, compact, invalid }: { r: Role; save: (
   const schedule = role === "ranker" ? "limits and schedule" : jobs ? "limits" : "permissions";
   const resetText = reset.entry ? `Back to the recommended ${reset.label}, with the default ${schedule}.` : `Everything back to ${roleDefaultText(role)}, ${schedule} too.`;
   return <>
-    {invalid && <Text style={[t.meta, { paddingHorizontal: 16, paddingTop: 10 }]}>Part of the saved setting wasn't valid, so its default is used.</Text>}
-    {!jobs && !r.same && modes.length > 0 && <SettingsSelect label="Permissions" hint="It runs unattended, so pick a mode that doesn't prompt." value={r.mode ?? DEFAULT}
+    {invalid && <Text style={[t.meta, { paddingHorizontal: 16, paddingTop: 10 }]}>{tr("Part of the saved setting wasn't valid, so its default is used.")}</Text>}
+    {!jobs && !r.same && modes.length > 0 && <SettingsSelect label={tr("Permissions")} hint={tr("It runs unattended, so pick a mode that doesn't prompt.")} value={r.mode ?? DEFAULT}
       options={[{ value: DEFAULT, label: modeDefault ? `Default (${modeLabel(modeDefault)})` : "Default" }, ...modes.map(m => ({ value: m.id, label: modeLabel(m) }))]} disabled={busy}
       onValueChange={value => set({ mode: value === DEFAULT ? null : value })} />}
-    {role === "about" && <SettingsSelect label="Written ahead per day" hint="Summaries written in the background for workspaces in Needs you. Opening a workspace always writes one when needed."
+    {role === "about" && <SettingsSelect label={tr("Written ahead per day")} hint={tr("Summaries written in the background for workspaces in Needs you. Opening a workspace always writes one when needed.")}
       value={String(r.dailyCap ?? 60)} options={withCurrent([0, 20, 60, 120, 200], r.dailyCap ?? 60).map(n => ({ value: String(n), label: n === 0 ? "None" : String(n) }))} disabled={busy}
       onValueChange={value => set({ dailyCap: Number(value) })} />}
-    {role === "ranker" && <SettingsSelect label="Ranks every" value={String(r.cadenceMinutes ?? 60)} disabled={busy}
+    {role === "ranker" && <SettingsSelect label={tr("Ranks every")} value={String(r.cadenceMinutes ?? 60)} disabled={busy}
       options={withCurrent([15, 30, 60, 120, 240], r.cadenceMinutes ?? 60).map(n => ({ value: String(n), label: n < 60 ? `${n} minutes` : n === 60 ? "Hour" : `${n / 60} hours` }))}
       onValueChange={value => set({ cadenceMinutes: Number(value) })} />}
-    {role === "ranker" && <SettingsSelect label="At most per day" value={String(r.dailyCap ?? 24)} disabled={busy}
+    {role === "ranker" && <SettingsSelect label={tr("At most per day")} value={String(r.dailyCap ?? 24)} disabled={busy}
       options={withCurrent([6, 12, 24, 48, 96], r.dailyCap ?? 24).map(n => ({ value: String(n), label: String(n) }))}
       onValueChange={value => set({ dailyCap: Number(value) })} />}
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: compact ? 14 : 16, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border }}>
       <Text style={[t.meta, { flex: 1 }]}>{resetText}</Text>
-      <Button theme={theme} compact={compact} kind="ghost" title="Reset to defaults" disabled={busy || (resetDone && !invalid)} onPress={() => save(reset.entry)} />
+      <Button theme={theme} compact={compact} kind="ghost" title={tr("Reset to defaults")} disabled={busy || (resetDone && !invalid)} onPress={() => save(reset.entry)} />
     </View>
   </>;
 }

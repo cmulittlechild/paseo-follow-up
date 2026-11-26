@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Platform, View, type ViewStyle, type ScrollView as NativeScrollView } from "react-native";
 import { Pressable, Text } from "./text";
@@ -103,16 +104,16 @@ export function Setup({ theme, compact, view, deps }: { theme: Theme; compact: b
   return <DockedPane compact={compact} scrollRef={scroll} style={{ backgroundColor: c.surface0 }} contentContainerStyle={{ paddingBottom: 24 }}
     header={<View style={[column, { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: compact ? 8 : 20, paddingBottom: 8 }]}>
       <Progress theme={theme} index={index} onPick={i => i < index && go(ONBOARDING_STEPS[i])} />
-      <Button theme={theme} compact={compact} kind="ghost" title="Skip setup" accessibilityHint="Leaves setup. Every setting keeps its current value." onPress={skip} disabled={move.isPending} />
+      <Button theme={theme} compact={compact} kind="ghost" title={tr("Skip setup")} accessibilityHint="Leaves setup. Every setting keeps its current value." onPress={skip} disabled={move.isPending} />
     </View>}
     // While typing a reviewer on a phone the bar steps aside, so Continue never sits over the keyboard (DockedPane).
     dock={({ yields }) => !yields && <View style={[{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface0, paddingTop: 12 }, bottomPad(compact)]}>
       <View style={[column, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
         {index > 0 && (compact
-          ? <IconButton theme={theme} compact icon="ChevronLeft" label="Back" onPress={() => go(ONBOARDING_STEPS[index - 1])} />
-          : <Button theme={theme} kind="ghost" icon="ChevronLeft" title="Back" onPress={() => go(ONBOARDING_STEPS[index - 1])} />)}
+          ? <IconButton theme={theme} compact icon="ChevronLeft" label={tr("Back")} onPress={() => go(ONBOARDING_STEPS[index - 1])} />
+          : <Button theme={theme} kind="ghost" icon="ChevronLeft" title={tr("Back")} onPress={() => go(ONBOARDING_STEPS[index - 1])} />)}
         {!compact && <View style={{ flex: 1 }} />}
-        {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title="Skip, set later" onPress={() => go(ONBOARDING_STEPS[index + 1])} />}
+        {step === "reviewers" && <Button theme={theme} compact={compact} kind="ghost" title={tr("Skip, set later")} onPress={() => go(ONBOARDING_STEPS[index + 1])} />}
         <Button theme={theme} compact={compact} grow={compact} kind="primary" icon={last ? "Check" : undefined}
           title={last ? "Finish" : failing ? "Continue anyway" : "Continue"} loading={last && move.isPending}
           onPress={() => last ? finish() : go(ONBOARDING_STEPS[index + 1])} />
@@ -191,8 +192,8 @@ function IntroStep({ theme, compact, follow }: { theme: Theme; compact: boolean;
     <Panel c={c}>
       <View style={{ padding: compact ? 14 : 16, gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text numberOfLines={1} style={[t.label, { flex: 1 }]}>TKT-1042 Add CSV export</Text>
-          <Text style={[t.small, { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: c.surface2 }]}>Example</Text>
+          <Text numberOfLines={1} style={[t.label, { flex: 1 }]}>{tr("TKT-1042 Add CSV export")}</Text>
+          <Text style={[t.small, { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: c.surface2 }]}>{tr("Example")}</Text>
         </View>
         {/* The stack bar: #417 merged, #418 the one this example follows. */}
         <View style={{ flexDirection: "row", gap: 3, height: 4 }}>
@@ -206,7 +207,7 @@ function IntroStep({ theme, compact, follow }: { theme: Theme; compact: boolean;
           <Text style={[t.body, { flex: 1 }]}>{e.line}</Text>
           {phase === 2 && <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, minHeight: 22, borderRadius: 11, backgroundColor: tint(c.statusWarning, c) }}>
             <Icon name="CircleAlert" size={12} color={c.statusWarning} />
-            <Text style={{ color: c.statusWarning, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Needs you: Merge #418</Text>
+            <Text style={{ color: c.statusWarning, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{tr("Needs you: Merge #418")}</Text>
           </View>}
         </View>
       </View>
@@ -247,14 +248,14 @@ function ChecksStep({ theme, compact, checks, deps }: { theme: Theme; compact: b
   return <View style={{ gap: 10 }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Text style={[t.meta, { flex: 1 }]}>{busy ? "Checking…" : summary?.line ?? ""}</Text>
-      <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title="Check again" loading={again.isPending} disabled={busy} onPress={() => again.mutate()} />
+      <Button theme={theme} compact={compact} kind="secondary" icon="RefreshCw" title={tr("Check again")} loading={again.isPending} disabled={busy} onPress={() => again.mutate()} />
     </View>
     {(checks.error || again.error) && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{errorText(checks.error ?? again.error)}</Text>}
     <Panel c={c}>
       {rows ? rows.map((row, i) => <CheckRow key={row.id} theme={theme} compact={compact} row={row} first={i === 0} checking={again.isPending} deps={deps} />)
         : ["GitHub", "Claude", "Codex", "Agent tools"].map((label, i) => <CheckRow key={label} theme={theme} compact={compact} first={i === 0} checking deps={deps} row={{ id: label, label, state: "pending", detail: "Checking…", fix: null }} />)}
     </Panel>
-    {summary?.state === "fail" && <Text style={t.meta}>You can continue anyway. Following and Needs you work without what's missing; each row says what it affects.</Text>}
+    {summary?.state === "fail" && <Text style={t.meta}>{tr("You can continue anyway. Following and Needs you work without what's missing; each row says what it affects.")}</Text>}
   </View>;
 }
 
@@ -269,16 +270,16 @@ function CheckRow({ theme, compact, row, first, checking, deps }: { theme: Theme
       <Text style={t.label}>{row.label}</Text>
       <Text style={t.meta}>{row.detail}</Text>
       {row.fix && row.state === "warn" && !open && <Pressable accessibilityRole="button" accessibilityState={{ expanded: false }} onPress={() => setOpen(true)} style={{ minHeight: compact ? 44 : 28, justifyContent: "center", alignSelf: "flex-start" }}>
-        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>How to fix</Text>
+        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>{tr("How to fix")}</Text>
       </Pressable>}
       {row.fix && (row.state !== "warn" || open) && <View style={{ gap: 6, marginTop: 4 }}>
         <Text style={[t.meta, { color: c.foreground }]}>{row.fix.text}</Text>
-        {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title="Get the GitHub CLI" accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error("Couldn't open the link here")); }} />}
+        {row.fix.url && <Button theme={theme} compact={compact} kind="ghost" icon="ExternalLink" title={tr("Get the GitHub CLI")} accessibilityLabel={`Get the GitHub CLI at ${row.fix.url}`} onPress={() => { void openExternalUrl(row.fix!.url!).catch(() => toast.error("Couldn't open the link here")); }} />}
         {row.fix.command && <View style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", paddingLeft: 10, borderRadius: 6, backgroundColor: c.surface2 }}>
           <Text selectable numberOfLines={1} style={{ flexShrink: 1, color: c.foreground, fontSize: 12, lineHeight: 17, fontFamily: Platform.OS === "ios" ? "Menlo" : "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{row.fix.command}</Text>
           <IconButton theme={theme} compact={compact} icon="Copy" label={`Copy ${row.fix.command}`} onPress={() => { void copyText(row.fix!.command!).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />
         </View>}
-        {row.fix.settings && <Button theme={theme} compact={compact} kind="ghost" icon="Settings" title="Open Settings → Agents" onPress={() => deps.openSettings(row.fix!.settings!)} />}
+        {row.fix.settings && <Button theme={theme} compact={compact} kind="ghost" icon="Settings" title={tr("Open Settings → Agents")} onPress={() => deps.openSettings(row.fix!.settings!)} />}
       </View>}
     </View>
   </View>;
@@ -327,7 +328,7 @@ function DefaultsStep({ theme, compact, held }: { theme: Theme; compact: boolean
   return <View style={{ gap: 10 }}>
     {follow.error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{errorText(follow.error)}</Text>}
     <Panel c={c}>
-      <SwitchRow first theme={theme} compact={compact} label="Follow every workspace" hint="New and existing workspaces, except any you turn off below." value={data?.enable_follow_every ?? null} disabled={change.isPending}
+      <SwitchRow first theme={theme} compact={compact} label={tr("Follow every workspace")} hint={tr("New and existing workspaces, except any you turn off below.")} value={data?.enable_follow_every ?? null} disabled={change.isPending}
         onChange={v => change.mutate([{ enable_follow_every: v }])}>
         {list.length > 0 && <View style={{ paddingLeft: compact ? 14 : 16, paddingBottom: 6 }}>
           {shown.map(w => {
@@ -347,14 +348,14 @@ function DefaultsStep({ theme, compact, held }: { theme: Theme; compact: boolean
           </Pressable>}
         </View>}
       </SwitchRow>
-      <SwitchRow theme={theme} compact={compact} label="Send repairs automatically" value={data?.enable_auto_sends_default ?? null} disabled={change.isPending}
+      <SwitchRow theme={theme} compact={compact} label={tr("Send repairs automatically")} value={data?.enable_auto_sends_default ?? null} disabled={change.isPending}
         hint={`Review threads and failed checks go to the workspace's agent on their own, once it's idle. Off: each batch waits for your click.${followed ? ` Here it also applies to the ${followed} already followed.` : ""}${held ? " Nothing goes out on its own until you finish setup." : ""}`}
         onChange={v => change.mutate(autoSendWrites(v, list))} />
-      <SwitchRow theme={theme} compact={compact} label="Trust bypass agents" value={trust}
+      <SwitchRow theme={theme} compact={compact} label={tr("Trust bypass agents")} value={trust}
         hint="An agent you started in bypass or full access sometimes still stops on a tool prompt. Follow-up approves those so it keeps going, and logs each one. Off brings the prompts back."
         onChange={v => saveDisplay({ enable_trust_bypass: v })} />
     </Panel>
-    <Text style={t.meta}>Follow-up never merges, requests reviewers, archives or messages people on its own.</Text>
+    <Text style={t.meta}>{tr("Follow-up never merges, requests reviewers, archives or messages people on its own.")}</Text>
   </View>;
 }
 
@@ -366,9 +367,9 @@ function HelpersStep({ theme, compact, deps }: { theme: Theme; compact: boolean;
   return <View style={{ gap: 12 }}>
     <Panel c={c}><JobRows theme={theme} compact={compact} order={SETUP_ORDER} preselect /></Panel>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
-      <Text style={t.meta}>Permissions and limits are in </Text>
-      <Pressable accessibilityRole="link" accessibilityLabel="Open Follow-up settings, Agents" onPress={() => deps.openSettings("agents")} hitSlop={8} style={{ minHeight: compact ? 44 : 20, justifyContent: "center" }}>
-        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>Settings → Agents</Text>
+      <Text style={t.meta}>{tr("Permissions and limits are in")}  </Text>
+      <Pressable accessibilityRole="link" accessibilityLabel={tr("Open Follow-up settings, Agents")} onPress={() => deps.openSettings("agents")} hitSlop={8} style={{ minHeight: compact ? 44 : 20, justifyContent: "center" }}>
+        <Text style={[t.meta, { color: c.foreground, textDecorationLine: "underline" }]}>{tr("Settings → Agents")}</Text>
       </Pressable>
       <Text style={t.meta}>.</Text>
     </View>
@@ -377,11 +378,11 @@ function HelpersStep({ theme, compact, deps }: { theme: Theme; compact: boolean;
 
 function TourStep({ theme, compact }: { theme: Theme; compact: boolean }) {
   return <View style={{ gap: 2 }}>
-    <TourRow theme={theme} thumb={<ThumbHome c={theme.colors} />} title="Home" line="Follow-up in the sidebar. Every workspace, with what needs you at the top." />
-    <TourRow theme={theme} thumb={<ThumbPanel c={theme.colors} />} title="Workspace panel"
+    <TourRow theme={theme} thumb={<ThumbHome c={theme.colors} />} title={tr("Home")} line="Follow-up in the sidebar. Every workspace, with what needs you at the top." />
+    <TourRow theme={theme} thumb={<ThumbPanel c={theme.colors} />} title={tr("Workspace panel")}
       line={compact ? "Tap Follow-up at the top of any workspace: its PRs, tasks and what the agent is doing." : "The Follow-up button in a workspace's header docks its PRs, tasks and what the agent is doing beside the chat."} />
-    <TourRow theme={theme} thumb={<ThumbNeeds c={theme.colors} />} title="Needs you" line="The decisions only you can make, one button each. A pill above the chat shows the same." />
-    <TourRow theme={theme} thumb={<ThumbAbout c={theme.colors} />} title="Summary" line="One sentence under a workspace's title saying what it's for." />
+    <TourRow theme={theme} thumb={<ThumbNeeds c={theme.colors} />} title={tr("Needs you")} line="The decisions only you can make, one button each. A pill above the chat shows the same." />
+    <TourRow theme={theme} thumb={<ThumbAbout c={theme.colors} />} title={tr("Summary")} line="One sentence under a workspace's title saying what it's for." />
   </View>;
 }
 
@@ -411,25 +412,25 @@ export function SetupOffer({ theme, compact, view }: { theme: Theme; compact: bo
   // Phones: one row in the list's gutter. A title and one meta line that never wrap; the row opens setup, the ✕ beside
   // it dismisses. No second row of buttons under the text.
   if (compact) return <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
-    <Pressable accessibilityRole="button" accessibilityLabel="Open setup" accessibilityHint="A two-minute setup that checks GitHub and shows what Follow-up does on its own" disabled={run.isPending}
+    <Pressable accessibilityRole="button" accessibilityLabel={tr("Open setup")} accessibilityHint="A two-minute setup that checks GitHub and shows what Follow-up does on its own" disabled={run.isPending}
       onPress={() => run.mutate("restart")}
       style={state => ({ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 56, paddingLeft: 14, paddingRight: 4, paddingVertical: 10, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, backgroundColor: state.pressed ? c.surface2 : "transparent" })}>
-      {run.isPending && run.variables === "restart" ? <Spinner color={c.foregroundMuted} size={14} label="Opening setup" /> : <Icon name="ListChecks" size={16} color={c.foregroundMuted} />}
+      {run.isPending && run.variables === "restart" ? <Spinner color={c.foregroundMuted} size={14} label={tr("Opening setup")} /> : <Icon name="ListChecks" size={16} color={c.foregroundMuted} />}
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-        <Text numberOfLines={1} style={text(c, true).label}>Two-minute setup</Text>
-        <Text numberOfLines={1} style={text(c, true).meta}>Checks GitHub, shows what runs on its own</Text>
+        <Text numberOfLines={1} style={text(c, true).label}>{tr("Two-minute setup")}</Text>
+        <Text numberOfLines={1} style={text(c, true).meta}>{tr("Checks GitHub, shows what runs on its own")}</Text>
       </View>
     </Pressable>
-    <IconButton theme={theme} compact icon="X" label="Dismiss the setup offer" onPress={() => run.mutate("dismiss-offer")} />
+    <IconButton theme={theme} compact icon="X" label={tr("Dismiss the setup offer")} onPress={() => run.mutate("dismiss-offer")} />
   </View>;
   return <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: compact ? 6 : 10, marginHorizontal: compact ? 12 : 16, paddingLeft: 12, paddingRight: 4, paddingVertical: 4, borderRadius: 8, backgroundColor: c.surface1 }}>
     <View style={{ flex: compact ? undefined : 1, flexDirection: "row", alignItems: "center", gap: 8, paddingTop: compact ? 8 : 0 }}>
       <Icon name="ListChecks" size={14} color={c.foregroundMuted} />
-      <Text style={[t.meta, { flex: 1 }]}>Follow-up has a two-minute setup that checks GitHub and shows what it does on its own.</Text>
+      <Text style={[t.meta, { flex: 1 }]}>{tr("Follow-up has a two-minute setup that checks GitHub and shows what it does on its own.")}</Text>
     </View>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 2, justifyContent: compact ? "flex-end" : undefined }}>
-      <Button theme={theme} compact={compact} kind="ghost" title="Open setup" loading={run.isPending && run.variables === "restart"} onPress={() => run.mutate("restart")} />
-      <IconButton theme={theme} compact={compact} icon="X" label="Dismiss the setup offer" onPress={() => run.mutate("dismiss-offer")} />
+      <Button theme={theme} compact={compact} kind="ghost" title={tr("Open setup")} loading={run.isPending && run.variables === "restart"} onPress={() => run.mutate("restart")} />
+      <IconButton theme={theme} compact={compact} icon="X" label={tr("Dismiss the setup offer")} onPress={() => run.mutate("dismiss-offer")} />
     </View>
   </View>;
 }

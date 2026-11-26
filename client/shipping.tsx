@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { ActivityIndicator, TextInput, useWindowDimensions, View } from "react-native";
 import { Text } from "./text";
@@ -46,19 +47,19 @@ export function ShippingSettings({ theme, compact }: { theme: Theme; compact: bo
   });
   const data = query.data;
   const checked = query.dataUpdatedAt ? ago(query.dataUpdatedAt) : null;
-  return <SettingsSection title="Shipping PRs" info={shippingInfo(data)}>
-    {query.isPending && <ActivityIndicator accessibilityLabel="Loading how PRs ship" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
-    {query.error && <SettingsCard><SettingsAction label="Couldn't load how PRs ship" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
+  return <SettingsSection title={tr("Shipping PRs")} info={shippingInfo(data)}>
+    {query.isPending && <ActivityIndicator accessibilityLabel={tr("Loading how PRs ship")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+    {query.error && <SettingsCard><SettingsAction label={tr("Couldn't load how PRs ship")} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {data && <>
       <SettingsCard>
-        <SettingsSelect<PrWorkflowSetting> label="Ship PRs with" hint={defaultHint(data)} value={data.default} disabled={change.isPending}
+        <SettingsSelect<PrWorkflowSetting> label={tr("Ship PRs with")} hint={defaultHint(data)} value={data.default} disabled={change.isPending}
           options={PR_WORKFLOWS.map(w => ({ value: w, label: PR_WORKFLOW_LABELS[w].label }))}
           onValueChange={value => change.mutate({ default: value, toast: `Default: ship with ${PR_WORKFLOW_LABELS[value].label}` })} />
-        <ReviewFixSelect label="Review comments" value={data.reviewFix} theme={theme} compact={compact} busy={change.isPending}
+        <ReviewFixSelect label={tr("Review comments")} value={data.reviewFix} theme={theme} compact={compact} busy={change.isPending}
           onSave={fix => { if (fix) change.mutate({ reviewFix: fix, toast: `Default: review comments → ${reviewFixLabel(fix)}` }); }} />
       </SettingsCard>
       {signInWarning(data) && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusWarning }]}>{signInWarning(data)}</Text>}
-      {data.repos.length ? <Disclosure id="shipping.repos" title="Repositories" summary={reposShippingSummary(data.repos)}
+      {data.repos.length ? <Disclosure id="shipping.repos" title={tr("Repositories")} summary={reposShippingSummary(data.repos)}
         defaultOpen={data.repos.length <= 6} theme={theme} compact={compact}>
         {data.repos.map((row, i) => <View key={row.repo} style={{ borderTopWidth: i ? 1 : 0, borderTopColor: c.border }}>
           <Disclosure framed={false} id={`shipping.repo.${row.repo}`} title={row.repo} summary={repoShippingSummary(row)} defaultOpen={false} theme={theme} compact={compact}>
@@ -69,7 +70,7 @@ export function ShippingSettings({ theme, compact }: { theme: Theme; compact: bo
           <Text style={[t.meta, { flex: 1 }]}>{`${checked ? `Checked ${checked}` : "Not checked yet"} · looks at what's installed and how each repository is set up.`}</Text>
           <Button theme={theme} compact={compact} title={recheck.isPending ? "Checking…" : "Check again"} disabled={recheck.isPending} loading={recheck.isPending} onPress={() => recheck.mutate()} />
         </View>
-      </Disclosure> : <Text style={t.meta}>Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote.</Text>}
+      </Disclosure> : <Text style={t.meta}>{tr("Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote.")}</Text>}
     </>}
   </SettingsSection>;
 }
@@ -97,19 +98,19 @@ function RepoShipping({ row, view, theme, compact, busy, set }: { row: RepoWorkf
   // Flat rows inside the fold: no inner card. Text and hairlines start on the repository name's column.
   return <View style={{ paddingLeft: REPO_INSET, paddingBottom: 4 }}>
     <Text style={[t.meta, { paddingHorizontal: 16, paddingBottom: 4 }]}>{reason}</Text>
-    <SettingsSelect<"inherit" | PrWorkflowSetting> label="Ship with" hint={autoMerge} value={row.inherits ? "inherit" : row.setting} disabled={busy}
+    <SettingsSelect<"inherit" | PrWorkflowSetting> label={tr("Ship with")} hint={autoMerge} value={row.inherits ? "inherit" : row.setting} disabled={busy}
       options={[{ value: "inherit", label: fallback }, ...(view.default !== "auto" ? [{ value: "auto" as const, label: `Auto (picks ${workflowName(row.detected)} here)` }] : []), ...PR_WORKFLOWS.filter(w => w !== "auto").map(w => ({ value: w, label: PR_WORKFLOW_LABELS[w].label }))]}
       onValueChange={value => set({ setting: value === "inherit" ? null : value }, value === "inherit" ? "back to the default" : PR_WORKFLOW_LABELS[value].label)} />
     {row.effective === "github" && <View>{rule}{row.github?.mergeQueue
-      ? <SettingsAction label="Merge method" hint="This repository merges through a merge queue, which picks the method." actionLabel="GitHub" disabled onPress={() => undefined} />
-      : <SettingsSelect<"default" | MergeMethod> label="Merge method" disabled={busy || !row.github}
+      ? <SettingsAction label={tr("Merge method")} hint={tr("This repository merges through a merge queue, which picks the method.")} actionLabel="GitHub" disabled onPress={() => undefined} />
+      : <SettingsSelect<"default" | MergeMethod> label={tr("Merge method")} disabled={busy || !row.github}
         hint={!row.github ? "Shows after Follow-up reads a PR here." : `This repository allows ${listMethods(methods)}.`}
         value={row.mergeMethod && methods.includes(row.mergeMethod) ? row.mergeMethod : "default"}
         options={[{ value: "default", label: preferred ? `Default · ${MERGE_METHOD_SHORT[preferred]}` : "Repository default" }, ...methods.map(m => ({ value: m, label: MERGE_METHOD_LABELS[m] }))]}
         onValueChange={value => set({ mergeMethod: value === "default" ? null : value }, value === "default" ? "GitHub's default merge method" : MERGE_METHOD_LABELS[value])} />}</View>}
     <View style={{ zIndex: 2 }}>{rule}<ReviewModeRow repo={row.repo} value={row.review} theme={theme} compact={compact} busy={busy}
       onChange={mode => set({ review: mode === "team" ? null : mode }, mode === "none" ? `no review. ${REVIEW_MODE_LABELS.none.hint}` : `team review. ${REVIEW_MODE_LABELS.team.hint}`)} /></View>
-    <View>{rule}<ReviewFixSelect label="Review comments" value={row.reviewFix} inherited={view.reviewFix} theme={theme} compact={compact} busy={busy}
+    <View>{rule}<ReviewFixSelect label={tr("Review comments")} value={row.reviewFix} inherited={view.reviewFix} theme={theme} compact={compact} busy={busy}
       onSave={fix => set({ reviewFix: fix }, fix ? `review comments: ${reviewFixLabel(fix)}` : "review comments back to the default")} /></View>
     <View>{rule}<DeployCheckRow deploy={row.deploy} theme={theme} compact={compact} /></View>
   </View>;
@@ -122,7 +123,7 @@ function DeployCheckRow({ deploy, theme, compact }: { deploy: RepoWorkflowView["
   const c = theme.colors; const t = text(c, compact);
   const narrow = useWindowDimensions().width < 600;
   const services = deploy ? `${deploy.roles.length} Cloud Run service${deploy.roles.length === 1 ? "" : "s"}` : "";
-  return <SettingsRow label="Deploy check" hint={deploy
+  return <SettingsRow label={tr("Deploy check")} hint={deploy
     ? `Merged PRs show Deployed once the ${services} in ${deploy.gcpProject} serve them.`
     : "Merged PRs stay Merged. An agent sets it up with set_pr_workflow."}>
     {/* Narrow: too wide to sit beside the hint, so the row wraps it to its own line, where the other rows put their control. */}
@@ -153,14 +154,14 @@ function ReviewFixSelect({ label, value, inherited, theme, compact, busy, onSave
       onValueChange={next => { if (next === "command") { setEditing(true); return; } setEditing(false); onSave(next === "inherit" ? null : { kind: "builtin" }); }} />
     {/* Phones: the field gets the full width and Save / Cancel split the row under it. */}
     {editing && <SubmitScope enabled={valid && !busy} onSubmit={() => { onSave({ kind: "command", command: draft.trim() }); setEditing(false); }} style={compact ? { gap: 8, paddingHorizontal: 16, paddingBottom: 12 } : { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingBottom: 12 }}>
-      <TextInput accessibilityLabel="Skill or command for review comments" value={draft} onChangeText={setDraft} placeholder="/fix-pr" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} autoFocus
+      <TextInput accessibilityLabel={tr("Skill or command for review comments")} value={draft} onChangeText={setDraft} placeholder="/fix-pr" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} autoFocus
         style={{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: draft && !valid ? c.statusDanger : c.border, color: c.foreground, fontSize: compact ? 15 : 13, backgroundColor: c.surface0, fontFamily: "monospace", ...(compact ? { flex: undefined } : {}) }} />
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title="Save" disabled={!valid || busy} onPress={() => { onSave({ kind: "command", command: draft.trim() }); setEditing(false); }} />
-        <Button theme={theme} compact={compact} grow={compact} kind={compact ? "secondary" : "ghost"} title="Cancel" onPress={() => setEditing(false)} />
+        <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title={tr("Save")} disabled={!valid || busy} onPress={() => { onSave({ kind: "command", command: draft.trim() }); setEditing(false); }} />
+        <Button theme={theme} compact={compact} grow={compact} kind={compact ? "secondary" : "ghost"} title={tr("Cancel")} onPress={() => setEditing(false)} />
       </View>
     </SubmitScope>}
-    {editing && draft !== "" && !valid && <Text style={[t.meta, { color: c.statusDanger, paddingHorizontal: compact ? 16 : 14, paddingBottom: 10 }]}>Use a name like /fix-pr: letters, digits, dashes, dots or colons.</Text>}
+    {editing && draft !== "" && !valid && <Text style={[t.meta, { color: c.statusDanger, paddingHorizontal: compact ? 16 : 14, paddingBottom: 10 }]}>{tr("Use a name like /fix-pr: letters, digits, dashes, dots or colons.")}</Text>}
   </View>;
 }
 
@@ -177,11 +178,11 @@ export function ShippingStep({ theme, compact }: { theme: Theme; compact: boolea
     onSuccess: v => cache.setQueryData(shippingKey, v),
     onError: e => toast.error(errorText(e)),
   });
-  const later = <Text style={t.meta}>Change this later in Settings → Following → Shipping PRs.</Text>;
-  if (query.isPending) return <ActivityIndicator accessibilityLabel="Checking how your repositories ship PRs" color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} />;
+  const later = <Text style={t.meta}>{tr("Change this later in Settings → Following → Shipping PRs.")}</Text>;
+  if (query.isPending) return <ActivityIndicator accessibilityLabel={tr("Checking how your repositories ship PRs")} color={c.foregroundMuted} style={{ alignSelf: "flex-start" }} />;
   if (query.error) return <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{errorText(query.error)}</Text>;
   const data = query.data!;
-  if (!data.repos.length) return <View style={{ gap: 10 }}><Text style={t.body}>Follow-up works this out per repository when it sees the first PR.</Text>{later}</View>;
+  if (!data.repos.length) return <View style={{ gap: 10 }}><Text style={t.body}>{tr("Follow-up works this out per repository when it sees the first PR.")}</Text>{later}</View>;
   const warning = signInWarning(data);
   // Graphite repositories first: they're the ones worth a look.
   const rows = [...data.repos].sort((a, b) => Number(b.effective === "graphite") - Number(a.effective === "graphite"));
@@ -196,7 +197,7 @@ export function ShippingStep({ theme, compact }: { theme: Theme; compact: boolea
         options={PR_WORKFLOWS.map(w => ({ value: w, label: PR_WORKFLOW_LABELS[w].label }))}
         onValueChange={value => change.mutate({ default: value })} />
     </SettingsCard>
-    <Disclosure id="setup.shipping.repos" title="Show repositories" summary={`${rows.length} on GitHub`} defaultOpen={false} theme={theme} compact={compact}>
+    <Disclosure id="setup.shipping.repos" title={tr("Show repositories")} summary={`${rows.length} on GitHub`} defaultOpen={false} theme={theme} compact={compact}>
       {rows.map((r, i) => <View key={r.repo} style={{ borderTopWidth: i ? 1 : 0, borderTopColor: c.border }}>{row(r)}</View>)}
     </Disclosure>
     {later}

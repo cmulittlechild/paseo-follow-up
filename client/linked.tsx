@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, View, type TextInput as NativeTextInput } from "react-native";
 import { Pressable, Text } from "./text";
@@ -128,7 +129,7 @@ export function LinkedItemsRow({ workspace: w, theme, compact }: { workspace: Wo
   return <CardRow theme={theme} compact={compact}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <View style={{ flex: 1, minWidth: 160, gap: 2 }}>
-        <Text style={t.label}>Linked items</Text>
+        <Text style={t.label}>{tr("Linked items")}</Text>
         <Text numberOfLines={2} style={t.meta}>{line}</Text>
       </View>
       <Button theme={theme} compact={compact} icon={model ? "List" : "Plus"} title={model ? "Open" : "Add"}
@@ -186,16 +187,16 @@ export function LinkedSheet({ workspace: w, theme, compact, open, onClose, onEdi
   const gutter = sp.gutter + (compact ? 0 : 8);
   const quiet = { color: c.foregroundMuted, fontSize: 12, lineHeight: 17, fontWeight: "600" as const, fontVariant: ["tabular-nums" as const] };
 
-  return <Modal title="Linked" icon={<Icon name="Link" size={18} color={c.foregroundMuted} />} open={open} onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={tr("Linked")} icon={<Icon name="Link" size={18} color={c.foregroundMuted} />} open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ paddingHorizontal: 0, paddingTop: compact ? 4 : 8, paddingBottom: compact ? 16 : 20, gap: 0 }}>
       <View style={{ paddingHorizontal: gutter, paddingBottom: 10, gap: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 34, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1,
           borderColor: error ? c.statusDanger : focused ? c.foregroundMuted : c.border, backgroundColor: c.surface1 }}>
           <Icon name="Search" size={compact ? 16 : 14} color={c.foregroundMuted} />
-          <TextInput ref={field} accessibilityLabel="Filter, or paste a link or key" placeholder="Filter, or paste a link or key" placeholderTextColor={c.foregroundMuted}
+          <TextInput ref={field} accessibilityLabel={tr("Filter, or paste a link or key")} placeholder={tr("Filter, or paste a link or key")} placeholderTextColor={c.foregroundMuted}
             value={filter} onChangeText={v => { setFilter(v); setError(null); setNote(null); }} onSubmitEditing={add} blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} autoCapitalize="none" autoCorrect={false} returnKeyType={paste?.action === "add" ? "done" : "search"}
             style={[t.body, { flex: 1, minWidth: 0, paddingVertical: 6, ...(Platform.OS === "web" ? { outlineStyle: "none" } as object : null) }]} />
-          {!!filter && <IconButton theme={theme} compact={compact} icon="X" label="Clear" onPress={() => { setFilter(""); setError(null); field.current?.focus(); }} />}
+          {!!filter && <IconButton theme={theme} compact={compact} icon="X" label={tr("Clear")} onPress={() => { setFilter(""); setError(null); field.current?.focus(); }} />}
         </View>
         {error && <Text accessibilityRole="alert" style={[t.meta, { color: c.statusDanger }]}>{error}</Text>}
         {note && <Text accessibilityLiveRegion="polite" style={t.meta}>{note}</Text>}
@@ -206,7 +207,7 @@ export function LinkedSheet({ workspace: w, theme, compact, open, onClose, onEdi
       {removed && <View accessibilityLiveRegion="polite" {...({ onMouseEnter: () => setHoldUndo(true), onMouseLeave: () => setHoldUndo(false), onFocus: () => setHoldUndo(true), onBlur: () => setHoldUndo(false) } as object)} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: gutter, marginBottom: 10, paddingLeft: 12, paddingRight: 4, paddingVertical: 4,
         borderRadius: 8, backgroundColor: c.surface2 }}>
         <Text numberOfLines={1} style={[t.meta, { flex: 1, color: c.foreground }]}>Removed {removed.label}</Text>
-        <Button theme={theme} compact={compact} kind="ghost" icon="Undo2" title="Undo" accessibilityLabel={`Undo: link ${removed.label} again`} disabled={run.isPending}
+        <Button theme={theme} compact={compact} kind="ghost" icon="Undo2" title={tr("Undo")} accessibilityLabel={`Undo: link ${removed.label} again`} disabled={run.isPending}
           onPress={() => run.mutate({ action: "undo", ref: removed.key, label: removed.label })} />
       </View>}
       {paste?.action === "add" && <Pressable accessibilityRole="button" accessibilityLabel={`Add ${paste.label}`} accessibilityHint="Adds it to this workspace's linked items" disabled={run.isPending} onPress={add}
@@ -220,7 +221,7 @@ export function LinkedSheet({ workspace: w, theme, compact, open, onClose, onEdi
       </Pressable>}
       {paste?.action === "refuse" && <Text accessibilityRole="alert" style={[t.meta, { paddingHorizontal: gutter, paddingBottom: 8 }]}>{paste.message}</Text>}
 
-      {query.isPending ? <View accessibilityLabel="Loading linked items" style={{ paddingHorizontal: gutter, paddingTop: 12, gap: 18 }}>
+      {query.isPending ? <View accessibilityLabel={tr("Loading linked items")} style={{ paddingHorizontal: gutter, paddingTop: 12, gap: 18 }}>
         {[0, 1, 2].map(i => <View key={i} style={{ flexDirection: "row", gap: 12 }}>
           <Skeleton width={14} height={14} radius={7} color={c.surface2} />
           <View style={{ flex: 1, gap: 7 }}><Skeleton width={i === 1 ? "62%" : "78%"} height={10} color={c.surface2} /><Skeleton width="44%" height={8} color={c.surface2} /></View>
@@ -300,9 +301,9 @@ function LinkedRow({ item: i, mainAgentId, theme, compact, gutter, menuOpen, onM
       </View>
     </View>
     {menuOpen && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingLeft: gutter + 28, paddingRight: gutter, paddingBottom: 10 }}>
-      {url && <Button theme={theme} compact={compact} icon="Copy" title="Copy link" onPress={() => { void copyText(url).then(() => toast.show("Link copied"), () => toast.error("Couldn't copy the link")); onMenu(); }} />}
-      {r.spec ? <Button theme={theme} compact={compact} icon="Pencil" title="Edit spec link…" onPress={onEditSpec} />
-        : <Button theme={theme} compact={compact} kind="danger" icon="Trash2" title="Remove" accessibilityLabel={`Remove ${r.label}`} onPress={() => onRemove(r.label)} />}
+      {url && <Button theme={theme} compact={compact} icon="Copy" title={tr("Copy link")} onPress={() => { void copyText(url).then(() => toast.show("Link copied"), () => toast.error("Couldn't copy the link")); onMenu(); }} />}
+      {r.spec ? <Button theme={theme} compact={compact} icon="Pencil" title={tr("Edit spec link…")} onPress={onEditSpec} />
+        : <Button theme={theme} compact={compact} kind="danger" icon="Trash2" title={tr("Remove")} accessibilityLabel={`Remove ${r.label}`} onPress={() => onRemove(r.label)} />}
     </View>}
   </View>;
 }

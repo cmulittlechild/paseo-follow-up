@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { PriorityLine } from "./home-chrome";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, View, useWindowDimensions, type ViewStyle } from "react-native";
@@ -120,7 +121,7 @@ function SourceCard({ plan, c, compact, images = 0 }: { plan: DispatchPlan; c: C
     </View>
     <Text accessibilityRole="header" numberOfLines={3} style={{ color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: compact ? 22 : 21, fontWeight: "600" }}>{s.kind === "text" ? s.body || s.title : s.title}</Text>
     {!!body && <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{body}</Text>}
-    {!s.read && s.kind === "linear" && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Linear couldn't be read: the agent gets the key and link and reads it itself.</Text>}
+    {!s.read && s.kind === "linear" && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("Linear couldn't be read: the agent gets the key and link and reads it itself.")}</Text>}
   </View>;
 }
 
@@ -151,7 +152,7 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
       <Icon name="ExternalLink" size={16} color={c.foreground} />
       <View style={{ flex: 1 }}>
         <Text style={{ color: c.foreground, fontSize: 13, fontWeight: "600" }}>{plan.source.key ?? "This"} already has a workspace: {plan.existing.title}</Text>
-        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Open it to carry on there, or start another workspace below.</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("Open it to carry on there, or start another workspace below.")}</Text>
       </View>
     </View>}
     {ambiguous ? <View style={{ gap: 8, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: withAlpha(c.statusWarning, 0.5), backgroundColor: tint(c.statusWarning, c) }}>
@@ -159,38 +160,38 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
       {!!noteLine && <Text style={{ color: c.foreground, fontSize: 12 }}>{noteLine}</Text>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {plan.where.candidates.slice(0, CHOICES_SHOWN).map(p => <Chip key={p.id} c={c} compact={compact} icon="Folder" choice label={p.name} tag={p.lastUsed ? "last used" : undefined} accessibilityLabel={`Start in ${p.name}`} onPress={() => set({ projectId: p.id })} />)}
-        {plan.where.candidates.length > CHOICES_SHOWN && <Chip c={c} compact={compact} label="Other…" open={open === "project"} accessibilityLabel="Another project" onPress={() => { loadProjects(); toggle("project"); }} />}
+        {plan.where.candidates.length > CHOICES_SHOWN && <Chip c={c} compact={compact} label={tr("Other…")} open={open === "project"} accessibilityLabel={tr("Another project")} onPress={() => { loadProjects(); toggle("project"); }} />}
       </View>
     </View>
-      : <Field c={c} compact={compact} label="Project" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
+      : <Field c={c} compact={compact} label={tr("Project")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.where.guess ? "Guess: last used project" : plan.where.how === "picked" && plan.source.team ? `Saved for ${plan.source.team} · change it in Settings → ${NEW_WORK}` : plan.where.reason}</Text>}>
         <Chip c={c} compact={compact} icon="Folder" label={plan.where.projectName ?? "Pick"} dashed={plan.where.guess} open={open === "project"} accessibilityLabel={`Project: ${plan.where.projectName}. Change`} onPress={() => { loadProjects(); toggle("project"); }} />
       </Field>}
     {open === "project" && <Choices c={c} compact={compact} items={candidates} onPick={id => { set({ projectId: id }); setOpen(null); }} />}
-    {ambiguous ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>From, branch and agent fill in once you pick a project.</Text> : <View style={{ gap: compact ? 16 : 14 }}>
-      {plan.base && <Field c={c} compact={compact} label="From" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.base.reason}</Text>}>
-        {open === "base" ? <EditLine c={c} compact={compact} label="Base branch" value={plan.base.name} onDone={v => { setOpen(null); if (v && v !== plan.base?.name) { set({ base: v }); if (plan.where.projectId) saveBase(plan.where.projectId, v); } }} />
+    {ambiguous ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>{tr("From, branch and agent fill in once you pick a project.")}</Text> : <View style={{ gap: compact ? 16 : 14 }}>
+      {plan.base && <Field c={c} compact={compact} label={tr("From")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.base.reason}</Text>}>
+        {open === "base" ? <EditLine c={c} compact={compact} label={tr("Base branch")} value={plan.base.name} onDone={v => { setOpen(null); if (v && v !== plan.base?.name) { set({ base: v }); if (plan.where.projectId) saveBase(plan.where.projectId, v); } }} />
           : <Chip c={c} compact={compact} label={plan.base.name} icon="GitBranch" accessibilityLabel={`Base branch ${plan.base.name}. Change`} onPress={() => toggle("base")} />}
       </Field>}
-      {!pr && <Field c={c} compact={compact} label="Workspace">
-        <Chip c={c} compact={compact} icon={plan.workspace === "local" ? "Folder" : "GitFork"} label={plan.workspace === "local" ? "Project directory" : "New worktree"} open={open === "workspace"} accessibilityLabel="Workspace. Change" onPress={() => toggle("workspace")} />
+      {!pr && <Field c={c} compact={compact} label={tr("Workspace")}>
+        <Chip c={c} compact={compact} icon={plan.workspace === "local" ? "Folder" : "GitFork"} label={plan.workspace === "local" ? "Project directory" : "New worktree"} open={open === "workspace"} accessibilityLabel={tr("Workspace. Change")} onPress={() => toggle("workspace")} />
       </Field>}
       {open === "workspace" && <Choices c={c} compact={compact} items={[{ id: "worktree" as const, label: "New worktree", hint: "its own branch and folder", on: plan.workspace === "worktree" }, { id: "local" as const, label: "Project directory", hint: "work in the checkout itself", on: plan.workspace === "local" }]} onPick={id => { set({ workspace: id }); setOpen(null); }} />}
-      {plan.branch && <Field c={c} compact={compact} label="Branch">
-        {open === "branch" ? <EditLine c={c} compact={compact} mono label="Branch" value={plan.branch} onDone={v => { setOpen(null); if (v && v !== plan.branch) set({ branch: v }); }} />
+      {plan.branch && <Field c={c} compact={compact} label={tr("Branch")}>
+        {open === "branch" ? <EditLine c={c} compact={compact} mono label={tr("Branch")} value={plan.branch} onDone={v => { setOpen(null); if (v && v !== plan.branch) set({ branch: v }); }} />
           : <Pressable accessibilityRole="button" accessibilityLabel={`Branch ${plan.branch}. Edit`} onPress={() => toggle("branch")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 30, flexShrink: 1 }}>
             <Text numberOfLines={1} style={{ color: c.foreground, fontFamily: MONO, fontSize: 12, flexShrink: 1 }}>{plan.branch}</Text><Icon name="Pencil" size={13} color={c.foregroundMuted} />
           </Pressable>}
       </Field>}
-      <Field c={c} compact={compact} label="Title">
-        {open === "title" ? <EditLine c={c} compact={compact} label="Title" value={plan.title} onDone={v => { setOpen(null); if (v && v !== plan.title) set({ title: v }); }} />
+      <Field c={c} compact={compact} label={tr("Title")}>
+        {open === "title" ? <EditLine c={c} compact={compact} label={tr("Title")} value={plan.title} onDone={v => { setOpen(null); if (v && v !== plan.title) set({ title: v }); }} />
           : <Pressable accessibilityRole="button" accessibilityLabel={`Title ${plan.title}. Edit`} onPress={() => toggle("title")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 44 : 30, flexShrink: 1 }}>
             <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 14 : 13, flexShrink: 1 }}>{plan.title}</Text><Icon name="Pencil" size={13} color={c.foregroundMuted} />
           </Pressable>}
       </Field>
-      <Field c={c} compact={compact} label="Agent" reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.agentPick.isDefault ? "Follow-up's default" : "For this one"}</Text>}>
+      <Field c={c} compact={compact} label={tr("Agent")} reason={<Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{plan.agentPick.isDefault ? "Follow-up's default" : "For this one"}</Text>}>
         <Chip c={c} compact={compact} icon="Bot" label={agentText(plan)} open={open === "agent"} accessibilityLabel={`Agent ${agentText(plan)}. Change`} onPress={() => { loadCatalog(); toggle("agent"); }} />
       </Field>
-      {open === "agent" && (!catalog ? <View style={{ padding: 10 }}><Spinner color={c.foregroundMuted} size={14} label="Loading agents" /></View> : <View style={{ gap: 6 }}>
+      {open === "agent" && (!catalog ? <View style={{ padding: 10 }}><Spinner color={c.foregroundMuted} size={14} label={tr("Loading agents")} /></View> : <View style={{ gap: 6 }}>
         <Choices c={c} compact={compact} items={catalog.providers.filter(p => p.available).map(p => ({ id: p.id, label: p.label, on: p.id === provider?.id }))} onPick={id => set({ agent: { provider: id } })} />
         {provider && provider.models.length > 0 && <Choices c={c} compact={compact} items={provider.models.map(m => ({ id: m.id, label: m.label, on: m.id === (overrides.agent?.model ?? plan.agentPick.picked?.model) }))} onPick={id => set({ agent: { ...overrides.agent, provider: provider.id, model: id } })} />}
         {provider && provider.modes.length > 0 && <Choices c={c} compact={compact} items={provider.modes.map(m => ({ id: m.id, label: m.label, on: m.id === (overrides.agent?.mode ?? plan.agentPick.picked?.mode) }))} onPick={id => { set({ agent: { ...overrides.agent, provider: provider.id, mode: id } }); setOpen(null); }} />}
@@ -207,13 +208,13 @@ function Preview({ plan, overrides, setOverrides, c, compact, busy, catalog, loa
         <ScrollView style={{ maxHeight: compact ? 320 : 280 }} nestedScrollEnabled>
           <Text selectable style={{ color: c.foreground, fontSize: 12, lineHeight: 18, fontFamily: MONO }}>{plan.instructions}</Text>
         </ScrollView>
-        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Follow-up then adds its usual workspace instructions.</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("Follow-up then adds its usual workspace instructions.")}</Text>
       </View>}
-      {open === "note" || overrides.note ? <ImageField model={img} theme={{ colors: c }} compact={compact} row={compact}><TextInput multiline autoFocus={open === "note"} value={overrides.note ?? ""} onChangeText={note => set({ note })} placeholder="A note for the agent" placeholderTextColor={c.foregroundMuted} accessibilityLabel="Note for the agent"
+      {open === "note" || overrides.note ? <ImageField model={img} theme={{ colors: c }} compact={compact} row={compact}><TextInput multiline autoFocus={open === "note"} value={overrides.note ?? ""} onChangeText={note => set({ note })} placeholder={tr("A note for the agent")} placeholderTextColor={c.foregroundMuted} accessibilityLabel={tr("Note for the agent")}
         style={{ minHeight: 64, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, color: c.foreground, backgroundColor: c.surface0, fontSize: 13, textAlignVertical: "top" }} /></ImageField>
-        : <Pressable accessibilityRole="button" accessibilityLabel="Add a note for the agent" onPress={() => setOpen("note")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}>
+        : <Pressable accessibilityRole="button" accessibilityLabel={tr("Add a note for the agent")} onPress={() => setOpen("note")} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}>
           <Icon name="Plus" size={15} color={c.foregroundMuted} />
-          <Text style={{ color: c.foreground, fontSize: compact ? 14 : 13 }}>Add a note for the agent</Text>
+          <Text style={{ color: c.foreground, fontSize: compact ? 14 : 13 }}>{tr("Add a note for the agent")}</Text>
           {!compact && <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>goes after the action's instructions</Text>}
         </Pressable>}
     </View>}
@@ -273,7 +274,7 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
   if (row.kind === "words") return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Start from your words: ${row.title}`} onPress={onPress} style={base}>
     <Icon name="Type" size={15} color={c.foregroundMuted} />
     <View style={{ flex: 1, minWidth: 0 }}>
-      <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 15 : 13 }}>Start from your words</Text>
+      <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 15 : 13 }}>{tr("Start from your words")}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{row.title}</Text>
     </View>
     {chevron && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
@@ -282,7 +283,7 @@ function ListRow({ row, selected, c, compact, onPress, chevron }: { row: NewRow;
     <Icon name={row.icon} size={15} color={c.foregroundMuted} />
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text numberOfLines={1} style={{ color: c.foreground, fontSize: compact ? 15 : 13 }}>{row.title}</Text>
-      <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>Pasted</Text>
+      <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("Pasted")}</Text>
     </View>
     {chevron && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
   </Pressable>;
@@ -340,8 +341,8 @@ function TaskField({ query, setQuery, img, c, compact }: { query: string; setQue
   }, [query, compact]); // eslint-disable-line react-hooks/exhaustive-deps
   return <ImageField model={img} theme={{ colors: c }} compact={compact} attach="inline">
     <View style={{ borderWidth: focused ? 2 : 1, borderColor: focused ? c.accent : c.border, borderRadius: 10, padding: focused ? 0 : 1, backgroundColor: c.surface0 }}>
-      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder="Describe the task, or paste a link" placeholderTextColor={c.foregroundMuted}
-        accessibilityLabel="Task" accessibilityHint={FIELD_HINT.desktop} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+      <TextInput ref={input as never} nativeID="follow-up-new-field" value={query} onChangeText={setQuery} autoFocus={!compact} multiline placeholder={tr("Describe the task, or paste a link")} placeholderTextColor={c.foregroundMuted}
+        accessibilityLabel={tr("Task")} accessibilityHint={FIELD_HINT.desktop} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         onContentSizeChange={e => { if (Platform.OS !== "web") fit(e.nativeEvent.contentSize.height + 16); }}
         style={{ height, color: c.foreground, fontSize: compact ? 16 : 15, lineHeight: 22, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, textAlignVertical: "top", ...(Platform.OS === "web" ? { outlineStyle: "none", resize: "none" } as object : {}) }} />
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, paddingHorizontal: 6, paddingBottom: 6, minHeight: compact ? 44 : 32 }}>
@@ -349,7 +350,7 @@ function TaskField({ query, setQuery, img, c, compact }: { query: string; setQue
         {/* After ⌘V, the field's own paste hint, so the chip never reads as this button's key. */}
         {!compact && !query && <Kbd c={c} label={isMac() ? "⌘V" : "Ctrl V"} />}
         <AttachImageButton model={img} theme={{ colors: c }} compact={compact} />
-        {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
+        {!!query && <Pressable accessibilityRole="button" accessibilityLabel={tr("Clear")} onPress={() => setQuery("")} style={{ width: compact ? 44 : 32, height: compact ? 44 : 32, alignItems: "center", justifyContent: "center" }}><Icon name="X" size={14} color={c.foregroundMuted} /></Pressable>}
       </View>
     </View>
   </ImageField>;
@@ -369,28 +370,28 @@ function SourcesPane({ sources, rows, selected, query, setQuery, onRow, onRefres
     <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: compact ? 16 : 16, paddingVertical: 6, gap: 6 }}>
       <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{searching ? "Linear" : status === "missing" ? "Start from" : "My issues"}</Text>
       <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, flex: 1 }}>{searching ? `· “${searching}”` : status === "missing" ? "· a link or your words" : compact ? "· Linear" : "· Linear · in progress and todo"}</Text>
-      {status === "ok" && <Pressable accessibilityRole="button" accessibilityLabel="Read Linear again" hitSlop={8} onPress={onRefresh} style={{ width: compact ? 44 : 28, height: compact ? 44 : 28, alignItems: "center", justifyContent: "center" }}><Icon name="RefreshCw" size={14} color={c.foregroundMuted} /></Pressable>}
+      {status === "ok" && <Pressable accessibilityRole="button" accessibilityLabel={tr("Read Linear again")} hitSlop={8} onPress={onRefresh} style={{ width: compact ? 44 : 28, height: compact ? 44 : 28, alignItems: "center", justifyContent: "center" }}><Icon name="RefreshCw" size={14} color={c.foregroundMuted} /></Pressable>}
     </View>
-    {!sources && !error ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading your Linear issues" /></View>
+    {!sources && !error ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label={tr("Reading your Linear issues")} /></View>
       : <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: compact ? 0 : 8, paddingBottom: 12, gap: compact ? 0 : 2 }} keyboardShouldPersistTaps="handled">
         {(status === "error" || error) && <View accessibilityRole="alert" style={{ margin: compact ? 16 : 8, padding: 12, borderRadius: 8, backgroundColor: tint(c.statusWarning, c), gap: 8 }}>
-          <Text style={{ color: c.foreground, fontSize: 13, fontWeight: "600" }}>Couldn't read Linear</Text>
+          <Text style={{ color: c.foreground, fontSize: 13, fontWeight: "600" }}>{tr("Couldn't read Linear")}</Text>
           <Text style={{ color: c.foreground, fontSize: 12 }}>{error ?? (sources?.linear.status === "error" ? sources.linear.error : "")} Paste a key or link to start from it anyway.</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Read Linear again" onPress={onRefresh} style={(s: Hover & { focused?: boolean }) => ({ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, minHeight: compact ? 44 : 32, minWidth: 44, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: s.hovered ? c.surface1 : c.surface0, ...focusRing(c, s.focused) })}>
-            <Icon name="RefreshCw" size={14} color={c.foreground} /><Text style={{ color: c.foreground, fontSize: 13, fontWeight: "600" }}>Retry</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={tr("Read Linear again")} onPress={onRefresh} style={(s: Hover & { focused?: boolean }) => ({ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, minHeight: compact ? 44 : 32, minWidth: 44, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: s.hovered ? c.surface1 : c.surface0, ...focusRing(c, s.focused) })}>
+            <Icon name="RefreshCw" size={14} color={c.foreground} /><Text style={{ color: c.foreground, fontSize: 13, fontWeight: "600" }}>{tr("Retry")}</Text>
           </Pressable>
         </View>}
         {status === "missing" && !query && <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 6 }}>
-          <Text style={{ color: c.foreground, fontSize: 13 }}>Start from a link or your words: paste a GitHub issue or PR link, or describe the task.</Text>
-          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Your Linear issues show here once Linear is connected in mcpproxy, as for the Summary.</Text>
+          <Text style={{ color: c.foreground, fontSize: 13 }}>{tr("Start from a link or your words: paste a GitHub issue or PR link, or describe the task.")}</Text>
+          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{tr("Your Linear issues show here once Linear is connected in mcpproxy, as for the Summary.")}</Text>
         </View>}
         {!!empty && <Text style={{ color: c.foreground, fontSize: 13, paddingHorizontal: compact ? 16 : 12, paddingTop: 4, paddingBottom: 8 }}>{empty}</Text>}
         {rows.map((row, i) => <View key={row.id} style={compact && i ? { borderTopWidth: 1, borderTopColor: c.border, marginHorizontal: 16 } : undefined}>
           <View style={compact && i ? { marginHorizontal: -16 } : undefined}><ListRow row={row} selected={row.id === selected} c={c} compact={compact} chevron={chevrons} onPress={() => onRow(row)} /></View>
         </View>)}
-        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>No issues in progress or todo. Describe the task, or paste a link.</Text>}
+        {status === "ok" && !rows.length && !query && <Text style={{ color: c.foregroundMuted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 }}>{tr("No issues in progress or todo. Describe the task, or paste a link.")}</Text>}
         {!!sources?.recent.length && !query && <View style={{ paddingHorizontal: compact ? 16 : 8, paddingTop: 14, gap: 4 }}>
-          <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>Started from here</Text>
+          <Text style={{ color: c.foregroundMuted, fontSize: compact ? 13 : 11, fontWeight: "600", letterSpacing: compact ? 0 : 0.5, textTransform: compact ? "none" : "uppercase" }}>{tr("Started from here")}</Text>
           {sources.recent.map(r => <Text key={r.id} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{r.title} · {r.actionName} · {r.state === "created" ? "started" : r.state}</Text>)}
         </View>}
       </ScrollView>}
@@ -588,7 +589,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
 
   const right = phase.kind === "record" && record ? <RecordPane record={record} c={c} compact={compact} now={now} />
     : planNow ? <Preview plan={planNow} overrides={overrides} setOverrides={setOverrides} c={c} compact={compact} busy={busy} catalog={catalog} loadCatalog={loadCatalog} projects={projects} loadProjects={loadProjects} saveBase={saveBase} instructions={instructions} setInstructions={setInstructions} reopen={reopen} img={img} />
-    : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label="Reading the source" /></View>
+    : source ? <View style={{ padding: 16 }}><Spinner color={c.foregroundMuted} size={14} label={tr("Reading the source")} /></View>
     : row?.kind === "fold" ? <TakenPane row={row} rows={rows} c={c} />
     : <View style={{ padding: 24, gap: 6 }}>
       <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Pick an issue or write the task above. What will start shows here first: the project, branch, agent and the agent's first message.</Text>
@@ -610,7 +611,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
       {/* Paseo's own header (with its back) sits above: this row is slim, and its one back arrow only ever means
           "back to the list" (the preview screen); × closes New. */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingLeft: onPreview && phase.kind === "edit" ? 6 : 16, paddingRight: 6, minHeight: 48, borderBottomWidth: 1, borderBottomColor: c.border }}>
-        {onPreview && phase.kind === "edit" && <Pressable accessibilityRole="button" accessibilityLabel="Back to the list" onPress={() => setScreen("list")} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
+        {onPreview && phase.kind === "edit" && <Pressable accessibilityRole="button" accessibilityLabel={tr("Back to the list")} onPress={() => setScreen("list")} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
           <Icon name="ChevronLeft" size={22} color={c.foreground} />
         </Pressable>}
         <Text accessibilityRole="header" numberOfLines={1} style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{onPreview && planNow?.source.key ? planNow.source.key : NEW_NAME}</Text>
@@ -636,7 +637,7 @@ export function NewDialog({ request, theme, layout, navigation, onClose, openSet
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 20, paddingRight: 10, height: 52, borderBottomWidth: 1, borderBottomColor: c.border }}>
       <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 16, fontWeight: "600", flex: 1 }}>{NEW_NAME}</Text>
       {openSettings && <Pressable accessibilityRole="button" accessibilityLabel={`${NEW_OF} actions in Settings`} onPress={openSettings} style={(s: Hover) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 32, borderRadius: 6, backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
-        <Icon name="Settings" size={15} color={c.foregroundMuted} /><Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Actions</Text>
+        <Icon name="Settings" size={15} color={c.foregroundMuted} /><Text style={{ color: c.foregroundMuted, fontSize: 13 }}>{tr("Actions")}</Text>
       </Pressable>}
       <Pressable accessibilityRole="button" accessibilityLabel={`Close ${NEW_NAME}`} onPress={onClose} style={(s: Hover) => ({ width: 32, height: 32, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent" })}>
         <Icon name="X" size={17} color={c.foregroundMuted} />
@@ -712,17 +713,17 @@ export function DispatchRows({ records, theme, compact, navigation }: { records:
       const again = l.tone === "failed" ? r.source.key ?? r.source.url ?? r.source.title : null;
       const onRow = again ? () => openNew({ source: again }) : r.workspaceId && navigation ? () => navigation.openWorkspace({ workspaceId: r.workspaceId! }) : undefined;
       return <View key={r.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 56 : 40 }}>
-        {l.tone === "busy" ? <Spinner color={c.foregroundMuted} size={13} label="Starting" /> : <Icon name={l.tone === "failed" ? "TriangleAlert" : "CircleCheck"} size={15} color={color} />}
+        {l.tone === "busy" ? <Spinner color={c.foregroundMuted} size={13} label={tr("Starting")} /> : <Icon name={l.tone === "failed" ? "TriangleAlert" : "CircleCheck"} size={15} color={color} />}
         <Pressable accessibilityRole="button" accessibilityLabel={`${l.title}. ${l.line}${again ? ". Try again" : ""}`} disabled={!onRow} onPress={onRow}
           style={(s: Hover & { focused?: boolean }) => ({ flex: 1, minWidth: 0, minHeight: compact ? 44 : 32, justifyContent: "center", paddingVertical: 4, borderRadius: 6, backgroundColor: s.hovered && onRow ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
           <Text numberOfLines={1} style={{ color: c.foreground, fontSize: 13 }}>{l.title}</Text>
           <Text numberOfLines={2} style={{ color: c.foregroundMuted, fontSize: 12 }}>{l.line}</Text>
         </Pressable>
         {again && <Pressable accessibilityRole="button" accessibilityLabel={`Try ${r.title} again`} onPress={() => openNew({ source: again })} style={(s: Hover & { focused?: boolean }) => ({ paddingHorizontal: 10, minHeight: compact ? 44 : 28, minWidth: 44, borderRadius: 6, justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
-          <Text style={{ color: c.foreground, fontSize: 12, fontWeight: "600" }}>Try again</Text>
+          <Text style={{ color: c.foreground, fontSize: 12, fontWeight: "600" }}>{tr("Try again")}</Text>
         </Pressable>}
         {l.undo && <Pressable accessibilityRole="button" accessibilityLabel={`Undo ${r.title}`} onPress={() => void undo(r)} style={(s: Hover & { focused?: boolean }) => ({ paddingHorizontal: 10, minHeight: compact ? 44 : 28, minWidth: 44, borderRadius: 6, justifyContent: "center", backgroundColor: s.hovered ? c.surface1 : "transparent", ...focusRing(c, s.focused) })}>
-          <Text style={{ color: c.foreground, fontSize: 12, fontWeight: "600" }}>Undo</Text>
+          <Text style={{ color: c.foreground, fontSize: 12, fontWeight: "600" }}>{tr("Undo")}</Text>
         </Pressable>}
       </View>;
     })}

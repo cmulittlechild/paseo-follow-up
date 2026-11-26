@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -74,7 +75,7 @@ export function ReviewModeRow({ repo, value, theme, compact, busy, onChange }: {
   const c = theme.colors;
   const [open, setOpen] = useState(false);
   return <View style={{ zIndex: open ? 30 : undefined }}>
-    <SettingsRow label="Review" hint={REVIEW_MODE_LABELS[value].hint}>
+    <SettingsRow label={tr("Review")} hint={REVIEW_MODE_LABELS[value].hint}>
       <View style={{ position: "relative", alignSelf: compact ? "stretch" : "flex-end" }}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Review for ${repo}: ${REVIEW_MODE_LABELS[value].label}`} aria-expanded={open} accessibilityState={{ expanded: open, disabled: busy }} disabled={busy}
           onPress={() => setOpen(o => !o)} hitSlop={compact ? 0 : 4}

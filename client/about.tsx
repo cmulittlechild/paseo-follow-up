@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, View } from "react-native";
 import { Text } from "./text";
@@ -87,7 +88,7 @@ export function SummaryRow({ workspaceId, theme, compact }: { workspaceId: strin
   const action = busy ? "Rewriting…" : d.failed ? "Try again" : d.sentence ? "Rewrite" : "Write summary";
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: compact ? 48 : 36 }}>
     <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-      <Text style={t.label}>Summary</Text>
+      <Text style={t.label}>{tr("Summary")}</Text>
       <Text numberOfLines={1} accessibilityRole={d.failed || query.error ? "alert" : undefined} style={t.meta}
         {...(Platform.OS === "web" && d.footer ? { title: d.footer } as object : {})}>{line}</Text>
     </View>

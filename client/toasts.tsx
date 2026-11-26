@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppRegistry, Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -175,7 +176,7 @@ function ToastView({ item, theme, compact }: { item: ToastItem; theme: Theme; co
         style={(s: { pressed: boolean; hovered?: boolean }) => ({ minHeight: compact ? 36 : 20, paddingHorizontal: compact ? 4 : 8, borderRadius: 8, justifyContent: "center", backgroundColor: s.pressed || s.hovered ? c.surface2 : "transparent" })}>
         <Text style={{ color: c.foreground, fontSize: 13, lineHeight: 18, fontWeight: "600" }}>{a.label}</Text>
       </Pressable>)}
-      {item.sticky && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={compact ? 10 : 6} onPress={() => dismissToast(item.id)}
+      {item.sticky && <Pressable accessibilityRole="button" accessibilityLabel={tr("Dismiss")} hitSlop={compact ? 10 : 6} onPress={() => dismissToast(item.id)}
         style={(s: { pressed: boolean; hovered?: boolean }) => ({ padding: compact ? 6 : 4, minWidth: compact ? 28 : 24, minHeight: compact ? 28 : 24, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: s.pressed || s.hovered ? c.surface2 : "transparent" })}>
         <Icon name="X" size={14} color={c.foregroundMuted} />
       </Pressable>}

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import * as PluginClient from "@getpaseo/plugin/client";
@@ -65,22 +66,22 @@ export function StatsPage({ theme, compact, params, deps }: { theme: Theme; comp
   const openPerson = (login: string) => compact ? deps.openStats({ repo: shown ?? undefined, period, person: login, sort }) : setSheet(login);
 
   const header = <View style={{ gap: 6 }}>
-    {!compact && <Button theme={theme} kind="ghost" icon="House" title="Home" onPress={deps.onHome} />}
+    {!compact && <Button theme={theme} kind="ghost" icon="House" title={tr("Home")} onPress={deps.onHome} />}
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text accessibilityRole="header" numberOfLines={1} style={t.headline}>{person ? person : "PR stats"}</Text>
         {person && out?.repo && <Text style={t.meta}>{`${out.repo} · ${PERIOD_LABELS[period]}`}</Text>}
       </View>
-      {out?.model && <IconButton theme={theme} compact={compact} icon="RefreshCw" label="Read GitHub now" tooltip spinning={refreshing} disabled={refreshing} onPress={() => void refresh()} />}
-      <IconButton theme={theme} compact={compact} icon="Settings" label="PR statistics settings" tooltip onPress={deps.openSettings} />
+      {out?.model && <IconButton theme={theme} compact={compact} icon="RefreshCw" label={tr("Read GitHub now")} tooltip spinning={refreshing} disabled={refreshing} onPress={() => void refresh()} />}
+      <IconButton theme={theme} compact={compact} icon="Settings" label={tr("PR statistics settings")} tooltip onPress={deps.openSettings} />
     </View>
   </View>;
 
   const body = (() => {
-    if (query.isPending) return <ActivityIndicator accessibilityLabel="Loading PR stats" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginTop: 12 }} />;
+    if (query.isPending) return <ActivityIndicator accessibilityLabel={tr("Loading PR stats")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginTop: 12 }} />;
     if (query.error && !out) return <View style={{ gap: 10 }}>
       <Text accessibilityRole="alert" style={[t.body, { color: c.statusDanger }]}>{`Couldn't read PR stats: ${errorText(query.error)}`}</Text>
-      <Button theme={theme} compact={compact} title="Try again" onPress={() => void query.refetch()} />
+      <Button theme={theme} compact={compact} title={tr("Try again")} onPress={() => void query.refetch()} />
     </View>;
     if (!out) return null;
     if (out.empty || !out.model) return <NotOnYet theme={theme} compact={compact} />;
@@ -122,7 +123,7 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
   return <View style={{ gap: 14 }}>
     <View style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 10, flexWrap: "wrap" }}>
       <RepoPicker theme={theme} compact={compact} out={out} onRepo={onRepo} />
-      <Segmented theme={theme} compact={compact} label="Period" value={period} options={PERIODS.map(p => ({ value: p, text: PERIOD_LABELS[p] }))} onChange={onPeriod} />
+      <Segmented theme={theme} compact={compact} label={tr("Period")} value={period} options={PERIODS.map(p => ({ value: p, text: PERIOD_LABELS[p] }))} onChange={onPeriod} />
     </View>
     <View style={{ gap: 4 }}>
       <Text style={t.meta}>{`${rangeWords(out)} · ${out.clock === "working" ? "working hours" : "calendar time"} · ${out.timeZone}`}</Text>
@@ -132,14 +133,14 @@ export function Leaderboard({ theme, compact, out, now, period, sort, onSort, on
       </View>}
       {out.teamNotice && <Text style={t.meta}>{out.teamNotice}</Text>}
     </View>
-    {model.people.length > 1 && <View accessibilityLabel="Team" style={{ flexDirection: "row", flexWrap: "wrap", columnGap: compact ? 16 : 22, rowGap: 6 }}>
+    {model.people.length > 1 && <View accessibilityLabel={tr("Team")} style={{ flexDirection: "row", flexWrap: "wrap", columnGap: compact ? 16 : 22, rowGap: 6 }}>
       {facts.map(f => <Hover key={f.label} text={f.hover}><Text style={t.meta}><Text style={[t.body, { fontWeight: "600", fontVariant: ["tabular-nums"] }]}>{f.value}</Text>{` ${f.label}${soFar}`}</Text></Hover>)}
     </View>}
     {!model.people.length
       ? <View style={{ gap: 10, paddingVertical: 20, alignItems: "flex-start" }}>
         <Text style={[t.body, { color: c.foregroundMuted }]}>{`No PRs opened or reviewed ${period === "week" ? "this week" : period === "last-week" ? "last week" : `in the last ${period === "30d" ? 30 : 90} days`}.`}</Text>
         {out.sync?.error
-          ? onSettings && <Button theme={theme} compact={compact} title="Open settings" onPress={onSettings} />
+          ? onSettings && <Button theme={theme} compact={compact} title={tr("Open settings")} onPress={onSettings} />
           : period !== "90d" && <Button theme={theme} compact={compact} title={period === "30d" ? "Show 90 days" : "Show 30 days"} onPress={() => onPeriod(period === "30d" ? "90d" : "30d")} />}
       </View>
       : model.people.length === 1
@@ -166,7 +167,7 @@ function RepoPicker({ theme, compact, out, onRepo }: { theme: Theme; compact: bo
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={`Repository ${out.repo}, change`} onPress={() => setOpen(true)}
       style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 8, justifyContent: "center", alignSelf: "flex-start", borderWidth: 1, borderColor: c.border, backgroundColor: pressed || hovered ? c.surface2 : c.surface1 })}>{chip}</Pressable>
-    {open && <Modal title="Repository" open onOpenChange={next => { if (!next) setOpen(false); }}>
+    {open && <Modal title={tr("Repository")} open onOpenChange={next => { if (!next) setOpen(false); }}>
       <Modal.Content contentContainerStyle={{ padding: compact ? 8 : 12 }}>
         {out.repos.map(r => <Pressable key={r.repo} accessibilityRole="button" accessibilityState={{ selected: r.repo === out.repo }} onPress={() => { setOpen(false); onRepo(r.repo); }}
           style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ minHeight: 44, paddingHorizontal: 12, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: pressed || hovered ? c.surface2 : "transparent" })}>
@@ -229,7 +230,7 @@ function DesktopTable({ theme, rows, max, sort, onSort, onPerson }: { theme: The
   const c = theme.colors; const t = text(c);
   return <View role="table" style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, backgroundColor: c.surface1, overflow: "hidden" }}>
     <View role="row" style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, minHeight: 36, borderBottomWidth: 1, borderBottomColor: c.border }}>
-      <Text role="columnheader" style={[t.meta, { flex: 1.2, minWidth: 140 }]}>Person</Text>
+      <Text role="columnheader" style={[t.meta, { flex: 1.2, minWidth: 140 }]}>{tr("Person")}</Text>
       {COLUMNS.map(col => {
         const on = col.key === sort;
         return <Pressable key={col.key} accessibilityRole="button" accessibilityLabel={`Sort by ${col.long}${on ? ", sorted, highest first" : ""}`} onPress={() => onSort(col.key)}
@@ -263,7 +264,7 @@ function PhoneTable({ theme, rows, max, sort, onSort, onPerson }: { theme: Theme
   const col = COLUMNS.find(x => x.key === sort)!;
   return <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surface1, overflow: "hidden" }}>
     <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 8, minHeight: 52, borderBottomWidth: 1, borderBottomColor: c.border }}>
-      <Text style={[t.meta, { flex: 1 }]}>Sorted by</Text>
+      <Text style={[t.meta, { flex: 1 }]}>{tr("Sorted by")}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Sorted by ${col.long}, change`} onPress={() => setOpen(true)}
         style={({ pressed }: { pressed: boolean }) => ({ minHeight: 44, paddingHorizontal: 10, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pressed ? c.surface2 : "transparent" })}>
         <Text style={t.label}>{col.long}</Text><Icon name="ChevronDown" size={14} color={c.foregroundMuted} />
@@ -285,7 +286,7 @@ function PhoneTable({ theme, rows, max, sort, onSort, onPerson }: { theme: Theme
         <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />
       </Pressable>;
     })}
-    {open && <Modal title="Sort by" open onOpenChange={next => { if (!next) setOpen(false); }}>
+    {open && <Modal title={tr("Sort by")} open onOpenChange={next => { if (!next) setOpen(false); }}>
       <Modal.Content contentContainerStyle={{ padding: 8 }}>
         {COLUMNS.map(x => <Pressable key={x.key} accessibilityRole="radio" accessibilityState={{ checked: x.key === sort }} onPress={() => { setOpen(false); onSort(x.key); }}
           style={({ pressed }: { pressed: boolean }) => ({ minHeight: 48, paddingHorizontal: 12, borderRadius: 8, flexDirection: "row", alignItems: "center", backgroundColor: pressed ? c.surface2 : "transparent" })}>
@@ -339,10 +340,10 @@ export function PersonView({ theme, compact, out, login }: { theme: Theme; compa
       <Text style={t.section}>{`Opened by ${login}`}</Text>
       {prs.length ? prs.map(p => <PrLine key={p.number} theme={theme} compact={compact} number={p.number} url={p.url} title={p.title}
         line={p.waiting ? `waiting ${p.wait === null ? "" : durationWords(p.wait)} for a first review` : [p.wait === null ? "no review yet" : `first review ${durationWords(p.wait)}${p.firstResponder ? ` by ${p.firstResponder}` : ""}`, p.merged ? "merged" : p.state === "C" ? "closed" : "open", p.size].join(" · ")} />)
-        : <Text style={t.meta}>None in this period.</Text>}
+        : <Text style={t.meta}>{tr("None in this period.")}</Text>}
       <Text style={t.section}>{`Reviews by ${login}`}</Text>
       {reviewed.length ? reviewed.map(r => <PrLine key={`r${r.number}`} theme={theme} compact={compact} number={r.number} url={r.url} title={r.title} line={`${r.author ? `by ${r.author} · ` : ""}${new Date(r.at * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: out.timeZone })}`} />)
-        : <Text style={t.meta}>None in this period.</Text>}
+        : <Text style={t.meta}>{tr("None in this period.")}</Text>}
       {!all && (d.prs.length > 8 || d.reviewed.length > 8) && <Button theme={theme} compact={compact} kind="ghost" title={`Show all (${d.prs.length} PRs, ${d.reviewed.length} reviews)`} onPress={() => setAll(true)} />}
     </>}
   </View>;

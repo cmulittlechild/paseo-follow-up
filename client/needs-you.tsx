@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { sendButton } from "../shared/send-words";
 import { FINISH_ASK } from "../shared/status";
 import { View, type StyleProp, type ViewStyle } from "react-native";
@@ -112,16 +113,16 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
   const openMain = actions.openAgent ? () => actions.openAgent!(w.mainAgentId) : undefined;
   const action = (item: NeedItem) => {
     switch (item.kind) {
-      case "hold": return <Button theme={theme} compact={compact} kind="primary" icon="Play" title="Resume follow-up" loading={resume.isPending} disabled={busy} onPress={() => resume.mutate()} />;
+      case "hold": return <Button theme={theme} compact={compact} kind="primary" icon="Play" title={tr("Resume follow-up")} loading={resume.isPending} disabled={busy} onPress={() => resume.mutate()} />;
       case "retry": return item.exhausted
-        ? openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open main agent" onPress={openMain} />
+        ? openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open main agent")} onPress={openMain} />
         : <>
-          <Button theme={theme} compact={compact} icon="RotateCcw" title="Retry" accessibilityLabel="Queue the message again" loading={retry.isPending} disabled={busy} onPress={() => retry.mutate(item.batchId)} />
-          {openMain && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" accessibilityLabel="Open main agent" onPress={openMain} />}
+          <Button theme={theme} compact={compact} icon="RotateCcw" title={tr("Retry")} accessibilityLabel={tr("Queue the message again")} loading={retry.isPending} disabled={busy} onPress={() => retry.mutate(item.batchId)} />
+          {openMain && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title={tr("Open agent")} accessibilityLabel={tr("Open main agent")} onPress={openMain} />}
         </>;
       case "capped": return <>
-          <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Retry: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
-          {openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open agent" accessibilityLabel="Open main agent" onPress={openMain} />}
+          <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title={tr("Retry")} accessibilityLabel={`Retry: ${item.title}`} loading={retryTask.isPending} disabled={busy} onPress={() => retryTask.mutate(item.taskKey)} />
+          {openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open agent")} accessibilityLabel={tr("Open main agent")} onPress={openMain} />}
         </>;
       // The agent said only a person can move it: ask the reviewer again (the PR sheet's reviewers), or hand it back.
       // Only a part of it (one thread waits on the reviewer's call): the developer's first move is to read that part on the PR.
@@ -129,23 +130,23 @@ export function NeedsYouList({ workspace: w, theme, compact, actions, now = Date
         ? <Button theme={theme} compact={compact} icon="ExternalLink" title={`Open #${item.pr.number}`} accessibilityLabel={`Open #${item.pr.number} to see ${item.detail || item.title}`} accessibilityHint="Opens in your browser" onPress={() => void openExternalUrl(item.pr!.url).catch(() => undefined)} />
         : null;
       return item.review && item.prKey && actions.openPr
-        ? <Button theme={theme} compact={compact} icon="UserPlus" title="Ask for re-review" accessibilityLabel={`Ask for a re-review: ${item.title}`} onPress={() => actions.openPr!(item.prKey!, "reviewers")} />
+        ? <Button theme={theme} compact={compact} icon="UserPlus" title={tr("Ask for re-review")} accessibilityLabel={`Ask for a re-review: ${item.title}`} onPress={() => actions.openPr!(item.prKey!, "reviewers")} />
         : null;
-      case "check": return <Button theme={theme} compact={compact} icon="RefreshCw" title="Check state" loading={inspect.isPending} disabled={busy} onPress={() => inspect.mutate(item.actionId)} />;
+      case "check": return <Button theme={theme} compact={compact} icon="RefreshCw" title={tr("Check state")} loading={inspect.isPending} disabled={busy} onPress={() => inspect.mutate(item.actionId)} />;
       case "message": return <>
-        <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send it again: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "retry"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "retry" })} />
-        <Button theme={theme} compact={compact} kind="ghost" icon="X" title="Cancel" accessibilityLabel={`Don't send it: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "cancel"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "cancel" })} />
+        <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title={tr("Retry")} accessibilityLabel={`Send it again: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "retry"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "retry" })} />
+        <Button theme={theme} compact={compact} kind="ghost" icon="X" title={tr("Cancel")} accessibilityLabel={`Don't send it: ${item.title}`} loading={queueAct.isPending && queueAct.variables?.action === "cancel"} disabled={busy} onPress={() => queueAct.mutate({ itemId: item.itemId, action: "cancel" })} />
       </>;
-      case "decision": return openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title="Answer in chat" onPress={openMain} />;
-      case "question": return actions.openQuestion && <Button theme={theme} compact={compact} icon="MessageCircleReply" title="Answer" accessibilityLabel={`Answer ${item.title}`} onPress={() => actions.openQuestion!(item.questionId)} />;
+      case "decision": return openMain && <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Answer in chat")} onPress={openMain} />;
+      case "question": return actions.openQuestion && <Button theme={theme} compact={compact} icon="MessageCircleReply" title={tr("Answer")} accessibilityLabel={`Answer ${item.title}`} onPress={() => actions.openQuestion!(item.questionId)} />;
       case "answer": return item.waiting
         ? <>
-          <Button theme={theme} compact={compact} icon="Send" title="Send" accessibilityLabel={`Send your ${item.questionId} answer to ${agentName(w)}`} loading={sendAnswer.isPending} disabled={busy} onPress={() => sendAnswer.mutate(item.questionId)} />
-          {actions.openQuestion && !compact && <Button theme={theme} compact={compact} kind="ghost" title="Open" accessibilityLabel={`Open ${item.questionId}`} onPress={() => actions.openQuestion!(item.questionId)} />}
+          <Button theme={theme} compact={compact} icon="Send" title={tr("Send")} accessibilityLabel={`Send your ${item.questionId} answer to ${agentName(w)}`} loading={sendAnswer.isPending} disabled={busy} onPress={() => sendAnswer.mutate(item.questionId)} />
+          {actions.openQuestion && !compact && <Button theme={theme} compact={compact} kind="ghost" title={tr("Open")} accessibilityLabel={`Open ${item.questionId}`} onPress={() => actions.openQuestion!(item.questionId)} />}
         </>
         : <>
-          <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title="Retry" accessibilityLabel={`Send your ${item.questionId} answer again`} loading={resendAnswer.isPending} disabled={busy} onPress={() => resendAnswer.mutate(item.questionId)} />
-          {actions.openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" accessibilityLabel={`Open the agent's chat to check for your ${item.questionId} answer`} onPress={() => { const q = w.questions.find(x => x.id === item.questionId); actions.openAgent!(q?.askedBy ?? w.mainAgentId); }} />}
+          <Button theme={theme} compact={compact} kind="primary" icon="RotateCcw" title={tr("Retry")} accessibilityLabel={`Send your ${item.questionId} answer again`} loading={resendAnswer.isPending} disabled={busy} onPress={() => resendAnswer.mutate(item.questionId)} />
+          {actions.openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title={tr("Open agent")} accessibilityLabel={`Open the agent's chat to check for your ${item.questionId} answer`} onPress={() => { const q = w.questions.find(x => x.id === item.questionId); actions.openAgent!(q?.askedBy ?? w.mainAgentId); }} />}
         </>;
       case "send": return <Button theme={theme} compact={compact} kind="primary" icon="Send" title={item.finish ? "Ask to finish" : sendButton(item.what)} accessibilityLabel={item.finish ? `Ask to finish: ${FINISH_ASK}` : `Send ${item.what} to ${agentName(w)}`} accessibilityHint={item.blocker ?? undefined} loading={deliver.isPending} disabled={busy || !!item.blocker} onPress={() => deliver.mutate(item.batchId)} />;
       // One click merges what the button names (a-click-on-merge-merges); the sheet's confirm only when the scope can't be known.

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, View } from "react-native";
 import type { Workspace } from "../shared/model";
@@ -30,5 +31,5 @@ export function PanelMore({ w, sources, theme, compact, openAgent, openQuestion,
   };
   useEffect(() => { showMenu(open ? <RowMenu menu={open} theme={theme} onClose={() => setOpen(null)} onPick={item => menu.pick(open.s, item)} /> : null); }, [open, theme]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => showMenu(null), []); // eslint-disable-line react-hooks/exhaustive-deps
-  return <View ref={anchor} collapsable={false}><IconButton icon="Ellipsis" label="More actions for this workspace" onPress={show} theme={theme} compact={compact} /></View>;
+  return <View ref={anchor} collapsable={false}><IconButton icon="Ellipsis" label={tr("More actions for this workspace")} onPress={show} theme={theme} compact={compact} /></View>;
 }

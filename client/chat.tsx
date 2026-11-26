@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import { Pressable, Text } from "./text";
@@ -60,7 +61,7 @@ function DoneCard({ summary, unconfirmed, theme }: { summary: string; unconfirme
     <View accessibilityRole="summary" accessibilityLabel={`Workspace done${unconfirmed.length ? `, deploy not confirmed for ${unconfirmedRefs(unconfirmed)}` : ""}`} style={{ flexDirection: "row", gap: 12, padding: 12, borderRadius: 10, backgroundColor: tint(c.statusSuccess, c), borderWidth: 1, borderColor: withAlpha(c.statusSuccess, 0.35), marginVertical: 4 }}>
       <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: c.statusSuccess }}><Icon name="Check" size={16} color={c.surface0} /></View>
       <View style={{ flex: 1, gap: 3 }}>
-        <Text style={{ color: c.foreground, fontSize: 14, lineHeight: 19, fontWeight: "600" }}>Workspace done</Text>
+        <Text style={{ color: c.foreground, fontSize: 14, lineHeight: 19, fontWeight: "600" }}>{tr("Workspace done")}</Text>
         {!!summary && <Text selectable style={{ color: c.foreground, fontSize: 13, lineHeight: 19 }}>{summary}</Text>}
         {unconfirmed.length > 0 && <View style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
           <View style={{ paddingTop: 2 }}><Icon name="CircleAlert" size={13} color={c.statusWarning} /></View>

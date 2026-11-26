@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsCategory } from "../shared/settings-nav";
 import { recoveryActions } from "./recovery-actions";
@@ -63,10 +64,10 @@ function PanelBody(props: PanelProps) {
   const base = { flex: 1, backgroundColor: c.surface0 };
   if (query.pending) return <PanelSkeleton theme={props.theme} compact={props.layout.compact} />;
   if (query.error && !query.workspace) return <View style={[base, { padding: props.layout.compact ? 16 : 12 }]}>
-    <Card theme={props.theme} compact={props.layout.compact} icon="CloudOff" title="Can't reach Follow-up" style={{ marginHorizontal: 0, marginTop: 0 }}>
+    <Card theme={props.theme} compact={props.layout.compact} icon="CloudOff" title={tr("Can't reach Follow-up")} style={{ marginHorizontal: 0, marginTop: 0 }}>
       <CardRow theme={props.theme} compact={props.layout.compact}>
         <Text accessibilityRole="alert" style={[text(c).meta, { marginBottom: 10 }]}>The plugin didn't answer: {errorText(query.error)}. It may still be starting; your work is saved on the host.</Text>
-        <Button title="Try again" icon="RefreshCw" theme={props.theme} compact={props.layout.compact} loading={query.refetching} onPress={() => void query.refetch()} />
+        <Button title={tr("Try again")} icon="RefreshCw" theme={props.theme} compact={props.layout.compact} loading={query.refetching} onPress={() => void query.refetch()} />
       </CardRow>
     </Card>
   </View>;
@@ -76,7 +77,7 @@ function PanelBody(props: PanelProps) {
 
 function PanelSkeleton({ theme, compact }: { theme: Theme; compact: boolean }) {
   const c = theme.colors; const pad = compact ? 16 : 12;
-  return <View accessibilityLabel="Loading Follow-up" style={{ flex: 1, backgroundColor: c.surface0 }}>
+  return <View accessibilityLabel={tr("Loading Follow-up")} style={{ flex: 1, backgroundColor: c.surface0 }}>
     <View style={{ padding: pad, gap: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
       <Skeleton width="55%" height={14} color={c.surface2} />
       <Skeleton width="85%" height={9} color={c.surface2} />
@@ -113,8 +114,8 @@ function NothingYet({ theme, layout, loadError, openOverview, openSettings }: Pa
     <PanelTop theme={theme} compact={compact} openOverview={openOverview} openSettings={openSettings} />
     <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 24, gap: 16 }}>
       <View style={{ gap: 6 }}>
-        <Text accessibilityRole="header" style={tp.title}>Nothing to follow here yet</Text>
-        <Text style={[tp.body, { color: c.foregroundMuted }]}>Once an agent opens a PR or records a task in this workspace, Follow-up tracks it here.</Text>
+        <Text accessibilityRole="header" style={tp.title}>{tr("Nothing to follow here yet")}</Text>
+        <Text style={[tp.body, { color: c.foregroundMuted }]}>{tr("Once an agent opens a PR or records a task in this workspace, Follow-up tracks it here.")}</Text>
       </View>
       <View>
         {steps.map(([icon, color, title, line], i) => <View key={title} style={{ flexDirection: "row", gap: 12 }}>
@@ -129,7 +130,7 @@ function NothingYet({ theme, layout, loadError, openOverview, openSettings }: Pa
         </View>)}
       </View>
       {loadError && <Text accessibilityRole="alert" style={[tp.meta, { color: c.statusDanger }]}>{loadError}</Text>}
-      <View style={{ flexDirection: "row" }}><Button theme={theme} compact kind="secondary" icon="Settings" title="Project settings" accessibilityHint="Choose which projects Follow-up tracks" onPress={() => openSettings("following")} /></View>
+      <View style={{ flexDirection: "row" }}><Button theme={theme} compact kind="secondary" icon="Settings" title={tr("Project settings")} accessibilityHint="Choose which projects Follow-up tracks" onPress={() => openSettings("following")} /></View>
     </ScrollView>
   </View>;
 }
@@ -138,10 +139,10 @@ function NothingYet({ theme, layout, loadError, openOverview, openSettings }: Pa
 export function PanelTop({ theme, compact, openOverview, openSettings }: { theme: Theme; compact: boolean; openOverview: () => void; openSettings?: (category?: SettingsCategory) => void }) {
   const c = theme.colors;
   return <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: compact ? 12 : 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
-    <Button theme={theme} compact={compact} kind="ghost" icon="House" title="Home" accessibilityHint="Opens Follow-up Home with every workspace" onPress={openOverview} />
+    <Button theme={theme} compact={compact} kind="ghost" icon="House" title={tr("Home")} accessibilityHint="Opens Follow-up Home with every workspace" onPress={openOverview} />
     <View style={{ flex: 1 }} />
     {openSettings && <VersionMark theme={theme} touch={compact} openSettings={openSettings} />}
-    {openSettings && <IconButton icon="Settings" label="Follow-up settings" onPress={() => openSettings()} theme={theme} compact={compact} />}
+    {openSettings && <IconButton icon="Settings" label={tr("Follow-up settings")} onPress={() => openSettings()} theme={theme} compact={compact} />}
   </View>;
 }
 
@@ -183,7 +184,7 @@ function ShippedCard({ workspace: w, theme, compact, now }: { workspace: Workspa
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: c.statusSuccess }}><Icon name="Check" size={17} color={c.surface0} /></View>
         <View style={{ flex: 1 }}>
-          <Text accessibilityRole="header" style={[t.label, { fontSize: 14, color: c.foreground }]}>Shipped</Text>
+          <Text accessibilityRole="header" style={[t.label, { fontSize: 14, color: c.foreground }]}>{tr("Shipped")}</Text>
           <Text style={t.meta}>{merged ? `${merged} PR${merged === 1 ? "" : "s"} merged · ` : ""}declared {ago(w.completion.declaredAt, now)}</Text>
         </View>
       </View>
@@ -192,7 +193,7 @@ function ShippedCard({ workspace: w, theme, compact, now }: { workspace: Workspa
         <View style={{ paddingTop: 2 }}><Icon name="CircleAlert" size={13} color={c.statusWarning} /></View>
         <Text style={[t.meta, { flex: 1, color: c.foreground }]}>{unconfirmedNote(w.completion.unconfirmed)}</Text>
       </View>}
-      <Text style={t.meta}>Archive the workspace from its menu when you're finished with it.</Text>
+      <Text style={t.meta}>{tr("Archive the workspace from its menu when you're finished with it.")}</Text>
     </View>
   </Reveal>;
 }
@@ -213,7 +214,7 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
   const shown = open("workspace");
   const openUrl = (url: string) => { void openExternalUrl(url).catch(() => undefined); };
   return <View style={{ marginHorizontal: compact ? 16 : 12, marginTop: 12, borderRadius: 8, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}>
-    <View style={{ marginTop: -1 }}><FoldRow theme={theme} compact={compact} open={shown} onPress={() => toggle("workspace")} icon="SlidersHorizontal" iconColor={c.foregroundMuted} label="Spec, agent and recovery" /></View>
+    <View style={{ marginTop: -1 }}><FoldRow theme={theme} compact={compact} open={shown} onPress={() => toggle("workspace")} icon="SlidersHorizontal" iconColor={c.foregroundMuted} label={tr("Spec, agent and recovery")} /></View>
     {shown && <>
       <SpecRow workspace={w} theme={theme} compact={compact} onEdit={editSpec} />
       <LinkedItemsRow workspace={w} theme={theme} compact={compact} />
@@ -221,11 +222,11 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
       <CardRow theme={theme} compact={compact}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <View style={{ flex: 1, minWidth: 160, gap: 2 }}>
-            <Text style={t.label}>Main agent</Text>
+            <Text style={t.label}>{tr("Main agent")}</Text>
             <MainAgentName agentId={w.mainAgentId} theme={theme} />
-            <Text style={t.meta}>Owns the PRs, tasks and the Done call. Repairs are sent here.</Text>
+            <Text style={t.meta}>{tr("Owns the PRs, tasks and the Done call. Repairs are sent here.")}</Text>
           </View>
-          {openAgent && <Button theme={theme} compact={compact} icon="MessageSquare" title="Open" accessibilityLabel="Open main agent" onPress={() => openAgent(w.mainAgentId)} />}
+          {openAgent && <Button theme={theme} compact={compact} icon="MessageSquare" title={tr("Open")} accessibilityLabel={tr("Open main agent")} onPress={() => openAgent(w.mainAgentId)} />}
         </View>
         <MainChangeNotice workspace={w} theme={theme} compact={compact} />
         {(w.contributorAgentIds ?? []).map(id => <OtherRootAgent key={id} agentId={id} workspace={w} theme={theme} compact={compact} openAgent={openAgent} mainAgentId={w.mainAgentId} />)}
@@ -233,7 +234,7 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
       <CardRow theme={theme} compact={compact}>
         <View style={{ gap: 8 }}>
           <View style={{ gap: 2 }}>
-            <Text style={t.label}>Recovery</Text>
+            <Text style={t.label}>{tr("Recovery")}</Text>
             <Text style={t.meta}>A separate agent reads this workspace's history to find PRs and tasks Follow-up missed. It never edits code or messages the main agent.</Text>
           </View>
           {recoveryState && <Text style={[t.meta, { color: c.foreground }]}>{recoveryState}{last?.settledAt ? ` · ${ago(last.settledAt)}` : ""}</Text>}
@@ -242,7 +243,7 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
             {actions.primary.kind === "run-queued" ? <Button title={actions.primary.title} theme={theme} compact={compact} loading={runQueued.isPending} onPress={() => runQueued.mutate(last!.id)} />
               : actions.primary.kind === "retry" ? <Button title={actions.primary.title} icon="RefreshCw" theme={theme} compact={compact} loading={retry.isPending} onPress={() => retry.mutate(last!.id)} />
               : <Button title={actions.primary.title} icon="History" theme={theme} compact={compact} loading={recovery.isPending} disabled={actions.primary.disabled} onPress={() => recovery.mutate()} />}
-            {actions.openAgent && openAgent && <Button title="Open recovery agent" kind="ghost" theme={theme} compact={compact} onPress={() => openAgent(last!.recipientAgentId!)} />}
+            {actions.openAgent && openAgent && <Button title={tr("Open recovery agent")} kind="ghost" theme={theme} compact={compact} onPress={() => openAgent(last!.recipientAgentId!)} />}
           </View>
         </View>
       </CardRow>
@@ -250,10 +251,10 @@ function WorkspaceCard({ workspace: w, theme, compact, open, toggle, openAgent, 
       {active && browserReady === false && w.prs.some(p => !settledForDisplay(p) && p.snapshot && p.snapshot.prWorkflow !== "github") && <CardRow theme={theme} compact={compact}>
         <View style={{ gap: 8 }}>
           <View style={{ gap: 2 }}>
-            <Text style={t.label}>Merge when ready</Text>
+            <Text style={t.label}>{tr("Merge when ready")}</Text>
             <Text style={t.meta}>Optional. With Send to Paseo paired and Graphite open in Chrome, each open PR gets a When ready switch. Chrome asks before each change unless you allowed it for the repository.</Text>
           </View>
-          <Button title="Open Graphite" icon="ExternalLink" theme={theme} compact={compact} accessibilityLabel="Connect Graphite" onPress={() => openUrl("https://app.graphite.com")} />
+          <Button title={tr("Open Graphite")} icon="ExternalLink" theme={theme} compact={compact} accessibilityLabel={tr("Connect Graphite")} onPress={() => openUrl("https://app.graphite.com")} />
         </View>
       </CardRow>}
     </>}
@@ -288,7 +289,7 @@ function MainChangeNotice({ workspace: w, theme, compact }: { workspace: Workspa
     <Text numberOfLines={3} accessibilityLabel={`${to} took over from ${from} ${ago(change.at, now)}${change.reason ? `. ${change.reason}` : ""}`} style={[t.meta, { flex: 1, minWidth: 200 }]}>
       <Text style={{ color: c.foreground }}>Took over from {from}</Text> · {ago(change.at, now)}{change.reason ? ` · ${change.reason}` : ""}
     </Text>
-    {canUndo && <Button theme={theme} compact={compact} kind="ghost" title="Undo" accessibilityLabel={`Undo: make ${from} the main agent again`} accessibilityHint={`Tasks, questions and Done move back to ${from}.`} loading={undo.isPending} disabled={undo.isPending} onPress={() => undo.mutate()} />}
+    {canUndo && <Button theme={theme} compact={compact} kind="ghost" title={tr("Undo")} accessibilityLabel={`Undo: make ${from} the main agent again`} accessibilityHint={`Tasks, questions and Done move back to ${from}.`} loading={undo.isPending} disabled={undo.isPending} onPress={() => undo.mutate()} />}
   </View>;
 }
 
@@ -315,12 +316,12 @@ function OtherRootAgent({ agentId, mainAgentId, workspace: w, theme, compact, op
   return <View style={{ gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.border }}>
     <View style={{ gap: 2 }}>
       <Text numberOfLines={1} style={compact ? t.label : [t.meta, { color: c.foreground }]}>{title}</Text>
-      <Text style={t.meta}>Can add PRs here. Can't ask you questions or call Done.</Text>
+      <Text style={t.meta}>{tr("Can add PRs here. Can't ask you questions or call Done.")}</Text>
     </View>
     {/* Phones: the two actions split one row (no wrap into a second row). */}
     {(openAgent || canPromote) && <View style={{ flexDirection: "row", flexWrap: compact ? "nowrap" : "wrap", gap: 8 }}>
-      {canPromote && <Button theme={theme} compact={compact} grow={compact} title="Make main agent" accessibilityLabel={`Make ${title} the main agent`} accessibilityHint={`Tasks, questions and Done move from ${formerTitle} to ${title}.`} loading={promote.isPending} disabled={promote.isPending} onPress={() => promote.mutate()} />}
-      {openAgent && <Button theme={theme} compact={compact} kind={compact ? "secondary" : "ghost"} icon="MessageSquare" title="Open" accessibilityLabel={`Open ${title}`} onPress={() => openAgent(agentId)} />}
+      {canPromote && <Button theme={theme} compact={compact} grow={compact} title={tr("Make main agent")} accessibilityLabel={`Make ${title} the main agent`} accessibilityHint={`Tasks, questions and Done move from ${formerTitle} to ${title}.`} loading={promote.isPending} disabled={promote.isPending} onPress={() => promote.mutate()} />}
+      {openAgent && <Button theme={theme} compact={compact} kind={compact ? "secondary" : "ghost"} icon="MessageSquare" title={tr("Open")} accessibilityLabel={`Open ${title}`} onPress={() => openAgent(agentId)} />}
     </View>}
   </View>;
 }

@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 // The question dialog and its answer form. The layout of options with a recommendation, the
 // "what the agent does meanwhile" line and Copy are adapted from Progress
 // (@stevecastaneda/paseo-progress, MIT, © 2026 Steve Castaneda); see THIRD_PARTY_NOTICES.md.
@@ -93,7 +94,7 @@ export function OptionCard({ theme, letter, label, consequence, recommended, sel
         {/* The built-in Something else: a pencil in the letter's slot, so its label lines up with the agent's options. */}
         {own ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Icon name="PenLine" size={12} color={c.foregroundMuted} /><Text style={t.label}>{label}</Text></View>
           : <Text style={t.label}>{letter ? <><Text style={{ fontVariant: ["tabular-nums"] }}>{letter}</Text>{"  "}</> : null}<RichText linkColor={c.foreground} style={t.label}>{label}</RichText></Text>}
-        {recommended && <Chip theme={theme} icon="ThumbsUp" label="Recommended" color={c.foregroundMuted} />}
+        {recommended && <Chip theme={theme} icon="ThumbsUp" label={tr("Recommended")} color={c.foregroundMuted} />}
       </View>
       {!!consequence && <RichText selectable={copyable} linkColor={c.foreground} numberOfLines={dense ? 2 : undefined} style={t.meta}>{consequence}</RichText>}
     </View>
@@ -339,7 +340,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
       <View style={{ paddingTop: 2 }}><Icon name="CircleAlert" size={12} color={c.statusDanger} /></View>
       <Text style={[t.meta, { flex: 1, color: c.statusDanger }]}>Not sent · {unsent.error}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Retry sending your ${q.id} answer`} hitSlop={6} disabled={!answer} onPress={() => quick("send")}>
-        <Text style={[t.meta, { color: c.foreground, fontWeight: "600", textDecorationLine: "underline" }]}>Retry</Text>
+        <Text style={[t.meta, { color: c.foreground, fontWeight: "600", textDecorationLine: "underline" }]}>{tr("Retry")}</Text>
       </Pressable>
     </View>}
     {/* A note on a lettered pick: the brief card's quiet links, under the options, in every mode. */}
@@ -349,26 +350,26 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
   </View>;
   const actions = (open || q.answer && answerHasActions(q.answer.delivery)) && <View style={{ gap: 6 }}>
     <View onLayout={doneOnly ? e => setRowWidth(e.nativeEvent.layout.width) : undefined} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      {doneOnly && <Button shortcut={rowWidth >= DONE_HINT_MIN_WIDTH} theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title="Done" accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending || !!img.blocked} onPress={done} />}
-      {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label="Add note" a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
+      {doneOnly && <Button shortcut={rowWidth >= DONE_HINT_MIN_WIDTH} theme={theme} compact={compact} grow={compact} kind="primary" icon="Check" title={tr("Done")} accessibilityLabel={`Done: tell the agent you did ${q.id}`} accessibilityHint="Sends Done to the agent at once" disabled={run.isPending || !!img.blocked} onPress={done} />}
+      {doneOnly && choice !== TASK_DONE.letter && <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y={`Add a note for the agent, sent with Done on ${q.id}`} disabled={run.isPending} c={c} compact={compact}
         onPress={() => { setChoice(TASK_DONE.letter); setNoteOpen(true); }} />}
-      {doneOnly && <NoteLink icon="Reply" label="Reply instead" a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}
-      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={img.blocked ? img.blocked : other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending || !!img.blocked} onPress={() => quick("send")} />}
-      {open && !doneOnly && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title="Put in chat" accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
+      {doneOnly && <NoteLink icon="Reply" label={tr("Reply instead")} a11y={`Write a reply to ${q.id} instead of Done`} disabled={run.isPending} c={c} compact={compact} onPress={() => { setChoice(OTHER); setNoteOpen(false); }} />}
+      {open && !doneOnly && <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" icon="Send" title={tr("Send to agent")} accessibilityLabel={`Send your ${q.id} answer to the agent`} accessibilityHint={img.blocked ? img.blocked : other && !words.trim() ? "Write your answer first" : compact ? `Puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under ${q.id}.` : undefined} disabled={!answer || run.isPending || !!img.blocked} onPress={() => quick("send")} />}
+      {open && !doneOnly && composer && <Button theme={theme} compact={compact} icon="MessageSquareText" title={tr("Put in chat")} accessibilityLabel={`Put your ${q.id} answer in the agent's chat, to read over and send there`} disabled={!answer || run.isPending} onPress={putIn} />}
       {/* Paseo 0.16: Copy steps back to an icon beside Put in chat (both move the words without sending). 0.15 keeps the label. */}
-      {open && !doneOnly && !composer && <Button theme={theme} compact={compact} icon="Copy" title="Copy" accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
-      {open && !doneOnly && composer && <IconButton theme={theme} compact={compact} icon="Copy" label="Copy answer" tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
-      {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title="Send to agent" accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
+      {open && !doneOnly && !composer && <Button theme={theme} compact={compact} icon="Copy" title={tr("Copy")} accessibilityLabel={`Copy your ${q.id} answer instead of sending it`} disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
+      {open && !doneOnly && composer && <IconButton theme={theme} compact={compact} icon="Copy" label={tr("Copy answer")} tooltip disabled={!answer || run.isPending} onPress={() => quick("copy")} />}
+      {(q.answer?.delivery.state === "copied" || q.answer?.delivery.state === "in-chat") && <Button shortcut theme={theme} compact={compact} kind="primary" icon="Send" title={tr("Send to agent")} accessibilityLabel={`Send your ${q.id} answer to the agent`} loading={run.isPending} onPress={() => run.mutate("send")} />}
       {q.answer && resendTitle(q.answer.delivery) && <Button theme={theme} compact={compact} kind={q.answer.delivery.state === "failed" ? "primary" : undefined} icon="RotateCcw" title={resendTitle(q.answer.delivery)!} accessibilityLabel={q.answer.delivery.state === "failed" ? `Send the ${q.id} answer again` : `Try sending the ${q.id} answer now`} loading={run.isPending} onPress={() => run.mutate("resend")} />}
-      {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title="Copy" accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
-      {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title="Open chat" accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
-      {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title="Open agent" onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
+      {q.answer && (q.answer.delivery.state === "failed" || q.answer.delivery.state === "cancelled") && <Button theme={theme} compact={compact} kind="ghost" icon="Copy" title={tr("Copy")} accessibilityLabel={`Copy the ${q.id} answer`} onPress={() => { void copyText(answerMessage(q, q.answer!.choice, q.answer!.words)).then(() => toast.show("Copied", { variant: "success" }), () => toast.error("Couldn't copy here")); }} />}
+      {q.answer?.delivery.state === "in-chat" && composer && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquareText" title={tr("Open chat")} accessibilityLabel={`Open the chat your ${q.id} answer is in`} onPress={() => { onClose?.(); void composer.focus().catch(() => undefined); }} />}
+      {(q.answer?.delivery.state === "failed" || q.answer?.delivery.state === "unconfirmed") && openAgent && <Button theme={theme} compact={compact} kind="ghost" icon="MessageSquare" title={tr("Open agent")} onPress={() => openAgent(q.askedBy ?? w.mainAgentId)} />}
       {dense && onDetails && <IconButton theme={theme} compact={compact} icon="Maximize2" label={`Open ${q.id} with its links and full context`} onPress={onDetails} />}
     </View>
     {/* Same words as the brief card's, so a disabled Send always says why. */}
     {doneOnly ? null : open && draft.hint ? <Text style={t.small}>{draft.hint}</Text>
       // Two ways to deliver (Paseo 0.16) need telling apart everywhere, the phone and the Needs you block included.
-      : open && !dense && composer ? <Text style={t.small}>Send delivers it now, even mid-turn. Put in chat adds it to your message box to edit first.</Text>
+      : open && !dense && composer ? <Text style={t.small}>{tr("Send delivers it now, even mid-turn. Put in chat adds it to your message box to edit first.")}</Text>
       : open && !dense && !compact && !inline && <Text style={t.small}>Send puts your answer straight into the asking agent's chat, even mid-turn. Follow-up keeps it under {q.id}.</Text>}
   </View>;
   // In the pill popover the question scrolls and the answer field and actions stay put, so Send is never cut off.
@@ -382,7 +383,7 @@ export function QuestionBody({ workspace: w, question: q, theme, compact, now = 
           onScroll={e => { const offset = e.nativeEvent.contentOffset.y; setScroll(s => ({ ...s, offset })); }}>{body}</ScrollView>
         {more && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingTop: 6 }}>
           <Icon name="ChevronDown" size={12} color={c.foregroundMuted} />
-          <Text style={t.small}>More below</Text>
+          <Text style={t.small}>{tr("More below")}</Text>
         </View>}
       </View>
       {/* The field with its Send: kept on screen together while typing (a-focused-field-and-its-send-stay-in-view). */}
@@ -484,7 +485,7 @@ export function ActivityCard({ workspace: w, theme, compact, now, open, toggle, 
   // While searching, "Show all" is ignored: every match shows.
   const shown = all || hits ? list : list.slice(0, LIMIT);
   const tabs = (counts: boolean) => <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 2, marginVertical: -4 }}>{tabButton("timeline", "Timeline", counts ? found.timeline.length : undefined)}{tabButton("questions", "Questions", found.questions.length)}</View>;
-  return <Card theme={theme} compact={compact} icon="Activity" title="Activity" search={search.header}
+  return <Card theme={theme} compact={compact} icon="Activity" title={tr("Activity")} search={search.header}
     right={<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>{questions.length ? tabs(false) : null}{search.button}</View>}>
     {/* Searching: the tabs move under the field and count their matches, so a hit in the other tab is never hidden. */}
     {search.header && questions.length > 0 && <View style={{ flexDirection: "row", paddingHorizontal: compact ? 14 : 12, paddingTop: 6, paddingBottom: 10 }}>{tabs(!!hits)}</View>}

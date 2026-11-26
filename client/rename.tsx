@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { View, type TextInput as NativeTextInput } from "react-native";
 import { Pressable, Text } from "./text";
@@ -101,25 +102,25 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
   // Only near the limit: the reason text covers the rest (words, keys, branch names).
   const showCounter = counter > NAME_MAX_CHARS - 15;
   const waiting = phase === "suggesting" && !name;
-  return <Modal title="Rename title with AI" icon={<Icon name="Sparkles" size={18} color={c.foregroundMuted} />} open onOpenChange={next => { if (!next) onClose(); }}>
+  return <Modal title={tr("Rename title with AI")} icon={<Icon name="Sparkles" size={18} color={c.foregroundMuted} />} open onOpenChange={next => { if (!next) onClose(); }}>
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
       <SubmitScope enabled={canRename} onSubmit={apply} style={{ gap: compact ? 16 : 14, maxWidth: 520 }}>
         <View style={{ gap: 2 }}>
-          <Text style={t.small}>Now</Text>
+          <Text style={t.small}>{tr("Now")}</Text>
           <Text numberOfLines={2} style={t.body}>{now || "…"}</Text>
         </View>
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-            <Text style={t.label}>New name</Text>
+            <Text style={t.label}>{tr("New name")}</Text>
             {showCounter && <Text style={[t.small, { fontVariant: ["tabular-nums"] }, counter > NAME_MAX_CHARS ? { color: c.statusDanger } : null]}>{counter}/{NAME_MAX_CHARS}</Text>}
           </View>
           <View>
-            <TextInput ref={input} accessibilityLabel="New name" accessibilityHint="Suggested from the Summary, PRs and linked items" value={name} autoFocus={!compact} selectTextOnFocus
+            <TextInput ref={input} accessibilityLabel={tr("New name")} accessibilityHint="Suggested from the Summary, PRs and linked items" value={name} autoFocus={!compact} selectTextOnFocus
               placeholder={waiting ? "" : "Type a name"} placeholderTextColor={c.foregroundMuted}
               onChangeText={v => { typed.current = true; setName(v); setEdited(true); }} autoCapitalize="sentences" maxLength={NAME_MAX_CHARS + 20} style={field} />
             {waiting && <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: "absolute", left: 10, top: 0, bottom: 0, flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Spinner color={c.foregroundMuted} size={12} />
-              <Text style={[t.meta, { color: c.foregroundMuted }]}>Suggesting a name…</Text>
+              <Text style={[t.meta, { color: c.foregroundMuted }]}>{tr("Suggesting a name…")}</Text>
             </View>}
           </View>
           {phase === "error" && !edited && <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 6 }}>
@@ -128,7 +129,7 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
               <Text style={[t.meta, { color: c.statusWarning }]}>{jobFailed ? "Couldn't suggest a name. Type one, or try again." : error || "Couldn't load this workspace. Type a name, or try again."}</Text>
               {jobFailed && !!error && (details
                 ? <Text selectable style={t.small}>{error}</Text>
-                : <Pressable accessibilityRole="button" onPress={() => setDetails(true)} style={{ alignSelf: "flex-start" }}><Text style={[t.small, { textDecorationLine: "underline" }]}>Details</Text></Pressable>)}
+                : <Pressable accessibilityRole="button" onPress={() => setDetails(true)} style={{ alignSelf: "flex-start" }}><Text style={[t.small, { textDecorationLine: "underline" }]}>{tr("Details")}</Text></Pressable>)}
             </View>
           </View>}
           {invalidHint && !check.ok && <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", gap: 6 }}>
@@ -141,15 +142,15 @@ export function RenameDialog({ request, theme, compact, onClose }: { request: Re
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {/* After a failed suggestion with nothing typed, Try again is the likely next step, so it leads. */}
           {phase === "error" && !canRename
-            ? <Button theme={theme} compact={compact} kind="primary" icon="RefreshCw" title="Try again" onPress={() => void suggest()} />
+            ? <Button theme={theme} compact={compact} kind="primary" icon="RefreshCw" title={tr("Try again")} onPress={() => void suggest()} />
             : <>
-              <Button shortcut={canRename} theme={theme} compact={compact} kind="primary" icon="Check" title="Rename" disabled={!canRename} onPress={apply} />
+              <Button shortcut={canRename} theme={theme} compact={compact} kind="primary" icon="Check" title={tr("Rename")} disabled={!canRename} onPress={apply} />
               <Button theme={theme} compact={compact} kind="ghost" icon="RefreshCw" title={phase === "error" ? "Try again" : "Suggest another"} disabled={phase === "suggesting"} onPress={() => void suggest()} />
             </>}
         </View>
         {info?.last && <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: compact ? 12 : 10, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <Text style={[t.small, { flex: 1, minWidth: 160 }]} numberOfLines={2}>Renamed from {info.last.from} {ago(info.last.at)}</Text>
-          <Button theme={theme} compact={compact} kind="ghost" icon="Undo2" title="Undo last rename" onPress={() => { onClose(); undo(request.workspaceId); }} />
+          <Button theme={theme} compact={compact} kind="ghost" icon="Undo2" title={tr("Undo last rename")} onPress={() => { onClose(); undo(request.workspaceId); }} />
         </View>}
       </SubmitScope>
     </Modal.Content>

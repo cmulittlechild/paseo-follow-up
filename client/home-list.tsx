@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { View, type FlatList as NativeFlatList } from "react-native";
 import { Pressable, Text } from "./text";
@@ -129,7 +130,7 @@ export function HomeList({ model, theme, dense = false, touch, selectedKey, onSe
       case "label": return <Text accessibilityRole={item.key === "l:archived" ? "header" : undefined} style={{ color: c.foregroundMuted, fontSize: item.key === "l:archived" && !touch ? 11 : 13, fontWeight: item.key === "l:archived" ? "600" : "400",
         letterSpacing: item.key === "l:archived" && !touch ? 0.6 : 0, textTransform: item.key === "l:archived" && !touch ? "uppercase" : "none", paddingHorizontal: dense ? 8 : 16, ...(item.key === "l:older" && touch ? { paddingLeft: TOUCH_ROW_TEXT } : null), paddingTop: 12, paddingBottom: 4 }}>{item.text}</Text>;
       case "empty": return <View accessibilityRole="summary" style={{ marginHorizontal: 16, marginTop: 20, gap: 6 }}>
-        <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 17, lineHeight: 23, fontWeight: "600" }}>Nothing followed yet</Text>
+        <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 17, lineHeight: 23, fontWeight: "600" }}>{tr("Nothing followed yet")}</Text>
         <Text style={{ color: c.foregroundMuted, fontSize: 14, lineHeight: 20 }}>Follow a workspace from its Follow-up panel, or turn a project on in Settings so its workspaces join on their own. They show up here once their agents work.</Text>
         {emptyAction ? <View style={{ flexDirection: "row", marginTop: 6 }}>{emptyAction}</View> : null}
       </View>;
@@ -212,7 +213,7 @@ function BriefRow({ theme, line, selected, touch, onSelect }: { theme: Theme; li
   return <Pressable nativeID={rowDomId(BRIEF_KEY)} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Morning brief. ${line}`} onPress={() => onSelect(BRIEF_KEY)}
     style={state => ({ ...focusRing((state as { focused?: boolean }).focused, c, true), flexDirection: "row", alignItems: "center", gap: 10, minHeight: touch ? 52 : 40, paddingHorizontal: 16, backgroundColor: selected ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <Icon name="Sun" size={touch ? 16 : 15} color={c.foregroundMuted} />
-    <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Morning brief</Text>
+    <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>{tr("Morning brief")}</Text>
     <Text numberOfLines={1} style={{ flex: 1, color: c.foregroundMuted, fontSize: touch ? 13 : 12 }}>{line}</Text>
     {touch && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
   </Pressable>;
@@ -221,7 +222,7 @@ function BriefRow({ theme, line, selected, touch, onSelect }: { theme: Theme; li
 function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect, selectedBg }: { theme: Theme; o: OverseerRowState; selected: boolean; touch: boolean; stacked?: boolean; onSelect: (key: string) => void; selectedBg?: string }) {
   const c = theme.colors;
   const tone = o.state === "asks" ? c.statusWarning : o.state === "error" ? c.statusDanger : o.state === "running" ? runningColor(c) : c.foregroundMuted;
-  const icon = o.state === "running" ? <Spinner color={tone} size={13} label="Overseer working" /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />;
+  const icon = o.state === "running" ? <Spinner color={tone} size={13} label={tr("Overseer working")} /> : <Icon name="MessagesSquare" size={touch ? 16 : 15} color={o.state === "idle" || o.state === "start" ? c.foregroundMuted : tone} />;
   const lineColor = o.state === "asks" || o.state === "error" ? tone : c.foregroundMuted;
   // Wide Home: one line, the phone's shorter start line. Stacked (the sidebar view): the whole line, wrapping to two.
   const line = marks(!stacked && touch && o.state === "start" ? "Ask about any workspace" : o.line, stacked || !(touch && o.state === "start") ? o.ranges : null, c);
@@ -233,11 +234,11 @@ function OverseerRow({ theme, o, selected, touch, stacked = false, onSelect, sel
     {stacked ? <View style={{ paddingTop: 2 }}>{icon}</View> : icon}
     {stacked
       ? <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Overseer</Text>
+          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>{tr("Overseer")}</Text>
           <Text numberOfLines={2} style={{ color: lineColor, fontSize: touch ? 13 : 12, lineHeight: touch ? 18 : 16 }}>{line}</Text>
         </View>
       : <>
-          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>Overseer</Text>
+          <Text style={{ color: c.foreground, fontSize: touch ? 14 : 13, fontWeight: "600" }}>{tr("Overseer")}</Text>
           <Text numberOfLines={1} style={{ flex: 1, color: lineColor, fontSize: touch ? 13 : 12 }}>{line}</Text>
           {touch && <Icon name="ChevronRight" size={16} color={c.foregroundMuted} />}
         </>}
@@ -363,7 +364,7 @@ const Row = memo(function Row({ s, theme, dense, touch, selected, onSelect, onMe
       borderLeftWidth: 2, borderLeftColor: blocking ? withAlpha(color, 0.9) : "transparent",
       backgroundColor: selected ? selectedBg ?? c.surface2 : menuOpen || state.pressed && touch ? c.surface2 : (state as { hovered?: boolean }).hovered ? c.surface1 : "transparent" })}>
     <View style={{ width: touch ? 18 : 16, alignItems: "center", paddingTop: touch ? 2 : dense ? 1 : 0 }}>
-      {s.tone === "running" && s.icon === "LoaderCircle" ? <Spinner color={color} size={13} label="Running" /> : <Icon name={s.icon} size={touch ? 17 : 15} color={color} />}
+      {s.tone === "running" && s.icon === "LoaderCircle" ? <Spinner color={color} size={13} label={tr("Running")} /> : <Icon name={s.icon} size={touch ? 17 : 15} color={color} />}
     </View>
     {/* Phones: title 15/20 over two lines, then state · reason, then the PRs as plain text (no bordered chips). */}
     {touch ? <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -419,6 +420,6 @@ function HoldLine({ theme, text: line, dense, touch }: { theme: Theme; text: str
 function SendNowButton({ s, theme, touch, onSendNow }: { s: Workstream; theme: Theme; touch: boolean; onSendNow: (s: Workstream) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const n = s.sendNow!.count;
-  return <Button theme={theme} compact={touch} kind="secondary" title="Send now" accessibilityLabel={`Send ${s.sendNow!.what} to ${s.title} now`} loading={busy} disabled={busy}
+  return <Button theme={theme} compact={touch} kind="secondary" title={tr("Send now")} accessibilityLabel={`Send ${s.sendNow!.what} to ${s.title} now`} loading={busy} disabled={busy}
     onPress={() => { setBusy(true); void onSendNow(s).finally(() => setBusy(false)); }} />;
 }

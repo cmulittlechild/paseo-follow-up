@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browserKey, liveBriefKey, LIVE_BRIEF_POLL_MS, workspaceKey } from "./keys";
 import { Platform, View, useWindowDimensions } from "react-native";
@@ -130,9 +131,9 @@ function OptionRow({ option, recommended, sending, disabled, tight, open, onTogg
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "center", columnGap: 8, flexWrap: "wrap" }}>
           <RichText linkColor={c.foreground} style={{ color: muted ? c.foregroundMuted : c.foreground, fontSize: 14, lineHeight: 20, fontWeight: muted ? "400" : "600" }}>{`${marked && !other ? `${option.letter} · ` : ""}${option.label}`}</RichText>
-          {recommended && !readonly && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Recommended</Text>}
+          {recommended && !readonly && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{tr("Recommended")}</Text>}
           {readonly && selected && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{answerLabel}</Text>}
-          {sending && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>Sending…</Text>}
+          {sending && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{tr("Sending…")}</Text>}
         </View>
         {showDetail && <RichText linkColor={c.foreground} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{option.consequence}</RichText>}
         {compact && chip}
@@ -205,7 +206,7 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
           onPress={() => onPick(d.id, OTHER)} c={c} compact={compact} />}
         {/* Something else's field with its Send answer, kept on screen together while typing (DockedPane). */}
         {!readonly && isOther(picks[d.id]) && <View {...PRIMARY_FORM} style={{ gap: 8 }}>
-          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder="Your answer (required)" placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
+          <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Your answer${numbered ? ` to question ${i + 1}` : ""}, required`} placeholder={tr("Your answer (required)")} placeholderTextColor={c.foregroundMuted} autoFocus multiline maxLength={2000}
             value={words[d.id] ?? ""} editable={!busy} onChangeText={t => onWords?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: words[d.id]?.trim() ? c.border : withAlpha(c.accent, 0.7), color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
           {mode === "send" && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
@@ -215,18 +216,18 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
         </View>}
         {/* A note on a lettered pick ("A, but…"): quiet until asked for, never in the way of the one-tap answer. */}
         {!readonly && !isOther(picks[d.id]) && (notesOpen[d.id] ? <View {...PRIMARY_FORM} style={{ gap: 6, marginTop: 2 }}>
-          <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Note</Text>
+          <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{tr("Note")}</Text>
           <WithImages img={img} c={c} compact={compact} row={rowAt === d.id}><TextInput accessibilityLabel={`Note for the agent${numbered ? ` on decision ${i + 1}` : ""}, optional`} placeholder={mode === "select" ? "Sent with your pick for this decision" : "Sent with the option you tap"}
             placeholderTextColor={c.foregroundMuted} autoFocus={focusNote === d.id} multiline maxLength={2000} value={notes[d.id] ?? ""} editable={!busy} onChangeText={t => onNote?.(d.id, t)}
             style={{ minHeight: compact ? 66 : 58, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.foreground, backgroundColor: c.surface0, fontSize: 14, lineHeight: 20, textAlignVertical: "top" }} /></WithImages>
-          <NoteLink icon="X" label="Remove note" a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
+          <NoteLink icon="X" label={tr("Remove note")} a11y={`Remove the note${numbered ? ` on decision ${i + 1}` : ""}`} disabled={!!busy} onPress={() => { onNote?.(d.id, ""); onNoteOpen?.(d.id, false); setFocusNote(null); }} c={c} compact={compact} />
         </View> : done ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14 }}>
-          <NoteLink icon="MessageSquarePlus" label="Add note" a11y={numbered ? `Add note to decision ${i + 1}` : "Add note"} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
+          <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y={numbered ? `Add note to decision ${i + 1}` : "Add note"} disabled={!!busy} onPress={() => { setFocusNote(d.id); onNoteOpen?.(d.id, true); }} c={c} compact={compact} />
           {mode === "send" && !tight && !embedded && !done && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{`Or type ${letters(d)} in the composer.`}</Text>}
         </View>)}
       </View>}
       {readonly && !!d.chosen && !isOther(d.chosen) && !!d.words && <RichText selectable linkColor={c.foreground} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18 }}>{`Note: ${d.words}`}</RichText>}
-      {readonly && b.state === "answered" && d.options.length > 0 && !d.chosen && numbered && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>Skipped</Text>}
+      {readonly && b.state === "answered" && d.options.length > 0 && !d.chosen && numbered && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{tr("Skipped")}</Text>}
       {!readonly && mode === "send" && !tight && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
       {!readonly && (mode === "select" || tight) && !d.options.length && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{embedded ? "Reply below." : "Reply in the composer."}</Text>}
     </View>; })}
@@ -238,14 +239,14 @@ export function BriefBody({ b, c, compact, tight, embedded, height, mode, picks,
     {!readonly && extra && tight && !extrasFit(b, height) && <Pressable accessibilityRole="button" aria-expanded={details} accessibilityLabel={details ? "Hide details" : "Show details"} onPress={() => setDetails(v => !v)} hitSlop={6}
       style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: compact ? 44 : 24 }}>
       <View style={{ transform: [{ rotate: details ? "90deg" : "0deg" }] }}><Icon name="ChevronRight" size={14} color={c.foregroundMuted} /></View>
-      <Text style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "500" }}>Details</Text>
+      <Text style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 18, fontWeight: "500" }}>{tr("Details")}</Text>
     </Pressable>}
 
     {showExtra && !!b.context && <View onLayout={e => setContextWidth(e.nativeEvent.layout.width)}>
       <RichText selectable linkColor={c.foreground} numberOfLines={readonly || fullContext ? undefined : CONTEXT_LINES} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 19 }}>{b.context}</RichText>
     </View>}
     {/* Clamped by lines (a word boundary, with an ellipsis), never cut in the data; long context opens in full. */}
-    {showExtra && !readonly && clamps(b.context, CONTEXT_LINES, contextWidth) && <Reveal label="Show more" openLabel="Show less" open={fullContext} onPress={() => setFullContext(v => !v)} c={c} compact={compact} />}
+    {showExtra && !readonly && clamps(b.context, CONTEXT_LINES, contextWidth) && <Reveal label={tr("Show more")} openLabel="Show less" open={fullContext} onPress={() => setFullContext(v => !v)} c={c} compact={compact} />}
 
     {showExtra && (b.facts.length > 0 || b.links.length > 0) && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {b.facts.slice(0, 3).map((f, i) => { const col = factTone(f.tone, c); return <View key={`f${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, minHeight: 24, borderRadius: 6, backgroundColor: f.tone === "muted" ? c.surface2 : withAlpha(col, isLight(c) ? 0.1 : 0.14) }}>
@@ -267,7 +268,7 @@ function SendBar({ b, picks, noted = 0, busy, error, onSend, c, compact }: { b: 
   return <View style={{ gap: 6 }}>
     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
       <Btn shortcut label={busy === "answers" ? "Sending…" : bar.label} icon="Send" primary={bar.ready && !bar.partial} disabled={!bar.ready || !!busy} onPress={onSend} c={c} compact={compact} />
-      {!bar.ready && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>Pick your answers, then send them in one message.</Text>}
+      {!bar.ready && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{tr("Pick your answers, then send them in one message.")}</Text>}
       {bar.ready && noted > 0 && <Text style={{ flexShrink: 1, color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{noted === 1 ? "1 with a note" : `${noted} with notes`}</Text>}
     </View>
     {bar.skipped && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{bar.skipped}</Text>}
@@ -357,7 +358,7 @@ function Past({ b, c, now, compact, height, pending = false, onResend, resending
       </View>)}
     </View>}
     {undelivered(23)}
-    <View style={{ paddingLeft: 23 }}><Reveal label="Show full question" open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>
+    <View style={{ paddingLeft: 23 }}><Reveal label={tr("Show full question")} open={expanded} onPress={() => setExpanded(v => !v)} c={c} compact={compact} /></View>
     {expanded && <View style={{ paddingLeft: 23 }}>{body}</View>}
   </View>;
 }
@@ -447,7 +448,7 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
   // dismissing-anything-in-needs-you-sends-the-agent-nothing: an ask still in Needs you (or in Later) has the small x
   // beside its age. It signs the row off as dismissed: the agent is sent nothing, and a restated ask isn't flagged again.
   const x = flaggedAct && shown.actionable && agentId ? <View style={{ marginVertical: compact ? -8 : -5, marginRight: compact ? -8 : -6 }}>
-    <DismissX theme={theme} compact={compact} label="Remove the agent's ask" disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
+    <DismissX theme={theme} compact={compact} label={tr("Remove the agent's ask")} disabled={!!sending} onPress={() => dismiss({ agentId }, { onDismissed })} />
   </View> : null;
   const border = acts ? withAlpha(attention, isLight(c) ? 0.5 : 0.45) : c.border;
   // Every send from the card (a pick, Something else, Send answers, the keyboard's Send) goes through runAction: the
@@ -596,14 +597,14 @@ function BriefCardBody({ item, theme, layout, agentId, deps, embedded = false, s
       {!embedded && moves.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, columnGap: 14 }}>
         {moves.map((m, i) => <Btn key={m.kind} shortcut={m === doneMove} label={moveLabel(m)} icon={moveIcon(m)} primary={i === 0 && !multi} disabled={moveOff(m)} onPress={() => press(m)} c={c} compact={compact} hint={MOVE_HINT[m.kind]} />)}
         {/* one-done-button: the quiet choices sit beside Done, never above the context, away from it. */}
-        {doneQ && !notesOpen[doneQ.id] && !isOther(picks[doneQ.id]) && <NoteLink icon="MessageSquarePlus" label="Add note" a11y="Add a note, sent with Done" disabled={!!busy} onPress={() => noteOpenStore.set(b.id, doneQ.id, "1")} c={c} compact={compact} />}
-        {doneQ && !isOther(picks[doneQ.id]) && <NoteLink icon="Reply" label="Reply instead" a11y="Write a reply instead of Done" disabled={!!busy} onPress={() => pickStore.set(b.id, doneQ.id, OTHER)} c={c} compact={compact} />}
+        {doneQ && !notesOpen[doneQ.id] && !isOther(picks[doneQ.id]) && <NoteLink icon="MessageSquarePlus" label={tr("Add note")} a11y="Add a note, sent with Done" disabled={!!busy} onPress={() => noteOpenStore.set(b.id, doneQ.id, "1")} c={c} compact={compact} />}
+        {doneQ && !isOther(picks[doneQ.id]) && <NoteLink icon="Reply" label={tr("Reply instead")} a11y="Write a reply instead of Done" disabled={!!busy} onPress={() => pickStore.set(b.id, doneQ.id, OTHER)} c={c} compact={compact} />}
       </View>}
 
       {!!error && !multi && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13, lineHeight: 18 }}>{error}</Text>}
 
       {!!b.also && <View style={{ gap: 3, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
-        <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>Also, from the agent:</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16, fontWeight: "600" }}>{tr("Also, from the agent:")}</Text>
         <RichText style={{ color: c.foreground, fontSize: 14, lineHeight: 20 }}>{b.also.ask}</RichText>
         {!tight && !!b.also.context && <RichText linkColor={c.foreground} numberOfLines={3} style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 19 }}>{b.also.context}</RichText>}
       </View>}

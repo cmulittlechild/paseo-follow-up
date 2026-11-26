@@ -1,3 +1,4 @@
+import { tr } from "./i18n-text";
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, TextInput, View } from "react-native";
 import { Text } from "./text";
@@ -40,9 +41,9 @@ export function PrStatsSettings({ theme, compact, onPage = false }: { theme: The
   const withStats = data?.repos.filter(r => r.state !== "off") ?? [];
   const alreadyOn = data?.repos.find(r => r.repo === adding.trim() && r.state !== "off") ?? null;
   const addValid = REPO.test(adding.trim()) && !alreadyOn;
-  return <SettingsSection title="PR statistics" info={PR_STATS_INFO}>
-    {query.isPending && <ActivityIndicator accessibilityLabel="Loading PR statistics settings" color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
-    {query.error && <SettingsCard><SettingsAction label="Couldn't load PR statistics" hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
+  return <SettingsSection title={tr("PR statistics")} info={PR_STATS_INFO}>
+    {query.isPending && <ActivityIndicator accessibilityLabel={tr("Loading PR statistics settings")} color={c.foregroundMuted} style={{ alignSelf: "flex-start", marginVertical: 8 }} />}
+    {query.error && <SettingsCard><SettingsAction label={tr("Couldn't load PR statistics")} hint={errorText(query.error)} actionLabel="Retry" onPress={() => void query.refetch()} /></SettingsCard>}
     {data && <>
       <SettingsCard>
         {data.repos.map(row => <View key={row.repo}>
@@ -63,22 +64,22 @@ export function PrStatsSettings({ theme, compact, onPage = false }: { theme: The
         </View>)}
         {/* A repository Follow-up hasn't seen yet. */}
         <SubmitScope enabled={addValid} onSubmit={() => setOptIn(adding.trim())} style={{ flexDirection: compact ? "column" : "row", alignItems: compact ? "stretch" : "center", gap: 8, paddingHorizontal: compact ? 16 : 14, paddingVertical: 10, borderTopWidth: data.repos.length ? 1 : 0, borderTopColor: c.border }}>
-          <TextInput accessibilityLabel="Another repository, owner/repo" value={adding} onChangeText={setAdding} placeholder="Another repository: owner/repo" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
+          <TextInput accessibilityLabel={tr("Another repository, owner/repo")} value={adding} onChangeText={setAdding} placeholder={tr("Another repository: owner/repo")} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false}
             style={{ flex: compact ? undefined : 1, minWidth: 0, minHeight: compact ? 44 : 32, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: c.border, color: c.foreground, fontSize: compact ? 15 : 13, backgroundColor: c.surface0 }} />
-          {!!adding.trim() && <Button theme={theme} compact={compact} grow={compact} icon="Plus" title="Add" disabled={!addValid} onPress={() => setOptIn(adding.trim())} />}
+          {!!adding.trim() && <Button theme={theme} compact={compact} grow={compact} icon="Plus" title={tr("Add")} disabled={!addValid} onPress={() => setOptIn(adding.trim())} />}
         </SubmitScope>
-        {!!adding.trim() && !alreadyOn && !REPO.test(adding.trim()) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>Use owner/repo, like example/app.</Text>}
+        {!!adding.trim() && !alreadyOn && !REPO.test(adding.trim()) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>{tr("Use owner/repo, like example/app.")}</Text>}
         {alreadyOn && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4 }]}>{`${alreadyOn.repo} is already ${alreadyOn.state === "on" ? "on" : "listed above (paused): turn its switch on"}.`}</Text>}
       </SettingsCard>
-      {!data.repos.length && <Text style={t.meta}>Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote, or add one above.</Text>}
-      {withStats.length > 0 && !onPage && openStatsPage && <SettingsCard><SettingsAction label="PR stats" hint="Who opens PRs and whose PRs wait longest, per repository." actionLabel="Open PR stats" onPress={() => openStatsPage?.()} /></SettingsCard>}
-      {withStats.length > 0 && <Text style={[t.meta, { marginTop: 4, paddingHorizontal: compact ? 6 : 5 }]}>All repositories</Text>}
+      {!data.repos.length && <Text style={t.meta}>{tr("Repositories show here once Follow-up sees a PR in them or a project with a GitHub remote, or add one above.")}</Text>}
+      {withStats.length > 0 && !onPage && openStatsPage && <SettingsCard><SettingsAction label={tr("PR stats")} hint={tr("Who opens PRs and whose PRs wait longest, per repository.")} actionLabel="Open PR stats" onPress={() => openStatsPage?.()} /></SettingsCard>}
+      {withStats.length > 0 && <Text style={[t.meta, { marginTop: 4, paddingHorizontal: compact ? 6 : 5 }]}>{tr("All repositories")}</Text>}
       {withStats.length > 0 && <SettingsCard>
-        <SettingsSelect label="GitHub share for stats" hint="At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left." value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
+        <SettingsSelect label={tr("GitHub share for stats")} hint={tr("At most this much of GitHub's hourly limit in any hour; stats always stop under 40% left.")} value={String(Math.round(data.settings.slice * 100))} disabled={change.isPending}
           options={["1", "2", "5", "10"].map(v => ({ value: v, label: `${v}%` }))} onValueChange={v => change.mutate({ slice: Number(v) / 100, toast: `Stats may use ${v}% of GitHub's limit` })} />
-        <SettingsSelect<"calendar" | "working"> label="Clock" hint={`Working hours use one schedule for everyone: ${hoursWords(data.hours)}, ${data.timeZone}.`} value={data.settings.clock} disabled={change.isPending}
+        <SettingsSelect<"calendar" | "working"> label={tr("Clock")} hint={`Working hours use one schedule for everyone: ${hoursWords(data.hours)}, ${data.timeZone}.`} value={data.settings.clock} disabled={change.isPending}
           options={[{ value: "calendar", label: "Calendar time" }, { value: "working", label: "Working hours" }]} onValueChange={v => change.mutate({ clock: v, toast: v === "working" ? "Stats count working hours" : "Stats count calendar time" })} />
-        <SettingsSwitch label="Count stacks fairly" hint="A stacked PR's review clock starts when its parent got a first review or merged, not while it waits its turn." value={data.settings.enable_stack_aware} disabled={change.isPending}
+        <SettingsSwitch label={tr("Count stacks fairly")} hint={tr("A stacked PR's review clock starts when its parent got a first review or merged, not while it waits its turn.")} value={data.settings.enable_stack_aware} disabled={change.isPending}
           onValueChange={v => change.mutate({ enable_stack_aware: v, toast: v ? "Stacked PRs start their clocks when reached" : "Stacked PRs start their clocks when asked" })} />
       </SettingsCard>}
     </>}
@@ -140,9 +141,9 @@ function TurnOffConfirm({ row, theme, compact, busy, onKeep, onDelete, onCancel 
     <Text style={[t.body, { flex: compact ? undefined : 1 }]}>{`Stop reading ${row.repo}? Its stored PRs stay readable unless you delete them.`}</Text>
     <View style={{ flexDirection: compact ? "column-reverse" : "row", alignItems: compact ? "stretch" : "center", gap: 8 }}>
       {n > 0 && <Button theme={theme} compact={compact} kind="danger" title={`Also delete the ${n.toLocaleString("en-US")} PRs`} disabled={busy} onPress={onDelete} accessibilityHint="Turns stats off and deletes what was read. This can't be undone." />}
-      {!compact && <Button theme={theme} compact={compact} kind="ghost" title="Cancel" onPress={onCancel} />}
-      <Button theme={theme} compact={compact} kind="secondary" title="Turn off, keep data" disabled={busy} onPress={onKeep} />
-      {compact && <Button theme={theme} compact={compact} kind="ghost" title="Cancel" onPress={onCancel} />}
+      {!compact && <Button theme={theme} compact={compact} kind="ghost" title={tr("Cancel")} onPress={onCancel} />}
+      <Button theme={theme} compact={compact} kind="secondary" title={tr("Turn off, keep data")} disabled={busy} onPress={onKeep} />
+      {compact && <Button theme={theme} compact={compact} kind="ghost" title={tr("Cancel")} onPress={onCancel} />}
     </View>
   </View>;
 }
@@ -168,24 +169,24 @@ function RepoOptions({ row, theme, compact, busy, set }: { row: Row; theme: Them
   const hiddenChanged = logins(hidden).join(",") !== s.ignore.join(",");
   const pad = { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10 };
   return <View style={{ paddingBottom: 6 }}>
-    <SettingsSelect label="History" hint="How far back stats read. Longer reads more once, then costs the same to keep current." value={String(s.windowDays)} disabled={busy}
+    <SettingsSelect label={tr("History")} hint={tr("How far back stats read. Longer reads more once, then costs the same to keep current.")} value={String(s.windowDays)} disabled={busy}
       options={[30, 90, 180].map(d => ({ value: String(d), label: `${d} days` }))} onValueChange={v => set({ windowDays: Number(v) as 30 | 90 | 180 }, `${v} days of history`)} />
-    <SettingsSelect<StatsTeam["kind"]> label="Team" hint={teamHint} value={teamKind} disabled={busy}
+    <SettingsSelect<StatsTeam["kind"]> label={tr("Team")} hint={teamHint} value={teamKind} disabled={busy}
       options={[{ value: "everyone", label: "Everyone" }, { value: "people", label: "Picked people" }, { value: "github", label: "A GitHub team" }]}
       onValueChange={v => { setTeamKind(v); setTeamDraft(v === s.team.kind ? (s.team.kind === "people" ? s.team.logins.join(", ") : s.team.kind === "github" ? s.team.team : "") : ""); if (v === "everyone") set({ team: { kind: "everyone" } }, "team: everyone"); }} />
     {teamKind !== "everyone" && <SubmitScope enabled={!busy && teamChanged} onSubmit={saveTeam} style={[pad, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
       <TextInput accessibilityLabel={teamKind === "people" ? "Team logins" : "GitHub team, org/slug"} value={teamDraft} onChangeText={setTeamDraft} placeholder={teamKind === "people" ? "alice, bob, carol" : "example/backend"} placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field} />
-      <Button theme={theme} compact={compact} title="Save" disabled={busy || !teamChanged} onPress={saveTeam} />
+      <Button theme={theme} compact={compact} title={tr("Save")} disabled={busy || !teamChanged} onPress={saveTeam} />
     </SubmitScope>}
     {teamKind !== "everyone" && (teamProblem || teamKind !== s.team.kind) && <Text style={[t.meta, { paddingHorizontal: compact ? 16 : 14, paddingBottom: 10, marginTop: -4, color: teamProblem ? c.statusDanger : c.foregroundMuted }]}>{teamProblem ?? "Not saved yet: stats show the saved team until you Save."}</Text>}
     <View style={{ height: 1, backgroundColor: c.border }} />
     <View style={{ paddingHorizontal: compact ? 16 : 14, paddingTop: 10, gap: 4 }}>
-      <Text style={t.body}>Hidden from stats</Text>
-      <Text style={t.meta}>Bots are always hidden. Add service accounts that look like people; * matches anything.</Text>
+      <Text style={t.body}>{tr("Hidden from stats")}</Text>
+      <Text style={t.meta}>{tr("Bots are always hidden. Add service accounts that look like people; * matches anything.")}</Text>
     </View>
     <SubmitScope enabled={!busy && hiddenChanged} onSubmit={() => set({ ignore: logins(hidden) }, logins(hidden).length ? `${logins(hidden).length} hidden` : "nobody hidden")} style={[pad, { paddingTop: 8, flexDirection: "row", alignItems: "center", gap: 8 }]}>
-      <TextInput accessibilityLabel="Hidden from stats, logins" value={hidden} onChangeText={setHidden} placeholder="deploy-robot, release-*" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field} />
-      <Button theme={theme} compact={compact} title="Save" disabled={busy || !hiddenChanged} onPress={() => set({ ignore: logins(hidden) }, logins(hidden).length ? `${logins(hidden).length} hidden` : "nobody hidden")} />
+      <TextInput accessibilityLabel={tr("Hidden from stats, logins")} value={hidden} onChangeText={setHidden} placeholder="deploy-robot, release-*" placeholderTextColor={c.foregroundMuted} autoCapitalize="none" autoCorrect={false} style={field} />
+      <Button theme={theme} compact={compact} title={tr("Save")} disabled={busy || !hiddenChanged} onPress={() => set({ ignore: logins(hidden) }, logins(hidden).length ? `${logins(hidden).length} hidden` : "nobody hidden")} />
     </SubmitScope>
   </View>;
 }
@@ -224,16 +225,16 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
     <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20 }}>
       <SubmitScope enabled={canTurnOn} onSubmit={onTurnOn} style={{ gap: compact ? 16 : 14, maxWidth: 560 }}>
         {query.isPending && <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><ActivityIndicator color={c.foregroundMuted} /><Text style={t.meta}>Counting PRs changed in the last 90 days…</Text></View>
-          {slow && <Text style={t.meta}>Still counting. You can turn stats on now; they show their progress here.</Text>}
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><ActivityIndicator color={c.foregroundMuted} /><Text style={t.meta}>{tr("Counting PRs changed in the last 90 days…")}</Text></View>
+          {slow && <Text style={t.meta}>{tr("Still counting. You can turn stats on now; they show their progress here.")}</Text>}
         </View>}
         {blocked && <View style={{ gap: 4 }}>
           <Text accessibilityRole={blocked.tone === "danger" ? "alert" : undefined} style={[t.body, { color: blocked.tone === "danger" ? c.statusDanger : c.foreground }]}>{blocked.lead}</Text>
           <Text style={t.meta}>{blocked.reason}</Text>
         </View>}
         {lines && e && <>
-          <Text style={[t.body, { color: c.foregroundMuted }]}>About <Text style={[t.body, { fontWeight: "600" }]}>{`${e.prs!.toLocaleString("en-US")} PRs`}</Text> changed in the last 90 days.</Text>
-          {point("Gauge", <>Reading them costs about <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.replace(/^About /, "").toLowerCase()}`}</>,
+          <Text style={[t.body, { color: c.foregroundMuted }]}>{tr("About")}  <Text style={[t.body, { fontWeight: "600" }]}>{`${e.prs!.toLocaleString("en-US")} PRs`}</Text> changed in the last 90 days.</Text>
+          {point("Gauge", <>{tr("Reading them costs about")}  <Text style={[t.body, { fontWeight: "600" }]}>{`${e.points!.toLocaleString("en-US")} GitHub points`}</Text>{`, ${lines.time.replace(/^About /, "").toLowerCase()}`}</>,
             `Never more than ${Math.round(slice * 100)}% of your hourly limit (${e.slicePoints.toLocaleString("en-US")} points). Staying current: about 1–15 points an hour.`)}
         </>}
         {/* What turning on means doesn't depend on the count: shown whenever Turn on is offered. */}
@@ -241,11 +242,11 @@ export function OptInSheet({ repo, theme, compact, onClose, onTurnOn }: { repo: 
           {/* The budget-low reason already says the 40% rule; say it once. */}
           {e?.wait?.reason !== "budget" && point("CirclePause", "Stats pause whenever less than 40% of your GitHub limit is left, so your agents and PR checks always come first.")}
           {point("Lock", `Stored on this machine only${e?.bytes ? `, about ${sizeWords(e.bytes)}` : ""}: numbers, times, logins and PR titles.`, "No code and no comment text. Bots are left out.")}
-          <Text style={t.meta}>90 days · everyone · calendar time. Change these in the repository's options.</Text>
+          <Text style={t.meta}>{tr("90 days · everyone · calendar time. Change these in the repository's options.")}</Text>
         </>}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-          <Button theme={theme} compact={compact} grow={compact} kind="ghost" title="Cancel" onPress={onClose} />
-          <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title="Turn on" disabled={!canTurnOn} onPress={onTurnOn} />
+          <Button theme={theme} compact={compact} grow={compact} kind="ghost" title={tr("Cancel")} onPress={onClose} />
+          <Button shortcut theme={theme} compact={compact} grow={compact} kind="primary" title={tr("Turn on")} disabled={!canTurnOn} onPress={onTurnOn} />
         </View>
       </SubmitScope>
     </Modal.Content>
