@@ -1,0 +1,44 @@
+{
+  "plugin": {
+    "name": "Follow-up"
+  },
+  "screen": {
+    "settingsTitle": "Follow-up settings"
+  },
+  "panel": {
+    "title": "Follow-up"
+  },
+  "header": {
+    "button": "Follow-up"
+  },
+  "display": {
+    "overview": "Follow-up"
+  },
+  "cmd": {
+    "openForWorkspace": "Follow-up: open for this workspace",
+    "openLarge": "Follow-up: open the larger view",
+    "openSpec": "Follow-up: open the spec",
+    "renameTitle": "Follow-up: Rename title with AI",
+    "home": "Follow-up: Home",
+    "catchUp": "Follow-up: Catch up",
+    "prStats": "Follow-up: PR stats",
+    "log": "Follow-up: Done while you were away",
+    "settings": "Follow-up: settings",
+    "setup": "Follow-up: Set up again",
+    "report": "Follow-up: Report a bug, idea or feedback",
+    "askOverseer": "Follow-up: Ask the Overseer",
+    "search": "Follow-up: Search",
+    "searchWithKey": "Follow-up: Search ({{label}})",
+    "new": "Follow-up: New…",
+    "newWithKey": "Follow-up: New… ({{label}})"
+  },
+  "slash": {
+    "reportIssue": "Report a Follow-up bug, idea or feedback; this agent files it on GitHub after you OK it",
+    "reportIssueArg": "what happened",
+    "followUp": "Open this workspace's PRs and remaining work"
+  },
+  "sidebar": {
+    "needsYou": "Follow-up: Needs you",
+    "needsYouDescription": "Agents that need you until you sign them off, then your workspaces."
+  }
+}

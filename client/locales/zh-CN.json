@@ -1,0 +1,44 @@
+{
+  "plugin": {
+    "name": "跟进"
+  },
+  "screen": {
+    "settingsTitle": "跟进设置"
+  },
+  "panel": {
+    "title": "跟进"
+  },
+  "header": {
+    "button": "跟进"
+  },
+  "display": {
+    "overview": "跟进"
+  },
+  "cmd": {
+    "openForWorkspace": "跟进：为当前工作区打开",
+    "openLarge": "跟进：打开大视图",
+    "openSpec": "跟进：打开规格文档",
+    "renameTitle": "跟进：用 AI 重命名标题",
+    "home": "跟进：主页",
+    "catchUp": "跟进：补进度",
+    "prStats": "跟进：PR 统计",
+    "log": "跟进：你不在时做完的",
+    "settings": "跟进：设置",
+    "setup": "跟进：重新设置",
+    "report": "跟进：报告问题、想法或反馈",
+    "askOverseer": "跟进：询问监工",
+    "search": "跟进：搜索",
+    "searchWithKey": "跟进：搜索（{{label}}）",
+    "new": "跟进：新建…",
+    "newWithKey": "跟进：新建…（{{label}}）"
+  },
+  "slash": {
+    "reportIssue": "报告「跟进」的问题、想法或反馈；你确认后该 agent 会在 GitHub 上建立 issue",
+    "reportIssueArg": "发生了什么",
+    "followUp": "打开当前工作区的 PR 和剩余工作"
+  },
+  "sidebar": {
+    "needsYou": "跟进：需要你",
+    "needsYouDescription": "需要你处理的 agent，直到你签收；之后是你的工作区。"
+  }
+}

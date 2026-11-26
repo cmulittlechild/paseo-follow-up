@@ -1,4 +1,5 @@
 import { LEGACY_SETTINGS_SCREEN } from "./shared/legacy";
+import { messages } from "./client/i18n";
 import { contributeDisplay } from "./client/display";
 import { createNewKey, createSearchKey, installSearchShortcut } from "./client/search-key";
 import { requestSearch } from "./client/search-focus";
@@ -92,7 +93,7 @@ export default function contribute(host: PluginClientContext) {
   const register = (workspaceId: string) => {
     if (stopped || headers.has(workspaceId)) return;
     // The header button opens (docks) this workspace's panel.
-    headers.set(workspaceId, client.addHeaderButton({ id: "follow-up", workspaceId, button: { title: "Follow-up", icon: HeaderIcon, behavior: { kind: "action", onPress() { openPanel(workspaceId); } } } }));
+    headers.set(workspaceId, client.addHeaderButton({ id: "follow-up", workspaceId, button: { title: messages.message("header.button"), icon: HeaderIcon, behavior: { kind: "action", onPress() { openPanel(workspaceId); } } } }));
   };
   const paseoWorkspaces = createPaseoWorkspaces(client, { onAdd: register, onRemove: id => { headers.get(id)?.remove(); headers.delete(id); } });
   const extras = createHomeExtras(client);
@@ -114,7 +115,7 @@ export default function contribute(host: PluginClientContext) {
   let nextToken = 0;
   const openNext = (from: string | null) => client.openScreen({ screenId: OVERVIEW, params: { next: String(++nextToken), ...(from ? { from } : {}) } });
 
-  const removeDisplay = contributeDisplay(client, { id: "follow-up-overview", title: "Follow-up", Component: sidebarItem(sources, OVERVIEW) });
+  const removeDisplay = contributeDisplay(client, { id: "follow-up-overview", title: client.i18n.t(messages, "display.overview"), Component: sidebarItem(sources, OVERVIEW) });
   const briefDeps: BriefDeps = {
     signOff: agentId => void inbox.signOff([agentId]), openNext,
     openAgent: agentId => client.openScreen({ screenId: OVERVIEW, params: { next: String(++nextToken), open: agentId } }),
@@ -127,35 +128,35 @@ export default function contribute(host: PluginClientContext) {
   const Panel = (props: PluginWorkspacePanelProps) => <><FollowPanel {...props} openSettings={openSettings} openOverview={openOverview} openLarge={openLarge} inbox={inbox} live={store} briefDeps={briefDeps} sources={sources} />{reportHost(props)}</>;
   const Large = (props: PluginScreenProps) => <FollowLarge {...props} openSettings={openSettings} openOverview={openOverview} live={store} />;
   const removers: (() => unknown)[] = [
-    client.addScreen({ id: OVERVIEW, title: "Follow-up", Component: Overview }),
-    client.addScreen({ id: LARGE_SCREEN, title: params => store.get(params.workspaceId ?? "")?.title ?? "Follow-up", Component: Large }),
-    ...LEGACY_SETTINGS_SCREENS.map(id => client.addScreen({ id, title: "Follow-up settings", Component: Settings })),
+    client.addScreen({ id: OVERVIEW, title: messages.message("plugin.name"), Component: Overview }),
+    client.addScreen({ id: LARGE_SCREEN, title: params => store.get(params.workspaceId ?? "")?.title ?? messages.message("plugin.name"), Component: Large }),
+    ...LEGACY_SETTINGS_SCREENS.map(id => client.addScreen({ id, title: messages.message("screen.settingsTitle"), Component: Settings })),
     settings.remove,
-    client.addWorkspacePanel({ id: PANEL, title: "Follow-up", icon: FOLLOW_UP_ICON, locations: ["workspace", "explorer"], Component: Panel }),
-    client.addCommandCenterItem({ id: "open-follow-up", title: "Follow-up: open for this workspace", icon: FOLLOW_UP_ICON, keywords: ["PR", "stack", "repairs", "done", "archive"], context: "workspace", onSelect({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
-    client.addCommandCenterItem({ id: "open-follow-up-large", title: "Follow-up: open the larger view", icon: "Maximize2", keywords: ["expand", "full screen", "maximize", "PR", "stack"], context: "workspace", onSelect({ workspace, openScreen }) { openScreen({ screenId: LARGE_SCREEN, params: { workspaceId: workspace.id } }); } }),
-    client.addCommandCenterItem({ id: "open-follow-up-spec", title: "Follow-up: open the spec", icon: "FileText", keywords: ["spec", "artifact", "plan", "doc", "design"], context: "workspace", onSelect({ workspace, openPanel }) {
+    client.addWorkspacePanel({ id: PANEL, title: messages.message("panel.title"), icon: FOLLOW_UP_ICON, locations: ["workspace", "explorer"], Component: Panel }),
+    client.addCommandCenterItem({ id: "open-follow-up", title: messages.message("cmd.openForWorkspace"), icon: FOLLOW_UP_ICON, keywords: ["PR", "stack", "repairs", "done", "archive"], context: "workspace", onSelect({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
+    client.addCommandCenterItem({ id: "open-follow-up-large", title: messages.message("cmd.openLarge"), icon: "Maximize2", keywords: ["expand", "full screen", "maximize", "PR", "stack"], context: "workspace", onSelect({ workspace, openScreen }) { openScreen({ screenId: LARGE_SCREEN, params: { workspaceId: workspace.id } }); } }),
+    client.addCommandCenterItem({ id: "open-follow-up-spec", title: messages.message("cmd.openSpec"), icon: "FileText", keywords: ["spec", "artifact", "plan", "doc", "design"], context: "workspace", onSelect({ workspace, openPanel }) {
       const url = store.get(workspace.id)?.spec?.url;
       // Without a link yet, open the panel, where the spec link can be added.
       if (url) void openExternalUrl(url).catch(() => undefined); else openPanel(PANEL, { location: location() });
     } }),
-    client.addCommandCenterItem({ id: "follow-up-rename", title: "Follow-up: Rename title with AI", icon: "Sparkles", keywords: ["rename", "name", "title", "AI", "suggest"], context: "workspace", onSelect({ workspace, openPanel }) {
+    client.addCommandCenterItem({ id: "follow-up-rename", title: messages.message("cmd.renameTitle"), icon: "Sparkles", keywords: ["rename", "name", "title", "AI", "suggest"], context: "workspace", onSelect({ workspace, openPanel }) {
       // The dialog lives in Follow-up's surfaces: open the panel, which mounts a host, then ask.
       openPanel(PANEL, { location: location() }); setTimeout(() => openRename({ workspaceId: workspace.id }), 0); } }),
-    client.addCommandCenterItem({ id: "follow-up-overview", title: "Follow-up: Home", icon: "House", keywords: ["home", "workspaces", "needs you", "inbox", "attention", "brief", "overview"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); } }),
+    client.addCommandCenterItem({ id: "follow-up-overview", title: messages.message("cmd.home"), icon: "House", keywords: ["home", "workspaces", "needs you", "inbox", "attention", "brief", "overview"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW }); } }),
     client.addCommandCenterItem({ id: "follow-up-catch-up", title: MODE.command, icon: "Layers", keywords: ["catch up", "inbox", "needs you", "triage", "answer", "questions", "one by one"], context: "global", onSelect() { openCatchUp(); } }),
-    client.addCommandCenterItem({ id: "follow-up-pr-stats", title: "Follow-up: PR stats", icon: "ChartNoAxesColumn", keywords: ["statistics", "stats", "review time", "team", "leaderboard", "who", "PRs opened", "wait"], context: "global", onSelect() { openStats(); } }),
-    client.addCommandCenterItem({ id: "follow-up-log", title: "Follow-up: Done while you were away", icon: "History", keywords: ["log", "overnight", "away", "repairs", "activity"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { view: "log" } }); } }),
-    client.addCommandCenterItem({ id: "follow-up-settings", title: "Follow-up: settings", icon: "Settings", keywords: ["default", "following", "project", "display", "sidebar", "pill", "header", "inbox", "questions"], context: "global", onSelect() { openSettings(); } }),
+    client.addCommandCenterItem({ id: "follow-up-pr-stats", title: messages.message("cmd.prStats"), icon: "ChartNoAxesColumn", keywords: ["statistics", "stats", "review time", "team", "leaderboard", "who", "PRs opened", "wait"], context: "global", onSelect() { openStats(); } }),
+    client.addCommandCenterItem({ id: "follow-up-log", title: messages.message("cmd.log"), icon: "History", keywords: ["log", "overnight", "away", "repairs", "activity"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { view: "log" } }); } }),
+    client.addCommandCenterItem({ id: "follow-up-settings", title: messages.message("cmd.settings"), icon: "Settings", keywords: ["default", "following", "project", "display", "sidebar", "pill", "header", "inbox", "questions"], context: "global", onSelect() { openSettings(); } }),
     // "Set up Follow-up again": the setup flow from the top, on Home.
-    client.addCommandCenterItem({ id: "follow-up-setup", title: "Follow-up: Set up again", icon: "ListChecks", keywords: ["setup", "set up again", "restart setup", "onboarding", "getting started", "checks", "gh", "tour", "welcome"], context: "global", onSelect() { openSetup(); } }),
-    client.addCommandCenterItem({ id: "follow-up-report-issue", title: "Follow-up: Report a bug, idea or feedback", icon: "Bug", keywords: ["bug", "report", "issue", "problem", "broken", "feature request", "idea", "feedback", "github", "help"], context: "global", onSelect() { openReportSheet(); } }),
+    client.addCommandCenterItem({ id: "follow-up-setup", title: messages.message("cmd.setup"), icon: "ListChecks", keywords: ["setup", "set up again", "restart setup", "onboarding", "getting started", "checks", "gh", "tour", "welcome"], context: "global", onSelect() { openSetup(); } }),
+    client.addCommandCenterItem({ id: "follow-up-report-issue", title: messages.message("cmd.report"), icon: "Bug", keywords: ["bug", "report", "issue", "problem", "broken", "feature request", "idea", "feedback", "github", "help"], context: "global", onSelect() { openReportSheet(); } }),
     // /report-issue: words go straight to this agent; with none, the sheet opens with this agent picked.
-    client.addSlashCommand({ name: "report-issue", description: "Report a Follow-up bug, idea or feedback; this agent files it on GitHub after you OK it", argumentHint: "what happened", context: "agent", async onSubmit({ args, agent, workspace, rpc }) {
+    client.addSlashCommand({ name: "report-issue", description: messages.message("slash.reportIssue"), argumentHint: messages.message("slash.reportIssueArg"), context: "agent", async onSubmit({ args, agent, workspace, rpc }) {
       if (args.trim()) await rpc(reportSendRpc, { kind: "bug", text: args.trim(), agentId: agent.id }).catch(() => openReportSheet({ agentId: agent.id, workspaceId: workspace.id }));
       else openReportSheet({ agentId: agent.id, workspaceId: workspace.id });
     } }),
-    client.addSlashCommand({ name: "follow-up", description: "Open this workspace's PRs and remaining work", argumentHint: "", context: "agent", onSubmit({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
+    client.addSlashCommand({ name: "follow-up", description: messages.message("slash.followUp"), argumentHint: "", context: "agent", onSubmit({ openPanel }) { openPanel(PANEL, { location: location() }); } }),
     contributeChat(client),
     // Agents and workspaces an agent creates: a card that opens them, relayed through Home (timeline items get no navigation).
     contributeCreated(client, { watchAgent: hasFeeds(client) ? extras.watchAgent : null, openAgent: briefDeps.openAgent, openWorkspace: workspaceId => client.openScreen({ screenId: OVERVIEW, params: { next: String(++nextToken), openWorkspace: workspaceId } }) }),
@@ -170,7 +171,7 @@ export default function contribute(host: PluginClientContext) {
   let removeAsk: (() => unknown) | null = null;
   const syncAsk = () => {
     const on = !!extras.overseer()?.enabled;
-    if (on && !removeAsk) removeAsk = client.addCommandCenterItem({ id: "follow-up-ask-overseer", title: "Follow-up: Ask the Overseer", icon: "MessagesSquare", keywords: ["overseer", "ask", "route", "tell", "delegate", "assign", "which agent"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { ask: String(Date.now()) } }); } });
+    if (on && !removeAsk) removeAsk = client.addCommandCenterItem({ id: "follow-up-ask-overseer", title: messages.message("cmd.askOverseer"), icon: "MessagesSquare", keywords: ["overseer", "ask", "route", "tell", "delegate", "assign", "which agent"], context: "global", onSelect({ openScreen }) { openScreen({ screenId: OVERVIEW, params: { ask: String(Date.now()) } }); } });
     else if (!on && removeAsk) { void removeAsk(); removeAsk = null; }
   };
   removers.push(extras.subscribe(syncAsk), () => removeAsk?.());
@@ -180,7 +181,7 @@ export default function contribute(host: PluginClientContext) {
   const syncSearch = () => {
     void removeSearch?.();
     const label = searchKey.label();
-    removeSearch = client.addCommandCenterItem({ id: "follow-up-search", title: label ? `Follow-up: Search (${label})` : "Follow-up: Search", icon: "Search", keywords: ["search", "find", "workspace", "branch", "PR", "omnibox", "shortcut"], context: "global",
+    removeSearch = client.addCommandCenterItem({ id: "follow-up-search", title: label ? messages.message("cmd.searchWithKey", { label }) : messages.message("cmd.search"), icon: "Search", keywords: ["search", "find", "workspace", "branch", "PR", "omnibox", "shortcut"], context: "global",
       onSelect({ openScreen }) { requestSearch(extras.searchFocus, () => openScreen({ screenId: OVERVIEW })); } });
   };
   syncSearch();
@@ -189,7 +190,7 @@ export default function contribute(host: PluginClientContext) {
   const syncNew = () => {
     void removeNew?.();
     const label = newKey.label();
-    removeNew = client.addCommandCenterItem({ id: "follow-up-new", title: label ? `Follow-up: ${NEW_NAME}… (${label})` : `Follow-up: ${NEW_NAME}…`, icon: "Plus", keywords: [...OLD_NAMES, "dispatch", "start", "workspace", "issue", "linear", "task", "create"], context: "global",
+    removeNew = client.addCommandCenterItem({ id: "follow-up-new", title: label ? messages.message("cmd.newWithKey", { label }) : messages.message("cmd.new"), icon: "Plus", keywords: [...OLD_NAMES, "dispatch", "start", "workspace", "issue", "linear", "task", "create"], context: "global",
       onSelect({ openScreen }) { enterNew(openScreen); } });
   };
   syncNew();
@@ -200,7 +201,7 @@ export default function contribute(host: PluginClientContext) {
   removers.push(searchKey.subscribe(syncSearch), () => removeSearch?.(), installSearchShortcut(client, searchKey, { screenId: OVERVIEW, focus: extras.searchFocus }, { key: newKey, open: openNewAnywhere }));
   // Phase 2: only on hosts with the sidebar-view API (Paseo main after 2026-11-07).
   const views = sidebarViewHost(host);
-  if (views) removers.push(views.addSidebarView({ id: "needs-you", title: "Follow-up: Needs you", description: "Agents that need you until you sign them off, then your workspaces.", Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
+  if (views) removers.push(views.addSidebarView({ id: "needs-you", title: client.i18n.t(messages, "sidebar.needsYou"), description: client.i18n.t(messages, "sidebar.needsYouDescription"), Component: inboxSidebarView(sources, () => client.openScreen({ screenId: OVERVIEW, params: { item: OVERSEER_KEY, at: String(Date.now()) } })) }));
 
   return async () => {
     setReportFallback(null); setReportError(null); setNewFallback(null);
