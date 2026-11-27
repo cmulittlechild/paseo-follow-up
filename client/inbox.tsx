@@ -86,7 +86,7 @@ export function contributeInboxCommands(client: PluginClientContext, store: Inbo
   const removers = [
     client.addCommandCenterItem({ id: "inbox-sign-off-next", title: tr("Follow-up: Sign off & next"), icon: "ArrowRight", keywords: ["ok", "done", "ack", "needs you", "sign off", "next"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); openNext(agent.id); } }),
-    client.addCommandCenterItem({ id: "inbox-sign-off", title: tr("Follow-up: sign off"), icon: tr("Check"), keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
+    client.addCommandCenterItem({ id: "inbox-sign-off", title: tr("Follow-up: sign off"), icon: "Check", keywords: ["ok", "done", "ack", "needs you", "sign off"], context: "agent",
       onSelect({ agent }) { void store.signOff([agent.id]); } }),
     client.addCommandCenterItem({ id: "inbox-later", title: tr("Follow-up: Later (tomorrow 09:00)"), icon: "AlarmClock", keywords: ["ok", "snooze", "later", "needs you"], context: "agent",
       onSelect({ agent }) { void store.snooze([agent.id], snoozeUntil("tomorrow", new Date())); } }),

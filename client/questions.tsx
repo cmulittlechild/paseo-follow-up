@@ -45,15 +45,15 @@ const who = (w: Pick<ListWorkspace, "mainAgentId">, agentId: string | null) => !
  */
 export function meanwhile(w: ListWorkspace, q: ListQuestion, pending: PendingAnswer | null | undefined): { icon: string; color: (c: Colors) => string; text: string } {
   if (pending?.error) return { icon: "CircleAlert", color: c => c.statusDanger, text: `Your answer wasn't sent: ${sentence(pending.error)} Open it to retry; your words are kept.` };
-  if (pending) return { icon: tr("Send"), color: c => c.foregroundMuted, text: "Sending your answer…" };
-  if (q.taskId && q.need === "action") return { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("A task waits on this. The agent works on the rest meanwhile.") };
-  if (q.taskId && !q.options.length) return { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("A task is blocked on this. The agent works on the rest.") };
+  if (pending) return { icon: "Send", color: c => c.foregroundMuted, text: "Sending your answer…" };
+  if (q.taskId && q.need === "action") return { icon: "Clock", color: c => c.foregroundMuted, text: tr("A task waits on this. The agent works on the rest meanwhile.") };
+  if (q.taskId && !q.options.length) return { icon: "Clock", color: c => c.foregroundMuted, text: tr("A task is blocked on this. The agent works on the rest.") };
   switch (questionState(q)) {
     case "stopped": return { icon: "CirclePause", color: c => c.statusWarning, text: q.big ? `The agent stopped and waits for your answer. Big question: ${q.big}.` : tr("The agent stopped and waits for your answer.") };
     case "building": return { icon: "Hammer", color: c => c.foregroundMuted, text: `The agent is building ${q.recommend} while you decide. Pick another option and it undoes that first.` };
     default: return q.big
       ? { icon: "Hand", color: c => c.statusWarning, text: `Big question: ${q.big}. The agent builds nothing this affects until you answer.` }
-      : { icon: tr("Clock"), color: c => c.foregroundMuted, text: tr("The agent holds what this affects and keeps working on the rest.") };
+      : { icon: "Clock", color: c => c.foregroundMuted, text: tr("The agent holds what this affects and keeps working on the rest.") };
   }
 }
 
@@ -73,8 +73,8 @@ function deliveryLine(w: ListWorkspace, q: ListQuestion, now: number): { icon: s
       return { icon: s.tone === "spinner" ? "" : d.state === "queued" ? "Clock" : d.state === "retrying" ? "RotateCcw" : d.state === "cancelled" ? "CircleSlash" : "TriangleAlert", tone: s.tone === "danger" ? "warning" : s.tone, text: s.detail };
     }
     case "unconfirmed": return { icon: "RotateCcw", tone: "muted", text: RETRYING_DETAIL };
-    case "copied": return { icon: tr("Copy"), tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
-    case "signed-off": return { icon: tr("Check"), tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
+    case "copied": return { icon: "Copy", tone: "muted", text: `Copied ${ago(d.at, now)}. Paste it into the agent's chat, or send it from here.` };
+    case "signed-off": return { icon: "Check", tone: "muted", text: `You signed it off ${ago(d.at, now)}; Follow-up didn't see it in the chat.` };
     case "in-chat": return { icon: "MessageSquareText", tone: "muted", text: `Put in ${who(w, d.to)}'s chat ${ago(d.at, now)}. Send it there, or send it from here.` };
     case "recorded": return { icon: "MessageSquare", tone: "muted", text: `You answered in chat; the agent recorded it ${ago(d.at, now)}.` };
   }
